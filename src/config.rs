@@ -23,6 +23,12 @@ pub struct Config {
     pub click_midi: bool,
     pub click_note: u8,
     pub click_channel: u8,
+    /// "Listen": play the score through the sound card (software drum kit).
+    pub playback_audio: bool,
+    pub playback_volume: f32,
+    /// "Listen": also send the notes to the MIDI output (the module's sounds).
+    pub playback_midi: bool,
+    pub playback_channel: u8,
     pub note_map: NoteMap,
     pub keyboard_input: bool,
     pub zoom: f32,
@@ -43,6 +49,10 @@ impl Default for Config {
             click_midi: false,
             click_note: 76,
             click_channel: 10,
+            playback_audio: true,
+            playback_volume: 0.7,
+            playback_midi: false,
+            playback_channel: 10,
             note_map: NoteMap::roland_v31(),
             keyboard_input: false,
             zoom: 1.0,
@@ -98,6 +108,10 @@ impl Config {
         kv("click_midi", self.click_midi.to_string());
         kv("click_note", self.click_note.to_string());
         kv("click_channel", self.click_channel.to_string());
+        kv("playback_audio", self.playback_audio.to_string());
+        kv("playback_volume", self.playback_volume.to_string());
+        kv("playback_midi", self.playback_midi.to_string());
+        kv("playback_channel", self.playback_channel.to_string());
         kv("keyboard_input", self.keyboard_input.to_string());
         kv("zoom", self.zoom.to_string());
         kv("expand_repeats", self.expand_repeats.to_string());
@@ -134,6 +148,13 @@ impl Config {
                 "click_midi" => c.click_midi = b(c.click_midi),
                 "click_note" => c.click_note = v.parse().unwrap_or(c.click_note).min(127),
                 "click_channel" => c.click_channel = v.parse().unwrap_or(c.click_channel).clamp(1, 16),
+                "playback_audio" => c.playback_audio = b(c.playback_audio),
+                "playback_volume" => {
+                    let x = v.parse::<f32>().ok().filter(|x| x.is_finite());
+                    c.playback_volume = x.unwrap_or(c.playback_volume).clamp(0.0, 1.0)
+                }
+                "playback_midi" => c.playback_midi = b(c.playback_midi),
+                "playback_channel" => c.playback_channel = v.parse().unwrap_or(c.playback_channel).clamp(1, 16),
                 "keyboard_input" => c.keyboard_input = b(c.keyboard_input),
                 "zoom" => c.zoom = v.parse::<f32>().unwrap_or(c.zoom).clamp(0.3, 4.0),
                 "expand_repeats" => c.expand_repeats = b(c.expand_repeats),
@@ -165,10 +186,25 @@ mod tests {
             midi_in_port: "Roland V31 MIDI 1".into(),
             metronome_during_take: false,
             count_in_bars: 2,
+            playback_audio: false,
+            playback_volume: 0.25,
+            playback_midi: true,
+            playback_channel: 1,
             ..Default::default()
         };
         c.note_map.set_lane_notes(Lane::Kick, &[36, 33]);
         let back = Config::from_text(&c.to_text());
         assert_eq!(back, c);
+    }
+
+    #[test]
+    fn playback_settings_are_clamped_and_default_when_missing() {
+        let c = Config::from_text("playback_volume = 7\nplayback_channel = 99\nplayback_audio = nonsense\n");
+        assert_eq!(c.playback_volume, 1.0);
+        assert_eq!(c.playback_channel, 16);
+        assert!(c.playback_audio, "an unreadable value keeps the default");
+        // A settings file from before playback existed still loads.
+        let old = Config::from_text("latency_ms = 5\n");
+        assert_eq!((old.playback_audio, old.playback_midi, old.playback_channel), (true, false, 10));
     }
 }

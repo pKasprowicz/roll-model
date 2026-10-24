@@ -138,6 +138,31 @@ impl Lane {
         matches!(self, Lane::Kick | Lane::HiHatPedal)
     }
 
+    /// General MIDI percussion key for this lane. It is also the Roland
+    /// factory note of the pad's main zone.
+    pub fn standard_note(self) -> Option<u8> {
+        Some(match self {
+            Lane::Kick => 36,
+            Lane::Snare => 38,
+            Lane::CrossStick => 37,
+            Lane::HiHatClosed => 42,
+            Lane::HiHatOpen => 46,
+            Lane::HiHatPedal => 44,
+            Lane::Tom1 => 48,
+            Lane::Tom2 => 45,
+            Lane::Tom3 => 43,
+            Lane::Tom4 => 41,
+            Lane::Crash1 => 49,
+            Lane::Crash2 => 57,
+            Lane::Ride => 51,
+            Lane::RideBell => 53,
+            Lane::China => 52,
+            Lane::Splash => 55,
+            Lane::Cowbell => 56,
+            Lane::Other => return None,
+        })
+    }
+
     /// Default (staff step, notehead). Step 0 is the bottom staff line (E4),
     /// each step is one line/space, so the top line (F5) is step 8.
     pub fn default_staff(self) -> (i32, NoteHead) {
@@ -328,6 +353,18 @@ impl NoteMap {
             .collect()
     }
 
+    /// The note to send to a sound module so it plays `lane`: the standard
+    /// note if this map gives it to the lane, else the lowest note mapped to
+    /// the lane, else the standard note when no other lane claims it.
+    pub fn playback_note(&self, lane: Lane) -> Option<u8> {
+        let mapped = self.notes_for(lane);
+        let standard = lane.standard_note();
+        if let Some(n) = standard.filter(|n| mapped.contains(n)) {
+            return Some(n);
+        }
+        mapped.first().copied().or_else(|| standard.filter(|n| self.lane(*n).is_none()))
+    }
+
     pub fn set_lane_notes(&mut self, lane: Lane, notes: &[u8]) {
         self.map.retain(|_, l| *l != lane);
         for n in notes {
@@ -381,6 +418,26 @@ mod tests {
         assert_eq!(lane_from_name("Ride Bell"), Some(Lane::RideBell));
         assert_eq!(lane_from_name("Crash Cymbal 2"), Some(Lane::Crash2));
         assert_eq!(lane_from_name("Tambourine"), None);
+    }
+
+    #[test]
+    fn playback_notes() {
+        let mut m = NoteMap::roland_v31();
+        // Several notes per lane: the standard (main zone) one wins, not the lowest.
+        assert_eq!(m.playback_note(Lane::HiHatClosed), Some(42));
+        assert_eq!(m.playback_note(Lane::Kick), Some(36));
+        assert_eq!(m.playback_note(Lane::Snare), Some(38));
+        // 52 is the Roland crash-2 edge, so the China lane must not borrow it.
+        assert_eq!(m.playback_note(Lane::China), None);
+        // A remapped lane uses its own note; an unmapped lane falls back to GM.
+        m.set_lane_notes(Lane::Kick, &[30, 31]);
+        assert_eq!(m.playback_note(Lane::Kick), Some(30));
+        m.set_lane_notes(Lane::Cowbell, &[]);
+        assert_eq!(m.playback_note(Lane::Cowbell), Some(56));
+        assert_eq!(m.playback_note(Lane::Other), None);
+        for lane in Lane::ALL {
+            assert!(lane.standard_note().map_or(true, |n| n < 128));
+        }
     }
 
     #[test]

@@ -49,7 +49,7 @@ impl Drop for Metronome {
     }
 }
 
-fn at(zero: Instant, t: f64) -> Option<Instant> {
+pub(crate) fn at(zero: Instant, t: f64) -> Option<Instant> {
     if t >= 0.0 {
         zero.checked_add(Duration::from_secs_f64(t))
     } else {
@@ -57,8 +57,8 @@ fn at(zero: Instant, t: f64) -> Option<Instant> {
     }
 }
 
-/// Coarse sleep, then spin for the last ~1.5 ms.
-fn wait_until(target: Instant, stop: &AtomicBool) -> bool {
+/// Coarse sleep, then spin for the last ~1.5 ms. `false` if `stop` was set first.
+pub(crate) fn wait_until(target: Instant, stop: &AtomicBool) -> bool {
     loop {
         if stop.load(Ordering::Relaxed) {
             return false;
@@ -77,12 +77,12 @@ fn wait_until(target: Instant, stop: &AtomicBool) -> bool {
 }
 
 #[cfg(feature = "audio")]
-type Audio = Option<(rodio::OutputStream, rodio::OutputStreamHandle)>;
+pub(crate) type Audio = Option<(rodio::OutputStream, rodio::OutputStreamHandle)>;
 #[cfg(not(feature = "audio"))]
-type Audio = ();
+pub(crate) type Audio = ();
 
 #[cfg(feature = "audio")]
-fn open_audio(enabled: bool) -> Audio {
+pub(crate) fn open_audio(enabled: bool) -> Audio {
     if enabled {
         rodio::OutputStream::try_default().ok()
     } else {
@@ -91,10 +91,10 @@ fn open_audio(enabled: bool) -> Audio {
 }
 
 #[cfg(not(feature = "audio"))]
-fn open_audio(_enabled: bool) -> Audio {}
+pub(crate) fn open_audio(_enabled: bool) -> Audio {}
 
 #[cfg(feature = "audio")]
-fn click_audio(audio: &Audio, accent: bool, volume: f32) {
+pub(crate) fn click_audio(audio: &Audio, accent: bool, volume: f32) {
     use rodio::Source;
     if let Some((_stream, handle)) = audio.as_ref() {
         let freq = if accent { 1760.0 } else { 1175.0 };
@@ -106,7 +106,7 @@ fn click_audio(audio: &Audio, accent: bool, volume: f32) {
 }
 
 #[cfg(not(feature = "audio"))]
-fn click_audio(_audio: &Audio, _accent: bool, _volume: f32) {}
+pub(crate) fn click_audio(_audio: &Audio, _accent: bool, _volume: f32) {}
 
 /// Whether this build can play clicks through the sound card.
 pub const HAS_AUDIO: bool = cfg!(feature = "audio");

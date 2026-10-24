@@ -25,6 +25,7 @@ First real build and smoke test done on 2026-10-24 (Windows 11, `x86_64-pc-windo
 | Keyboard pads (`app.rs::keyboard_pads`) | Scripted take with synthetic key presses: 20 perfect / 12 good / 1 ok / 11 missed / 1 extra as expected | Medium (frame-time stamps, see below) |
 | `midi.rs` | Compiles. The test machine had no MIDI ports, so capture and port selection were not exercised | Low |
 | `metronome.rs` | Compiles and the thread starts with each take. The click was **not heard**; audio output and timing are unchecked | Low |
+| Listen (`playback.rs`, `synth.rs`, `app.rs`) | Unit tests. Run on Windows with the per-application audio meter: the `drum-tutor` session is silent, starts 0.5 s after `L`, lasts the length of the music, and is silent at once after a stop; the MIDI route into *Microsoft GS Wavetable Synth* also sounds; the "output off" and "MIDI port not found" errors show. **Nobody listened to it**, so how the synthesised kit sounds is unjudged | Medium-high |
 | Real V31 timing, note map, latency | Not tested | Unknown |
 
 ## First tasks
@@ -51,6 +52,8 @@ drums.rs       Lane enum, GM + Roland note maps, staff positions, name heuristic
 analysis.rs    expected_notes(), analyze() -> Report (matching + metrics + feedback)
 midi.rs        midir input (callback -> Arc<Mutex<Vec<RawEvent>>>) and output
 metronome.rs   Click thread: precise sleep+spin; audio (feature "audio") and/or MIDI
+playback.rs    "Listen": Player thread plays drum cues + click to the sound card and/or MIDI out
+synth.rs       Software drum kit: one synthesised mono sample per Lane (no GUI/MIDI deps)
 config.rs      key = value settings file, auto-saved when Config changes
 ```
 
@@ -68,6 +71,14 @@ config.rs      key = value settings file, auto-saved when Config changes
 - **Overall score** = 55 % accuracy + 25 % timing + 10 % (1 − extra ratio) + 10 % dynamics. Dynamics weight is redistributed when the score has no accents or ghost notes. The weights are arbitrary first guesses; tune with real takes.
 - **Lane identification order** in MusicXML: `midi-unpitched` (GM, 1-based, so minus 1) → `instrument-name` keywords → staff position + notehead.
 - **Settings** are saved whenever `cfg != saved_cfg` at the end of a frame. Practice tempo and measure range are session-only.
+- **Listen** (`app.rs::start_listen`, `playback.rs`):
+  - Takes and listening share `DrumApp::plan_run()` (range, tempo, zero = now + 0.5 s lead + count-in, click track from `Score::click_track`), so what is heard is what a take asks for.
+  - The notes are `analysis::expected_notes` mapped to `playback::Cue`s; velocity comes from `playback::velocity_for` (ghost 45, grace 70, normal 90, accent 120).
+  - One `Player` thread owns the audio stream and the MIDI connection, so the click and the drums can use the same MIDI port (Windows ports are exclusive). It reuses `metronome::{at, wait_until}`; cues later than 250 ms are dropped, not played as a burst.
+  - `DrumApp.listen` exists only while the playhead runs; `DrumApp.player` may outlive it by up to 2.2 s so the last cymbal rings out. `stop_listen()` joins the thread and cuts the sound. Starting a take, calibration or opening a file stops playback.
+  - The thread reports problems (no sound device, MIDI port missing) through `Player::take_errors()`; `update_listen` shows the first one in the error bar.
+  - MIDI notes come from `NoteMap::playback_note`: the standard GM/Roland note if the user's map gives it to the lane, else the lowest mapped note, else the standard note if no other lane claims it. The note-off is sent right after the note-on, as for the click.
+  - Keyboard shortcuts (`R`, `L`, the keyboard pads) are ignored while egui has a focused widget (`ctx.wants_keyboard_input()`), which includes a button focused with Tab. Mouse use never focuses buttons, so this only shows with keyboard navigation (and when scripting the UI with posted key messages).
 
 ## Known gaps and ideas, roughly by value
 
@@ -78,7 +89,13 @@ config.rs      key = value settings file, auto-saved when Config changes
 - **Keyboard test input** is timestamped at frame time (~16 ms jitter in a release build), so it is useful for testing, not for timing judgement. In a debug build the frames are slow enough to make it unreliable: test takes with `cargo run --release`.
 - **Follow mode** calls `scroll_to_rect` every frame while recording, so the user can't scroll manually during a take.
 - **No persistence of takes.** Session history is lost on exit; CSV export exists. A progress log per score would be the natural next feature.
-- **Possible features:** loop the range automatically with a score per pass; tempo ramp (+5 % per clean pass); playback of the score via MIDI out; separate early/late tolerance; drummer-friendly bigger "count-in" overlay.
+- **Listen gaps.**
+  - The built-in kit is deliberately simple (synthesised, not sampled); it is for hearing rhythm and instrument, not for sounding like a studio kit. An open hi-hat is not choked by the next closed or pedal hit.
+  - The playhead follows the clock, so it runs ahead of the sound by the output device's buffer.
+  - Notes already graded in the last take stay coloured while listening.
+  - Playback uses the take's count-in and click settings; there is no separate "listen without count-in".
+  - The click still goes through `metronome.rs` for takes but through `playback.rs` for listening, so click behaviour is implemented twice (a sine blip and a MIDI note).
+- **Possible features:** loop the range automatically with a score per pass; tempo ramp (+5 % per clean pass); loop Listen; separate early/late tolerance; drummer-friendly bigger "count-in" overlay; sampled drum sounds.
 - **Dependency versions are deliberately old** (eframe 0.29, rodio 0.19, zip 2) because those APIs were known. Upgrading eframe to 0.3x needs at least: `rect_stroke` gained a `StrokeKind`, `Rounding` became `CornerRadius`, `ComboBox::from_label` is unchanged.
 
 ## Testing
@@ -91,6 +108,10 @@ config.rs      key = value settings file, auto-saved when Config changes
   - the sample file import;
   - matching, grading, feedback;
   - a simulated take on the sample;
-  - the config round-trip.
+  - the config round-trip and the playback settings defaults;
+  - the click track (`Score::click_track`) and the MIDI note choice for playback (`NoteMap::playback_note`);
+  - the drum kit (`synth.rs`: every lane renders a finite, bounded, decaying, deterministic sample) and the cue list;
+  - the sample score mixed offline the way the player does it: a note is audible at every onset and the mix does not clip.
+- Listening has no automated test of the real outputs. To check them on Windows, play the sample with `cargo run --release` and read the per-application peak meter of the default output device (Core Audio `IAudioSessionManager2` → `IAudioMeterInformation`, e.g. from PowerShell with C# COM interop): the `drum-tutor` session must stay silent until about 0.5 s after pressing `L` and be silent again after stopping. The device-wide meter also hears every other application, so use the per-application one.
 - `examples/basic_rock_beat.musicxml` is generated in MuseScore style (4 bars, 100 BPM, `midi-unpitched` instruments, accents, a tom fill). Tests depend on its exact contents. If you edit it, update `musicxml::tests::parses_sample`.
 - There are no UI tests. Add real-world exports (MuseScore 4, Guitar Pro 8, Sibelius) to `examples/` as you find edge cases.

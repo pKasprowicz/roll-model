@@ -9,8 +9,10 @@ mod loader;
 mod metronome;
 mod midi;
 mod musicxml;
+mod playback;
 mod render;
 mod score;
+mod synth;
 mod xml;
 
 use std::path::PathBuf;

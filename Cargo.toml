@@ -1,6 +1,6 @@
 [package]
 name = "drum-tutor"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
 description = "Load MusicXML drum scores, capture MIDI from a Roland V31 and grade the performance"
 license = "MIT"

@@ -148,6 +148,29 @@ impl Score {
         Some(idx.saturating_sub(1).min(self.measures.len() - 1))
     }
 
+    /// Metronome clicks for measures `from..=to`: a count-in of
+    /// `count_in_beats` beats before the first measure (negative times), then,
+    /// if `beats` is set, one click per beat of the range. Times are seconds
+    /// from the start of measure `from` with tempos multiplied by `scale`; the
+    /// flag marks the first beat of a bar.
+    pub fn click_track(&self, from: usize, to: usize, scale: f64, count_in_beats: u32, beats: bool) -> Vec<(f64, bool)> {
+        let Some(m0) = self.measures.get(from) else { return Vec::new() };
+        let beat_sec = 60.0 / (self.tempo.bpm_at(m0.start_q) * scale) * m0.beat_q();
+        let mut clicks: Vec<(f64, bool)> = (0..count_in_beats)
+            .map(|k| (-((count_in_beats - k) as f64) * beat_sec, k % m0.beats.max(1) == 0))
+            .collect();
+        if beats {
+            let t0 = self.tempo.q_to_sec(m0.start_q, scale);
+            for m in &self.measures[from..=to.clamp(from, self.measures.len() - 1)] {
+                for b in 0..m.beats {
+                    let q = m.start_q + b as f64 * m.beat_q();
+                    clicks.push((self.tempo.q_to_sec(q, scale) - t0, b == 0));
+                }
+            }
+        }
+        clicks
+    }
+
     /// Staff position/notehead used for a lane in this file (so played notes
     /// are drawn the way the score draws the same instrument).
     pub fn staff_for_lane(&self, lane: Lane) -> (i32, NoteHead) {
@@ -177,5 +200,34 @@ mod tests {
         // negative times (count-in) extrapolate with the first tempo
         assert!((t.sec_to_q(-1.0, 1.0) + 2.0).abs() < 1e-9);
         assert!((t.q_to_sec(-2.0, 1.0) + 1.0).abs() < 1e-9);
+    }
+
+    #[test]
+    fn click_track_counts_in_and_follows_beats() {
+        let measure = |i: usize| Measure {
+            number: (i + 1).to_string(),
+            start_q: 4.0 * i as f64,
+            len_q: 4.0,
+            beats: 4,
+            beat_type: 4,
+        };
+        let score = Score {
+            measures: vec![measure(0), measure(1), measure(2)],
+            tempo: TempoMap::constant(120.0),
+            ..Default::default()
+        };
+        // Practise measures 2..=3 at 120 BPM (0.5 s per beat) with a one-bar count-in.
+        let c = score.click_track(1, 2, 1.0, 4, true);
+        let times: Vec<f64> = c.iter().map(|(t, _)| *t).collect();
+        assert_eq!(times.len(), 4 + 8);
+        for (got, want) in times.iter().zip([-2.0, -1.5, -1.0, -0.5, 0.0, 0.5, 1.0, 1.5, 2.0]) {
+            assert!((got - want).abs() < 1e-9, "{got} vs {want}");
+        }
+        let accents: Vec<usize> = c.iter().enumerate().filter(|(_, (_, a))| *a).map(|(i, _)| i).collect();
+        assert_eq!(accents, vec![0, 4, 8]);
+        // Half speed doubles every interval; no beat clicks and no count-in leaves nothing.
+        assert!((score.click_track(0, 0, 0.5, 4, false)[0].0 + 4.0).abs() < 1e-9);
+        assert!(score.click_track(0, 2, 1.0, 0, false).is_empty());
+        assert!(Score::default().click_track(0, 0, 1.0, 4, true).is_empty());
     }
 }
