@@ -31,32 +31,45 @@ Run the unit tests (XML parser, MusicXML import, repeats, tempo maps, scoring): 
 
 - Connect the module by USB (or a MIDI interface on MIDI OUT). The app auto-connects to the first input whose name contains `V31`; otherwise pick the port in **Settings → MIDI input**.
 - On Windows a MIDI port can be opened by only one program at a time — close your DAW or other drum software first.
-- **Settings → Monitor** shows each incoming note, velocity and the instrument it maps to.
+- The monitor on **Settings → MIDI input** shows each incoming note, velocity and the instrument it maps to.
 - The default note map is the Roland V-Drums factory map (kick 36, snare 38/rim 40/x-stick 37, toms 48/50, 45/47, 43/58, 41/39, hi-hat 42/22 closed, 46/26 open, 44 pedal, crash 49/55 and 57/52, ride 51/59, bell 53). If your kit is set up differently, click **Learn** next to an instrument and hit the pad/zone.
 
 ## Practising
 
-1. **Open MusicXML…** (or drop a file on the window). Export the drum part from MuseScore, Guitar Pro, Sibelius, Dorico, etc.
-2. Pick the measures to practise (sliders, or click a measure to start there and shift+click to set the end), and the tempo (25–150 %).
+1. **Open MusicXML…** (or drop a file on the window). Export the drum part from MuseScore, Guitar Pro, Sibelius, Dorico, etc. When no score is open, the welcome panel lists the scores you opened before (the last ten); click one to open it, `×` removes it from the list.
+2. Pick the measures to practise (sliders, or click a measure to start there and shift+click to set the end), and the tempo (25–150 %). Every slider also follows the mouse wheel: hover it and scroll to change the value one step per notch.
 3. Press **⏵ Listen** (or `L`) to hear the selected measures at the chosen tempo, with a moving playhead. Press it again, or `Esc`, to stop.
 4. Press **⏺ Record** (or `R`). After a count-in (0–2 bars, with click) play along. The take stops by itself at the end of the range, or press `Esc`.
 5. Notes are coloured as you play: green = perfect, light green = good, amber = OK, orange = right time but wrong pad/zone (e.g. open instead of closed hi-hat), red = missed (score) or extra (your staff). Velocity is shown as bars under your staff; hover a hit for its exact offset.
 6. The **Results** tab has the full report, feedback, timing histogram, per-instrument table, session history and CSV export.
 
-No kit at hand? Enable **Settings → Computer keyboard plays pads** (Z kick, X snare, C/V/B hi-hat closed/open/pedal, A S D F toms, Q W E cymbals).
+No kit at hand? Enable **Settings → General → Computer keyboard plays pads** (Z kick, X snare, C/V/B hi-hat closed/open/pedal, A S D F toms, Q W E cymbals).
 
 ## Listening to the score
 
 **Listen** plays exactly what a take would ask of you: the selected measures, the practice tempo, and the same count-in and click. Accents are louder than normal strokes, ghost notes softer, and grace notes land just before the beat.
 
-- **Computer sound output** (default): a small built-in drum kit, synthesised on the fly. No sample files and no hardware needed. Volume is in **Settings → Listening**.
-- **MIDI output**: tick *Send the notes to the MIDI output* and the module plays the notes with its own sounds. Each instrument is sent as its standard General MIDI/Roland note (or the note you mapped to it), on the chosen channel (default 10), to the output port chosen under **Settings → Metronome**. This works with the V31 or with Windows' built-in *Microsoft GS Wavetable Synth*.
+- **Computer sound output** (default): a small built-in drum kit, synthesised on the fly. No sample files and no hardware needed. Volume is in **Settings → Sound → Listening**.
+- **MIDI output**: tick *Send the notes to the MIDI output* and the module plays the notes with its own sounds. Each instrument is sent as its standard General MIDI/Roland note (or the note you mapped to it), on the chosen channel (default 10), to the output port chosen under **Settings → Sound → MIDI output**. This works with the V31 or with Windows' built-in *Microsoft GS Wavetable Synth*.
 - Both outputs can be on at the same time. The click follows the Metronome settings.
 - The playhead follows the clock, not the sound: a sound card with a large buffer plays a few tens of milliseconds after it.
 
+## Settings
+
+The Settings tab has four pages:
+
+| Page | What is on it |
+|---|---|
+| **MIDI input** | Input port, a monitor of incoming notes, the pad-to-instrument mapping (with *Learn*) |
+| **Timing** | Latency compensation and calibration, the perfect/good/hit-window tolerances |
+| **Sound** | MIDI output port, the metronome click, Listen (built-in kit and MIDI) |
+| **General** | Repeat expansion, the recent-scores list, keyboard test input |
+
+Settings are saved automatically. Sliders show their caption in front of them, and the mouse wheel tunes any slider under the pointer.
+
 ## Latency
 
-Every audio and MIDI path adds some delay. Use **Settings → Timing → Calibrate**: play any pad exactly with 16 clicks; the median offset becomes the latency compensation. Sending the click to the V31 (Settings → Metronome → MIDI output, channel 10, an unmapped note such as 76) puts it in your headphones without computer-audio latency.
+Every audio and MIDI path adds some delay. Use **Settings → Timing → Calibrate**: play any pad exactly with 16 clicks; the median offset becomes the latency compensation. Sending the click to the V31 (Settings → Sound → Metronome, channel 10, an unmapped note such as 76) puts it in your headphones without computer-audio latency.
 
 ## How grading works
 
@@ -90,5 +103,6 @@ What counts as the public interface: the settings file keys, the CSV export colu
 | `src/playback.rs` | "Listen": plays the score and click on one thread (sound card and/or MIDI) |
 | `src/synth.rs` | The built-in software drum kit (one synthesised sample per instrument) |
 | `src/render.rs` | Score and played-notes staves |
-| `src/app.rs` | UI: Score, Results and Settings tabs |
+| `src/app.rs` | UI: welcome panel, Score, Results and Settings tabs |
+| `src/widgets.rs` | Shared UI helpers: the wheel-aware slider and the larger Score-tab style |
 | `src/config.rs` | Settings file (`%APPDATA%\DrumTutor\config.txt` on Windows) |

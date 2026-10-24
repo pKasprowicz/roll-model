@@ -36,7 +36,7 @@ First real build and smoke test done on 2026-10-24 (Windows 11, `x86_64-pc-windo
    - egui 0.29's default fonts have no `●` (U+25CF), `✕` (U+2715) or `→` (U+2192) and draw a box instead. Replaced with `⏺`/`⏹` (from the bundled emoji icon font), a "Dismiss" button and plain text. `■ · … ± − – — •` and `📂 🎼 📊 ⚙ ⟳ 💾 ⏺ ⏹` render fine. `⚠` (U+26A0) was not seen on screen. Check any new glyph in the running app before using it.
    - The two control rows in the Score tab are plain `horizontal` rows now. Sliders do not wrap inside `horizontal_wrapped`, so the old single row ran off the right edge and made the score layout wider than the window.
    - Load errors repeated the file path; the loader no longer adds it.
-4. **Test with the V31** (only the user can do this). Confirm the note numbers in **Settings → Monitor** match the default map in `drums.rs::NoteMap::roland_v31()`. Also check that the metronome click is audible and that **Settings → Timing → Calibrate** gives a sensible latency offset.
+4. **Test with the V31** (only the user can do this). Confirm the note numbers in the monitor on **Settings → MIDI input** match the default map in `drums.rs::NoteMap::roland_v31()`. Also check that the metronome click is audible and that **Settings → Timing → Calibrate** gives a sensible latency offset.
 
 ## Architecture
 
@@ -54,6 +54,7 @@ midi.rs        midir input (callback -> Arc<Mutex<Vec<RawEvent>>>) and output
 metronome.rs   Click thread: precise sleep+spin; audio (feature "audio") and/or MIDI
 playback.rs    "Listen": Player thread plays drum cues + click to the sound card and/or MIDI out
 synth.rs       Software drum kit: one synthesised mono sample per Lane (no GUI/MIDI deps)
+widgets.rs     UI helpers: `slider()` (caption first, mouse wheel), `roomy()` (bigger Score-tab style)
 config.rs      key = value settings file, auto-saved when Config changes
 ```
 
@@ -71,6 +72,13 @@ config.rs      key = value settings file, auto-saved when Config changes
 - **Overall score** = 55 % accuracy + 25 % timing + 10 % (1 − extra ratio) + 10 % dynamics. Dynamics weight is redistributed when the score has no accents or ghost notes. The weights are arbitrary first guesses; tune with real takes.
 - **Lane identification order** in MusicXML: `midi-unpitched` (GM, 1-based, so minus 1) → `instrument-name` keywords → staff position + notehead.
 - **Settings** are saved whenever `cfg != saved_cfg` at the end of a frame. Practice tempo and measure range are session-only.
+- **UI conventions** (`widgets.rs`, `app.rs`):
+  - Every slider goes through `widgets::slider(ui, caption, &mut value, range, suffix, step)`: the caption comes first, the wheel moves the value by `step` per notch, and the wheel is consumed so a surrounding `ScrollArea` stays put. Do not add a bare `egui::Slider`. Pass `""` as the caption when a `Grid` cell already holds the label.
+  - `ui.horizontal` follows its parent's direction, so a `right_to_left` parent reverses it; do not put captioned sliders inside one. `ui.with_layout(left_to_right(Center), …)` is not a substitute (it centres in the whole available height).
+  - The controls above the score are wrapped in `ui.scope` + `widgets::roomy` (scoped style, 1.25x text, 30 px rows, 150 px sliders). Settings use the default size, except the page tabs.
+  - Settings pages are `SettingsPage` (session-only state, each page has its own scroll position). A new setting goes on the page it belongs to and in `config.rs` (parse, write, default, round-trip test).
+  - Recent scores live in `Config::recent_files` (absolute paths, newest first, at most `MAX_RECENT`), written as repeated `recent = …` lines. `open_file` records a score only after it loaded.
+  - Shortcuts (`R`, `L`, keyboard pads) are suppressed while egui has a focused widget, see the Listen notes below.
 - **Listen** (`app.rs::start_listen`, `playback.rs`):
   - Takes and listening share `DrumApp::plan_run()` (range, tempo, zero = now + 0.5 s lead + count-in, click track from `Score::click_track`), so what is heard is what a take asks for.
   - The notes are `analysis::expected_notes` mapped to `playback::Cue`s; velocity comes from `playback::velocity_for` (ghost 45, grace 70, normal 90, accent 120).
@@ -89,6 +97,8 @@ config.rs      key = value settings file, auto-saved when Config changes
 - **Keyboard test input** is timestamped at frame time (~16 ms jitter in a release build), so it is useful for testing, not for timing judgement. In a debug build the frames are slow enough to make it unreliable: test takes with `cargo run --release`.
 - **Follow mode** calls `scroll_to_rect` every frame while recording, so the user can't scroll manually during a take.
 - **No persistence of takes.** Session history is lost on exit; CSV export exists. A progress log per score would be the natural next feature.
+- **Mouse-wheel tuning was not tried with a physical wheel.** The logic is covered by headless egui tests that feed `Event::MouseWheel` (including that a `ScrollArea` around the slider does not scroll), which is the event egui-winit produces. The window itself can't be driven by posted mouse messages (they never reach egui), so end-to-end mouse checks need real input.
+- **Recent scores** are not checked for existence until they are drawn (a missing file is greyed out); the list is not trimmed when files disappear.
 - **Listen gaps.**
   - The built-in kit is deliberately simple (synthesised, not sampled); it is for hearing rhythm and instrument, not for sounding like a studio kit. An open hi-hat is not choked by the next closed or pedal hit.
   - The playhead follows the clock, so it runs ahead of the sound by the output device's buffer.
@@ -111,7 +121,9 @@ config.rs      key = value settings file, auto-saved when Config changes
   - the config round-trip and the playback settings defaults;
   - the click track (`Score::click_track`) and the MIDI note choice for playback (`NoteMap::playback_note`);
   - the drum kit (`synth.rs`: every lane renders a finite, bounded, decaying, deterministic sample) and the cue list;
-  - the sample score mixed offline the way the player does it: a note is audible at every onset and the mix does not clip.
+  - the sample score mixed offline the way the player does it: a note is audible at every onset and the mix does not clip;
+  - the slider helper in a headless egui context (`widgets.rs`): wheel steps, clamping, integer and fractional ranges, disabled sliders, and that the page behind a slider does not scroll;
+  - the recent-files list (order, duplicates, limit, round-trip) and the path shortening used by the welcome panel.
 - Listening has no automated test of the real outputs. To check them on Windows, play the sample with `cargo run --release` and read the per-application peak meter of the default output device (Core Audio `IAudioSessionManager2` → `IAudioMeterInformation`, e.g. from PowerShell with C# COM interop): the `drum-tutor` session must stay silent until about 0.5 s after pressing `L` and be silent again after stopping. The device-wide meter also hears every other application, so use the per-application one.
 - `examples/basic_rock_beat.musicxml` is generated in MuseScore style (4 bars, 100 BPM, `midi-unpitched` instruments, accents, a tom fill). Tests depend on its exact contents. If you edit it, update `musicxml::tests::parses_sample`.
 - There are no UI tests. Add real-world exports (MuseScore 4, Guitar Pro 8, Sibelius) to `examples/` as you find edge cases.

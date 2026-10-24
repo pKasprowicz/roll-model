@@ -17,12 +17,35 @@ use crate::musicxml::ParseOptions;
 use crate::playback::{self, PlayOptions, Player};
 use crate::render::{self, HitStatus, PlayedNote, ScoreView};
 use crate::score::Score;
+use crate::widgets;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Tab {
     Score,
     Results,
     Settings,
+}
+
+/// The pages of the Settings tab.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum SettingsPage {
+    MidiInput,
+    Timing,
+    Sound,
+    General,
+}
+
+impl SettingsPage {
+    const ALL: [SettingsPage; 4] = [SettingsPage::MidiInput, SettingsPage::Timing, SettingsPage::Sound, SettingsPage::General];
+
+    fn label(self) -> &'static str {
+        match self {
+            SettingsPage::MidiInput => "MIDI input",
+            SettingsPage::Timing => "Timing",
+            SettingsPage::Sound => "Sound",
+            SettingsPage::General => "General",
+        }
+    }
 }
 
 /// One recorded attempt over a measure range.
@@ -90,6 +113,7 @@ pub struct DrumApp {
     cfg: Config,
     saved_cfg: Config,
     tab: Tab,
+    settings_page: SettingsPage,
     score: Option<Score>,
     score_path: Option<PathBuf>,
     status: String,
@@ -142,6 +166,7 @@ impl DrumApp {
             saved_cfg: cfg.clone(),
             cfg,
             tab: Tab::Score,
+            settings_page: SettingsPage::MidiInput,
             score: None,
             score_path: None,
             status: String::new(),
@@ -271,6 +296,8 @@ impl DrumApp {
                 self.range_to = score.measures.len().saturating_sub(1);
                 self.score = Some(score);
                 self.score_path = Some(path.to_path_buf());
+                let absolute = std::path::absolute(path).unwrap_or_else(|_| path.to_path_buf());
+                self.cfg.remember_recent(&absolute.to_string_lossy());
                 self.take = None;
                 self.error = None;
                 self.tab = Tab::Score;
@@ -602,17 +629,67 @@ impl DrumApp {
         });
     }
 
-    fn score_tab(&mut self, ui: &mut egui::Ui) {
-        let Some(score) = self.score.as_ref() else {
-            ui.vertical_centered(|ui| {
-                ui.add_space(80.0);
-                ui.heading("Open a MusicXML drum score to start");
-                ui.label("Export from MuseScore, Guitar Pro, Sibelius, Dorico… as .musicxml or .mxl — or drop the file here.");
-                ui.add_space(10.0);
-                if ui.button("📂 Open MusicXML…").clicked() {
-                    self.open_dialog();
+    /// Shown instead of the score until one is loaded: how to start, and the
+    /// scores opened before.
+    fn welcome_panel(&mut self, ui: &mut egui::Ui) {
+        ui.add_space(36.0);
+        ui.vertical_centered(|ui| {
+            ui.label(RichText::new("Drum Tutor").size(34.0).strong());
+            ui.add_space(4.0);
+            ui.label("Load a MusicXML drum score, listen to it, then play it on your kit and see how you did.");
+            ui.add_space(18.0);
+            let open = egui::Button::new(RichText::new("📂 Open MusicXML…").size(18.0)).min_size(egui::vec2(260.0, 46.0));
+            if ui.add(open).clicked() {
+                self.open_dialog();
+            }
+            ui.add_space(6.0);
+            ui.label(RichText::new("or drop a file onto the window — .musicxml, .xml or .mxl, exported from MuseScore, Guitar Pro, Sibelius, Dorico…").small().weak());
+        });
+        ui.add_space(28.0);
+
+        let width = ui.available_width().min(640.0);
+        let mut open: Option<PathBuf> = None;
+        let mut forget: Option<usize> = None;
+        let mut clear = false;
+        ui.horizontal(|ui| {
+            ui.add_space((ui.available_width() - width) / 2.0);
+            ui.vertical(|ui| {
+                ui.set_width(width);
+                ui.horizontal(|ui| {
+                    ui.heading("Recent scores");
+                    if !self.cfg.recent_files.is_empty() {
+                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                            clear = ui.small_button("Clear list").clicked();
+                        });
+                    }
+                });
+                if self.cfg.recent_files.is_empty() {
+                    ui.label(RichText::new("Scores you open are listed here so you can come back to them.").weak());
+                }
+                for (i, path) in self.cfg.recent_files.iter().enumerate() {
+                    let (clicked, remove) = recent_row(ui, path, width);
+                    ui.add_space(6.0);
+                    if remove {
+                        forget = Some(i);
+                    } else if clicked {
+                        open = Some(PathBuf::from(path));
+                    }
                 }
             });
+        });
+        if clear {
+            self.cfg.recent_files.clear();
+        } else if let Some(i) = forget {
+            self.cfg.recent_files.remove(i);
+        }
+        if let Some(path) = open {
+            self.open_file(&path);
+        }
+    }
+
+    fn score_tab(&mut self, ui: &mut egui::Ui) {
+        let Some(score) = self.score.as_ref() else {
+            self.welcome_panel(ui);
             return;
         };
         let n_measures = score.measures.len();
@@ -631,45 +708,53 @@ impl DrumApp {
         for w in &warnings {
             ui.label(RichText::new(format!("⚠ {w}")).small().color(render::AMBER));
         }
-        // Two plain rows: sliders don't wrap inside `horizontal_wrapped`, so one long row ran off-screen.
-        ui.horizontal(|ui| {
-            if running {
-                if ui.button(RichText::new("⏹ Stop (Esc)").strong()).clicked() {
-                    self.stop_take(false);
+        // Three plain rows (sliders don't wrap inside `horizontal_wrapped`), drawn larger than the
+        // rest of the UI because they are used with the mouse from a drum stool. Slider captions
+        // come first, and the wheel tunes any slider under the pointer.
+        ui.scope(|ui| {
+            widgets::roomy(ui);
+            ui.horizontal(|ui| {
+                if running {
+                    if ui.button(RichText::new("⏹ Stop (Esc)").strong()).clicked() {
+                        self.stop_take(false);
+                    }
+                } else if ui.button(RichText::new("⏺ Record (R)").strong().color(render::RED)).clicked() {
+                    self.start_take();
                 }
-            } else if ui.button(RichText::new("⏺ Record (R)").strong().color(render::RED)).clicked() {
-                self.start_take();
-            }
-            if self.listen.is_some() {
-                if ui.button(RichText::new("⏹ Stop listening (L)").strong()).clicked() {
-                    self.stop_listen();
+                if self.listen.is_some() {
+                    if ui.button(RichText::new("⏹ Stop listening (L)").strong()).clicked() {
+                        self.stop_listen();
+                    }
+                } else if ui
+                    .add_enabled(!running, egui::Button::new(RichText::new("⏵ Listen (L)").strong()))
+                    .on_hover_text("Hear the selected measures at the chosen tempo, with the count-in and click, before you play them")
+                    .clicked()
+                {
+                    self.start_listen();
                 }
-            } else if ui
-                .add_enabled(!running, egui::Button::new(RichText::new("⏵ Listen (L)").strong()))
-                .on_hover_text("Hear the selected measures at the chosen tempo, with the count-in and click, before you play them")
-                .clicked()
-            {
-                self.start_listen();
-            }
-            ui.add_enabled_ui(!running, |ui| {
-                let mut from = self.range_from + 1;
-                let mut to = self.range_to + 1;
-                ui.label("Measures");
-                ui.add(egui::Slider::new(&mut from, 1..=n_measures).text("from"));
-                ui.add(egui::Slider::new(&mut to, 1..=n_measures).text("to"));
-                self.range_from = from - 1;
-                self.range_to = (to - 1).max(self.range_from);
+                ui.separator();
+                widgets::slider(ui, "zoom", &mut self.cfg.zoom, 0.5..=3.0, "", 0.05);
+                ui.checkbox(&mut self.follow, "follow");
             });
-        });
-        ui.horizontal(|ui| {
-            ui.add_enabled_ui(!running, |ui| {
-                ui.add(egui::Slider::new(&mut self.tempo_pct, 25.0..=150.0).suffix("%").text("tempo"));
-                ui.label(format!("= {:.0} BPM", base_bpm * self.tempo_pct as f64 / 100.0));
-                ui.checkbox(&mut self.cfg.metronome_during_take, "click");
-                ui.add(egui::Slider::new(&mut self.cfg.count_in_bars, 0..=2).text("count-in bars"));
+            ui.horizontal(|ui| {
+                ui.add_enabled_ui(!running, |ui| {
+                    let mut from = self.range_from + 1;
+                    let mut to = self.range_to + 1;
+                    ui.label("Measures");
+                    widgets::slider(ui, "from", &mut from, 1..=n_measures, "", 1.0);
+                    widgets::slider(ui, "to", &mut to, 1..=n_measures, "", 1.0);
+                    self.range_from = from - 1;
+                    self.range_to = (to - 1).max(self.range_from);
+                });
             });
-            ui.checkbox(&mut self.follow, "follow");
-            ui.add(egui::Slider::new(&mut self.cfg.zoom, 0.5..=3.0).text("zoom"));
+            ui.horizontal(|ui| {
+                ui.add_enabled_ui(!running, |ui| {
+                    widgets::slider(ui, "tempo", &mut self.tempo_pct, 25.0..=150.0, "%", 1.0);
+                    ui.label(format!("= {:.0} BPM", base_bpm * self.tempo_pct as f64 / 100.0));
+                    ui.checkbox(&mut self.cfg.metronome_during_take, "click");
+                    widgets::slider(ui, "count-in bars", &mut self.cfg.count_in_bars, 0..=2, "", 1.0);
+                });
+            });
         });
 
         // Count-in / live stats line
@@ -714,7 +799,7 @@ impl DrumApp {
             legend(ui, render::AMBER, "ok");
             legend(ui, render::ORANGE, "wrong pad");
             legend(ui, render::RED, "missed / extra");
-            ui.label(RichText::new("· click a measure to start there, shift+click to set the end").small().weak());
+            ui.label(RichText::new("· click a measure to start there, shift+click to set the end · mouse wheel over a slider fine-tunes it").small().weak());
         });
         ui.separator();
 
@@ -906,156 +991,253 @@ impl DrumApp {
         }
     }
 
+    /// Settings are split into pages so each one fits on a screen.
     fn settings_tab(&mut self, ui: &mut egui::Ui) {
-        egui::ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| {
-            ui.heading("MIDI input");
+        ui.scope(|ui| {
+            widgets::roomy(ui);
             ui.horizontal(|ui| {
-                let current = self.midi_in.as_ref().map(|h| h.port_name.clone()).unwrap_or_else(|| "— none —".into());
-                let mut choice: Option<String> = None;
-                egui::ComboBox::from_label("input port")
-                    .selected_text(current)
-                    .width(260.0)
-                    .show_ui(ui, |ui| {
-                        for p in &self.midi_inputs {
-                            if ui.selectable_label(false, p.as_str()).clicked() {
-                                choice = Some(p.clone());
-                            }
+                for page in SettingsPage::ALL {
+                    ui.selectable_value(&mut self.settings_page, page, page.label());
+                }
+            });
+        });
+        ui.separator();
+        // One scroll position per page, so switching pages starts at the top.
+        egui::ScrollArea::vertical()
+            .id_salt(("settings", self.settings_page as u8))
+            .auto_shrink([false, false])
+            .show(ui, |ui| match self.settings_page {
+                SettingsPage::MidiInput => self.settings_midi_input(ui),
+                SettingsPage::Timing => self.settings_timing(ui),
+                SettingsPage::Sound => self.settings_sound(ui),
+                SettingsPage::General => self.settings_general(ui),
+            });
+    }
+
+    fn settings_midi_input(&mut self, ui: &mut egui::Ui) {
+        ui.heading("MIDI input");
+        ui.horizontal(|ui| {
+            ui.label("Input port");
+            let current = self.midi_in.as_ref().map(|h| h.port_name.clone()).unwrap_or_else(|| "— none —".into());
+            let mut choice: Option<String> = None;
+            egui::ComboBox::from_id_salt("midi_in_port")
+                .selected_text(current)
+                .width(260.0)
+                .show_ui(ui, |ui| {
+                    for p in &self.midi_inputs {
+                        if ui.selectable_label(false, p.as_str()).clicked() {
+                            choice = Some(p.clone());
                         }
-                    });
-                if let Some(c) = choice {
-                    self.connect_midi(Some(c));
-                }
-                if ui.button("⟳ Refresh ports").clicked() {
-                    self.refresh_ports();
-                }
-                if self.midi_in.is_some() && ui.button("Disconnect").clicked() {
-                    self.midi_in = None;
-                }
-            });
-            ui.label(RichText::new("Connect the V31 by USB (or a MIDI interface on MIDI OUT). Close other apps that use the port — on Windows a MIDI port can only be opened by one program.").small().weak());
-
-            ui.add_space(6.0);
-            ui.label(RichText::new("Monitor (latest first)").strong());
-            egui::Grid::new("monitor").num_columns(4).striped(true).show(ui, |ui| {
-                for (ev, lane) in &self.monitor {
-                    ui.label(format!("ch {}", ev.channel));
-                    ui.label(format!("note {} ({})", ev.note, midi::note_name(ev.note)));
-                    ui.label(format!("vel {}", ev.velocity));
-                    ui.label(lane.map(|l| l.label()).unwrap_or("unmapped"));
-                    ui.end_row();
-                }
-            });
-
-            ui.add_space(10.0);
-            ui.heading("Pad-to-instrument mapping");
-            ui.label(RichText::new("Defaults follow Roland V-Drums factory note numbers. Click Learn and hit the pad/zone to assign it.").small().weak());
-            egui::Grid::new("mapping").num_columns(3).striped(true).show(ui, |ui| {
-                for lane in Lane::ALL {
-                    if lane == Lane::Other {
-                        continue;
                     }
-                    ui.label(lane.label());
-                    let text = self
-                        .lane_text
-                        .entry(lane)
-                        .or_insert_with(|| format_note_list(&self.cfg.note_map.notes_for(lane)));
-                    if ui.add(egui::TextEdit::singleline(text).desired_width(140.0)).changed() {
-                        let notes = parse_note_list(text);
-                        self.cfg.note_map.set_lane_notes(lane, &notes);
-                    }
-                    let learning = self.learn == Some(lane);
-                    if ui.selectable_label(learning, if learning { "hit a pad…" } else { "Learn" }).clicked() {
-                        self.learn = if learning { None } else { Some(lane) };
-                    }
-                    ui.end_row();
-                }
-            });
-            if ui.button("Reset to Roland V31 defaults").clicked() {
-                self.cfg.note_map = crate::drums::NoteMap::roland_v31();
-                self.lane_text.clear();
+                });
+            if let Some(c) = choice {
+                self.connect_midi(Some(c));
             }
+            if ui.button("⟳ Refresh ports").clicked() {
+                self.refresh_ports();
+            }
+            if self.midi_in.is_some() && ui.button("Disconnect").clicked() {
+                self.midi_in = None;
+            }
+        });
+        ui.label(RichText::new("Connect the V31 by USB (or a MIDI interface on MIDI OUT). Close other apps that use the port — on Windows a MIDI port can only be opened by one program.").small().weak());
 
-            ui.add_space(10.0);
-            ui.heading("Timing");
+        ui.add_space(6.0);
+        ui.label(RichText::new("Monitor (latest first)").strong());
+        egui::Grid::new("monitor").num_columns(4).striped(true).show(ui, |ui| {
+            for (ev, lane) in &self.monitor {
+                ui.label(format!("ch {}", ev.channel));
+                ui.label(format!("note {} ({})", ev.note, midi::note_name(ev.note)));
+                ui.label(format!("vel {}", ev.velocity));
+                ui.label(lane.map(|l| l.label()).unwrap_or("unmapped"));
+                ui.end_row();
+            }
+        });
+
+        ui.add_space(10.0);
+        ui.heading("Pad-to-instrument mapping");
+        ui.label(RichText::new("Defaults follow Roland V-Drums factory note numbers. Click Learn and hit the pad/zone to assign it.").small().weak());
+        egui::Grid::new("mapping").num_columns(3).striped(true).show(ui, |ui| {
+            for lane in Lane::ALL {
+                if lane == Lane::Other {
+                    continue;
+                }
+                ui.label(lane.label());
+                let text = self
+                    .lane_text
+                    .entry(lane)
+                    .or_insert_with(|| format_note_list(&self.cfg.note_map.notes_for(lane)));
+                if ui.add(egui::TextEdit::singleline(text).desired_width(140.0)).changed() {
+                    let notes = parse_note_list(text);
+                    self.cfg.note_map.set_lane_notes(lane, &notes);
+                }
+                let learning = self.learn == Some(lane);
+                if ui.selectable_label(learning, if learning { "hit a pad…" } else { "Learn" }).clicked() {
+                    self.learn = if learning { None } else { Some(lane) };
+                }
+                ui.end_row();
+            }
+        });
+        if ui.button("Reset to Roland V31 defaults").clicked() {
+            self.cfg.note_map = crate::drums::NoteMap::roland_v31();
+            self.lane_text.clear();
+        }
+    }
+
+    fn settings_timing(&mut self, ui: &mut egui::Ui) {
+        ui.heading("Timing");
+        egui::Grid::new("timing").num_columns(2).spacing([16.0, 8.0]).show(ui, |ui| {
+            ui.label("Latency compensation");
             ui.horizontal(|ui| {
-                ui.add(egui::Slider::new(&mut self.cfg.latency_ms, -50.0..=200.0).suffix(" ms").text("latency compensation"));
+                widgets::slider(ui, "", &mut self.cfg.latency_ms, -50.0..=200.0, " ms", 1.0);
                 let calibrating = self.calibration.is_some();
                 if ui.add_enabled(!calibrating, egui::Button::new("Calibrate…")).clicked() {
                     self.start_calibration();
                 }
             });
-            ui.label(RichText::new("Calibrate: play any pad exactly with 16 metronome clicks; the median offset becomes the compensation.").small().weak());
-            ui.add(egui::Slider::new(&mut self.cfg.tol.perfect_ms, 5.0..=50.0).suffix(" ms").text("perfect within"));
-            ui.add(egui::Slider::new(&mut self.cfg.tol.good_ms, 10.0..=100.0).suffix(" ms").text("good within"));
-            ui.add(egui::Slider::new(&mut self.cfg.tol.window_ms, 40.0..=250.0).suffix(" ms").text("hit window (beyond = extra/missed)"));
-            self.cfg.tol.good_ms = self.cfg.tol.good_ms.max(self.cfg.tol.perfect_ms);
-            self.cfg.tol.window_ms = self.cfg.tol.window_ms.max(self.cfg.tol.good_ms);
+            ui.end_row();
+            ui.label("Perfect within");
+            widgets::slider(ui, "", &mut self.cfg.tol.perfect_ms, 5.0..=50.0, " ms", 1.0);
+            ui.end_row();
+            ui.label("Good within");
+            widgets::slider(ui, "", &mut self.cfg.tol.good_ms, 10.0..=100.0, " ms", 1.0);
+            ui.end_row();
+            ui.label("Hit window (beyond = extra/missed)");
+            widgets::slider(ui, "", &mut self.cfg.tol.window_ms, 40.0..=250.0, " ms", 5.0);
+            ui.end_row();
+        });
+        ui.label(RichText::new("Calibrate: play any pad exactly with 16 metronome clicks; the median offset becomes the latency compensation. Hover a slider and turn the mouse wheel to fine-tune it.").small().weak());
+        self.cfg.tol.good_ms = self.cfg.tol.good_ms.max(self.cfg.tol.perfect_ms);
+        self.cfg.tol.window_ms = self.cfg.tol.window_ms.max(self.cfg.tol.good_ms);
+    }
 
-            ui.add_space(10.0);
-            ui.heading("Metronome");
-            ui.add_enabled_ui(HAS_AUDIO, |ui| {
-                ui.horizontal(|ui| {
-                    ui.checkbox(&mut self.cfg.click_audio, "Click through the computer's sound output");
-                    ui.add(egui::Slider::new(&mut self.cfg.click_volume, 0.0..=1.0).text("volume"));
+    fn settings_sound(&mut self, ui: &mut egui::Ui) {
+        ui.heading("MIDI output");
+        ui.horizontal(|ui| {
+            ui.label("Output port");
+            egui::ComboBox::from_id_salt("midi_out_port")
+                .selected_text(self.cfg.midi_out_port.clone())
+                .width(260.0)
+                .show_ui(ui, |ui| {
+                    for p in &self.midi_outputs {
+                        ui.selectable_value(&mut self.cfg.midi_out_port, p.clone(), p.as_str());
+                    }
                 });
-            });
-            ui.horizontal(|ui| {
-                ui.checkbox(&mut self.cfg.click_midi, "Send click to MIDI output");
-                egui::ComboBox::from_label("output port")
-                    .selected_text(self.cfg.midi_out_port.clone())
-                    .width(220.0)
-                    .show_ui(ui, |ui| {
-                        for p in &self.midi_outputs {
-                            ui.selectable_value(&mut self.cfg.midi_out_port, p.clone(), p.as_str());
-                        }
-                    });
-            });
-            ui.horizontal(|ui| {
-                ui.add(egui::Slider::new(&mut self.cfg.click_note, 0..=127).text("click note"));
-                ui.add(egui::Slider::new(&mut self.cfg.click_channel, 1..=16).text("channel"));
-            });
-            ui.label(RichText::new("Sending the click to the V31 (channel 10, an unmapped note such as 76 = wood block) puts it in your headphones with no extra audio latency.").small().weak());
-
-            ui.add_space(10.0);
-            ui.heading("Listening");
-            ui.label(RichText::new("The Listen button on the Score tab plays the selected measures at the chosen tempo, with the count-in and click of a take.").small().weak());
-            ui.add_enabled_ui(HAS_AUDIO, |ui| {
-                ui.horizontal(|ui| {
-                    ui.checkbox(&mut self.cfg.playback_audio, "Play through the computer's sound output (built-in drum sounds)");
-                    ui.add(egui::Slider::new(&mut self.cfg.playback_volume, 0.0..=1.0).text("volume"));
-                });
-            });
-            ui.horizontal(|ui| {
-                ui.checkbox(&mut self.cfg.playback_midi, "Send the notes to the MIDI output (the module's own sounds)");
-                ui.add(egui::Slider::new(&mut self.cfg.playback_channel, 1..=16).text("channel"));
-            });
-            ui.label(RichText::new("Uses the output port chosen under Metronome. Each instrument is sent as its standard General MIDI / Roland note, or the note mapped to it above, so the V31 plays its own kit. Windows' built-in \"Microsoft GS Wavetable Synth\" works as an output too.").small().weak());
-
-            ui.add_space(10.0);
-            ui.heading("Score");
-            if ui.checkbox(&mut self.cfg.expand_repeats, "Expand repeats and 1st/2nd endings").changed() {
-                if let Some(p) = self.score_path.clone() {
-                    self.open_file(&p);
-                }
-            }
-
-            ui.add_space(10.0);
-            ui.heading("Testing without a kit");
-            ui.checkbox(&mut self.cfg.keyboard_input, "Computer keyboard plays pads");
-            ui.label(
-                RichText::new(
-                    KEYBOARD_PADS.iter().map(|(_, l, k)| format!("{k} = {}", l.label())).collect::<Vec<_>>().join(" · "),
-                )
-                .small()
-                .weak(),
-            );
-
-            ui.add_space(10.0);
-            if let Some(p) = Config::path() {
-                ui.label(RichText::new(format!("Settings are saved automatically to {}", p.display())).small().weak());
+            if ui.button("⟳ Refresh ports").clicked() {
+                self.refresh_ports();
             }
         });
+        ui.label(RichText::new("Where the metronome click and the notes of Listen go when they are sent over MIDI: the V31, or for example Windows' built-in \"Microsoft GS Wavetable Synth\".").small().weak());
+
+        ui.add_space(10.0);
+        ui.heading("Metronome");
+        ui.add_enabled_ui(HAS_AUDIO, |ui| {
+            ui.horizontal(|ui| {
+                ui.checkbox(&mut self.cfg.click_audio, "Click through the computer's sound output");
+                widgets::slider(ui, "volume", &mut self.cfg.click_volume, 0.0..=1.0, "", 0.02);
+            });
+        });
+        ui.checkbox(&mut self.cfg.click_midi, "Send the click to the MIDI output");
+        ui.horizontal(|ui| {
+            widgets::slider(ui, "click note", &mut self.cfg.click_note, 0..=127, "", 1.0);
+            widgets::slider(ui, "channel", &mut self.cfg.click_channel, 1..=16, "", 1.0);
+        });
+        ui.label(RichText::new("Sending the click to the V31 (channel 10, an unmapped note such as 76 = wood block) puts it in your headphones with no extra audio latency.").small().weak());
+
+        ui.add_space(10.0);
+        ui.heading("Listening");
+        ui.label(RichText::new("The Listen button on the Score tab plays the selected measures at the chosen tempo, with the count-in and click of a take.").small().weak());
+        ui.add_enabled_ui(HAS_AUDIO, |ui| {
+            ui.horizontal(|ui| {
+                ui.checkbox(&mut self.cfg.playback_audio, "Play through the computer's sound output (built-in drum sounds)");
+                widgets::slider(ui, "volume", &mut self.cfg.playback_volume, 0.0..=1.0, "", 0.02);
+            });
+        });
+        ui.horizontal(|ui| {
+            ui.checkbox(&mut self.cfg.playback_midi, "Send the notes to the MIDI output (the module's own sounds)");
+            widgets::slider(ui, "channel", &mut self.cfg.playback_channel, 1..=16, "", 1.0);
+        });
+        ui.label(RichText::new("Each instrument is sent as its standard General MIDI / Roland note, or the note mapped to it on the MIDI input page, so the V31 plays its own kit.").small().weak());
     }
+
+    fn settings_general(&mut self, ui: &mut egui::Ui) {
+        ui.heading("Score");
+        if ui.checkbox(&mut self.cfg.expand_repeats, "Expand repeats and 1st/2nd endings").changed() {
+            if let Some(p) = self.score_path.clone() {
+                self.open_file(&p);
+            }
+        }
+
+        ui.add_space(10.0);
+        ui.heading("Recent scores");
+        ui.horizontal(|ui| {
+            ui.label(format!("{} remembered", self.cfg.recent_files.len()));
+            if ui.add_enabled(!self.cfg.recent_files.is_empty(), egui::Button::new("Clear list")).clicked() {
+                self.cfg.recent_files.clear();
+            }
+        });
+
+        ui.add_space(10.0);
+        ui.heading("Testing without a kit");
+        ui.checkbox(&mut self.cfg.keyboard_input, "Computer keyboard plays pads");
+        ui.label(
+            RichText::new(KEYBOARD_PADS.iter().map(|(_, l, k)| format!("{k} = {}", l.label())).collect::<Vec<_>>().join(" · "))
+                .small()
+                .weak(),
+        );
+
+        ui.add_space(10.0);
+        if let Some(p) = Config::path() {
+            ui.label(RichText::new(format!("Settings are saved automatically to {}", p.display())).small().weak());
+        }
+    }
+}
+
+/// `s` cut to its last `max` characters, with "…" in front when it was longer.
+fn shorten_start(s: &str, max: usize) -> String {
+    let n = s.chars().count();
+    if n <= max {
+        s.to_string()
+    } else {
+        format!("…{}", s.chars().skip(n - max + 1).collect::<String>())
+    }
+}
+
+/// One entry of the recent-scores list: the file name over its folder, a
+/// remove button on the right. Returns (row clicked, remove clicked).
+fn recent_row(ui: &mut egui::Ui, path: &str, width: f32) -> (bool, bool) {
+    let file = Path::new(path);
+    let name = file.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_else(|| path.to_string());
+    let folder = shorten_start(&file.parent().map(|d| d.display().to_string()).unwrap_or_default(), 78);
+    let exists = file.is_file();
+
+    let (rect, response) = ui.allocate_exact_size(egui::vec2(width, 52.0), egui::Sense::click());
+    // Clip to the row (a little wider, so the border is not cut in half).
+    let painter = ui.painter_at(rect.expand(2.0));
+    let visuals = ui.style().interact(&response);
+    let (fill, stroke) = if response.has_focus() {
+        // Reached with the keyboard: a tinted row with the selection outline, text stays readable.
+        (ui.visuals().selection.bg_fill.gamma_multiply(0.3), ui.visuals().selection.stroke)
+    } else if response.hovered() {
+        (visuals.bg_fill, visuals.bg_stroke)
+    } else {
+        (ui.visuals().faint_bg_color, ui.visuals().widgets.noninteractive.bg_stroke)
+    };
+    painter.rect(rect, 6.0, fill, stroke);
+    let (title_color, sub_color) = if exists {
+        (ui.visuals().strong_text_color(), ui.visuals().weak_text_color())
+    } else {
+        (ui.visuals().weak_text_color(), render::RED)
+    };
+    painter.text(rect.left_top() + egui::vec2(14.0, 8.0), egui::Align2::LEFT_TOP, &name, egui::FontId::proportional(17.0), title_color);
+    let sub = if exists { folder } else { format!("{folder}  — file not found") };
+    painter.text(rect.left_top() + egui::vec2(14.0, 31.0), egui::Align2::LEFT_TOP, sub, egui::FontId::proportional(12.0), sub_color);
+
+    // Drawn after the row, so it gets the click when the pointer is over it.
+    let button = egui::Rect::from_center_size(egui::pos2(rect.right() - 26.0, rect.center().y), egui::vec2(30.0, 30.0));
+    let remove = ui.put(button, egui::Button::new("×")).on_hover_text("Remove from the list").clicked();
+    let clicked = response.on_hover_text(path).clicked();
+    (clicked, remove)
 }
 
 fn signed_secs(t: Instant, zero: Instant) -> f64 {
@@ -1182,5 +1364,18 @@ impl eframe::App for DrumApp {
         } else {
             ctx.request_repaint_after(Duration::from_millis(50));
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn long_folders_keep_their_end() {
+        assert_eq!(shorten_start("D:\\scores", 20), "D:\\scores");
+        assert_eq!(shorten_start("C:\\Users\\someone\\Documents\\Drum scores\\Rock", 16), "…rum scores\\Rock");
+        assert_eq!(shorten_start("żółć", 4), "żółć", "counts characters, not bytes");
+        assert_eq!(shorten_start("żółćżółć", 4), "…ółć");
     }
 }

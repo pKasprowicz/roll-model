@@ -13,6 +13,7 @@ mod playback;
 mod render;
 mod score;
 mod synth;
+mod widgets;
 mod xml;
 
 use std::path::PathBuf;

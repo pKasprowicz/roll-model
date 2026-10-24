@@ -33,7 +33,12 @@ pub struct Config {
     pub keyboard_input: bool,
     pub zoom: f32,
     pub expand_repeats: bool,
+    /// Scores opened before, most recent first (absolute paths).
+    pub recent_files: Vec<String>,
 }
+
+/// How many scores the welcome panel remembers.
+pub const MAX_RECENT: usize = 10;
 
 impl Default for Config {
     fn default() -> Self {
@@ -57,11 +62,21 @@ impl Default for Config {
             keyboard_input: false,
             zoom: 1.0,
             expand_repeats: true,
+            recent_files: Vec::new(),
         }
     }
 }
 
 impl Config {
+    /// Puts `path` at the top of the recent list (without duplicates; paths
+    /// compare case-insensitively on Windows) and trims the list.
+    pub fn remember_recent(&mut self, path: &str) {
+        let same = |a: &str, b: &str| if cfg!(windows) { a.eq_ignore_ascii_case(b) } else { a == b };
+        self.recent_files.retain(|p| !same(p, path));
+        self.recent_files.insert(0, path.to_string());
+        self.recent_files.truncate(MAX_RECENT);
+    }
+
     pub fn path() -> Option<PathBuf> {
         if cfg!(windows) {
             std::env::var_os("APPDATA").map(|a| PathBuf::from(a).join("DrumTutor").join("config.txt"))
@@ -115,6 +130,9 @@ impl Config {
         kv("keyboard_input", self.keyboard_input.to_string());
         kv("zoom", self.zoom.to_string());
         kv("expand_repeats", self.expand_repeats.to_string());
+        for path in &self.recent_files {
+            kv("recent", path.clone());
+        }
         for lane in Lane::ALL {
             kv(&format!("map.{}", lane.name()), format_note_list(&self.note_map.notes_for(lane)));
         }
@@ -158,6 +176,11 @@ impl Config {
                 "keyboard_input" => c.keyboard_input = b(c.keyboard_input),
                 "zoom" => c.zoom = v.parse::<f32>().unwrap_or(c.zoom).clamp(0.3, 4.0),
                 "expand_repeats" => c.expand_repeats = b(c.expand_repeats),
+                "recent" => {
+                    if !v.is_empty() && c.recent_files.len() < MAX_RECENT && !c.recent_files.iter().any(|p| p == v) {
+                        c.recent_files.push(v.to_string());
+                    }
+                }
                 _ => {
                     if let Some(lane) = k.strip_prefix("map.").and_then(Lane::from_name) {
                         map_seen = true;
@@ -195,6 +218,31 @@ mod tests {
         c.note_map.set_lane_notes(Lane::Kick, &[36, 33]);
         let back = Config::from_text(&c.to_text());
         assert_eq!(back, c);
+    }
+
+    #[test]
+    fn recent_files_keep_order_without_duplicates() {
+        let mut c = Config::default();
+        for p in ["a.musicxml", "b.musicxml", "c.musicxml", "a.musicxml"] {
+            c.remember_recent(p);
+        }
+        assert_eq!(c.recent_files, ["a.musicxml", "c.musicxml", "b.musicxml"]);
+        // The list survives a save and load in the same order, including paths with spaces and '='.
+        c.remember_recent("D:\\My scores\\a=b.musicxml");
+        assert_eq!(Config::from_text(&c.to_text()).recent_files, c.recent_files);
+        for i in 0..2 * MAX_RECENT {
+            c.remember_recent(&format!("score{i}.musicxml"));
+        }
+        assert_eq!(c.recent_files.len(), MAX_RECENT);
+        assert_eq!(c.recent_files[0], format!("score{}.musicxml", 2 * MAX_RECENT - 1));
+        // A hand-edited file with too many or repeated entries is cut down.
+        let many: String = (0..30).map(|i| format!("recent = f{}.xml\n", i % 15)).collect();
+        assert_eq!(Config::from_text(&many).recent_files.len(), MAX_RECENT);
+        if cfg!(windows) {
+            c.remember_recent("D:\\Scores\\Beat.musicxml");
+            c.remember_recent("d:\\scores\\beat.musicxml");
+            assert_eq!(c.recent_files.iter().filter(|p| p.to_lowercase() == "d:\\scores\\beat.musicxml").count(), 1);
+        }
     }
 
     #[test]

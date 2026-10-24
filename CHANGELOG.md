@@ -4,6 +4,20 @@ All notable changes are recorded here. The format follows [Keep a Changelog](htt
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-10-24
+
+A round of UI tidying. Tested on Windows (`x86_64-pc-windows-gnu`, Rust 1.99.1). The mouse-wheel tuning is covered by headless egui tests but has not been tried with a physical wheel.
+
+### Added
+- Welcome panel, shown while no score is open: an open button and the last ten scores opened (click to open, `×` to remove, "Clear list"). Missing files are greyed out. The list is kept in the settings file (`recent` lines).
+- Every slider follows the mouse wheel: hover it and scroll to change the value by one step per notch. The wheel is not passed on, so a scrolling page stays put while a slider is tuned.
+
+### Changed
+- Settings are split into four pages: MIDI input, Timing, Sound and General. The MIDI output port now has its own section on the Sound page, shared by the metronome and Listen.
+- The controls above the score are bigger (text, buttons, check boxes, slider rails and handles) and arranged in three rows: Record/Listen with zoom and follow, the measure range, and tempo/click/count-in.
+- Slider captions come before the slider (`from [slider]`, `to [slider]`, `tempo [slider]`, …) everywhere, instead of after it. Combo boxes too.
+- Percent and millisecond sliders show only the decimals their step needs ("100%", not "100.0%").
+
 ## [0.2.0] - 2026-10-24
 
 Adds playback of the loaded score. Built and tested on Windows (`x86_64-pc-windows-gnu`, Rust 1.99.1); the synthesised drum sounds have not been judged by ear, and the V31 has still not been connected.
