@@ -1,0 +1,181 @@
+//! Score model: a flat, time-ordered list of drum onsets plus measures and
+//! a tempo map. Positions are in quarter notes ("q") from the score start.
+
+use crate::drums::{Lane, NoteHead};
+
+#[derive(Clone, Debug)]
+pub struct ScoreNote {
+    /// Onset in quarter notes from the start of the (unrolled) score.
+    pub q: f64,
+    /// Index into `Score::measures`.
+    pub measure: usize,
+    pub lane: Lane,
+    pub staff_step: i32,
+    pub head: NoteHead,
+    pub accent: bool,
+    pub ghost: bool,
+    pub grace: bool,
+    pub stem_up: Option<bool>,
+}
+
+#[derive(Clone, Debug)]
+pub struct Measure {
+    /// Measure number as printed in the file.
+    pub number: String,
+    pub start_q: f64,
+    pub len_q: f64,
+    pub beats: u32,
+    pub beat_type: u32,
+}
+
+impl Measure {
+    pub fn end_q(&self) -> f64 {
+        self.start_q + self.len_q
+    }
+    /// Length of one beat of the time signature, in quarters.
+    pub fn beat_q(&self) -> f64 {
+        4.0 / self.beat_type.max(1) as f64
+    }
+}
+
+/// Piecewise-constant tempo, in quarter-note BPM.
+#[derive(Clone, Debug)]
+pub struct TempoMap {
+    /// (q, bpm), sorted by q, first entry at q = 0.
+    points: Vec<(f64, f64)>,
+}
+
+impl Default for TempoMap {
+    fn default() -> Self {
+        TempoMap::constant(120.0)
+    }
+}
+
+impl TempoMap {
+    pub fn constant(bpm: f64) -> TempoMap {
+        TempoMap { points: vec![(0.0, bpm.max(1.0))] }
+    }
+
+    pub fn from_points(mut pts: Vec<(f64, f64)>) -> TempoMap {
+        pts.retain(|(_, b)| *b > 0.0 && b.is_finite());
+        pts.sort_by(|a, b| a.0.total_cmp(&b.0));
+        let mut out: Vec<(f64, f64)> = Vec::new();
+        for (q, b) in pts {
+            match out.last_mut() {
+                Some(last) if (last.0 - q).abs() < 1e-9 => last.1 = b,
+                Some(last) if (last.1 - b).abs() < 1e-9 => {}
+                _ => out.push((q, b)),
+            }
+        }
+        if out.is_empty() {
+            return TempoMap::default();
+        }
+        if out[0].0 > 0.0 {
+            let first = out[0].1;
+            out.insert(0, (0.0, first));
+        }
+        TempoMap { points: out }
+    }
+
+    pub fn bpm_at(&self, q: f64) -> f64 {
+        let mut bpm = self.points[0].1;
+        for (pq, b) in &self.points {
+            if *pq <= q + 1e-9 {
+                bpm = *b;
+            } else {
+                break;
+            }
+        }
+        bpm
+    }
+
+    /// Seconds from q = 0 to `q`, with all tempos multiplied by `scale`.
+    pub fn q_to_sec(&self, q: f64, scale: f64) -> f64 {
+        let scale = scale.max(0.01);
+        let mut sec = 0.0;
+        for (i, (pq, bpm)) in self.points.iter().enumerate() {
+            let next_q = self.points.get(i + 1).map(|p| p.0).unwrap_or(f64::INFINITY);
+            if q <= *pq && i > 0 {
+                break;
+            }
+            let seg_end = q.min(next_q);
+            sec += (seg_end - pq) * 60.0 / (bpm * scale);
+            if q <= next_q {
+                break;
+            }
+        }
+        sec
+    }
+
+    pub fn sec_to_q(&self, sec: f64, scale: f64) -> f64 {
+        let scale = scale.max(0.01);
+        let mut acc = 0.0;
+        for (i, (pq, bpm)) in self.points.iter().enumerate() {
+            let spq = 60.0 / (bpm * scale);
+            let next_q = self.points.get(i + 1).map(|p| p.0);
+            match next_q {
+                Some(nq) => {
+                    let seg = (nq - pq) * spq;
+                    if sec < acc + seg || i == 0 && sec < 0.0 {
+                        return pq + (sec - acc) / spq;
+                    }
+                    acc += seg;
+                }
+                None => return pq + (sec - acc) / spq,
+            }
+        }
+        0.0
+    }
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct Score {
+    pub title: String,
+    pub part_name: String,
+    pub measures: Vec<Measure>,
+    /// Sorted by `q`.
+    pub notes: Vec<ScoreNote>,
+    pub tempo: TempoMap,
+    pub warnings: Vec<String>,
+}
+
+impl Score {
+    pub fn measure_at(&self, q: f64) -> Option<usize> {
+        if self.measures.is_empty() || q < 0.0 {
+            return None;
+        }
+        let idx = self.measures.partition_point(|m| m.start_q <= q + 1e-9);
+        Some(idx.saturating_sub(1).min(self.measures.len() - 1))
+    }
+
+    /// Staff position/notehead used for a lane in this file (so played notes
+    /// are drawn the way the score draws the same instrument).
+    pub fn staff_for_lane(&self, lane: Lane) -> (i32, NoteHead) {
+        self.notes
+            .iter()
+            .find(|n| n.lane == lane && !n.grace)
+            .map(|n| (n.staff_step, n.head))
+            .unwrap_or_else(|| lane.default_staff())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn tempo_conversion_roundtrip() {
+        let t = TempoMap::from_points(vec![(0.0, 120.0), (8.0, 60.0)]);
+        assert!((t.q_to_sec(4.0, 1.0) - 2.0).abs() < 1e-9);
+        assert!((t.q_to_sec(8.0, 1.0) - 4.0).abs() < 1e-9);
+        assert!((t.q_to_sec(10.0, 1.0) - 6.0).abs() < 1e-9);
+        assert!((t.q_to_sec(4.0, 0.5) - 4.0).abs() < 1e-9);
+        for q in [0.0, 1.5, 7.9, 8.0, 12.25] {
+            let s = t.q_to_sec(q, 0.8);
+            assert!((t.sec_to_q(s, 0.8) - q).abs() < 1e-9, "q={q}");
+        }
+        // negative times (count-in) extrapolate with the first tempo
+        assert!((t.sec_to_q(-1.0, 1.0) + 2.0).abs() < 1e-9);
+        assert!((t.q_to_sec(-2.0, 1.0) + 1.0).abs() < 1e-9);
+    }
+}

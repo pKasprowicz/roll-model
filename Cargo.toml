@@ -1,0 +1,25 @@
+[package]
+name = "drum-tutor"
+version = "0.1.0"
+edition = "2021"
+description = "Load MusicXML drum scores, capture MIDI from a Roland V31 and grade the performance"
+license = "MIT"
+
+[features]
+default = ["audio"]
+# Audible metronome through the default sound output (rodio/cpal).
+# Build with `--no-default-features` to drop it; the click can still be sent
+# to the drum module over MIDI out.
+audio = ["dep:rodio"]
+
+[dependencies]
+eframe = "0.29"
+egui = "0.29"
+midir = "0.10"
+rfd = "0.15"
+zip = { version = "2", default-features = false, features = ["deflate"] }
+rodio = { version = "0.19", default-features = false, optional = true }
+
+[profile.release]
+opt-level = 3
+lto = "thin"
