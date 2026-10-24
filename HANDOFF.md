@@ -20,7 +20,7 @@ First real build and smoke test done on 2026-10-24 (Windows 11, `x86_64-pc-windo
 
 | Part | Verified how | Confidence |
 |---|---|---|
-| `xml.rs`, `drums.rs`, `score.rs`, `musicxml.rs`, `analysis.rs`, `config.rs` | 14 unit tests pass | High |
+| `xml.rs`, `drums.rs`, `score.rs`, `musicxml.rs`, `analysis.rs`, `config.rs` | Unit tests (31 in the whole crate at 0.3.0) | High |
 | `app.rs`, `render.rs`, `loader.rs`, `main.rs` | Ran the app: sample loads, both staves line up, take lifecycle (count-in, record, auto-stop), per-note colours, Results and Settings tabs, error banner | Medium-high |
 | Keyboard pads (`app.rs::keyboard_pads`) | Scripted take with synthetic key presses: 20 perfect / 12 good / 1 ok / 11 missed / 1 extra as expected | Medium (frame-time stamps, see below) |
 | `midi.rs` | Compiles. The test machine had no MIDI ports, so capture and port selection were not exercised | Low |
@@ -28,10 +28,63 @@ First real build and smoke test done on 2026-10-24 (Windows 11, `x86_64-pc-windo
 | Listen (`playback.rs`, `synth.rs`, `app.rs`) | Unit tests. Run on Windows with the per-application audio meter: the `drum-tutor` session is silent, starts 0.5 s after `L`, lasts the length of the music, and is silent at once after a stop; the MIDI route into *Microsoft GS Wavetable Synth* also sounds; the "output off" and "MIDI port not found" errors show. **Nobody listened to it**, so how the synthesised kit sounds is unjudged | Medium-high |
 | Real V31 timing, note map, latency | Not tested | Unknown |
 
+## Todo for the next session
+
+Requested by the user after 0.3.0. Items 1 and 4 share a design, so do them together; items 3 and 5 are independent (5 only touches `render.rs`, the Score tab and the config); item 2 needs a pair of ears, so ask the user to listen. Still open from earlier: **First tasks, item 4** below (needs the V31), and trying the mouse wheel on sliders with a physical wheel.
+
+**Shared design note (items 1, 2 and 4).** Playback today is a fixed list of `Cue`s handed to the `Player` thread at start (`playback::Player::start`), with every option copied into `PlayOptions`. Nothing can change while it runs. In particular the *click* checkbox and the tempo/count-in sliders on the Score tab stay enabled during Listen but only take effect on the next start, which looks like a bug to the user. A small shared control block (an `Arc` of atomics: notes on/off, click on/off, volumes, per-instrument gain/mute) read by the thread for every cue would cover items 1, 2 and 4 without restarting. Consider also putting the output behind a small trait (`drum(lane, velocity)`, `click(accent)`), so the gating can be unit-tested with a fake instead of a sound card: the loop in `playback::run` is the part with no automated test today.
+
+### 1. Switch the metronome off and on during playback
+
+- [ ] Unticking *click* while Listen plays silences the click from the next beat on, and re-ticking brings it back on the next beat. No restart, no gap in the music.
+- [ ] Decide for takes: `metronome.rs` has the same limitation (fixed `clicks` list and `ClickOptions`) and the checkbox is disabled while recording. Probably make it live there too (drummers drop the click once they are comfortable); otherwise document that it is fixed per take.
+- [ ] Decide whether muting also mutes the count-in. Suggestion: no, the count-in is the start signal.
+- [ ] Make the click volume and the Listen volume live through the same mechanism.
+- [ ] Test the gating with a fake output, and check the real thing with the per-application audio meter (see Testing).
+
+### 2. Make the playback sounds adjustable, and fix the cymbals
+
+- [ ] **Cymbals sound odd by default** (reported by the user): crash 1/2, china, splash and ride (`synth.rs::cymbal`, the `Lane::Ride` and `Lane::RideBell` arms). Guess: they are built from sine partials between 410 Hz and about 1.8 kHz, which rings like a gong or bell. Real cymbals are a dense, inharmonic wash mostly above 2 kHz with a short stick transient. Try many more high partials or ring-modulated pairs (3–12 kHz), band-passed noise, a slower decay for the wash. Keep each sample at 2 s or less (the player's `TAIL` is 2.2 s). Add objective guards in the `synth.rs` tests (spectral centroid above some kHz, no strong tonal peak under 2 kHz) so a regression to a bell fails; the final judgement is by ear.
+- [ ] **Audition buttons**: on Settings → Sound, one button per instrument that plays it without a score. Needed to tune sounds by ear.
+- [ ] **Per-instrument volume and mute/solo** (for example hear only kick and snare, or mute the hi-hat). Persist in the config (one key per lane, like `map.<Lane>`), apply live through the control block.
+- [ ] **User sounds**: an optional folder of WAV files named after the instruments (`Lane::name()`: `Kick.wav`, `HiHatClosed.wav`, …), falling back to the synthesised sample for any lane without a file. rodio is built with `default-features = false`, so this needs its `wav` feature (hound) or a direct `hound` dependency. Convert to mono at `synth::SAMPLE_RATE`, normalise, cap the length. Decide where the folder lives (suggestion: next to `config.txt`, `%APPDATA%\DrumTutor\sounds\`) and how it is reloaded.
+- [ ] Ask the user whether per-instrument gain plus WAV override is enough, or whether several synthesised kits (brighter, darker, …) are wanted.
+- [ ] While in `synth.rs`/`playback.rs`: an open hi-hat is not choked by the next closed or pedal hit (known gap), so cut the open voice when one arrives.
+
+### 3. Audio output setting
+
+- [ ] Let the user choose the sound output device used for everything that goes through the sound card: the click, Listen and the calibration clicks. `metronome::open_audio` calls `rodio::OutputStream::try_default()` today. List devices through `rodio::cpal` (the whole crate is re-exported, so no new dependency: `cpal::traits::HostTrait::output_devices`, `DeviceTrait::name`) and open one with `OutputStream::try_from_device` (rodio 0.19).
+- [ ] UI on Settings → Sound: an "Output device" combo box ("System default" first) with a refresh button, like the MIDI ports. Store the device name in the config (`audio_output = …`, empty = default).
+- [ ] If the saved device is missing or cannot be opened, fall back to the default and say so in the error bar. `Player::take_errors` exists; `Metronome` has no error channel yet and needs one.
+- [ ] Edge cases: devices with the same name, devices that disappear while the app runs, sample-rate mismatch (rodio resamples), Bluetooth latency (mention it in the Latency section of the README; calibration then matters). Consider showing the chosen device in the status line.
+- [ ] Keep `--no-default-features` building; without the `audio` feature the setting is hidden.
+- [ ] Optional: an output buffer size choice, since it changes latency and therefore calibration.
+
+### 4. Metronome only: a click track
+
+- [ ] A way to play just the click. Suggestion: a *Notes* toggle next to *Click* that stays live during Listen, so click only = notes off (nearly free once item 1's control block exists). A separate button is the alternative.
+- [ ] A click track should not end after the selected range. Add a *loop* option (repeat the selected measures until stopped). `Player` plays a finite list and then stops, so generate the cues one pass at a time or reschedule at the end of each pass.
+- [ ] Use the score's tempo map, time-signature changes, accented first beat and count-in; `Score::click_track` already builds that.
+- [ ] A free metronome that needs no score (also from the welcome panel): BPM, beats per bar, optionally subdivisions (8ths, 16ths) and an accent pattern.
+- [ ] Show the beat while it runs (a bar/beat counter or a flashing indicator), and let the tempo change while running; restarting at the new tempo is acceptable as a first version.
+- [ ] Later: a tempo ramp (+x BPM every n bars), already in the ideas list.
+
+### 5. Configurable score layout: bars per row, and an alignment bar
+
+Today `render.rs::layout(score, width, zoom)` fills each row greedily with as many bars as fit the window width at the current zoom (`ppq = 56 * zoom`), then stretches the row to the full width (a last row shorter than 75 % of the width keeps its natural width). So the number of bars per row changes with the window size and the zoom, and the user cannot choose where a row breaks. Zoom only scales the horizontal spacing; the staff height does not change.
+
+- [ ] **Bars per row**: *Auto* (today's behaviour) or a fixed number (1 to 8, perhaps more). With a fixed number every row has exactly that many bars and fills the row width. Give the shorter last row the same bar width as the rows above it, so barlines line up vertically from row to row.
+- [ ] **Align from bar**: the bar at which a row must start. Rows then start at that bar and every N bars after it, and the bars before it fill the earlier rows backwards, so the first row may be shorter. Example with N = 4 and align at 2: `[1] [2–5] [6–9] …`, which is what a pickup bar or a section that starts mid-row needs. Off by default. Define what it does in *Auto* mode too (suggestion: the alignment bar always starts a row, and the greedy fill continues from there).
+- [ ] **Decide the numbering.** `Measure.number` is the printed number from the file: a string (a pickup is often "0", others can be non-numeric) and it **repeats once repeats are expanded**, because `musicxml.rs` copies `rm.number` into every unrolled bar. The Measures sliders and `range_from`/`range_to`, on the other hand, use the 1-based position in the unrolled score, so the two can already disagree. Recommendation: align by the 1-based position, like the sliders, and show the printed number next to it (hover text or label). Either way, say in the README which one the setting means, and consider fixing the existing mismatch at the same time.
+- [ ] **A fixed count may not fit** the width at the current zoom. Decide: with a fixed count the bars simply fill the row and zoom no longer matters (simplest), with a minimum bar width below which the app falls back to fewer bars and says so.
+- [ ] **UI**: next to *zoom* on the Score tab, a small "Layout" popup with bars per row (Auto, 1…8) and the alignment bar, built from `widgets::slider` (wheel-aware, caption first). Persist it in the config, for example `bars_per_row` (0 = Auto) and `layout_align_bar` (0 = off). Later, optionally remember it per score (keyed by file path), since phrasing differs between pieces.
+- [ ] **Plumbing**: new fields on `render::ScoreView` and parameters of `layout()`; the layout is recomputed every frame, so nothing needs caching. Click-to-select, the range highlight and the follow-scroll all read `Layout::systems` and `Layout::measures`, so they should keep working unchanged.
+- [ ] **Tests**: `layout()` is a pure function with no tests today. Cover a fixed count, the alignment bar (N = 1, align at bar 1, align beyond the last bar, a score shorter than one row), bars of different lengths (3/4 among 4/4) and the width of the last row.
+
 ## First tasks
 
 1. ~~Build.~~ Done, see above.
-2. ~~Run the tests.~~ Done, 14 pass. Splitting into `lib.rs` + `main.rs` would **not** by itself avoid building the GUI/MIDI crates, because they are dependencies of the same package. It would only pay off with a workspace or optional dependencies; skipped.
+2. ~~Run the tests.~~ Done. Splitting into `lib.rs` + `main.rs` would **not** by itself avoid building the GUI/MIDI crates, because they are dependencies of the same package. It would only pay off with a workspace or optional dependencies; skipped.
 3. ~~Smoke-test the UI.~~ Done. Fixes made along the way:
    - egui 0.29's default fonts have no `●` (U+25CF), `✕` (U+2715) or `→` (U+2192) and draw a box instead. Replaced with `⏺`/`⏹` (from the bundled emoji icon font), a "Dismiss" button and plain text. `■ · … ± − – — •` and `📂 🎼 📊 ⚙ ⟳ 💾 ⏺ ⏹` render fine. `⚠` (U+26A0) was not seen on screen. Check any new glyph in the running app before using it.
    - The two control rows in the Score tab are plain `horizontal` rows now. Sliders do not wrap inside `horizontal_wrapped`, so the old single row ran off the right edge and made the score layout wider than the window.
