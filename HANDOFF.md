@@ -81,6 +81,14 @@ Today `render.rs::layout(score, width, zoom)` fills each row greedily with as ma
 - [ ] **Plumbing**: new fields on `render::ScoreView` and parameters of `layout()`; the layout is recomputed every frame, so nothing needs caching. Click-to-select, the range highlight and the follow-scroll all read `Layout::systems` and `Layout::measures`, so they should keep working unchanged.
 - [ ] **Tests**: `layout()` is a pure function with no tests today. Cover a fixed count, the alignment bar (N = 1, align at bar 1, align beyond the last bar, a score shorter than one row), bars of different lengths (3/4 among 4/4) and the width of the last row.
 
+### 6. Pick a better name (a decision first)
+
+The user wants a more badass name than "Drum Tutor". A brainstorm in three flavours (silly, Japanese, word-play) is stored in [`docs/name-ideas.md`](docs/name-ideas.md), with the crates.io availability of each name, a shortlist (Raijin, Oni-Sensei, Ride or Die) and a rename checklist. Nothing is decided.
+
+- [ ] Ask the user which name (or none). Do not rename before they choose.
+- [ ] Check the chosen name (GitHub, web, trademark, domain) before using it.
+- [ ] Rename everything listed in the document, **including a settings-folder migration** with a test, so nobody loses their settings and recent scores. Release as a minor version with a changelog note.
+
 ## First tasks
 
 1. ~~Build.~~ Done, see above.
