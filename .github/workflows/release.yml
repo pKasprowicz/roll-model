@@ -4,14 +4,34 @@ on:
   push:
     branches: [main]
     tags: ["v*.*.*"]
-  workflow_dispatch:
 
 permissions:
   contents: write
 
 jobs:
+  # A branch push of a commit that also carries a release tag is covered by the
+  # tag run, so only untagged branch pushes and tag pushes build.
+  plan:
+    name: Decide whether to build
+    runs-on: ubuntu-latest
+    outputs:
+      build: ${{ steps.decide.outputs.build }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - id: decide
+        run: |
+          if [ "$GITHUB_REF_TYPE" = "tag" ] || [ -z "$(git tag --points-at HEAD --list 'v*.*.*')" ]; then
+            echo "build=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "build=false" >> "$GITHUB_OUTPUT"
+          fi
+
   build-linux:
     name: Build Linux
+    needs: plan
+    if: needs.plan.outputs.build == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -39,6 +59,8 @@ jobs:
 
   build-windows:
     name: Build Windows (self-hosted)
+    needs: plan
+    if: needs.plan.outputs.build == 'true'
     runs-on: [self-hosted, windows]
     steps:
       - uses: actions/checkout@v4
