@@ -143,6 +143,12 @@ pub fn output_devices() -> Vec<String> {
             }
         }
     }
+    // Some hosts (ALSA without a sound card, for one) have a default output they do not enumerate.
+    if let Some(default) = default_output_device() {
+        if !names.contains(&default) {
+            names.insert(0, default);
+        }
+    }
     names
 }
 

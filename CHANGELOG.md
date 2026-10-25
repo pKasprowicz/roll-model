@@ -4,6 +4,9 @@ All notable changes are recorded here. The format follows [Keep a Changelog](htt
 
 ## [Unreleased]
 
+### Fixed
+- The system default sound output is always listed in the output choices, even where the host (for example ALSA on Linux without a sound card) does not enumerate it.
+
 ## [0.4.0] - 2026-10-25
 
 Live controls for playback, a click track and metronome, an audio output setting, a configurable score layout and an instrument mixer. Tested on Windows (`x86_64-pc-windows-gnu`, Rust 1.99.1) with unit tests and by measuring the app's sound output; the new cymbals have not been judged by ear and the V31 has still not been connected.
