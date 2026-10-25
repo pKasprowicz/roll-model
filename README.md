@@ -37,7 +37,7 @@ Run the unit tests (XML parser, MusicXML import, repeats, tempo maps, scoring): 
 
 ## Practising
 
-1. **Open MusicXML…** (or drop a file on the window). Export the drum part from MuseScore, Guitar Pro, Sibelius, Dorico, etc. When no score is open, the welcome panel lists the scores you opened before (the last ten); click one to open it, `×` removes it from the list.
+1. **Open MusicXML…** (or drop a file on the window). Export the drum part from MuseScore, Guitar Pro, Sibelius, Dorico, etc. The welcome panel lists the scores you opened before (the last ten); click one to open it, `×` removes it from the list. It is shown on the **Home** tab, so it is always one click away, and instead of the score while none is open.
 2. Pick the measures to practise (sliders, or click a measure to start there and shift+click to set the end), and the tempo (25–150 %). Every slider also follows the mouse wheel: hover it and scroll to change the value one step per notch.
 3. Press **⏵ Listen** (or `L`) to hear the selected measures at the chosen tempo, with a moving playhead and the current bar and beat next to the button. Press it again, or `Esc`, to stop. See "Listening to the score" below.
 4. Press **⏺ Record** (or `R`). After a count-in (0–2 bars, with click) play along. The take stops by itself at the end of the range, or press `Esc`. The click can be switched off and on while you play (`K`).

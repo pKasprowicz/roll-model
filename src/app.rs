@@ -25,6 +25,7 @@ use crate::widgets;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Tab {
+    Home,
     Score,
     Metronome,
     Results,
@@ -805,6 +806,7 @@ impl DrumApp {
                 }
             }
             ui.separator();
+            ui.selectable_value(&mut self.tab, Tab::Home, "🏠 Home");
             ui.selectable_value(&mut self.tab, Tab::Score, "🎼 Score");
             ui.selectable_value(&mut self.tab, Tab::Metronome, "⏱ Metronome");
             ui.selectable_value(&mut self.tab, Tab::Results, "📊 Results");
@@ -1636,6 +1638,7 @@ impl eframe::App for DrumApp {
             });
         });
         egui::CentralPanel::default().show(ctx, |ui| match self.tab {
+            Tab::Home => egui::ScrollArea::vertical().show(ui, |ui| self.welcome_panel(ui)).inner,
             Tab::Score => self.score_tab(ui),
             Tab::Metronome => self.metronome_tab(ui),
             Tab::Results => self.results_tab(ui),
