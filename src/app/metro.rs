@@ -152,7 +152,9 @@ impl DrumApp {
     fn beat_lights(&self, ui: &mut egui::Ui) {
         let beats = self.cfg.metro_beats.max(1);
         let (radius, gap) = (22.0_f32, 14.0_f32);
-        let size = vec2(beats as f32 * (2.0 * radius + gap), 2.0 * radius + 8.0);
+        // Room for the outline of the first circle, which the painter would clip.
+        let margin = 6.0_f32;
+        let size = vec2(2.0 * margin + beats as f32 * (2.0 * radius + gap), 2.0 * radius + 8.0);
         let (rect, _) = ui.allocate_exact_size(size, Sense::hover());
         let painter = ui.painter_at(rect);
         let current = self.metro.as_ref().and_then(|run| {
@@ -162,7 +164,7 @@ impl DrumApp {
         });
         let outline = ui.visuals().widgets.noninteractive.fg_stroke.color.gamma_multiply(0.5);
         for b in 0..beats {
-            let centre = pos2(rect.left() + radius + b as f32 * (2.0 * radius + gap), rect.center().y);
+            let centre = pos2(rect.left() + margin + radius + b as f32 * (2.0 * radius + gap), rect.center().y);
             let colour = if b == 0 { render::RED } else { render::ACCENT };
             painter.circle_stroke(centre, radius, Stroke::new(1.5_f32, outline));
             if let Some((index, brightness)) = current {
