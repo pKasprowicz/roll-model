@@ -5,7 +5,7 @@ All notable changes are recorded here. The format follows [Keep a Changelog](htt
 ## [Unreleased]
 
 ### Added
-- The Metronome tab shows the loaded score as a rolling staff: the practice range of the Score tab repeats, its notes scroll past a fixed line at the metronome's tempo, and the first note arrives with the first beat. A switch hides it, and "Match score tempo and bar" sets the metronome to the score's tempo and bar length so the click lines up with the bars.
+- The Metronome tab shows the loaded score as a rolling staff: the practice range of the Score tab repeats, its notes scroll past a fixed line at the metronome's tempo, and the first note arrives with the first beat. With no score loaded it shows the metronome's own bar (accent, beats, subdivisions in brackets). A switch hides it, and "Match score tempo and bar" sets the metronome to the score's tempo and bar length so the click lines up with the bars.
 
 ### Changed
 - The first beat light on the Metronome tab is no longer clipped at its left edge.

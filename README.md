@@ -65,7 +65,7 @@ Next to the tempo on the Score tab there are three switches that work **while it
 
 ## Metronome
 
-The **Metronome** tab is a click track that needs no score: tempo, beats per bar, subdivision (eighths, triplets, sixteenths) and volume, with one light per beat. `M` starts and stops it. The first beat of each bar is accented and subdivisions are softer. With a score loaded, its practice range rolls by below the lights as a staff, repeating at the metronome's tempo so you can play the notes along with the click; **Match score tempo and bar** sets the tempo and beats per bar to the score's. Changes while it runs take effect after a moment. It plays through the click output chosen on **Settings → Sound** (the sound card and/or MIDI).
+The **Metronome** tab is a click track that needs no score: tempo, beats per bar, subdivision (eighths, triplets, sixteenths) and volume, with one light per beat. `M` starts and stops it. The first beat of each bar is accented and subdivisions are softer. Its notes roll by below the lights: the click pattern of the bar, or with a score loaded its practice range below the lights as a staff, repeating at the metronome's tempo so you can play the notes along with the click; **Match score tempo and bar** sets the tempo and beats per bar to the score's. Changes while it runs take effect after a moment. It plays through the click output chosen on **Settings → Sound** (the sound card and/or MIDI).
 
 ## Settings
 

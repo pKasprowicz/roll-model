@@ -10,6 +10,7 @@ use super::DrumApp;
 use crate::metronome::HAS_AUDIO;
 use crate::playback::{self, PlayOptions, Player, Subdivision};
 use crate::render;
+use crate::score::Score;
 use crate::widgets;
 
 /// How long a changed setting must stay put before a running metronome restarts with it.
@@ -161,28 +162,39 @@ impl DrumApp {
         start_q + (elapsed / run.beat_sec).rem_euclid(len_q.max(1e-6))
     }
 
-    /// The loaded score scrolling past a fixed line at the metronome's tempo.
+    /// The loaded score, or with none the metronome's own bar, scrolling past a
+    /// fixed line at the metronome's tempo.
     fn rolling_preview(&mut self, ui: &mut egui::Ui) {
         ui.add_space(16.0);
-        let Some(score) = self.score.as_ref() else {
-            ui.label(RichText::new("Load a score to see its notes roll by here while the click plays.").small().weak());
-            return;
-        };
+        let click_bar = self
+            .score
+            .is_none()
+            .then(|| Score::click_bar(self.cfg.metro_beats, Subdivision::from_index(self.cfg.metro_sub).parts()));
+        let Some(score) = click_bar.as_ref().or(self.score.as_ref()) else { return };
         let last = score.measures.len().saturating_sub(1);
-        let (a, b) = (self.range_from.min(last), self.range_to.clamp(self.range_from.min(last), last));
+        let (a, b) = match click_bar {
+            Some(_) => (0, 0),
+            None => (self.range_from.min(last), self.range_to.clamp(self.range_from.min(last), last)),
+        };
         let (start_q, len_q) = (score.measures[a].start_q, score.measures[b].end_q() - score.measures[a].start_q);
         let (score_bpm, bar_q) = (score.tempo.bpm_at(start_q), score.measures[a].len_q);
-        let title = score.title.clone();
+        let description = match click_bar {
+            Some(_) => "no score loaded: the click pattern".to_string(),
+            None => format!("\"{}\", bars {}–{} repeating", score.title, a + 1, b + 1),
+        };
+        let has_score = click_bar.is_none();
 
         let mut match_score = false;
         ui.horizontal(|ui| {
-            ui.checkbox(&mut self.cfg.metro_preview, "Show the score");
+            ui.checkbox(&mut self.cfg.metro_preview, "Show the notes");
             if self.cfg.metro_preview {
-                ui.label(RichText::new(format!("\"{title}\", bars {}–{} repeating", a + 1, b + 1)).small().weak());
-                match_score = ui
-                    .button("Match score tempo and bar")
-                    .on_hover_text("Set the tempo and beats per bar to the score's, so the click lines up with the bars")
-                    .clicked();
+                ui.label(RichText::new(description).small().weak());
+                if has_score {
+                    match_score = ui
+                        .button("Match score tempo and bar")
+                        .on_hover_text("Set the tempo and beats per bar to the score's, so the click lines up with the bars")
+                        .clicked();
+                }
             }
         });
         if match_score {
@@ -193,13 +205,17 @@ impl DrumApp {
             return;
         }
         let pos_q = self.metro_preview_pos(start_q, len_q);
-        if let Some(score) = self.score.as_ref() {
+        if let Some(score) = click_bar.as_ref().or(self.score.as_ref()) {
             render::rolling(ui, &render::RollingView { score, range: (a, b), pos_q });
         }
         ui.label(
-            RichText::new("The practice range of the Score tab repeats at the metronome's tempo; the first note arrives on the first beat. Change the range on the Score tab.")
-                .small()
-                .weak(),
+            RichText::new(if has_score {
+                "The practice range of the Score tab repeats at the metronome's tempo; the first note arrives on the first beat. Change the range on the Score tab."
+            } else {
+                "Every click of the bar rolls by: the first beat (accent), the other beats, and the softer subdivisions in brackets. Load a score to play its notes instead."
+            })
+            .small()
+            .weak(),
         );
     }
 
