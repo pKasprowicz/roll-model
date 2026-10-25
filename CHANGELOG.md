@@ -4,6 +4,8 @@ All notable changes are recorded here. The format follows [Keep a Changelog](htt
 
 ## [Unreleased]
 
+## [0.4.1] - 2026-10-25
+
 ### Fixed
 - The system default sound output is always listed in the output choices, even where the host (for example ALSA on Linux without a sound card) does not enumerate it.
 
