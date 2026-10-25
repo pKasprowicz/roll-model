@@ -4,6 +4,7 @@
 mod analysis;
 mod app;
 mod config;
+mod control;
 mod drums;
 mod loader;
 mod metronome;

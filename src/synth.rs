@@ -4,6 +4,7 @@
 
 use std::collections::BTreeMap;
 use std::f32::consts::TAU;
+use std::path::Path;
 use std::sync::Arc;
 
 use crate::drums::Lane;
@@ -115,18 +116,71 @@ fn hat(secs: f32, tau: f32, cutoff: f32, noise: &mut Noise) -> Vec<f32> {
     })
 }
 
-/// Crash-like cymbal: noise over inharmonic sine partials with a fast attack.
-fn cymbal(secs: f32, tau: f32, pitch: f32, shimmer: f32, noise: &mut Noise) -> Vec<f32> {
-    const RATIOS: [f32; 7] = [1.0, 1.51, 1.93, 2.48, 3.07, 3.71, 4.45];
-    let mut hp = HighPass::new(3500.0);
-    build(secs, |t| {
-        let partials: f32 = RATIOS
-            .iter()
-            .enumerate()
-            .map(|(i, r)| (TAU * 410.0 * pitch * r * t + i as f32).sin())
-            .sum::<f32>()
-            / RATIOS.len() as f32;
-        (hp.process(noise.next()) * 0.7 + partials * shimmer) * (1.0 - decay(t, 0.002)) * decay(t, tau)
+/// What a cymbal is made of. A real one is a dense, inharmonic wash that is
+/// mostly above 2 kHz and rolls off toward the top, with a stick transient and,
+/// for a ride, a few strong partials that ring (the "ping").
+struct Cymbal {
+    secs: f32,
+    /// A cluster of inharmonic partials spread over `lo..hi` Hz: (count, lo, hi, gain, decay
+    /// time in seconds at the low end). Higher partials die faster.
+    cluster: (usize, f32, f32, f32, f32),
+    /// Strong single partials: (Hz, gain, decay time).
+    pings: &'static [(f32, f32, f32)],
+    /// Filtered noise: (gain, high-pass Hz, low-pass Hz, decay time).
+    wash: (f32, f32, f32, f32),
+    /// Gain of the stick/mallet transient.
+    stick: f32,
+    /// A slow wobble of the whole sound (Hz, depth 0..1), for a trashy china.
+    wobble: (f32, f32),
+}
+
+fn cymbal(c: &Cymbal, noise: &mut Noise) -> Vec<f32> {
+    /// A sine kept as a rotating phasor, so a few dozen of them are cheap.
+    struct Partial {
+        re: f64,
+        im: f64,
+        cos: f64,
+        sin: f64,
+        amp: f64,
+        decay: f64,
+    }
+    let partial = |hz: f32, amp: f32, tau: f32, phase: f32| {
+        let w = TAU as f64 * hz as f64 / SR as f64;
+        Partial { re: (phase as f64).cos(), im: (phase as f64).sin(), cos: w.cos(), sin: w.sin(), amp: amp as f64, decay: (-1.0 / (tau as f64 * SR as f64)).exp() }
+    };
+    let mut partials: Vec<Partial> = Vec::new();
+    let (count, lo, hi, gain, tau) = c.cluster;
+    for i in 0..count {
+        // Log-spaced with a jitter, so no two cymbals share a grid of partials.
+        let pos = ((i as f32 + 0.5 + 0.4 * noise.next()) / count as f32).clamp(0.0, 1.0);
+        let hz = lo * (hi / lo).powf(pos);
+        let amp = gain * (0.45 + 0.55 * (noise.next() * 0.5 + 0.5));
+        partials.push(partial(hz, amp, tau * (1.15 - 0.85 * pos), noise.next() * std::f32::consts::PI));
+    }
+    let cluster_scale = 1.0 / (count.max(1) as f64).sqrt();
+    for (hz, amp, ping_tau) in c.pings {
+        partials.push(partial(*hz, *amp * (count.max(1) as f32).sqrt(), *ping_tau, noise.next() * std::f32::consts::PI));
+    }
+
+    let (wash_gain, wash_hp, wash_lp, wash_tau) = c.wash;
+    // Two poles each: a steep enough band that the noise is not a white hiss.
+    let (mut hp1, mut hp2) = (HighPass::new(wash_hp), HighPass::new(wash_hp));
+    let (mut lp1, mut lp2) = (LowPass::new(wash_lp), LowPass::new(wash_lp));
+    let mut tick_hp = HighPass::new(3500.0);
+    build(c.secs, |t| {
+        let mut sum = 0.0;
+        for p in partials.iter_mut() {
+            let (re, im) = (p.re * p.cos - p.im * p.sin, p.re * p.sin + p.im * p.cos);
+            p.re = re;
+            p.im = im;
+            sum += p.im * p.amp;
+            p.amp *= p.decay;
+        }
+        let attack = 1.0 - decay(t, 0.0015);
+        let wash = lp2.process(lp1.process(hp2.process(hp1.process(noise.next())))) * wash_gain * decay(t, wash_tau);
+        let tick = tick_hp.process(noise.next()) * decay(t, 0.004) * c.stick;
+        let wobble = 1.0 - c.wobble.1 * 0.5 * (1.0 - (TAU * c.wobble.0 * t).cos());
+        ((sum * cluster_scale) as f32 + wash) * attack * wobble + tick
     })
 }
 
@@ -183,26 +237,45 @@ pub fn render(lane: Lane) -> Vec<f32> {
         Lane::Tom2 => pitched(150.0, 0.7, 0.035, 0.18, 0.55, 0.2, n),
         Lane::Tom3 => pitched(110.0, 0.7, 0.04, 0.21, 0.65, 0.2, n),
         Lane::Tom4 => pitched(85.0, 0.7, 0.045, 0.24, 0.75, 0.2, n),
-        Lane::Crash1 => cymbal(2.0, 0.55, 1.0, 0.6, n),
-        Lane::Crash2 => cymbal(1.8, 0.45, 1.18, 0.6, n),
-        Lane::China => cymbal(1.4, 0.3, 1.6, 0.9, n),
-        Lane::Splash => cymbal(0.7, 0.12, 1.5, 0.5, n),
-        Lane::Ride => {
-            let mut hp = HighPass::new(4000.0);
-            const RATIOS: [f32; 5] = [1.0, 1.58, 2.14, 2.65, 3.62];
-            build(1.4, |t| {
-                let ping: f32 = RATIOS.iter().map(|r| (TAU * 520.0 * r * t).sin()).sum::<f32>() / 5.0;
-                ping * decay(t, 0.4) + hp.process(n.next()) * (decay(t, 0.004) * 0.5 + decay(t, 0.25) * 0.08)
-            })
-        }
-        Lane::RideBell => {
-            const PARTIALS: [(f32, f32); 5] = [(1.0, 1.0), (1.51, 0.6), (2.0, 0.5), (2.75, 0.35), (4.1, 0.2)];
-            let mut hp = HighPass::new(3000.0);
-            build(1.0, |t| {
-                let bell: f32 = PARTIALS.iter().map(|(r, a)| a * (TAU * 1050.0 * r * t).sin()).sum();
-                bell * decay(t, 0.35) + hp.process(n.next()) * decay(t, 0.003) * 0.5
-            })
-        }
+        Lane::Crash1 => cymbal(
+            &Cymbal { secs: 2.0, cluster: (40, 1500.0, 11000.0, 1.0, 1.0), pings: &[], wash: (0.8, 1500.0, 9000.0, 0.55), stick: 0.6, wobble: (0.0, 0.0) },
+            n,
+        ),
+        Lane::Crash2 => cymbal(
+            &Cymbal { secs: 1.8, cluster: (36, 1700.0, 12000.0, 1.0, 0.8), pings: &[], wash: (0.8, 1700.0, 10000.0, 0.45), stick: 0.6, wobble: (0.0, 0.0) },
+            n,
+        ),
+        Lane::China => cymbal(
+            &Cymbal { secs: 1.4, cluster: (36, 2000.0, 12000.0, 1.0, 0.5), pings: &[], wash: (1.0, 2000.0, 11000.0, 0.3), stick: 0.7, wobble: (80.0, 0.5) },
+            n,
+        ),
+        Lane::Splash => cymbal(
+            &Cymbal { secs: 0.7, cluster: (28, 3000.0, 12000.0, 1.0, 0.18), pings: &[], wash: (0.8, 3000.0, 11000.0, 0.12), stick: 0.5, wobble: (0.0, 0.0) },
+            n,
+        ),
+        Lane::Ride => cymbal(
+            &Cymbal {
+                secs: 1.4,
+                cluster: (28, 2500.0, 9500.0, 0.45, 0.6),
+                // The ping, and a little body underneath it.
+                pings: &[(3150.0, 0.30, 0.8), (4230.0, 0.22, 0.7), (5440.0, 0.18, 0.6), (6900.0, 0.12, 0.45), (900.0, 0.10, 0.5), (1480.0, 0.08, 0.45)],
+                wash: (0.18, 3000.0, 10000.0, 0.3),
+                stick: 0.5,
+                wobble: (0.0, 0.0),
+            },
+            n,
+        ),
+        Lane::RideBell => cymbal(
+            &Cymbal {
+                secs: 1.0,
+                cluster: (16, 3000.0, 9000.0, 0.35, 0.3),
+                pings: &[(1050.0, 0.40, 0.35), (1585.0, 0.25, 0.3), (2100.0, 0.20, 0.3), (2890.0, 0.15, 0.25), (4300.0, 0.10, 0.2)],
+                wash: (0.1, 3000.0, 10000.0, 0.2),
+                stick: 0.6,
+                wobble: (0.0, 0.0),
+            },
+            n,
+        ),
         Lane::Cowbell => {
             let mut lp = LowPass::new(5000.0);
             build(0.4, |t| lp.process(0.5 * (square(t * 587.0) + square(t * 845.0))) * decay(t, 0.07))
@@ -210,6 +283,46 @@ pub fn render(lane: Lane) -> Vec<f32> {
         Lane::Other => build(0.2, |t| (TAU * 900.0 * t).sin() * decay(t, 0.03) + n.next() * decay(t, 0.002) * 0.3),
     };
     finish(raw, lane_gain(lane) * HEADROOM)
+}
+
+/// The longest user sound that is used; the rest is cut off.
+const MAX_WAV_SECS: usize = 4;
+
+/// Reads a WAV file (8, 16, 24 or 32-bit integer, or 32-bit float; any number
+/// of channels) as mono samples at `SAMPLE_RATE`. Channels are averaged and
+/// the rate is converted by linear interpolation. The level is not changed here.
+pub fn load_wav(path: &Path) -> Result<Vec<f32>, String> {
+    let mut reader = hound::WavReader::open(path).map_err(|e| format!("not a readable WAV file ({e})"))?;
+    let spec = reader.spec();
+    let channels = spec.channels.max(1) as usize;
+    let all: Vec<f32> = match (spec.sample_format, spec.bits_per_sample) {
+        (hound::SampleFormat::Float, 32) => reader.samples::<f32>().collect::<Result<_, _>>(),
+        (hound::SampleFormat::Int, bits @ (8 | 16 | 24 | 32)) => {
+            let scale = 1.0 / (1_i64 << (bits - 1)) as f32;
+            reader.samples::<i32>().map(|s| s.map(|v| v as f32 * scale)).collect::<Result<_, _>>()
+        }
+        (format, bits) => return Err(format!("{bits}-bit {format:?} WAV files are not supported")),
+    }
+    .map_err(|e| format!("the file is damaged ({e})"))?;
+
+    let mono: Vec<f32> = all.chunks(channels).map(|frame| frame.iter().sum::<f32>() / frame.len() as f32).collect();
+    if mono.is_empty() {
+        return Err("the file has no sound in it".into());
+    }
+    let step = spec.sample_rate.max(1) as f64 / SAMPLE_RATE as f64;
+    let n = ((mono.len() as f64 / step) as usize).min(MAX_WAV_SECS * SAMPLE_RATE as usize);
+    let out: Vec<f32> = (0..n)
+        .map(|i| {
+            let pos = i as f64 * step;
+            let (a, frac) = (pos as usize, (pos - pos.floor()) as f32);
+            let b = (a + 1).min(mono.len() - 1);
+            mono[a.min(mono.len() - 1)] * (1.0 - frac) + mono[b] * frac
+        })
+        .collect();
+    if out.iter().fold(0.0_f32, |m, s| m.max(s.abs())) < 1e-4 {
+        return Err("the file is silent".into());
+    }
+    Ok(out)
 }
 
 /// Gain for a MIDI velocity: soft notes stay audible, accents are not much
@@ -225,12 +338,32 @@ pub struct Kit {
 }
 
 impl Kit {
-    pub fn for_lanes(lanes: impl IntoIterator<Item = Lane>) -> Kit {
+    /// The kit for `lanes`: the built-in sound of each instrument, or the WAV
+    /// file named after it (`Kick.wav`, see `Lane::name`) in `sounds_dir` when
+    /// there is one. Also returns a message for every file that could not be
+    /// used; that instrument keeps its built-in sound.
+    pub fn load(lanes: impl IntoIterator<Item = Lane>, sounds_dir: Option<&Path>) -> (Kit, Vec<String>) {
         let mut samples = BTreeMap::new();
+        let mut warnings = Vec::new();
         for lane in lanes {
-            samples.entry(lane).or_insert_with(|| Arc::new(render(lane)));
+            if samples.contains_key(&lane) {
+                continue;
+            }
+            let file = sounds_dir.map(|d| d.join(format!("{}.wav", lane.name()))).filter(|p| p.is_file());
+            let custom = file.as_ref().and_then(|path| match load_wav(path) {
+                Ok(v) => Some(finish(v, lane_gain(lane) * HEADROOM)),
+                Err(e) => {
+                    warnings.push(format!(
+                        "{}: {e}. The built-in sound is used for {}.",
+                        path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default(),
+                        lane.label()
+                    ));
+                    None
+                }
+            });
+            samples.insert(lane, Arc::new(custom.unwrap_or_else(|| render(lane))));
         }
-        Kit { samples }
+        (Kit { samples }, warnings)
     }
 
     pub fn sample(&self, lane: Lane) -> Option<&Arc<Vec<f32>>> {
@@ -284,6 +417,202 @@ mod tests {
         assert!(render(Lane::HiHatOpen).len() > 3 * render(Lane::HiHatClosed).len());
     }
 
+    /// In-place radix-2 FFT (the length must be a power of two).
+    fn fft(re: &mut [f64], im: &mut [f64]) {
+        let n = re.len();
+        let mut j = 0;
+        for i in 1..n {
+            let mut bit = n >> 1;
+            while j & bit != 0 {
+                j ^= bit;
+                bit >>= 1;
+            }
+            j ^= bit;
+            if i < j {
+                re.swap(i, j);
+                im.swap(i, j);
+            }
+        }
+        let mut len = 2;
+        while len <= n {
+            let ang = -2.0 * std::f64::consts::PI / len as f64;
+            for start in (0..n).step_by(len) {
+                for k in 0..len / 2 {
+                    let (wr, wi) = ((ang * k as f64).cos(), (ang * k as f64).sin());
+                    let (a, b) = (start + k, start + k + len / 2);
+                    let (tr, ti) = (re[b] * wr - im[b] * wi, re[b] * wi + im[b] * wr);
+                    re[b] = re[a] - tr;
+                    im[b] = im[a] - ti;
+                    re[a] += tr;
+                    im[a] += ti;
+                }
+            }
+            len <<= 1;
+        }
+    }
+
+    /// What a sample sounds like in numbers: where its energy sits.
+    #[derive(Debug)]
+    struct Spectrum {
+        /// Power-weighted mean frequency.
+        centroid_hz: f64,
+        /// Share of the power below 2 kHz.
+        below_2k: f64,
+        /// Share of the power in the single strongest bin below 2 kHz (a lone low partial sounds like a bell or gong).
+        low_peak: f64,
+    }
+
+    fn spectrum_of(sample: &[f32]) -> Spectrum {
+        const N: usize = 16384;
+        let mut re = vec![0.0_f64; N];
+        let mut im = vec![0.0_f64; N];
+        for (i, s) in sample.iter().take(N).enumerate() {
+            let hann = 0.5 - 0.5 * (2.0 * std::f64::consts::PI * i as f64 / N as f64).cos();
+            re[i] = *s as f64 * hann;
+        }
+        fft(&mut re, &mut im);
+        let bin_hz = SAMPLE_RATE as f64 / N as f64;
+        let power: Vec<f64> = (0..N / 2).map(|k| re[k] * re[k] + im[k] * im[k]).collect();
+        let total: f64 = power.iter().sum();
+        let centroid_hz = power.iter().enumerate().map(|(k, p)| k as f64 * bin_hz * p).sum::<f64>() / total;
+        let low_bins = (2000.0 / bin_hz) as usize;
+        let below_2k = power[..low_bins].iter().sum::<f64>() / total;
+        let low_peak = power[..low_bins].iter().cloned().fold(0.0, f64::max) / total;
+        Spectrum { centroid_hz, below_2k, low_peak }
+    }
+
+    #[test]
+    fn cymbals_are_bright_washes_not_bells_or_white_hiss() {
+        // Measured before the redesign: the ride had 99 % of its energy below 2 kHz in a single
+        // low partial (a bell), and the crashes sat near 10 kHz (white noise over a few sines).
+        for lane in [Lane::Crash1, Lane::Crash2, Lane::China, Lane::Splash, Lane::Ride] {
+            let s = spectrum_of(&render(lane));
+            assert!((3500.0..9500.0).contains(&s.centroid_hz), "{lane:?}: energy centred at {:.0} Hz", s.centroid_hz);
+            assert!(s.below_2k < 0.45, "{lane:?}: {:.0} % of the energy below 2 kHz", s.below_2k * 100.0);
+            assert!(s.low_peak < 0.04, "{lane:?}: {:.1} % of the energy in one low partial", s.low_peak * 100.0);
+        }
+        // The bell of a ride may ring, but it has bright partials as well.
+        let bell = spectrum_of(&render(Lane::RideBell));
+        assert!(bell.centroid_hz > 1500.0 && bell.below_2k < 0.85 && bell.low_peak < 0.45, "{bell:?}");
+    }
+
+    #[test]
+    fn a_splash_is_gone_sooner_than_a_crash() {
+        let tail_energy = |lane: Lane| {
+            let v = render(lane);
+            let from = (0.4 * SAMPLE_RATE as f32) as usize;
+            v[from..].iter().map(|s| s * s).sum::<f32>() / v.len() as f32
+        };
+        assert!(tail_energy(Lane::Crash1) > 4.0 * tail_energy(Lane::Splash), "after 0.4 s the splash has died away");
+    }
+
+    fn temp_dir(name: &str) -> std::path::PathBuf {
+        let dir = std::env::temp_dir().join(format!("drum-tutor-test-{}-{name}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    /// Writes a WAV file whose frame `i` has the sample values `f(i)` (one per channel).
+    fn write_wav(path: &Path, rate: u32, bits: u16, float: bool, frames: usize, f: impl Fn(usize) -> Vec<f32>) {
+        let channels = f(0).len() as u16;
+        let spec = hound::WavSpec {
+            channels,
+            sample_rate: rate,
+            bits_per_sample: bits,
+            sample_format: if float { hound::SampleFormat::Float } else { hound::SampleFormat::Int },
+        };
+        let mut w = hound::WavWriter::create(path, spec).unwrap();
+        for i in 0..frames {
+            for v in f(i) {
+                if float {
+                    w.write_sample(v).unwrap();
+                } else {
+                    w.write_sample((v * ((1_i64 << (bits - 1)) - 1) as f32) as i32).unwrap();
+                }
+            }
+        }
+        w.finalize().unwrap();
+    }
+
+    fn peak(v: &[f32]) -> f32 {
+        v.iter().fold(0.0_f32, |m, s| m.max(s.abs()))
+    }
+
+    #[test]
+    fn wav_files_become_mono_samples_at_the_kit_rate() {
+        let dir = temp_dir("formats");
+        let sine = |hz: f32, rate: u32| move |i: usize| (TAU * hz * i as f32 / rate as f32).sin() * 0.5;
+        // 16-bit stereo at 22.05 kHz: the rate is doubled, the channels averaged.
+        let p = dir.join("a.wav");
+        write_wav(&p, 22_050, 16, false, 2205, |i| vec![sine(440.0, 22_050)(i), sine(440.0, 22_050)(i)]);
+        let v = load_wav(&p).unwrap();
+        assert!((v.len() as i64 - 4410).abs() <= 2, "{} samples", v.len());
+        assert!((peak(&v) - 0.5).abs() < 0.01, "the level is kept: {}", peak(&v));
+        // The same tone at the kit rate stays the same length.
+        let p = dir.join("b.wav");
+        write_wav(&p, SAMPLE_RATE, 32, true, 4410, |i| vec![sine(440.0, SAMPLE_RATE)(i)]);
+        assert_eq!(load_wav(&p).unwrap().len(), 4410);
+        for bits in [8, 16, 24, 32] {
+            let p = dir.join(format!("int{bits}.wav"));
+            write_wav(&p, SAMPLE_RATE, bits, false, 1000, |i| vec![sine(300.0, SAMPLE_RATE)(i)]);
+            let v = load_wav(&p).unwrap();
+            assert_eq!(v.len(), 1000, "{bits}-bit");
+            assert!((peak(&v) - 0.5).abs() < 0.02, "{bits}-bit peak {}", peak(&v));
+        }
+        // Channels are averaged: 0.8 on the left and 0.2 on the right is 0.5.
+        let p = dir.join("c.wav");
+        write_wav(&p, SAMPLE_RATE, 16, false, 500, |_| vec![0.8, 0.2]);
+        assert!(load_wav(&p).unwrap().iter().all(|s| (s - 0.5).abs() < 0.001));
+        // Slower files are stretched, faster ones shortened.
+        let p = dir.join("d.wav");
+        write_wav(&p, 11_025, 16, false, 1000, |i| vec![sine(100.0, 11_025)(i)]);
+        assert!((load_wav(&p).unwrap().len() as i64 - 4000).abs() <= 4);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn unusable_wav_files_are_refused_with_a_reason() {
+        let dir = temp_dir("bad");
+        std::fs::write(dir.join("junk.wav"), b"this is not a wave file at all").unwrap();
+        assert!(load_wav(&dir.join("junk.wav")).unwrap_err().contains("not a readable WAV"));
+        write_wav(&dir.join("silent.wav"), SAMPLE_RATE, 16, false, 1000, |_| vec![0.0]);
+        assert!(load_wav(&dir.join("silent.wav")).unwrap_err().contains("silent"));
+        write_wav(&dir.join("empty.wav"), SAMPLE_RATE, 16, false, 0, |_| vec![0.0]);
+        assert!(load_wav(&dir.join("empty.wav")).is_err());
+        assert!(load_wav(&dir.join("missing.wav")).is_err());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn the_kit_prefers_a_users_file_and_falls_back_with_a_warning() {
+        let dir = temp_dir("kit");
+        // Kick: a good file, quiet on purpose; Snare: damaged; HiHatClosed: a too long one.
+        write_wav(&dir.join("Kick.wav"), SAMPLE_RATE, 16, false, 4410, |i| vec![(TAU * 60.0 * i as f32 / SAMPLE_RATE as f32).sin() * 0.1]);
+        std::fs::write(dir.join("Snare.wav"), b"RIFF broken").unwrap();
+        write_wav(&dir.join("HiHatClosed.wav"), 8000, 16, false, 8000 * 6, |i| vec![((i % 40) as f32 / 40.0 - 0.5) * 0.5]);
+        let lanes = [Lane::Kick, Lane::Snare, Lane::HiHatClosed, Lane::Ride, Lane::Kick];
+        let (kit, warnings) = Kit::load(lanes, Some(&dir));
+
+        let kick = kit.sample(Lane::Kick).unwrap();
+        assert_eq!(kick.len(), 4410, "the user's file, not the 18522-sample built-in one");
+        assert!((peak(kick) - lane_gain(Lane::Kick) * HEADROOM).abs() < 1e-3, "levelled like the built-in sound: {}", peak(kick));
+        assert_eq!(kit.sample(Lane::Snare).unwrap().len(), render(Lane::Snare).len(), "falls back to the built-in snare");
+        assert_eq!(kit.sample(Lane::HiHatClosed).unwrap().len(), MAX_WAV_SECS * SAMPLE_RATE as usize, "cut to the longest allowed");
+        assert_eq!(**kit.sample(Lane::Ride).unwrap(), render(Lane::Ride), "no file, built-in sound");
+
+        assert_eq!(warnings.len(), 1, "{warnings:?}");
+        assert!(warnings[0].contains("Snare.wav") && warnings[0].contains("built-in"), "{}", warnings[0]);
+
+        // Without a folder, or with a folder that does not exist, everything is built in and quiet.
+        for dir in [None, Some(dir.join("nope"))] {
+            let (kit, warnings) = Kit::load([Lane::Kick], dir.as_deref());
+            assert!(warnings.is_empty());
+            assert_eq!(**kit.sample(Lane::Kick).unwrap(), render(Lane::Kick));
+        }
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     #[test]
     fn velocity_is_monotonic_and_bounded() {
         let mut last = 0.0;
@@ -298,7 +627,8 @@ mod tests {
 
     #[test]
     fn kit_renders_each_lane_once() {
-        let kit = Kit::for_lanes([Lane::Kick, Lane::Snare, Lane::Kick]);
+        let (kit, warnings) = Kit::load([Lane::Kick, Lane::Snare, Lane::Kick], None);
+        assert!(warnings.is_empty());
         assert!(kit.sample(Lane::Kick).is_some() && kit.sample(Lane::Snare).is_some());
         assert!(kit.sample(Lane::Ride).is_none());
         assert_eq!(kit.samples.len(), 2);

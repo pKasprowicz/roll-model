@@ -4,6 +4,23 @@ All notable changes are recorded here. The format follows [Keep a Changelog](htt
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-10-25
+
+Live controls for playback, a click track and metronome, an audio output setting, a configurable score layout and an instrument mixer. Tested on Windows (`x86_64-pc-windows-gnu`, Rust 1.99.1) with unit tests and by measuring the app's sound output; the new cymbals have not been judged by ear and the V31 has still not been connected.
+
+### Added
+- The click can be switched on and off at any time, while Listen plays or a take records (checkbox or key `K`). The count-in always sounds.
+- Listen has **notes** and **loop** switches: notes off plays a click track of the selected measures, loop repeats them until stopped. A label shows the bar and beat (or the count-in). Changing the range or tempo while it plays restarts it after a moment.
+- Metronome tab: a click track without a score (tempo, beats per bar, subdivision, volume, one light per beat), started with `M`.
+- Audio output device setting (Settings → Sound), with a fall back to the system default and a message when the chosen device is missing.
+- Score layout: *Layout* button with bars per row (auto or 1–8) and a bar that must start a row. A fixed count gives every bar the same width; if that many do not fit, fewer are shown and a note says so.
+- Instrument mixer (Settings → Sound): volume, mute and solo per instrument, live while playing, and a button that plays one instrument. WAV files named after an instrument (`Kick.wav`, …) in the `sounds` folder next to the settings file replace the built-in sound.
+- An open hi-hat is cut off by a closed or pedal hi-hat.
+
+### Changed
+- The cymbals (crashes, china, splash, ride) are rebuilt as dense inharmonic washes. The old ride was a low bell and the crashes were close to white noise; tests now guard their spectrum. Not yet judged by ear.
+- New settings keys: `audio_output`, `bars_per_row`, `layout_align_bar`, `gain.<Lane>`, `mute.<Lane>`, `metro_bpm`, `metro_beats`, `metro_sub`.
+
 ## [0.3.0] - 2026-10-24
 
 A round of UI tidying. Tested on Windows (`x86_64-pc-windows-gnu`, Rust 1.99.1). The mouse-wheel tuning is covered by headless egui tests but has not been tried with a physical wheel.

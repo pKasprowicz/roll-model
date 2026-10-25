@@ -3,6 +3,7 @@
 //! `~/Library/Application Support/DrumTutor/config.txt`, otherwise
 //! `$XDG_CONFIG_HOME/drum-tutor/config.txt` (or `~/.config/...`).
 
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::PathBuf;
 
 use crate::analysis::Tolerances;
@@ -35,10 +36,26 @@ pub struct Config {
     pub expand_repeats: bool,
     /// Scores opened before, most recent first (absolute paths).
     pub recent_files: Vec<String>,
+    /// Sound output device by name; empty = the system default.
+    pub audio_output: String,
+    /// Bars per row of the score; 0 = as many as fit.
+    pub bars_per_row: usize,
+    /// Position of a bar that must start a row; 0 = none.
+    pub layout_align_bar: usize,
+    /// Volume of single instruments in Listen (1.0 = as rendered; absent = 1.0).
+    pub lane_gain: BTreeMap<Lane, f32>,
+    pub lane_mute: BTreeSet<Lane>,
+    /// The free metronome.
+    pub metro_bpm: f32,
+    pub metro_beats: u32,
+    /// Index into `playback::Subdivision::ALL`.
+    pub metro_sub: usize,
 }
 
 /// How many scores the welcome panel remembers.
 pub const MAX_RECENT: usize = 10;
+/// Loudest instrument gain the mixer allows.
+pub const MAX_LANE_GAIN: f32 = 1.5;
 
 impl Default for Config {
     fn default() -> Self {
@@ -63,11 +80,40 @@ impl Default for Config {
             zoom: 1.0,
             expand_repeats: true,
             recent_files: Vec::new(),
+            audio_output: String::new(),
+            bars_per_row: 0,
+            layout_align_bar: 0,
+            lane_gain: BTreeMap::new(),
+            lane_mute: BTreeSet::new(),
+            metro_bpm: 100.0,
+            metro_beats: 4,
+            metro_sub: 0,
         }
     }
 }
 
 impl Config {
+    /// Volume of one instrument in Listen (1.0 unless changed).
+    pub fn gain_of(&self, lane: Lane) -> f32 {
+        self.lane_gain.get(&lane).copied().unwrap_or(1.0)
+    }
+
+    /// What an instrument is played at in Listen: its volume, or silence when
+    /// it is muted, or when other instruments are soloed and it is not one.
+    pub fn effective_gain(&self, solo: &BTreeSet<Lane>, lane: Lane) -> f32 {
+        let heard = if solo.is_empty() { !self.lane_mute.contains(&lane) } else { solo.contains(&lane) };
+        if heard {
+            self.gain_of(lane)
+        } else {
+            0.0
+        }
+    }
+
+    /// Folder with WAV files that replace built-in sounds, next to the settings file.
+    pub fn sounds_dir() -> Option<PathBuf> {
+        Config::path().and_then(|p| p.parent().map(|d| d.join("sounds")))
+    }
+
     /// Puts `path` at the top of the recent list (without duplicates; paths
     /// compare case-insensitively on Windows) and trims the list.
     pub fn remember_recent(&mut self, path: &str) {
@@ -133,6 +179,20 @@ impl Config {
         for path in &self.recent_files {
             kv("recent", path.clone());
         }
+        kv("audio_output", self.audio_output.clone());
+        kv("bars_per_row", self.bars_per_row.to_string());
+        kv("layout_align_bar", self.layout_align_bar.to_string());
+        kv("metro_bpm", self.metro_bpm.to_string());
+        kv("metro_beats", self.metro_beats.to_string());
+        kv("metro_sub", self.metro_sub.to_string());
+        for lane in Lane::ALL {
+            if self.gain_of(lane) != 1.0 {
+                kv(&format!("gain.{}", lane.name()), self.gain_of(lane).to_string());
+            }
+            if self.lane_mute.contains(&lane) {
+                kv(&format!("mute.{}", lane.name()), "true".to_string());
+            }
+        }
         for lane in Lane::ALL {
             kv(&format!("map.{}", lane.name()), format_note_list(&self.note_map.notes_for(lane)));
         }
@@ -181,11 +241,28 @@ impl Config {
                         c.recent_files.push(v.to_string());
                     }
                 }
+                "audio_output" => c.audio_output = v.to_string(),
+                "bars_per_row" => c.bars_per_row = v.parse().unwrap_or(c.bars_per_row).min(16),
+                "layout_align_bar" => c.layout_align_bar = v.parse().unwrap_or(c.layout_align_bar).min(9999),
+                "metro_bpm" => {
+                    let x = v.parse::<f32>().ok().filter(|x| x.is_finite());
+                    c.metro_bpm = x.unwrap_or(c.metro_bpm).clamp(20.0, 300.0)
+                }
+                "metro_beats" => c.metro_beats = v.parse().unwrap_or(c.metro_beats).clamp(1, 12),
+                "metro_sub" => c.metro_sub = v.parse().unwrap_or(c.metro_sub).min(3),
                 _ => {
                     if let Some(lane) = k.strip_prefix("map.").and_then(Lane::from_name) {
                         map_seen = true;
                         for n in parse_note_list(v) {
                             map.assign(n, lane);
+                        }
+                    } else if let Some(lane) = k.strip_prefix("gain.").and_then(Lane::from_name) {
+                        if let Some(g) = v.parse::<f32>().ok().filter(|g| g.is_finite()) {
+                            c.lane_gain.insert(lane, g.clamp(0.0, MAX_LANE_GAIN));
+                        }
+                    } else if let Some(lane) = k.strip_prefix("mute.").and_then(Lane::from_name) {
+                        if b(false) {
+                            c.lane_mute.insert(lane);
                         }
                     }
                 }
@@ -213,11 +290,57 @@ mod tests {
             playback_volume: 0.25,
             playback_midi: true,
             playback_channel: 1,
+            audio_output: "Speakers (USB Audio)".into(),
+            bars_per_row: 4,
+            layout_align_bar: 5,
+            metro_bpm: 133.5,
+            metro_beats: 7,
+            metro_sub: 2,
             ..Default::default()
         };
         c.note_map.set_lane_notes(Lane::Kick, &[36, 33]);
+        c.lane_gain.insert(Lane::Crash1, 0.4);
+        c.lane_gain.insert(Lane::Kick, 1.25);
+        c.lane_mute.insert(Lane::HiHatClosed);
         let back = Config::from_text(&c.to_text());
         assert_eq!(back, c);
+    }
+
+    #[test]
+    fn mute_and_solo_decide_what_is_heard() {
+        let mut c = Config::default();
+        c.lane_gain.insert(Lane::Kick, 0.5);
+        c.lane_mute.insert(Lane::Snare);
+        let none = BTreeSet::new();
+        assert_eq!(c.effective_gain(&none, Lane::Kick), 0.5);
+        assert_eq!(c.effective_gain(&none, Lane::Snare), 0.0, "muted");
+        assert_eq!(c.effective_gain(&none, Lane::Ride), 1.0);
+        // Soloing silences everything else, even instruments that are not muted...
+        let solo: BTreeSet<Lane> = [Lane::Snare, Lane::Ride].into_iter().collect();
+        assert_eq!(c.effective_gain(&solo, Lane::Kick), 0.0);
+        assert_eq!(c.effective_gain(&solo, Lane::Ride), 1.0);
+        // ...and a solo wins over a mute.
+        assert_eq!(c.effective_gain(&solo, Lane::Snare), 1.0);
+    }
+
+    #[test]
+    fn mixer_layout_and_metronome_settings_are_clamped_and_default_when_missing() {
+        let c = Config::from_text(
+            "bars_per_row = 99\nlayout_align_bar = 1000000\nmetro_bpm = 5\nmetro_beats = 0\nmetro_sub = 9\n\
+             gain.Ride = 9\ngain.Snare = abc\ngain.Nope = 1\nmute.Kick = true\nmute.Snare = maybe\naudio_output =\n",
+        );
+        assert_eq!((c.bars_per_row, c.layout_align_bar), (16, 9999));
+        assert_eq!((c.metro_bpm, c.metro_beats, c.metro_sub), (20.0, 1, 3));
+        assert_eq!(c.gain_of(Lane::Ride), MAX_LANE_GAIN);
+        assert_eq!(c.gain_of(Lane::Snare), 1.0, "an unreadable gain keeps the default");
+        assert!(c.lane_mute.contains(&Lane::Kick) && !c.lane_mute.contains(&Lane::Snare));
+        assert_eq!(c.audio_output, "", "an empty device name means the system default");
+        // A settings file from before these existed loads with the defaults.
+        let old = Config::from_text("latency_ms = 5\n");
+        assert_eq!((old.bars_per_row, old.layout_align_bar, old.metro_bpm, old.metro_beats), (0, 0, 100.0, 4));
+        assert!(old.lane_gain.is_empty() && old.lane_mute.is_empty() && old.audio_output.is_empty());
+        // Defaults are not written out for the mixer.
+        assert!(!Config::default().to_text().contains("gain."));
     }
 
     #[test]

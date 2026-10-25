@@ -20,7 +20,7 @@ First real build and smoke test done on 2026-10-24 (Windows 11, `x86_64-pc-windo
 
 | Part | Verified how | Confidence |
 |---|---|---|
-| `xml.rs`, `drums.rs`, `score.rs`, `musicxml.rs`, `analysis.rs`, `config.rs` | Unit tests (31 in the whole crate at 0.3.0) | High |
+| `xml.rs`, `drums.rs`, `score.rs`, `musicxml.rs`, `analysis.rs`, `config.rs` | Unit tests (67 in the whole crate, uncommitted work after 0.3.0) | High |
 | `app.rs`, `render.rs`, `loader.rs`, `main.rs` | Ran the app: sample loads, both staves line up, take lifecycle (count-in, record, auto-stop), per-note colours, Results and Settings tabs, error banner | Medium-high |
 | Keyboard pads (`app.rs::keyboard_pads`) | Scripted take with synthetic key presses: 20 perfect / 12 good / 1 ok / 11 missed / 1 extra as expected | Medium (frame-time stamps, see below) |
 | `midi.rs` | Compiles. The test machine had no MIDI ports, so capture and port selection were not exercised | Low |
@@ -30,58 +30,29 @@ First real build and smoke test done on 2026-10-24 (Windows 11, `x86_64-pc-windo
 
 ## Todo for the next session
 
-Requested by the user after 0.3.0. Items 1 and 4 share a design, so do them together; items 3 and 5 are independent (5 only touches `render.rs`, the Score tab and the config); item 2 needs a pair of ears, so ask the user to listen. Still open from earlier: **First tasks, item 4** below (needs the V31), and trying the mouse wheel on sliders with a physical wheel.
+### Done since 0.3.0 (uncommitted; 67 tests pass; suggest releasing as 0.4.0)
 
-**Shared design note (items 1, 2 and 4).** Playback today is a fixed list of `Cue`s handed to the `Player` thread at start (`playback::Player::start`), with every option copied into `PlayOptions`. Nothing can change while it runs. In particular the *click* checkbox and the tempo/count-in sliders on the Score tab stay enabled during Listen but only take effect on the next start, which looks like a bug to the user. A small shared control block (an `Arc` of atomics: notes on/off, click on/off, volumes, per-instrument gain/mute) read by the thread for every cue would cover items 1, 2 and 4 without restarting. Consider also putting the output behind a small trait (`drum(lane, velocity)`, `click(accent)`), so the gating can be unit-tested with a fake instead of a sound card: the loop in `playback::run` is the part with no automated test today.
+The five items requested after 0.3.0 are implemented, tested, and were checked in the running app (per-application audio meter for sound, screenshots for layout; see Testing).
 
-### 1. Switch the metronome off and on during playback
+- **Click on/off while playing** (`K` or the checkbox, Listen and takes). A `control::Control` of atomics is shared with the sound threads (`Metronome` for takes and calibration, `Player` for Listen, the free metronome and auditions); the count-in (times before zero) is never muted. What a cue sounds like is decided by `playback::dispatch` against a `Sink` trait, so the logic is tested with a fake output (`playback.rs` tests), including loops, stops and late cues.
+- **Click track**: *notes* and *loop* switches next to the tempo (session-only, `DrumApp.listen_notes/listen_loop`). Loop is read at each pass boundary, `Control::music_done` tells the UI when the last pass ended. A change of range or tempo while listening restarts it after 300 ms (`LISTEN_RESTART_DELAY`), without the count-in. Bar/beat label: `listen_position`.
+- **Free metronome tab** (`src/app/metro.rs`, key `M`): tempo, beats per bar, subdivision (`playback::Subdivision`), volume; `playback::metronome_cues` builds one looping bar with accent / beat / soft subdivision (`control::ClickLevel`); one light per beat.
+- **Audio output device** (`metronome::open_audio(enabled, device)`, `output_devices()`, config `audio_output`): used by takes, calibration, Listen, auditions and the metronome tab. A missing device falls back to the default with a message; `Metronome` now has an error log like `Player`.
+- **Score layout** (`render::LayoutOpts`, `layout()`, `row_starts()`; config `bars_per_row`, `layout_align_bar`; *Layout* button): see the README. Alignment is by the 1-based position in the score as shown, and the popup shows the printed number. A fixed count draws every bar at the same width (`MIN_PPQ` = 28 px per quarter at the narrowest); when it does not fit, `ViewOutput::fit_bars` reports the smaller number and the legend row says so.
+- **Sounds**: cymbals rebuilt (`synth::cymbal`, `Cymbal` parameters) as dense inharmonic partial clusters plus shaped noise, with spectral guard tests; instrument mixer (`src/app/mixer.rs`, config `gain.<Lane>` / `mute.<Lane>`, solo is session-only, `Config::effective_gain`); audition button (`DrumApp::audition`, its own `Control` so it never disturbs Listen); WAV override (`synth::load_wav`, `Kit::load`, folder `Config::sounds_dir()` = `sounds` next to `config.txt`, uses the `hound` crate); open hi-hat choked by closed/pedal (`Lane::chokes`, a fade-out in `playback::Voice`).
 
-- [ ] Unticking *click* while Listen plays silences the click from the next beat on, and re-ticking brings it back on the next beat. No restart, no gap in the music.
-- [ ] Decide for takes: `metronome.rs` has the same limitation (fixed `clicks` list and `ClickOptions`) and the checkbox is disabled while recording. Probably make it live there too (drummers drop the click once they are comfortable); otherwise document that it is fixed per take.
-- [ ] Decide whether muting also mutes the count-in. Suggestion: no, the count-in is the start signal.
-- [ ] Make the click volume and the Listen volume live through the same mechanism.
-- [ ] Test the gating with a fake output, and check the real thing with the per-application audio meter (see Testing).
+### Still open
 
-### 2. Make the playback sounds adjustable, and fix the cymbals
+- [ ] **Listen to the new cymbals and the rest of the kit.** Nobody has heard them; only their spectra are tested (centroid, share below 2 kHz, lone low partials). Tune `Cymbal` parameters in `synth.rs` by ear, then adjust the guard bands if needed. The hi-hats are untouched and still very bright (spectral centroid about 13 kHz).
+- [ ] **Ask the user** whether per-instrument volume plus WAV files is enough, or whether several synthesised kits (brighter, darker, …) are wanted.
+- [ ] Try with a real mouse and wheel: the Layout popup, the mixer's mute/solo/play buttons, the wheel on sliders. Verified only through the keyboard, config keys, and headless egui tests.
+- [ ] The WAV override and the hi-hat choke have unit tests but were never heard.
+- [ ] The numbering mismatch is still there: bars drawn in the score show their printed number (repeated after unrolling repeats), while the Measures sliders and *start a row at bar* use the position. The Layout popup shows the printed number of the chosen bar; consider showing both on the bars, or making the sliders use printed numbers.
+- [ ] Ideas from the first list, not done: tempo ramp (+x BPM every n bars) for Listen and the metronome, accent patterns and tap tempo for the free metronome, remembering the layout per score, a Listen without count-in setting of its own.
+- [ ] The click is implemented twice (a sine blip in `metronome::click_audio`, used by takes and by the player); `Metronome` (takes, calibration) and `Player` (Listen, metronome tab) are two threads with separate loops. Merging them would remove the duplication but touches the take timing, which works.
+- [ ] Shortcuts (`R`, `L`, `K`, `M`, keyboard pads) are ignored while a widget has keyboard focus (after Tab); `Esc` clears it.
 
-- [ ] **Cymbals sound odd by default** (reported by the user): crash 1/2, china, splash and ride (`synth.rs::cymbal`, the `Lane::Ride` and `Lane::RideBell` arms). Guess: they are built from sine partials between 410 Hz and about 1.8 kHz, which rings like a gong or bell. Real cymbals are a dense, inharmonic wash mostly above 2 kHz with a short stick transient. Try many more high partials or ring-modulated pairs (3–12 kHz), band-passed noise, a slower decay for the wash. Keep each sample at 2 s or less (the player's `TAIL` is 2.2 s). Add objective guards in the `synth.rs` tests (spectral centroid above some kHz, no strong tonal peak under 2 kHz) so a regression to a bell fails; the final judgement is by ear.
-- [ ] **Audition buttons**: on Settings → Sound, one button per instrument that plays it without a score. Needed to tune sounds by ear.
-- [ ] **Per-instrument volume and mute/solo** (for example hear only kick and snare, or mute the hi-hat). Persist in the config (one key per lane, like `map.<Lane>`), apply live through the control block.
-- [ ] **User sounds**: an optional folder of WAV files named after the instruments (`Lane::name()`: `Kick.wav`, `HiHatClosed.wav`, …), falling back to the synthesised sample for any lane without a file. rodio is built with `default-features = false`, so this needs its `wav` feature (hound) or a direct `hound` dependency. Convert to mono at `synth::SAMPLE_RATE`, normalise, cap the length. Decide where the folder lives (suggestion: next to `config.txt`, `%APPDATA%\DrumTutor\sounds\`) and how it is reloaded.
-- [ ] Ask the user whether per-instrument gain plus WAV override is enough, or whether several synthesised kits (brighter, darker, …) are wanted.
-- [ ] While in `synth.rs`/`playback.rs`: an open hi-hat is not choked by the next closed or pedal hit (known gap), so cut the open voice when one arrives.
-
-### 3. Audio output setting
-
-- [ ] Let the user choose the sound output device used for everything that goes through the sound card: the click, Listen and the calibration clicks. `metronome::open_audio` calls `rodio::OutputStream::try_default()` today. List devices through `rodio::cpal` (the whole crate is re-exported, so no new dependency: `cpal::traits::HostTrait::output_devices`, `DeviceTrait::name`) and open one with `OutputStream::try_from_device` (rodio 0.19).
-- [ ] UI on Settings → Sound: an "Output device" combo box ("System default" first) with a refresh button, like the MIDI ports. Store the device name in the config (`audio_output = …`, empty = default).
-- [ ] If the saved device is missing or cannot be opened, fall back to the default and say so in the error bar. `Player::take_errors` exists; `Metronome` has no error channel yet and needs one.
-- [ ] Edge cases: devices with the same name, devices that disappear while the app runs, sample-rate mismatch (rodio resamples), Bluetooth latency (mention it in the Latency section of the README; calibration then matters). Consider showing the chosen device in the status line.
-- [ ] Keep `--no-default-features` building; without the `audio` feature the setting is hidden.
-- [ ] Optional: an output buffer size choice, since it changes latency and therefore calibration.
-
-### 4. Metronome only: a click track
-
-- [ ] A way to play just the click. Suggestion: a *Notes* toggle next to *Click* that stays live during Listen, so click only = notes off (nearly free once item 1's control block exists). A separate button is the alternative.
-- [ ] A click track should not end after the selected range. Add a *loop* option (repeat the selected measures until stopped). `Player` plays a finite list and then stops, so generate the cues one pass at a time or reschedule at the end of each pass.
-- [ ] Use the score's tempo map, time-signature changes, accented first beat and count-in; `Score::click_track` already builds that.
-- [ ] A free metronome that needs no score (also from the welcome panel): BPM, beats per bar, optionally subdivisions (8ths, 16ths) and an accent pattern.
-- [ ] Show the beat while it runs (a bar/beat counter or a flashing indicator), and let the tempo change while running; restarting at the new tempo is acceptable as a first version.
-- [ ] Later: a tempo ramp (+x BPM every n bars), already in the ideas list.
-
-### 5. Configurable score layout: bars per row, and an alignment bar
-
-Today `render.rs::layout(score, width, zoom)` fills each row greedily with as many bars as fit the window width at the current zoom (`ppq = 56 * zoom`), then stretches the row to the full width (a last row shorter than 75 % of the width keeps its natural width). So the number of bars per row changes with the window size and the zoom, and the user cannot choose where a row breaks. Zoom only scales the horizontal spacing; the staff height does not change.
-
-- [ ] **Bars per row**: *Auto* (today's behaviour) or a fixed number (1 to 8, perhaps more). With a fixed number every row has exactly that many bars and fills the row width. Give the shorter last row the same bar width as the rows above it, so barlines line up vertically from row to row.
-- [ ] **Align from bar**: the bar at which a row must start. Rows then start at that bar and every N bars after it, and the bars before it fill the earlier rows backwards, so the first row may be shorter. Example with N = 4 and align at 2: `[1] [2–5] [6–9] …`, which is what a pickup bar or a section that starts mid-row needs. Off by default. Define what it does in *Auto* mode too (suggestion: the alignment bar always starts a row, and the greedy fill continues from there).
-- [ ] **Decide the numbering.** `Measure.number` is the printed number from the file: a string (a pickup is often "0", others can be non-numeric) and it **repeats once repeats are expanded**, because `musicxml.rs` copies `rm.number` into every unrolled bar. The Measures sliders and `range_from`/`range_to`, on the other hand, use the 1-based position in the unrolled score, so the two can already disagree. Recommendation: align by the 1-based position, like the sliders, and show the printed number next to it (hover text or label). Either way, say in the README which one the setting means, and consider fixing the existing mismatch at the same time.
-- [ ] **A fixed count may not fit** the width at the current zoom. Decide: with a fixed count the bars simply fill the row and zoom no longer matters (simplest), with a minimum bar width below which the app falls back to fewer bars and says so.
-- [ ] **UI**: next to *zoom* on the Score tab, a small "Layout" popup with bars per row (Auto, 1…8) and the alignment bar, built from `widgets::slider` (wheel-aware, caption first). Persist it in the config, for example `bars_per_row` (0 = Auto) and `layout_align_bar` (0 = off). Later, optionally remember it per score (keyed by file path), since phrasing differs between pieces.
-- [ ] **Plumbing**: new fields on `render::ScoreView` and parameters of `layout()`; the layout is recomputed every frame, so nothing needs caching. Click-to-select, the range highlight and the follow-scroll all read `Layout::systems` and `Layout::measures`, so they should keep working unchanged.
-- [ ] **Tests**: `layout()` is a pure function with no tests today. Cover a fixed count, the alignment bar (N = 1, align at bar 1, align beyond the last bar, a score shorter than one row), bars of different lengths (3/4 among 4/4) and the width of the last row.
-
-### 6. Pick a better name (a decision first)
+### Pick a better name (a decision first)
 
 The user wants a more badass name than "Drum Tutor". A brainstorm in three flavours (silly, Japanese, word-play) is stored in [`docs/name-ideas.md`](docs/name-ideas.md), with the crates.io availability of each name, a shortlist (Raijin, Oni-Sensei, Ride or Die) and a rename checklist. Nothing is decided.
 
@@ -112,10 +83,13 @@ score.rs       Score, Measure, ScoreNote, TempoMap (q <-> seconds)
 drums.rs       Lane enum, GM + Roland note maps, staff positions, name heuristics
 analysis.rs    expected_notes(), analyze() -> Report (matching + metrics + feedback)
 midi.rs        midir input (callback -> Arc<Mutex<Vec<RawEvent>>>) and output
-metronome.rs   Click thread: precise sleep+spin; audio (feature "audio") and/or MIDI
-playback.rs    "Listen": Player thread plays drum cues + click to the sound card and/or MIDI out
-synth.rs       Software drum kit: one synthesised mono sample per Lane (no GUI/MIDI deps)
+metronome.rs   Click thread for takes and calibration: precise sleep+spin; audio (feature "audio") and/or MIDI; also opens the sound output device (`open_audio`, `output_devices`)
+playback.rs    "Listen" and the free metronome: Player thread plays cues to a `Sink` (sound card and/or MIDI out); `dispatch` decides what sounds
+control.rs     `Control`: atomics shared with the sound threads (click, notes, loop, volumes, per-instrument gain), `ClickLevel`, `ErrorLog`
+synth.rs       Software drum kit: one synthesised mono sample per Lane, WAV override loader (no GUI/MIDI deps)
 widgets.rs     UI helpers: `slider()` (caption first, mouse wheel), `roomy()` (bigger Score-tab style)
+app/metro.rs   The Metronome tab (free click track)
+app/mixer.rs   The instrument mixer on Settings -> Sound
 config.rs      key = value settings file, auto-saved when Config changes
 ```
 
@@ -139,7 +113,7 @@ config.rs      key = value settings file, auto-saved when Config changes
   - The controls above the score are wrapped in `ui.scope` + `widgets::roomy` (scoped style, 1.25x text, 30 px rows, 150 px sliders). Settings use the default size, except the page tabs.
   - Settings pages are `SettingsPage` (session-only state, each page has its own scroll position). A new setting goes on the page it belongs to and in `config.rs` (parse, write, default, round-trip test).
   - Recent scores live in `Config::recent_files` (absolute paths, newest first, at most `MAX_RECENT`), written as repeated `recent = …` lines. `open_file` records a score only after it loaded.
-  - Shortcuts (`R`, `L`, keyboard pads) are suppressed while egui has a focused widget, see the Listen notes below.
+  - Shortcuts (`R`, `L`, `K`, `M`, keyboard pads) are suppressed while egui has a focused widget, see the Listen notes below.
 - **Listen** (`app.rs::start_listen`, `playback.rs`):
   - Takes and listening share `DrumApp::plan_run()` (range, tempo, zero = now + 0.5 s lead + count-in, click track from `Score::click_track`), so what is heard is what a take asks for.
   - The notes are `analysis::expected_notes` mapped to `playback::Cue`s; velocity comes from `playback::velocity_for` (ghost 45, grace 70, normal 90, accent 120).
@@ -161,12 +135,13 @@ config.rs      key = value settings file, auto-saved when Config changes
 - **Mouse-wheel tuning was not tried with a physical wheel.** The logic is covered by headless egui tests that feed `Event::MouseWheel` (including that a `ScrollArea` around the slider does not scroll), which is the event egui-winit produces. The window itself can't be driven by posted mouse messages (they never reach egui), so end-to-end mouse checks need real input.
 - **Recent scores** are not checked for existence until they are drawn (a missing file is greyed out); the list is not trimmed when files disappear.
 - **Listen gaps.**
-  - The built-in kit is deliberately simple (synthesised, not sampled); it is for hearing rhythm and instrument, not for sounding like a studio kit. An open hi-hat is not choked by the next closed or pedal hit.
+  - The built-in kit is deliberately simple (synthesised, not sampled); it is for hearing rhythm and instrument, not for sounding like a studio kit. Unheard so far, see the todo list; users can replace any instrument with a WAV file.
   - The playhead follows the clock, so it runs ahead of the sound by the output device's buffer.
   - Notes already graded in the last take stay coloured while listening.
-  - Playback uses the take's count-in and click settings; there is no separate "listen without count-in".
-  - The click still goes through `metronome.rs` for takes but through `playback.rs` for listening, so click behaviour is implemented twice (a sine blip and a MIDI note).
-- **Possible features:** loop the range automatically with a score per pass; tempo ramp (+5 % per clean pass); loop Listen; separate early/late tolerance; drummer-friendly bigger "count-in" overlay; sampled drum sounds.
+  - Playback uses the take's count-in setting; there is no separate "listen without count-in".
+  - Restarting after a change of range or tempo opens the sound device again, so there is half a second of silence after the change settles.
+  - The click is played by two threads with two loops (`Metronome` for takes, `Player` for the rest).
+- **Possible features:** automatic loop with a score per pass for takes; tempo ramp (+5 % per clean pass); separate early/late tolerance; drummer-friendly bigger "count-in" overlay; sampled drum kits.
 - **Dependency versions are deliberately old** (eframe 0.29, rodio 0.19, zip 2) because those APIs were known. Upgrading eframe to 0.3x needs at least: `rect_stroke` gained a `StrokeKind`, `Rounding` became `CornerRadius`, `ComboBox::from_label` is unchanged.
 
 ## Testing
@@ -184,7 +159,11 @@ config.rs      key = value settings file, auto-saved when Config changes
   - the drum kit (`synth.rs`: every lane renders a finite, bounded, decaying, deterministic sample) and the cue list;
   - the sample score mixed offline the way the player does it: a note is audible at every onset and the mix does not clip;
   - the slider helper in a headless egui context (`widgets.rs`): wheel steps, clamping, integer and fractional ranges, disabled sliders, and that the page behind a slider does not scroll;
-  - the recent-files list (order, duplicates, limit, round-trip) and the path shortening used by the welcome panel.
+  - the recent-files list (order, duplicates, limit, round-trip) and the path shortening used by the welcome panel;
+  - the playback core against a fake output (`playback.rs`): the click switch (count-in unaffected), notes off, per-instrument gain and mute, output routing, passes and looping, stop, late cues; the metronome bar (`metronome_cues`) and `Control`;
+  - the score layout (`render.rs`): fixed bars per row, the alignment bar, zoom independence, mixed bar lengths, too narrow a window, degenerate scores, every bar in exactly one row;
+  - the synthesised kit (`synth.rs`): bounded, decaying, deterministic samples, the spectral guard for the cymbals, the WAV loader (bit depths, channels, resampling, bad files) and the kit's fallback to the built-in sound;
+  - mixer settings (`Config::effective_gain`, clamping and defaults of the new keys) and the listing of sound outputs.
 - Listening has no automated test of the real outputs. To check them on Windows, play the sample with `cargo run --release` and read the per-application peak meter of the default output device (Core Audio `IAudioSessionManager2` → `IAudioMeterInformation`, e.g. from PowerShell with C# COM interop): the `drum-tutor` session must stay silent until about 0.5 s after pressing `L` and be silent again after stopping. The device-wide meter also hears every other application, so use the per-application one.
 - `examples/basic_rock_beat.musicxml` is generated in MuseScore style (4 bars, 100 BPM, `midi-unpitched` instruments, accents, a tom fill). Tests depend on its exact contents. If you edit it, update `musicxml::tests::parses_sample`.
 - There are no UI tests. Add real-world exports (MuseScore 4, Guitar Pro 8, Sibelius) to `examples/` as you find edge cases.

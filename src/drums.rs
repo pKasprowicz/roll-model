@@ -138,6 +138,17 @@ impl Lane {
         matches!(self, Lane::Kick | Lane::HiHatPedal)
     }
 
+    /// A new hit on `self` cuts off a still-ringing hit on `other`: closing
+    /// the hi-hat (with the stick or the pedal) ends an open hi-hat.
+    pub fn chokes(self, other: Lane) -> bool {
+        matches!((self, other), (Lane::HiHatClosed | Lane::HiHatPedal, Lane::HiHatOpen))
+    }
+
+    /// Whether some other instrument can cut this one off.
+    pub fn can_be_choked(self) -> bool {
+        Lane::ALL.iter().any(|l| l.chokes(self))
+    }
+
     /// General MIDI percussion key for this lane. It is also the Roland
     /// factory note of the pad's main zone.
     pub fn standard_note(self) -> Option<u8> {
@@ -418,6 +429,17 @@ mod tests {
         assert_eq!(lane_from_name("Ride Bell"), Some(Lane::RideBell));
         assert_eq!(lane_from_name("Crash Cymbal 2"), Some(Lane::Crash2));
         assert_eq!(lane_from_name("Tambourine"), None);
+    }
+
+    #[test]
+    fn closing_the_hi_hat_chokes_the_open_one() {
+        assert!(Lane::HiHatClosed.chokes(Lane::HiHatOpen));
+        assert!(Lane::HiHatPedal.chokes(Lane::HiHatOpen));
+        assert!(!Lane::HiHatOpen.chokes(Lane::HiHatOpen));
+        assert!(!Lane::HiHatOpen.chokes(Lane::HiHatClosed));
+        assert!(!Lane::Crash1.chokes(Lane::HiHatOpen));
+        assert!(Lane::HiHatOpen.can_be_choked());
+        assert!(Lane::ALL.iter().filter(|l| l.can_be_choked()).count() == 1);
     }
 
     #[test]

@@ -38,8 +38,8 @@ Run the unit tests (XML parser, MusicXML import, repeats, tempo maps, scoring): 
 
 1. **Open MusicXML…** (or drop a file on the window). Export the drum part from MuseScore, Guitar Pro, Sibelius, Dorico, etc. When no score is open, the welcome panel lists the scores you opened before (the last ten); click one to open it, `×` removes it from the list.
 2. Pick the measures to practise (sliders, or click a measure to start there and shift+click to set the end), and the tempo (25–150 %). Every slider also follows the mouse wheel: hover it and scroll to change the value one step per notch.
-3. Press **⏵ Listen** (or `L`) to hear the selected measures at the chosen tempo, with a moving playhead. Press it again, or `Esc`, to stop.
-4. Press **⏺ Record** (or `R`). After a count-in (0–2 bars, with click) play along. The take stops by itself at the end of the range, or press `Esc`.
+3. Press **⏵ Listen** (or `L`) to hear the selected measures at the chosen tempo, with a moving playhead and the current bar and beat next to the button. Press it again, or `Esc`, to stop. See "Listening to the score" below.
+4. Press **⏺ Record** (or `R`). After a count-in (0–2 bars, with click) play along. The take stops by itself at the end of the range, or press `Esc`. The click can be switched off and on while you play (`K`).
 5. Notes are coloured as you play: green = perfect, light green = good, amber = OK, orange = right time but wrong pad/zone (e.g. open instead of closed hi-hat), red = missed (score) or extra (your staff). Velocity is shown as bars under your staff; hover a hit for its exact offset.
 6. The **Results** tab has the full report, feedback, timing histogram, per-instrument table, session history and CSV export.
 
@@ -54,6 +54,18 @@ No kit at hand? Enable **Settings → General → Computer keyboard plays pads**
 - Both outputs can be on at the same time. The click follows the Metronome settings.
 - The playhead follows the clock, not the sound: a sound card with a large buffer plays a few tens of milliseconds after it.
 
+Next to the tempo on the Score tab there are three switches that work **while it plays**:
+
+- **click (`K`)**: the metronome on or off, in Listen and in a take. The count-in always sounds.
+- **notes**: the drums of the score on or off. With notes off, Listen is a **click track** of the selected measures.
+- **loop**: repeat the selected measures until you stop it. Unticking it lets the current round finish. Changing the measures or the tempo while it plays restarts it after a moment.
+
+**Instruments.** On **Settings → Sound → Instruments** every instrument has a volume, a mute and a solo (solo is not saved), live while Listen plays, and a ▶ button that plays it on its own. To use your own sound, put a WAV file named after the instrument in the `sounds` folder next to the settings file (the page shows the path), for example `Kick.wav`, `Snare.wav`, `HiHatClosed.wav`, `Crash1.wav`, `Ride.wav`. Any instrument without a file keeps its built-in sound, and a file that cannot be read is reported and replaced by the built-in sound. An open hi-hat is cut off when the hi-hat is closed.
+
+## Metronome
+
+The **Metronome** tab is a click track that needs no score: tempo, beats per bar, subdivision (eighths, triplets, sixteenths) and volume, with one light per beat. `M` starts and stops it. The first beat of each bar is accented and subdivisions are softer. Changes while it runs take effect after a moment. It plays through the click output chosen on **Settings → Sound** (the sound card and/or MIDI).
+
 ## Settings
 
 The Settings tab has four pages:
@@ -62,10 +74,14 @@ The Settings tab has four pages:
 |---|---|
 | **MIDI input** | Input port, a monitor of incoming notes, the pad-to-instrument mapping (with *Learn*) |
 | **Timing** | Latency compensation and calibration, the perfect/good/hit-window tolerances |
-| **Sound** | MIDI output port, the metronome click, Listen (built-in kit and MIDI) |
+| **Sound** | Audio output device, MIDI output port, the metronome click, Listen (built-in kit and MIDI), the instrument mixer |
 | **General** | Repeat expansion, the recent-scores list, keyboard test input |
 
 Settings are saved automatically. Sliders show their caption in front of them, and the mouse wheel tunes any slider under the pointer.
+
+**Audio output device.** By default sound goes to the system's default output. Pick another one on the Sound page (for example a USB interface) and the click, Listen and the calibration clicks follow it. If the chosen device is not connected, the default is used and a message says so.
+
+**Score layout.** The **Layout** button on the Score tab sets *bars per row* (auto fits as many as the width allows) and *start a row at bar*. With a fixed number every bar has the same width, so barlines line up from row to row, and the first row may be shorter: with 4 bars per row and a row starting at bar 2 you get `[1] [2–5] [6–9] …`. If that many bars do not fit the window, fewer are shown and a note says so. The bar number is the position in the score as shown (the same numbering as the Measures sliders); with repeats expanded the numbers printed above the bars can repeat, and the button shows the printed number of the chosen bar.
 
 ## Latency
 
@@ -100,9 +116,10 @@ What counts as the public interface: the settings file keys, the CSV export colu
 | `src/analysis.rs` | Matching hits to notes and all metrics |
 | `src/midi.rs` | MIDI input capture and output (midir) |
 | `src/metronome.rs` | Count-in/metronome thread (audio and/or MIDI click) |
-| `src/playback.rs` | "Listen": plays the score and click on one thread (sound card and/or MIDI) |
-| `src/synth.rs` | The built-in software drum kit (one synthesised sample per instrument) |
+| `src/playback.rs` | "Listen" and the free metronome: plays notes and clicks on one thread (sound card and/or MIDI) |
+| `src/control.rs` | Settings shared with the sound threads so they can change while playing (click, notes, loop, volumes) |
+| `src/synth.rs` | The built-in software drum kit (one synthesised sample per instrument) and the WAV override loader |
 | `src/render.rs` | Score and played-notes staves |
-| `src/app.rs` | UI: welcome panel, Score, Results and Settings tabs |
+| `src/app.rs` | UI: welcome panel, Score, Results and Settings tabs; `src/app/metro.rs` is the Metronome tab, `src/app/mixer.rs` the instrument mixer |
 | `src/widgets.rs` | Shared UI helpers: the wheel-aware slider and the larger Score-tab style |
 | `src/config.rs` | Settings file (`%APPDATA%\DrumTutor\config.txt` on Windows) |

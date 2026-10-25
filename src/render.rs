@@ -50,11 +50,24 @@ pub struct ScoreView<'a> {
     pub range: (usize, usize),
     pub zoom: f32,
     pub follow: bool,
+    pub layout: LayoutOpts,
 }
 
 pub struct ViewOutput {
     /// Clicked measure and whether shift was held.
     pub clicked_measure: Option<(usize, bool)>,
+    /// A fixed number of bars per row was asked for but does not fit the
+    /// width: this many are shown per row instead.
+    pub fit_bars: Option<usize>,
+}
+
+/// How the bars are split into rows.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct LayoutOpts {
+    /// Bars per row; 0 = as many as fit the width at the current zoom.
+    pub bars_per_row: usize,
+    /// Position (1-based, in the score as shown) of a bar that must start a row; 0 = none.
+    pub align_bar: usize,
 }
 
 pub const GREEN: Color32 = Color32::from_rgb(0x2e, 0xb8, 0x5c);
@@ -96,32 +109,101 @@ struct MeasurePos {
 struct Layout {
     systems: Vec<(usize, usize)>, // measure index range [a, b)
     measures: Vec<MeasurePos>,
+    /// See `ViewOutput::fit_bars`.
+    fit_bars: Option<usize>,
 }
 
-fn layout(score: &Score, width: f32, zoom: f32) -> Layout {
-    let ppq = 56.0 * zoom;
-    let line_w = (width - LEFT - 8.0).max(200.0);
-    let mut systems = Vec::new();
-    let mut start = 0usize;
-    let mut w = 0.0f32;
-    for (i, m) in score.measures.iter().enumerate() {
-        let mw = m.len_q as f32 * ppq + 2.0 * MEASURE_PAD;
-        if i > start && w + mw > line_w {
-            systems.push((start, i));
-            start = i;
-            w = 0.0;
+/// Narrowest a quarter note is drawn when a fixed number of bars per row is asked for.
+const MIN_PPQ: f32 = 28.0;
+
+/// First bar of every row when each row holds `per_row` bars: rows start at
+/// the `align` bar (0-based) and every `per_row` bars from it, and the bars
+/// before it fill the earlier rows, so the first row may be shorter.
+fn row_starts(n: usize, per_row: usize, align: Option<usize>) -> Vec<usize> {
+    let per_row = per_row.max(1);
+    let anchor = align.filter(|a| *a < n).unwrap_or(0);
+    let first = anchor % per_row;
+    let mut starts = vec![0];
+    let mut s = if first == 0 { per_row } else { first };
+    while s < n {
+        starts.push(s);
+        s += per_row;
+    }
+    starts
+}
+
+/// The bar length (in quarters) most bars of the score have; a pickup bar or
+/// a single odd bar does not decide how wide a bar is drawn.
+fn typical_len_q(score: &Score) -> f64 {
+    let mut counts: Vec<(f64, usize)> = Vec::new();
+    for m in &score.measures {
+        match counts.iter_mut().find(|(len, _)| (*len - m.len_q).abs() < 1e-6) {
+            Some(c) => c.1 += 1,
+            None => counts.push((m.len_q, 1)),
         }
-        w += mw;
     }
-    if start < score.measures.len() {
-        systems.push((start, score.measures.len()));
+    counts
+        .into_iter()
+        .max_by(|a, b| a.1.cmp(&b.1).then(a.0.total_cmp(&b.0)))
+        .map(|c| c.0)
+        .unwrap_or(4.0)
+        .max(0.25)
+}
+
+fn layout(score: &Score, width: f32, zoom: f32, opts: LayoutOpts) -> Layout {
+    let n = score.measures.len();
+    let line_w = (width - LEFT - 8.0).max(200.0);
+    let align = (opts.align_bar >= 1 && opts.align_bar <= n).then(|| opts.align_bar - 1);
+    let fixed = opts.bars_per_row > 0;
+    let mut fit_bars = None;
+    let mut systems: Vec<(usize, usize)> = Vec::new();
+    let ppq;
+    if n == 0 {
+        ppq = 56.0 * zoom;
+    } else if fixed {
+        // Every bar is drawn at the same width, so barlines line up from row to row.
+        let l = typical_len_q(score) as f32;
+        let per_quarter = |k: usize| (line_w / k as f32 - 2.0 * MEASURE_PAD) / l;
+        let mut k = opts.bars_per_row;
+        while k > 1 && per_quarter(k) < MIN_PPQ {
+            k -= 1;
+        }
+        if k < opts.bars_per_row {
+            fit_bars = Some(k);
+        }
+        ppq = per_quarter(k).max(4.0);
+        let starts = row_starts(n, k, align);
+        for (i, s) in starts.iter().enumerate() {
+            systems.push((*s, starts.get(i + 1).copied().unwrap_or(n)));
+        }
+    } else {
+        ppq = 56.0 * zoom;
+        let mut start = 0usize;
+        let mut w = 0.0f32;
+        for (i, m) in score.measures.iter().enumerate() {
+            let mw = m.len_q as f32 * ppq + 2.0 * MEASURE_PAD;
+            if i > start && (w + mw > line_w || align == Some(i)) {
+                systems.push((start, i));
+                start = i;
+                w = 0.0;
+            }
+            w += mw;
+        }
+        systems.push((start, n));
     }
-    let mut measures = Vec::with_capacity(score.measures.len());
+    let mut measures = Vec::with_capacity(n);
     let last = systems.len().saturating_sub(1);
     for (si, (a, b)) in systems.iter().enumerate() {
         let natural: f32 = (*a..*b).map(|i| score.measures[i].len_q as f32 * ppq + 2.0 * MEASURE_PAD).sum();
-        // Justify full lines; leave a short last line at natural width.
-        let stretch = if si < last || natural > 0.75 * line_w { line_w / natural } else { 1.0 };
+        let stretch = if fixed {
+            // Same width as the other rows; only squeeze a row that is too wide.
+            if natural > line_w { line_w / natural } else { 1.0 }
+        } else if si < last || natural > 0.75 * line_w {
+            // Justify full lines; leave a short last line at natural width.
+            line_w / natural
+        } else {
+            1.0
+        };
         let mut x = LEFT;
         for i in *a..*b {
             let m = &score.measures[i];
@@ -130,7 +212,7 @@ fn layout(score: &Score, width: f32, zoom: f32) -> Layout {
             x += mw;
         }
     }
-    Layout { systems, measures }
+    Layout { systems, measures, fit_bars }
 }
 
 impl Layout {
@@ -213,13 +295,14 @@ fn draw_clef(p: &Painter, x: f32, top: f32, color: Color32) {
 
 pub fn show(ui: &mut Ui, view: &ScoreView) -> ViewOutput {
     let score = view.score;
-    let mut out = ViewOutput { clicked_measure: None };
+    let mut out = ViewOutput { clicked_measure: None, fit_bars: None };
     if score.measures.is_empty() {
         ui.label("The score has no measures.");
         return out;
     }
     let width = ui.available_width().max(420.0);
-    let lay = layout(score, width, view.zoom);
+    let lay = layout(score, width, view.zoom, view.layout);
+    out.fit_bars = lay.fit_bars;
     let total_h = lay.systems.len() as f32 * SYS_H + 10.0;
     let (response, painter) = ui.allocate_painter(vec2(width, total_h), Sense::click());
     let origin = response.rect.min;
@@ -426,4 +509,177 @@ pub fn show(ui: &mut Ui, view: &ScoreView) -> ViewOutput {
         }
     }
     out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::score::Measure;
+
+    /// A score whose bars have the given lengths in quarter notes.
+    fn score_of(lens: &[f64]) -> Score {
+        let mut q = 0.0;
+        let measures = lens
+            .iter()
+            .enumerate()
+            .map(|(i, len)| {
+                let m = Measure { number: (i + 1).to_string(), start_q: q, len_q: *len, beats: *len as u32, beat_type: 4 };
+                q += len;
+                m
+            })
+            .collect();
+        Score { measures, ..Default::default() }
+    }
+
+    const W: f32 = 1300.0;
+    const FIXED: fn(usize, usize) -> LayoutOpts = |bars_per_row, align_bar| LayoutOpts { bars_per_row, align_bar };
+
+    fn width_of(lay: &Layout, bar: usize) -> f32 {
+        lay.measures[bar].w
+    }
+
+    #[test]
+    fn row_starts_follow_the_alignment_bar() {
+        assert_eq!(row_starts(10, 4, None), [0, 4, 8]);
+        assert_eq!(row_starts(10, 4, Some(0)), [0, 4, 8]);
+        // Align at the second bar: a one-bar first row, then rows of four from there.
+        assert_eq!(row_starts(10, 4, Some(1)), [0, 1, 5, 9]);
+        // The same grid whichever bar of it is named, also a later one.
+        assert_eq!(row_starts(10, 4, Some(5)), [0, 1, 5, 9]);
+        assert_eq!(row_starts(10, 4, Some(2)), [0, 2, 6]);
+        assert_eq!(row_starts(10, 1, Some(3)), (0..10).collect::<Vec<_>>(), "one bar per row");
+        assert_eq!(row_starts(6, 4, Some(9)), [0, 4], "an alignment bar past the end is ignored");
+        assert_eq!(row_starts(3, 4, None), [0], "a score shorter than a row");
+        assert_eq!(row_starts(3, 4, Some(2)), [0, 2]);
+        assert_eq!(row_starts(5, 0, None), (0..5).collect::<Vec<_>>(), "zero is treated as one");
+    }
+
+    #[test]
+    fn fixed_bars_per_row_fill_the_width_and_line_up() {
+        let score = score_of(&[4.0; 10]);
+        let lay = layout(&score, W, 1.0, FIXED(4, 0));
+        assert_eq!(lay.systems, [(0, 4), (4, 8), (8, 10)]);
+        assert_eq!(lay.fit_bars, None);
+        let line_w = W - LEFT - 8.0;
+        let row_end = lay.measures[3].x0 + lay.measures[3].w;
+        assert!((row_end - (LEFT + line_w)).abs() < 0.01, "a full row fills the line: {row_end}");
+        // The short last row has the same bar width and the same barlines as the first.
+        assert!((width_of(&lay, 8) - width_of(&lay, 0)).abs() < 0.01);
+        assert!((lay.measures[8].x0 - lay.measures[0].x0).abs() < 0.01);
+        assert!((lay.measures[9].x0 - lay.measures[1].x0).abs() < 0.01);
+        // Window size changes the width of the bars, not how many there are per row.
+        let narrow = layout(&score, 900.0, 1.0, FIXED(4, 0));
+        assert_eq!(narrow.systems, lay.systems);
+        assert!(width_of(&narrow, 0) < width_of(&lay, 0));
+    }
+
+    #[test]
+    fn zoom_does_not_matter_with_a_fixed_count() {
+        let score = score_of(&[4.0; 8]);
+        let a = layout(&score, W, 0.5, FIXED(4, 0));
+        let b = layout(&score, W, 3.0, FIXED(4, 0));
+        assert_eq!(a.systems, b.systems);
+        assert!((width_of(&a, 0) - width_of(&b, 0)).abs() < 0.01);
+    }
+
+    #[test]
+    fn the_alignment_bar_starts_a_row() {
+        let score = score_of(&[4.0; 10]);
+        let lay = layout(&score, W, 1.0, FIXED(4, 2)); // align at bar 2
+        assert_eq!(lay.systems, [(0, 1), (1, 5), (5, 9), (9, 10)]);
+        // The lone first bar is not stretched across the row.
+        assert!((width_of(&lay, 0) - width_of(&lay, 1)).abs() < 0.01);
+        // Aligning at bar 1 is the same as no alignment.
+        assert_eq!(layout(&score, W, 1.0, FIXED(4, 1)).systems, layout(&score, W, 1.0, FIXED(4, 0)).systems);
+        // Past the last bar nothing changes either.
+        assert_eq!(layout(&score, W, 1.0, FIXED(4, 11)).systems, layout(&score, W, 1.0, FIXED(4, 0)).systems);
+        // One bar per row ignores the alignment.
+        assert_eq!(layout(&score, W, 1.0, FIXED(1, 3)).systems.len(), 10);
+    }
+
+    #[test]
+    fn automatic_rows_still_break_at_the_alignment_bar() {
+        // 12 bars at zoom 1 fit 4 per row in this width (each is 4 * 56 + 24 = 248 px).
+        let score = score_of(&[4.0; 12]);
+        let auto = layout(&score, 1100.0, 1.0, FIXED(0, 0));
+        assert_eq!(auto.systems, [(0, 4), (4, 8), (8, 12)]);
+        let aligned = layout(&score, 1100.0, 1.0, FIXED(0, 3));
+        assert_eq!(aligned.systems, [(0, 2), (2, 6), (6, 10), (10, 12)]);
+        // Rows are still justified to the full width (except a short last one).
+        let first_end = aligned.measures[5].x0 + aligned.measures[5].w;
+        assert!((first_end - (LEFT + 1100.0 - LEFT - 8.0)).abs() < 0.01);
+    }
+
+    #[test]
+    fn a_short_last_row_keeps_its_natural_width_in_automatic_mode() {
+        let score = score_of(&[4.0; 5]);
+        let lay = layout(&score, 1100.0, 1.0, FIXED(0, 0));
+        assert_eq!(lay.systems, [(0, 4), (4, 5)]);
+        assert!((width_of(&lay, 4) - 248.0).abs() < 0.01, "{}", width_of(&lay, 4));
+    }
+
+    #[test]
+    fn bars_of_other_lengths_keep_their_proportions() {
+        // One 3/4 bar among 4/4 bars: it is drawn narrower, and its row is not stretched to fit.
+        let score = score_of(&[4.0, 3.0, 4.0, 4.0, 4.0, 4.0, 4.0, 4.0]);
+        let lay = layout(&score, W, 1.0, FIXED(4, 0));
+        assert_eq!(lay.systems, [(0, 4), (4, 8)]);
+        assert!(width_of(&lay, 1) < width_of(&lay, 0));
+        let first_row: f32 = (0..4).map(|i| width_of(&lay, i)).sum();
+        let second_row: f32 = (4..8).map(|i| width_of(&lay, i)).sum();
+        assert!(first_row < second_row, "{first_row} vs {second_row}");
+        // A pickup bar does not make the typical bar short.
+        assert_eq!(typical_len_q(&score_of(&[1.0, 4.0, 4.0, 4.0])), 4.0);
+        // A row that would be too wide because of a long bar is squeezed to the line.
+        let long = score_of(&[4.0, 4.0, 4.0, 8.0, 4.0, 4.0, 4.0, 4.0]);
+        let lay = layout(&long, W, 1.0, FIXED(4, 0));
+        let row: f32 = (0..4).map(|i| width_of(&lay, i)).sum();
+        assert!((row - (W - LEFT - 8.0)).abs() < 0.01, "{row}");
+    }
+
+    #[test]
+    fn too_many_bars_for_the_width_fall_back_to_fewer_and_say_so() {
+        let score = score_of(&[4.0; 16]);
+        let lay = layout(&score, 700.0, 1.0, FIXED(8, 0));
+        let fit = lay.fit_bars.expect("8 bars do not fit 700 px");
+        assert!(fit < 8 && fit >= 1);
+        assert!(lay.systems.iter().all(|(a, b)| b - a <= fit));
+        // Every quarter note keeps at least the minimum width.
+        assert!(lay.measures[0].px_per_q >= MIN_PPQ - 0.01, "{}", lay.measures[0].px_per_q);
+        // Plenty of room: what was asked for is shown.
+        assert_eq!(layout(&score, 2400.0, 1.0, FIXED(8, 0)).fit_bars, None);
+    }
+
+    #[test]
+    fn degenerate_scores_do_not_panic() {
+        let empty = Score::default();
+        for opts in [FIXED(0, 0), FIXED(4, 0), FIXED(4, 2)] {
+            let lay = layout(&empty, W, 1.0, opts);
+            assert!(lay.systems.is_empty() && lay.measures.is_empty());
+        }
+        let one = score_of(&[4.0]);
+        for opts in [FIXED(0, 0), FIXED(4, 1), FIXED(1, 1), FIXED(0, 5)] {
+            let lay = layout(&one, 300.0, 1.0, opts);
+            assert_eq!(lay.systems, [(0, 1)]);
+            assert_eq!(lay.measures.len(), 1);
+        }
+    }
+
+    #[test]
+    fn every_bar_is_in_exactly_one_row() {
+        let score = score_of(&[4.0, 3.0, 4.0, 2.0, 4.0, 4.0, 5.0, 4.0, 4.0, 4.0, 4.0]);
+        for per_row in [0, 1, 2, 3, 4, 7] {
+            for align in [0, 1, 2, 5, 11, 12] {
+                let lay = layout(&score, 1000.0, 1.0, FIXED(per_row, align));
+                let mut next = 0;
+                for (a, b) in &lay.systems {
+                    assert_eq!(*a, next, "rows are consecutive ({per_row}, {align})");
+                    assert!(b > a);
+                    next = *b;
+                }
+                assert_eq!(next, score.measures.len());
+                assert_eq!(lay.measures.len(), score.measures.len());
+            }
+        }
+    }
 }

@@ -11,6 +11,19 @@ use egui::{vec2, Response, Ui, Vec2};
 /// that starts at the low end of the range). The wheel is then not passed on,
 /// so a scrolling page stays put while a slider is being tuned.
 pub fn slider<N: Numeric>(ui: &mut Ui, caption: &str, value: &mut N, range: RangeInclusive<N>, suffix: &str, step: f64) -> Response {
+    slider_with_zero(ui, caption, value, range, suffix, step, None)
+}
+
+/// Like [`slider`], but a value of zero is shown as `zero_text` ("auto", "off").
+pub fn slider_with_zero<N: Numeric>(
+    ui: &mut Ui,
+    caption: &str,
+    value: &mut N,
+    range: RangeInclusive<N>,
+    suffix: &str,
+    step: f64,
+    zero_text: Option<&str>,
+) -> Response {
     let (lo, hi) = (range.start().to_f64(), range.end().to_f64());
     // Show only as many decimals as the step needs ("100%", not "100.0%").
     let decimals = if step >= 1.0 { 0 } else { (-step.log10()).ceil().clamp(0.0, 6.0) as usize };
@@ -18,7 +31,12 @@ pub fn slider<N: Numeric>(ui: &mut Ui, caption: &str, value: &mut N, range: Rang
         if !caption.is_empty() {
             ui.label(caption);
         }
-        ui.add(egui::Slider::new(value, range).suffix(suffix).max_decimals(decimals))
+        let mut slider = egui::Slider::new(value, range).suffix(suffix).max_decimals(decimals);
+        if let Some(zero) = zero_text {
+            let zero = zero.to_string();
+            slider = slider.custom_formatter(move |n, _| if n == 0.0 { zero.clone() } else { format!("{n}") });
+        }
+        ui.add(slider)
     });
     let mut response = group.inner;
 
@@ -130,6 +148,19 @@ mod tests {
         frame(&ctx, wheel_at(volume_at, -2.0), |ui| _ = draw(ui, &mut bars, &mut volume));
         assert!((volume - 0.66).abs() < 1e-6, "{volume}");
         assert_eq!(bars, 2);
+    }
+
+    #[test]
+    fn a_zero_label_does_not_change_how_the_wheel_works() {
+        let ctx = egui::Context::default();
+        let mut bars = 0_usize;
+        let mut at = Pos2::ZERO;
+        let draw = |ui: &mut Ui, bars: &mut usize| slider_with_zero(ui, "bars per row", bars, 0..=8, "", 1.0, Some("auto")).rect.center();
+        frame(&ctx, vec![], |ui| at = draw(ui, &mut bars));
+        frame(&ctx, wheel_at(at, 3.0), |ui| _ = draw(ui, &mut bars));
+        assert_eq!(bars, 3);
+        frame(&ctx, wheel_at(at, -9.0), |ui| _ = draw(ui, &mut bars));
+        assert_eq!(bars, 0, "back to the zero value, which is shown as \"auto\"");
     }
 
     #[test]
