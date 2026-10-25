@@ -201,8 +201,18 @@ const KEYBOARD_PADS: [(egui::Key, Lane, &str); 13] = [
 
 impl DrumApp {
     pub fn new(_cc: &eframe::CreationContext<'_>, initial_file: Option<PathBuf>) -> DrumApp {
-        let cfg = Config::load();
-        let mut app = DrumApp {
+        let mut app = DrumApp::with_config(Config::load());
+        app.refresh_ports();
+        app.connect_midi(None);
+        if let Some(p) = initial_file {
+            app.open_file(&p);
+        }
+        app
+    }
+
+    /// The app in its starting state, without touching MIDI or sound devices.
+    fn with_config(cfg: Config) -> DrumApp {
+        DrumApp {
             saved_cfg: cfg.clone(),
             cfg,
             tab: Tab::Home,
@@ -242,13 +252,7 @@ impl DrumApp {
             metro: None,
             metro_player: None,
             metro_control: Control::new(),
-        };
-        app.refresh_ports();
-        app.connect_midi(None);
-        if let Some(p) = initial_file {
-            app.open_file(&p);
         }
-        app
     }
 
     // ----------------------------------------------------------------- MIDI
@@ -1678,5 +1682,32 @@ mod tests {
         assert_eq!(shorten_start("C:\\Users\\someone\\Documents\\Drum scores\\Rock", 16), "…rum scores\\Rock");
         assert_eq!(shorten_start("żółć", 4), "żółć", "counts characters, not bytes");
         assert_eq!(shorten_start("żółćżółć", 4), "…ółć");
+    }
+
+    fn sample() -> PathBuf {
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("examples").join("basic_rock_beat.musicxml")
+    }
+
+    #[test]
+    fn the_app_starts_on_home_with_no_score() {
+        let app = DrumApp::with_config(Config::default());
+        assert!(app.tab == Tab::Home);
+        assert!(app.score.is_none(), "so the Score tab is greyed out");
+    }
+
+    #[test]
+    fn opening_a_score_goes_to_the_score_tab_and_a_failed_open_stays_put() {
+        let mut app = DrumApp::with_config(Config::default());
+        app.open_file(&sample());
+        assert!(app.score.is_some());
+        assert!(app.tab == Tab::Score);
+        assert_eq!(app.cfg.recent_files.len(), 1, "remembered for the Home tab");
+
+        app.tab = Tab::Home;
+        app.open_file(Path::new("no/such/score.musicxml"));
+        assert!(app.error.is_some());
+        assert!(app.tab == Tab::Home, "a failed open does not leave Home");
+        assert!(app.score.is_some(), "the loaded score stays");
+        assert_eq!(app.cfg.recent_files.len(), 1, "a failed file is not remembered");
     }
 }
