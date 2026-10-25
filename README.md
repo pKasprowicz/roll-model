@@ -33,6 +33,7 @@ Run the unit tests (XML parser, MusicXML import, repeats, tempo maps, scoring): 
 - On Windows a MIDI port can be opened by only one program at a time — close your DAW or other drum software first.
 - The monitor on **Settings → MIDI input** shows each incoming note, velocity and the instrument it maps to.
 - The default note map is the Roland V-Drums factory map (kick 36, snare 38/rim 40/x-stick 37, toms 48/50, 45/47, 43/58, 41/39, hi-hat 42/22 closed, 46/26 open, 44 pedal, crash 49/55 and 57/52, ride 51/59, bell 53). If your kit is set up differently, click **Learn** next to an instrument and hit the pad/zone.
+- The hi-hat pedal (MIDI CC#4) decides between closed and open for hits on the closed or open hi-hat note: closed when the pedal is at least three quarters of the way down. A pedal that never reports up to 127 needs **Settings → MIDI input → Hi-hat pedal value when closed** lowered: close the pedal, hit the hi-hat and read the "pedal" value in the monitor. Until a pedal message arrives, the note number alone decides.
 
 ## Practising
 

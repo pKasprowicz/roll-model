@@ -31,6 +31,9 @@ pub struct Config {
     pub playback_midi: bool,
     pub playback_channel: u8,
     pub note_map: NoteMap,
+    /// Value the hi-hat pedal (CC#4) reports when fully closed; the closed/open
+    /// decision scales with it (127 for a pedal that uses the full range).
+    pub hihat_cc_max: u8,
     pub keyboard_input: bool,
     pub zoom: f32,
     pub expand_repeats: bool,
@@ -76,6 +79,7 @@ impl Default for Config {
             playback_midi: false,
             playback_channel: 10,
             note_map: NoteMap::roland_v31(),
+            hihat_cc_max: 127,
             keyboard_input: false,
             zoom: 1.0,
             expand_repeats: true,
@@ -173,6 +177,7 @@ impl Config {
         kv("playback_volume", self.playback_volume.to_string());
         kv("playback_midi", self.playback_midi.to_string());
         kv("playback_channel", self.playback_channel.to_string());
+        kv("hihat_cc_max", self.hihat_cc_max.to_string());
         kv("keyboard_input", self.keyboard_input.to_string());
         kv("zoom", self.zoom.to_string());
         kv("expand_repeats", self.expand_repeats.to_string());
@@ -233,6 +238,7 @@ impl Config {
                 }
                 "playback_midi" => c.playback_midi = b(c.playback_midi),
                 "playback_channel" => c.playback_channel = v.parse().unwrap_or(c.playback_channel).clamp(1, 16),
+                "hihat_cc_max" => c.hihat_cc_max = v.parse().unwrap_or(c.hihat_cc_max).clamp(1, 127),
                 "keyboard_input" => c.keyboard_input = b(c.keyboard_input),
                 "zoom" => c.zoom = v.parse::<f32>().unwrap_or(c.zoom).clamp(0.3, 4.0),
                 "expand_repeats" => c.expand_repeats = b(c.expand_repeats),
@@ -296,6 +302,7 @@ mod tests {
             metro_bpm: 133.5,
             metro_beats: 7,
             metro_sub: 2,
+            hihat_cc_max: 90,
             ..Default::default()
         };
         c.note_map.set_lane_notes(Lane::Kick, &[36, 33]);

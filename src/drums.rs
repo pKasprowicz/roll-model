@@ -138,6 +138,23 @@ impl Lane {
         matches!(self, Lane::Kick | Lane::HiHatPedal)
     }
 
+    /// A hi-hat stick hit played with the pedal at `pedal` (CC#4; `cc_max` is the
+    /// value the pedal reports when fully closed) is closed when the pedal is
+    /// at least three quarters of the way to `cc_max`, otherwise open. Other
+    /// lanes, and hits without a pedal reading, keep the lane the note gave.
+    pub fn by_hihat_pedal(self, pedal: Option<u8>, cc_max: u8) -> Lane {
+        match (self, pedal) {
+            (Lane::HiHatClosed | Lane::HiHatOpen, Some(p)) => {
+                if u32::from(p) * 4 >= u32::from(cc_max.clamp(1, 127)) * 3 {
+                    Lane::HiHatClosed
+                } else {
+                    Lane::HiHatOpen
+                }
+            }
+            _ => self,
+        }
+    }
+
     /// A new hit on `self` cuts off a still-ringing hit on `other`: closing
     /// the hi-hat (with the stick or the pedal) ends an open hi-hat.
     pub fn chokes(self, other: Lane) -> bool {
@@ -429,6 +446,25 @@ mod tests {
         assert_eq!(lane_from_name("Ride Bell"), Some(Lane::RideBell));
         assert_eq!(lane_from_name("Crash Cymbal 2"), Some(Lane::Crash2));
         assert_eq!(lane_from_name("Tambourine"), None);
+    }
+
+    #[test]
+    fn the_pedal_decides_between_closed_and_open_hi_hat() {
+        use Lane::*;
+        // Full range: closed at the top, open at the bottom.
+        assert_eq!(HiHatOpen.by_hihat_pedal(Some(127), 127), HiHatClosed);
+        assert_eq!(HiHatClosed.by_hihat_pedal(Some(0), 127), HiHatOpen);
+        assert_eq!(HiHatOpen.by_hihat_pedal(Some(96), 127), HiHatClosed);
+        assert_eq!(HiHatClosed.by_hihat_pedal(Some(95), 127), HiHatOpen);
+        // A pedal that tops out at 60 is closed at 60; 45 is the limit.
+        assert_eq!(HiHatOpen.by_hihat_pedal(Some(60), 60), HiHatClosed);
+        assert_eq!(HiHatOpen.by_hihat_pedal(Some(45), 60), HiHatClosed);
+        assert_eq!(HiHatClosed.by_hihat_pedal(Some(44), 60), HiHatOpen);
+        // No reading, other lanes and an out-of-range setting change nothing harmful.
+        assert_eq!(HiHatOpen.by_hihat_pedal(None, 60), HiHatOpen);
+        assert_eq!(Snare.by_hihat_pedal(Some(0), 127), Snare);
+        assert_eq!(HiHatPedal.by_hihat_pedal(Some(0), 127), HiHatPedal);
+        assert_eq!(HiHatOpen.by_hihat_pedal(Some(127), 0), HiHatClosed);
     }
 
     #[test]

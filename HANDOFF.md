@@ -126,7 +126,7 @@ config.rs      key = value settings file, auto-saved when Config changes
 ## Known gaps and ideas, roughly by value
 
 - **V31 note map is unverified.** It is the common Roland V-Drums factory map (kick 36, snare 38/40, x-stick 37, toms 48/50 45/47 43/58 41/39, HH 42/22 closed 46/26 open 44 pedal, crash 49/55 57/52, ride 51/59 bell 53). The V31's documentation wasn't found. MIDI-learn exists in Settings.
-- **Hi-hat.** CC#4 pedal position and half-open hi-hat are ignored; open/closed relies on the module sending 46 vs 42.
+- **Hi-hat.** CC#4 is attached to each hit (`RawEvent.hihat`) and `Lane::by_hihat_pedal` turns a 42/46 hit into closed (pedal >= 3/4 of `Config::hihat_cc_max`) or open; never tried with a real module. Half-open is not a separate state, and the pedal polarity (127 = closed) is the Roland convention, unverified on the V31.
 - **Notation.** Proportional spacing, noteheads and stems only; no beams, flags, rests or tuplet brackets. Fine for timing feedback, not a full engraver.
 - **MusicXML coverage.** D.S./D.C./coda jumps are not followed. `score-timewise` is rejected. With several parts, only the first drum-looking part is used.
 - **Keyboard test input** is timestamped at frame time (~16 ms jitter in a release build), so it is useful for testing, not for timing judgement. In a debug build the frames are slow enough to make it unreliable: test takes with `cargo run --release`.
