@@ -291,7 +291,7 @@ impl DrumApp {
             self.lane_text.clear();
             self.status = format!("Note {} ({}) mapped to {}", ev.note, midi::note_name(ev.note), lane.label());
         }
-        let lane = self.cfg.note_map.lane(ev.note);
+        let lane = self.cfg.note_map.lane(ev.note).map(|l| l.by_hihat_pedal(ev.hihat, self.cfg.hihat_cc_max));
         self.monitor.push_front((ev, lane));
         self.monitor.truncate(14);
 
@@ -318,7 +318,7 @@ impl DrumApp {
         });
         for lane in pressed {
             let note = self.cfg.note_map.notes_for(lane).first().copied().unwrap_or(0);
-            self.handle_event(RawEvent { at: Instant::now(), note, velocity: 100, channel: 10 });
+            self.handle_event(RawEvent { at: Instant::now(), note, velocity: 100, channel: 10, hihat: None });
         }
     }
 
@@ -1274,15 +1274,23 @@ impl DrumApp {
 
         ui.add_space(6.0);
         ui.label(RichText::new("Monitor (latest first)").strong());
-        egui::Grid::new("monitor").num_columns(4).striped(true).show(ui, |ui| {
+        egui::Grid::new("monitor").num_columns(5).striped(true).show(ui, |ui| {
             for (ev, lane) in &self.monitor {
                 ui.label(format!("ch {}", ev.channel));
                 ui.label(format!("note {} ({})", ev.note, midi::note_name(ev.note)));
                 ui.label(format!("vel {}", ev.velocity));
+                ui.label(ev.hihat.map(|p| format!("pedal {p}")).unwrap_or_default());
                 ui.label(lane.map(|l| l.label()).unwrap_or("unmapped"));
                 ui.end_row();
             }
         });
+
+        ui.add_space(6.0);
+        ui.horizontal(|ui| {
+            ui.label("Hi-hat pedal (CC#4) value when closed");
+            widgets::slider(ui, "", &mut self.cfg.hihat_cc_max, 1..=127, "", 1.0);
+        });
+        ui.label(RichText::new("The hi-hat counts as closed when the pedal is at least three quarters of the way to this value, otherwise open, so hits on the closed or open hi-hat note follow the pedal. Lower it if your pedal never reports up to 127: close the pedal, hit the hi-hat and read the pedal value in the monitor. Hits before any pedal message keep the note's own open/closed meaning.").small().weak());
 
         ui.add_space(10.0);
         ui.heading("Pad-to-instrument mapping");

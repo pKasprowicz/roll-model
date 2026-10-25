@@ -12,7 +12,12 @@ pub struct RawEvent {
     pub note: u8,
     pub velocity: u8,
     pub channel: u8,
+    /// Last hi-hat pedal position (CC#4) received before this hit, if any.
+    pub hihat: Option<u8>,
 }
+
+/// Controller number of the hi-hat pedal position.
+pub const HIHAT_CC: u8 = 4;
 
 /// Filled by the MIDI callback thread, drained by the UI every frame.
 pub type EventQueue = Arc<Mutex<Vec<RawEvent>>>;
@@ -55,17 +60,21 @@ pub fn connect_input(wanted: &str, queue: EventQueue) -> Result<InputHandle, Str
         .ok_or_else(|| format!("MIDI input matching \"{wanted}\" not found"))?;
     let port = ports[idx].clone();
     let port_name = names[idx].clone();
+    let mut pedal: Option<u8> = None;
     let conn = mi
         .connect(
             &port,
             "drum-tutor-in",
             move |_stamp, msg, _| {
                 let at = Instant::now();
-                // Note-on with velocity > 0 on any channel. Note-offs, hi-hat
-                // pedal CC#4 and aftertouch (cymbal chokes) are not needed.
-                if msg.len() >= 3 && msg[0] & 0xF0 == 0x90 && msg[2] > 0 {
+                // Note-on with velocity > 0 on any channel, and the hi-hat pedal
+                // (CC#4), which is remembered and attached to the hits that follow.
+                // Note-offs and aftertouch (cymbal chokes) are not needed.
+                if msg.len() >= 3 && msg[0] & 0xF0 == 0xB0 && msg[1] == HIHAT_CC {
+                    pedal = Some(msg[2]);
+                } else if msg.len() >= 3 && msg[0] & 0xF0 == 0x90 && msg[2] > 0 {
                     if let Ok(mut q) = queue.lock() {
-                        q.push(RawEvent { at, note: msg[1], velocity: msg[2], channel: (msg[0] & 0x0F) + 1 });
+                        q.push(RawEvent { at, note: msg[1], velocity: msg[2], channel: (msg[0] & 0x0F) + 1, hihat: pedal });
                     }
                 }
             },

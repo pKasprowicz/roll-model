@@ -4,6 +4,9 @@ All notable changes are recorded here. The format follows [Keep a Changelog](htt
 
 ## [Unreleased]
 
+### Added
+- Hi-hat pedal (CC#4) is read: a stick hit on the closed or open hi-hat note is closed when the pedal is at least three quarters of the way to the "value when closed" and open otherwise. The value is a setting (Settings → MIDI input, default 127) for pedals that never report the full 0-127 range. The monitor shows the pedal value next to each hit.
+
 ## [0.4.1] - 2026-10-25
 
 ### Fixed
