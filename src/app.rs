@@ -205,7 +205,7 @@ impl DrumApp {
         let mut app = DrumApp {
             saved_cfg: cfg.clone(),
             cfg,
-            tab: Tab::Score,
+            tab: Tab::Home,
             settings_page: SettingsPage::MidiInput,
             score: None,
             score_path: None,
@@ -807,7 +807,9 @@ impl DrumApp {
             }
             ui.separator();
             ui.selectable_value(&mut self.tab, Tab::Home, "🏠 Home");
-            ui.selectable_value(&mut self.tab, Tab::Score, "🎼 Score");
+            ui.add_enabled_ui(self.score.is_some(), |ui| {
+                ui.selectable_value(&mut self.tab, Tab::Score, "🎼 Score");
+            });
             ui.selectable_value(&mut self.tab, Tab::Metronome, "⏱ Metronome");
             ui.selectable_value(&mut self.tab, Tab::Results, "📊 Results");
             ui.selectable_value(&mut self.tab, Tab::Settings, "⚙ Settings");

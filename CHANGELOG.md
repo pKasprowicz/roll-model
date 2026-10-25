@@ -5,6 +5,7 @@ All notable changes are recorded here. The format follows [Keep a Changelog](htt
 ## [Unreleased]
 
 ### Changed
+- The **Score** tab is greyed out until a score is loaded, and the app starts on **Home**.
 - A **Home** tab shows the welcome panel with the recent scores at any time, not only while no score is open.
 
 ### Added
