@@ -53,6 +53,8 @@ pub struct Config {
     pub metro_beats: u32,
     /// Index into `playback::Subdivision::ALL`.
     pub metro_sub: usize,
+    /// Show the loaded score rolling by on the Metronome tab.
+    pub metro_preview: bool,
 }
 
 /// How many scores the welcome panel remembers.
@@ -92,6 +94,7 @@ impl Default for Config {
             metro_bpm: 100.0,
             metro_beats: 4,
             metro_sub: 0,
+            metro_preview: true,
         }
     }
 }
@@ -190,6 +193,7 @@ impl Config {
         kv("metro_bpm", self.metro_bpm.to_string());
         kv("metro_beats", self.metro_beats.to_string());
         kv("metro_sub", self.metro_sub.to_string());
+        kv("metro_preview", self.metro_preview.to_string());
         for lane in Lane::ALL {
             if self.gain_of(lane) != 1.0 {
                 kv(&format!("gain.{}", lane.name()), self.gain_of(lane).to_string());
@@ -255,6 +259,7 @@ impl Config {
                     c.metro_bpm = x.unwrap_or(c.metro_bpm).clamp(20.0, 300.0)
                 }
                 "metro_beats" => c.metro_beats = v.parse().unwrap_or(c.metro_beats).clamp(1, 12),
+                "metro_preview" => c.metro_preview = b(c.metro_preview),
                 "metro_sub" => c.metro_sub = v.parse().unwrap_or(c.metro_sub).min(3),
                 _ => {
                     if let Some(lane) = k.strip_prefix("map.").and_then(Lane::from_name) {
@@ -302,6 +307,7 @@ mod tests {
             metro_bpm: 133.5,
             metro_beats: 7,
             metro_sub: 2,
+            metro_preview: false,
             hihat_cc_max: 90,
             ..Default::default()
         };

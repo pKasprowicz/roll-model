@@ -146,6 +146,61 @@ impl DrumApp {
         );
         ui.add_space(16.0);
         self.beat_lights(ui);
+        self.rolling_preview(ui);
+    }
+
+    /// Where the rolling preview is, in quarters from the start of the score: the
+    /// practice range repeats, and the metronome's first beat is its first note.
+    fn metro_preview_pos(&self, start_q: f64, len_q: f64) -> f64 {
+        let Some(run) = self.metro.as_ref() else { return start_q };
+        let now = Instant::now();
+        let elapsed = match now.checked_duration_since(run.zero) {
+            Some(d) => d.as_secs_f64(),
+            None => -run.zero.duration_since(now).as_secs_f64(),
+        };
+        start_q + (elapsed / run.beat_sec).rem_euclid(len_q.max(1e-6))
+    }
+
+    /// The loaded score scrolling past a fixed line at the metronome's tempo.
+    fn rolling_preview(&mut self, ui: &mut egui::Ui) {
+        ui.add_space(16.0);
+        let Some(score) = self.score.as_ref() else {
+            ui.label(RichText::new("Load a score to see its notes roll by here while the click plays.").small().weak());
+            return;
+        };
+        let last = score.measures.len().saturating_sub(1);
+        let (a, b) = (self.range_from.min(last), self.range_to.clamp(self.range_from.min(last), last));
+        let (start_q, len_q) = (score.measures[a].start_q, score.measures[b].end_q() - score.measures[a].start_q);
+        let (score_bpm, bar_q) = (score.tempo.bpm_at(start_q), score.measures[a].len_q);
+        let title = score.title.clone();
+
+        let mut match_score = false;
+        ui.horizontal(|ui| {
+            ui.checkbox(&mut self.cfg.metro_preview, "Show the score");
+            if self.cfg.metro_preview {
+                ui.label(RichText::new(format!("\"{title}\", bars {}–{} repeating", a + 1, b + 1)).small().weak());
+                match_score = ui
+                    .button("Match score tempo and bar")
+                    .on_hover_text("Set the tempo and beats per bar to the score's, so the click lines up with the bars")
+                    .clicked();
+            }
+        });
+        if match_score {
+            self.cfg.metro_bpm = (score_bpm as f32).clamp(20.0, 300.0);
+            self.cfg.metro_beats = (bar_q.round() as u32).clamp(1, 12);
+        }
+        if !self.cfg.metro_preview {
+            return;
+        }
+        let pos_q = self.metro_preview_pos(start_q, len_q);
+        if let Some(score) = self.score.as_ref() {
+            render::rolling(ui, &render::RollingView { score, range: (a, b), pos_q });
+        }
+        ui.label(
+            RichText::new("The practice range of the Score tab repeats at the metronome's tempo; the first note arrives on the first beat. Change the range on the Score tab.")
+                .small()
+                .weak(),
+        );
     }
 
     /// One circle per beat of the bar; the current beat lights up and fades.

@@ -293,6 +293,104 @@ fn draw_clef(p: &Painter, x: f32, top: f32, color: Color32) {
     p.rect_filled(r2, 0.0, color);
 }
 
+/// A single staff that scrolls past a fixed "now" line, for playing along
+/// with a click: the practice range repeats endlessly.
+pub struct RollingView<'a> {
+    pub score: &'a Score,
+    /// Inclusive measure range that repeats.
+    pub range: (usize, usize),
+    /// Where "now" is, in quarters from the start of the score, within the range.
+    pub pos_q: f64,
+}
+
+/// Height of the rolling strip.
+pub const ROLL_H: f32 = EXP_BOT + STEM + 22.0;
+/// Pixels per quarter note in the rolling strip.
+const ROLL_PPQ: f32 = 56.0;
+
+/// Which repeats of a loop `[start, end)` have any part inside `[left_q, right_q]`.
+fn loop_repeats(start: f64, end: f64, left_q: f64, right_q: f64) -> std::ops::RangeInclusive<i64> {
+    let len = (end - start).max(1e-6);
+    (((left_q - end) / len).ceil() as i64)..=(((right_q - start) / len).floor() as i64)
+}
+
+pub fn rolling(ui: &mut Ui, view: &RollingView) {
+    let score = view.score;
+    let last = score.measures.len().saturating_sub(1);
+    if score.measures.is_empty() {
+        return;
+    }
+    let (a, b) = (view.range.0.min(last), view.range.1.clamp(view.range.0.min(last), last));
+    let (start, end) = (score.measures[a].start_q, score.measures[b].end_q());
+    let len = end - start;
+    let width = ui.available_width().max(300.0);
+    let (response, painter) = ui.allocate_painter(vec2(width, ROLL_H), Sense::hover());
+    let rect = response.rect;
+    let text = ui.visuals().text_color();
+    let weak = ui.visuals().weak_text_color();
+    let line_col = ui.visuals().widgets.noninteractive.fg_stroke.color.gamma_multiply(0.7);
+    let grid_col = weak.gamma_multiply(0.3);
+    if len <= 0.0 {
+        return;
+    }
+
+    let (x_min, x_max) = (rect.left() + LEFT, rect.right() - 6.0);
+    let now_x = (rect.left() + width * 0.22).max(x_min + 24.0);
+    let x_of = |q: f64| now_x + ((q - view.pos_q) as f32) * ROLL_PPQ;
+    let (left_q, right_q) = (view.pos_q - f64::from((now_x - x_min) / ROLL_PPQ), view.pos_q + f64::from((x_max - now_x) / ROLL_PPQ));
+    let top = rect.top() + EXP_TOP;
+    let bot = rect.top() + EXP_BOT;
+
+    draw_staff(&painter, rect.left() + 4.0, rect.right(), top, line_col);
+    draw_clef(&painter, rect.left() + 8.0, top, text);
+    // Notes are only drawn right of the clef.
+    let clipped = painter.with_clip_rect(Rect::from_min_max(pos2(x_min, rect.top()), pos2(x_max, rect.bottom())));
+
+    for k in loop_repeats(start, end, left_q, right_q) {
+        let shift = k as f64 * len;
+        for mi in a..=b {
+            let m = &score.measures[mi];
+            let mut bq = 0.0;
+            while bq < m.len_q - 1e-6 {
+                let x = x_of(m.start_q + bq + shift);
+                let first = bq == 0.0;
+                clipped.line_segment([pos2(x, top), pos2(x, bot)], Stroke::new(if first { 1.4_f32 } else { 1.0 }, if first { line_col } else { grid_col }));
+                if first {
+                    clipped.text(pos2(x + 3.0, top - 14.0), Align2::LEFT_TOP, &m.number, FontId::proportional(9.0), weak);
+                }
+                bq += m.beat_q();
+            }
+        }
+        for n in score.notes.iter().filter(|n| n.measure >= a && n.measure <= b) {
+            let x = x_of(n.q + shift) - if n.grace { 9.0 } else { 0.0 };
+            if x < x_min - 12.0 || x > x_max + 12.0 {
+                continue;
+            }
+            let y = y_of(n.staff_step, bot);
+            let col = if x < now_x - 4.0 { weak } else { text };
+            let scale = if n.grace { 0.65 } else { 1.0 };
+            draw_ledgers(&clipped, x, n.staff_step, bot, line_col);
+            draw_head(&clipped, pos2(x, y), n.head, col, scale);
+            let up = n.stem_up.unwrap_or(!n.lane.is_foot());
+            let rx = 5.0 * scale;
+            let sx = if up { x + rx - 0.5 } else { x - rx + 0.5 };
+            let sy = if up { y - STEM * scale } else { y + STEM * scale };
+            clipped.line_segment([pos2(sx, y), pos2(sx, sy)], Stroke::new(1.0_f32, col));
+            if n.ghost {
+                clipped.text(pos2(x - 8.0, y), Align2::CENTER_CENTER, "(", FontId::proportional(11.0), col);
+                clipped.text(pos2(x + 8.0, y), Align2::CENTER_CENTER, ")", FontId::proportional(11.0), col);
+            }
+            if n.accent {
+                let ay = if up { rect.top() + 28.0 } else { bot + STEM + 10.0 };
+                let s = Stroke::new(1.4_f32, col);
+                clipped.line_segment([pos2(x - 4.0, ay - 3.0), pos2(x + 4.0, ay)], s);
+                clipped.line_segment([pos2(x + 4.0, ay), pos2(x - 4.0, ay + 3.0)], s);
+            }
+        }
+    }
+    painter.line_segment([pos2(now_x, rect.top() + 12.0), pos2(now_x, bot + STEM + 4.0)], Stroke::new(2.0_f32, ACCENT));
+}
+
 pub fn show(ui: &mut Ui, view: &ScoreView) -> ViewOutput {
     let score = view.score;
     let mut out = ViewOutput { clicked_measure: None, fit_bars: None };
@@ -536,6 +634,26 @@ mod tests {
 
     fn width_of(lay: &Layout, bar: usize) -> f32 {
         lay.measures[bar].w
+    }
+
+    #[test]
+    fn the_rolling_strip_repeats_a_loop_across_its_whole_width() {
+        // A 4-quarter loop starting at 8: a window of 20 quarters needs six copies (-1 to 4).
+        let copies: Vec<i64> = loop_repeats(8.0, 12.0, 6.0, 26.0).collect();
+        assert_eq!(copies.first(), Some(&-1));
+        assert_eq!(copies.last(), Some(&4));
+        // Every quarter of the window is covered by some copy.
+        for q in [6.0, 7.9, 8.0, 15.5, 26.0] {
+            assert!(
+                copies.iter().any(|k| {
+                    let (s, e) = (8.0 + 4.0 * *k as f64, 12.0 + 4.0 * *k as f64);
+                    q >= s && q <= e
+                }),
+                "{q} is covered"
+            );
+        }
+        // Looking at the loop itself needs that copy.
+        assert!(loop_repeats(0.0, 16.0, 2.0, 5.0).contains(&0));
     }
 
     #[test]
