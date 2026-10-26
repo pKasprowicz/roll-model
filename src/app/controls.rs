@@ -981,7 +981,8 @@ mod tests {
         app.cfg.controller_preset = "Behringer X-Touch Mini".into();
         app.cfg.controller_port = "no such port".into();
         app.connect_controller();
-        assert!(app.controller.link.is_none() && app.controller.message.contains("not found"), "{}", app.controller.message);
+        // "not found", or on a machine without MIDI (CI) that MIDI could not be started: either way, no connection.
+        assert!(app.controller.link.is_none() && app.controller.message.contains("Switch the controller"), "{}", app.controller.message);
         app.cfg.controller_preset = "No such preset".into();
         app.connect_controller();
         assert!(app.controller.message.contains("not found"));
