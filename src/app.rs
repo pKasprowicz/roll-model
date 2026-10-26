@@ -100,6 +100,10 @@ impl Parked {
     }
 }
 
+/// Height of the line above the score that shows the count-in and the take's figures, with room
+/// above and below the big count-in number.
+const TAKE_LINE_HEIGHT: f32 = 42.0;
+
 /// A take of a rudiment counts as clean from this overall score on.
 const CLEAN_TAKE: f64 = 85.0;
 
@@ -1172,10 +1176,12 @@ impl DrumApp {
     /// The take's live figures, the colour legend and the score with the notes played, shared by
     /// the Score and Rudiments tabs.
     fn score_body(&mut self, ui: &mut egui::Ui, running: bool, n_measures: usize) {
-        // Count-in / live stats line
-        if let Some(take) = self.take.as_ref() {
-            let r = &take.report;
-            ui.horizontal(|ui| {
+        // Count-in / live stats line. Its height is reserved (the big count-in number is taller
+        // than the rest), also with no take, so nothing below it moves when a take starts or ends.
+        ui.horizontal(|ui| {
+            ui.set_min_height(TAKE_LINE_HEIGHT);
+            if let Some(take) = self.take.as_ref() {
+                let r = &take.report;
                 if take.running {
                     let el = signed_secs(Instant::now(), take.zero);
                     if el < 0.0 {
@@ -1202,8 +1208,8 @@ impl DrumApp {
                         r.std_dt_ms
                     ));
                 }
-            });
-        }
+            }
+        });
         ui.horizontal(|ui| {
             let legend = |ui: &mut egui::Ui, c: Color32, t: &str| {
                 ui.label(RichText::new("■").color(c));
@@ -1215,15 +1221,16 @@ impl DrumApp {
             legend(ui, render::ORANGE, "wrong pad");
             legend(ui, render::RED, "missed / extra");
             ui.label(RichText::new("· click a measure to start there, shift+click to set the end · mouse wheel over a slider fine-tunes it").small().weak());
-            if let Some((text, armed)) = self.trigger_hint() {
-                let (color, text) = if armed { (render::GREEN, format!("{text}: waiting for the second hit")) } else { (ui.visuals().weak_text_color(), text) };
-                ui.label(RichText::new(text).small().color(color));
-            }
             if let Some(fit) = self.fit_bars {
                 let msg = format!("· {} bars per row do not fit at this width: showing {fit}", self.cfg.bars_per_row);
                 ui.label(RichText::new(msg).small().color(render::AMBER));
             }
         });
+        // On a line of its own: it grows while the trigger waits for the second hit.
+        if let Some((text, armed)) = self.trigger_hint() {
+            let (color, text) = if armed { (render::GREEN, format!("{text}: waiting for the second hit")) } else { (ui.visuals().weak_text_color(), text) };
+            ui.label(RichText::new(text.trim_start_matches("· ")).small().color(color));
+        }
         ui.separator();
 
         let played = self.played_notes();
