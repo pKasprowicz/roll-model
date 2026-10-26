@@ -19,6 +19,8 @@ use crate::render;
 use crate::score::Score;
 
 const MONITOR_LINES: usize = 14;
+/// How often the list of MIDI ports is looked at to notice a controller being plugged in or pulled out.
+const WATCH_EVERY: Duration = Duration::from_secs(2);
 /// Taps further apart than this start a new tap tempo.
 const TAP_GAP: Duration = Duration::from_secs(2);
 /// Taps that count towards the tempo.
@@ -43,6 +45,9 @@ pub(super) struct Controller {
     /// The recent score the controller is on.
     cursor: usize,
     taps: Vec<Instant>,
+    /// The port name (or part of it) the chosen preset looks for; empty if none is chosen.
+    wanted: String,
+    last_watch: Instant,
 }
 
 impl Controller {
@@ -55,6 +60,8 @@ impl Controller {
             monitor: VecDeque::new(),
             cursor: 0,
             taps: Vec::new(),
+            wanted: String::new(),
+            last_watch: Instant::now(),
         }
     }
 
@@ -71,6 +78,28 @@ impl Controller {
             )),
             None => chosen.then(|| ("⏺ no controller".to_string(), false)),
         }
+    }
+}
+
+#[derive(Debug, PartialEq)]
+enum Watch {
+    Keep,
+    /// The connected controller is no longer among the ports.
+    Lost,
+    /// The controller we are waiting for is there now.
+    Connect,
+}
+
+/// What to do about the controller given the MIDI input ports there are now.
+/// `drum` is the drum module's port, which is never taken for the controller.
+fn watch_step(connected: Option<&str>, ports: &[String], wanted: &str, drum: Option<&str>) -> Watch {
+    match connected {
+        Some(name) if ports.iter().any(|p| p == name) => Watch::Keep,
+        Some(_) => Watch::Lost,
+        None => match midi::find_port(ports, wanted) {
+            Some(i) if drum != Some(ports[i].as_str()) => Watch::Connect,
+            _ => Watch::Keep,
+        },
     }
 }
 
@@ -141,6 +170,7 @@ impl DrumApp {
     pub(super) fn connect_controller(&mut self) {
         let c = &mut self.controller;
         c.link = None; // close the old port first (Windows ports are exclusive)
+        c.wanted.clear();
         c.monitor.clear();
         if let Ok(mut q) = c.queue.lock() {
             q.clear();
@@ -158,6 +188,7 @@ impl DrumApp {
             }
         };
         let wanted = if self.cfg.controller_port.is_empty() { preset.port.clone() } else { self.cfg.controller_port.clone() };
+        c.wanted = wanted.clone();
         match midi::connect_controller(&wanted, c.queue.clone()) {
             Ok(handle) if self.midi_in.as_ref().is_some_and(|h| h.port_name == handle.port_name) => {
                 c.message = format!("\"{}\" is the drum input. Choose the controller's own port.", handle.port_name);
@@ -177,6 +208,7 @@ impl DrumApp {
 
     /// Runs the commands the controller sent since the last frame and brings its lights up to date.
     pub(super) fn update_controller(&mut self) {
+        self.watch_controller();
         if self.controller.link.is_none() {
             return;
         }
@@ -206,6 +238,28 @@ impl DrumApp {
             for message in link.mapper.lights(&state) {
                 link.handle.send(&message);
             }
+        }
+    }
+
+    /// Notices a controller that was plugged in after the start or pulled out, and
+    /// connects it or lets go of it. Not while a take records: it does not need the delay.
+    fn watch_controller(&mut self) {
+        let c = &self.controller;
+        if c.wanted.is_empty() || c.last_watch.elapsed() < WATCH_EVERY || self.take_running() {
+            return;
+        }
+        self.controller.last_watch = Instant::now();
+        let ports = midi::list_inputs().unwrap_or_default();
+        let connected = self.controller.link.as_ref().map(|l| l.handle.port_name.as_str());
+        let drum = self.midi_in.as_ref().map(|h| h.port_name.as_str());
+        match watch_step(connected, &ports, &self.controller.wanted, drum) {
+            Watch::Keep => {}
+            Watch::Lost => {
+                self.controller.link = None;
+                self.controller.message = "The controller was disconnected. It connects again when it is plugged in.".into();
+                self.status = "Controller disconnected".into();
+            }
+            Watch::Connect => self.connect_controller(),
         }
     }
 
@@ -678,6 +732,20 @@ mod tests {
         app.open_file(&sample());
         assert!(app.score.is_some());
         app
+    }
+
+    #[test]
+    fn a_controller_is_noticed_when_plugged_in_or_pulled_out() {
+        let ports = |names: &[&str]| names.iter().map(|n| n.to_string()).collect::<Vec<_>>();
+        let both = ports(&["Roland V31", "X-TOUCH MINI"]);
+        assert_eq!(watch_step(None, &both, "X-TOUCH", Some("Roland V31")), Watch::Connect);
+        assert_eq!(watch_step(Some("X-TOUCH MINI"), &both, "X-TOUCH", Some("Roland V31")), Watch::Keep);
+        let only_drums = ports(&["Roland V31"]);
+        assert_eq!(watch_step(Some("X-TOUCH MINI"), &only_drums, "X-TOUCH", Some("Roland V31")), Watch::Lost);
+        assert_eq!(watch_step(None, &only_drums, "X-TOUCH", Some("Roland V31")), Watch::Keep, "still waiting");
+        // The drum input is never mistaken for the controller.
+        assert_eq!(watch_step(None, &only_drums, "Roland", Some("Roland V31")), Watch::Keep);
+        assert_eq!(watch_step(None, &only_drums, "Roland", None), Watch::Connect);
     }
 
     #[test]

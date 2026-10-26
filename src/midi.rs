@@ -37,6 +37,11 @@ pub fn list_outputs() -> Result<Vec<String>, String> {
     Ok(mo.ports().iter().filter_map(|p| mo.port_name(p).ok()).collect())
 }
 
+/// The index of the port in `names` that `wanted` (an exact name or part of one) selects.
+pub fn find_port(names: &[String], wanted: &str) -> Option<usize> {
+    pick(names.iter().map(|s| s.as_str()).enumerate(), wanted)
+}
+
 /// Exact name match first, then case-insensitive substring.
 fn pick<'a>(names: impl Iterator<Item = (usize, &'a str)> + Clone, wanted: &str) -> Option<usize> {
     let w = wanted.trim().to_lowercase();

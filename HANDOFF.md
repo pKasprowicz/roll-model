@@ -50,7 +50,7 @@ Mackie Control support, see `README.md` ("Controller"). `controller.rs` is pure 
 - [ ] Does the Mini in MC mode already switch its own layers (and change what it sends)? The program switches layers itself from the layer buttons' messages; if the device remaps instead, the layer lines are wrong.
 - [ ] `presets/x-touch-compact.txt` is from the Mackie Control spec only; the faders are not motorised by the program (a fader takes over when it reaches the value).
 - [ ] Not done: motor faders, scribble strip / time display feedback, a second (XT) unit, blinking lights, MIDI-learn for custom presets (the monitor shows the numbers to type).
-- [ ] The port is chosen by name once at start; unplugging the controller is not noticed (use "Refresh and reconnect").
+- The controller's port is looked for every 2 s (`watch_controller`): plugging it in after the start connects it, pulling it out drops it. Not tried with a real unplug.
 
 ### Still open
 
