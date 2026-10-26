@@ -2,6 +2,8 @@
 
 # Name ideas
 
+> **Made with AI.** This project was created with extensive use of AI (Anthropic's Claude), directed and reviewed by the author. Check anything that matters.
+
 Status: **undecided.** The app is still called "Drum Tutor" (crate `drum-tutor`), a working title. These are proposals from 2026-10-24, kept for later. The brief was a more badass name in three flavours: silly, Japanese, word-play. They need not be mixed.
 
 The "crates.io" column says whether a crate of that name (or its `_` spelling) was in the public index on 2026-10-24. The project is not published, so this only matters if it ever is, but it is a cheap sign of how crowded a name is. Nothing here has been checked for trademarks, domains, GitHub projects or app stores.

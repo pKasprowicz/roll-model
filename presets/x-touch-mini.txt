@@ -1,0 +1,144 @@
+# Behringer X-Touch Mini in Mackie Control (MC) mode.
+# (Written with extensive use of AI, from the Mackie Control table as remembered; not verified on the device.)
+#
+# Layer A (practice) and layer B (mixer). The application switches layers itself
+# when the two LAYER buttons are pressed.
+#
+# The note and cc numbers are those of the Mini's Mackie Control table as I know it;
+# they have not been checked on the device. Press every control with the
+# controller selected in Settings -> Controller and read the monitor there: if a
+# number differs, copy this file into the controllers folder, change the number
+# and choose the copy.
+#
+#   top row of buttons    89 90 40 41 42 43 44 45
+#   bottom row of buttons 87 88 91 92 86 93 94 95
+#   encoders 1-8          cc 16-23 (turn, relative), notes 32-39 (push)
+#   fader                 pitch bend, channel 1
+#   LAYER A / LAYER B     notes 84 / 85
+#
+# Layer A: Record · Listen · Stop · Click · Loop · Notes · Metronome tab · Next tab
+#          Loop worst bar · Range back · Range forward · Tap tempo · Tempo -5 % · Tempo +5 % · Discard take · Shift
+# Layer B: mute (top row) and solo (bottom row) of eight instrument groups, their volume on the encoders.
+#
+# While the Rudiments tab's practice is in use, layer A's measure controls mean something else
+# (no change to this file is needed): encoder 2 = repeats, encoder 3 = which hand leads, encoder 8
+# = the rudiment (turn), "range back" / "range forward" = previous / next rudiment, the tempo
+# controls are in BPM, and the push of encoder 1 goes back to the rudiment's starting tempo.
+
+name = Behringer X-Touch Mini
+port = X-TOUCH MINI
+
+layer = A note 84
+layer = B note 85
+
+# ---- layer A: practice ----
+bind = A note 89 -> record
+bind = A note 90 -> listen
+bind = A note 40 -> stop
+bind = A note 41 -> click
+bind = A note 42 -> loop
+bind = A note 43 -> notes
+bind = A note 44 -> metronome
+bind = A note 45 -> next_tab
+
+bind = A note 87 -> loop_worst_bar
+bind = A note 88 -> range_back
+bind = A note 91 -> range_forward
+bind = A note 92 -> tap_tempo
+bind = A note 86 -> tempo_down
+bind = A note 93 -> tempo_up
+bind = A note 94 -> discard_take
+bind = A note 95 -> shift
+
+bind = A cc 16 rel -> tempo
+bind = A cc 17 rel -> range_from
+bind = A cc 18 rel -> range_to
+bind = A cc 19 rel -> click_volume
+bind = A cc 20 rel -> music_volume
+bind = A cc 21 rel -> count_in
+bind = A cc 22 rel -> bars_per_row
+bind = A cc 23 rel -> score
+bind = A note 32 -> tempo_reset
+bind = A note 39 -> open_score
+bind = A bend 1 -> tempo
+
+led = A record -> note 89
+led = A listen -> note 90
+led = A stop -> note 40
+led = A click -> note 41
+led = A loop -> note 42
+led = A notes -> note 43
+led = A metronome -> note 44
+led = A shift -> note 95
+
+ring = A tempo -> cc 48
+ring = A range_from -> cc 49
+ring = A range_to -> cc 50
+ring = A click_volume -> cc 51
+ring = A music_volume -> cc 52
+ring = A count_in -> cc 53
+ring = A bars_per_row -> cc 54
+
+# ---- layer B: mixer ----
+bind = B note 89 -> mute 1
+bind = B note 90 -> mute 2
+bind = B note 40 -> mute 3
+bind = B note 41 -> mute 4
+bind = B note 42 -> mute 5
+bind = B note 43 -> mute 6
+bind = B note 44 -> mute 7
+bind = B note 45 -> mute 8
+
+bind = B note 87 -> solo 1
+bind = B note 88 -> solo 2
+bind = B note 91 -> solo 3
+bind = B note 92 -> solo 4
+bind = B note 86 -> solo 5
+bind = B note 93 -> solo 6
+bind = B note 94 -> solo 7
+bind = B note 95 -> solo 8
+
+bind = B cc 16 rel -> gain 1
+bind = B cc 17 rel -> gain 2
+bind = B cc 18 rel -> gain 3
+bind = B cc 19 rel -> gain 4
+bind = B cc 20 rel -> gain 5
+bind = B cc 21 rel -> gain 6
+bind = B cc 22 rel -> gain 7
+bind = B cc 23 rel -> gain 8
+bind = B note 32 -> audition 1
+bind = B note 33 -> audition 2
+bind = B note 34 -> audition 3
+bind = B note 35 -> audition 4
+bind = B note 36 -> audition 5
+bind = B note 37 -> audition 6
+bind = B note 38 -> audition 7
+bind = B note 39 -> audition 8
+bind = B bend 1 -> music_volume
+
+led = B mute 1 -> note 89
+led = B mute 2 -> note 90
+led = B mute 3 -> note 40
+led = B mute 4 -> note 41
+led = B mute 5 -> note 42
+led = B mute 6 -> note 43
+led = B mute 7 -> note 44
+led = B mute 8 -> note 45
+
+led = B solo 1 -> note 87
+led = B solo 2 -> note 88
+led = B solo 3 -> note 91
+led = B solo 4 -> note 92
+led = B solo 5 -> note 86
+led = B solo 6 -> note 93
+led = B solo 7 -> note 94
+led = B solo 8 -> note 95
+
+ring = B gain 1 -> cc 48
+ring = B gain 2 -> cc 49
+ring = B gain 3 -> cc 50
+ring = B gain 4 -> cc 51
+ring = B gain 5 -> cc 52
+ring = B gain 6 -> cc 53
+ring = B gain 7 -> cc 54
+ring = B gain 8 -> cc 55

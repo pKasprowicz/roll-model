@@ -9,6 +9,7 @@ use std::path::{Path, PathBuf};
 
 use crate::analysis::Tolerances;
 use crate::drums::{format_note_list, parse_note_list, Lane, NoteMap};
+use crate::rudiments::{self, DEFAULT_REPEATS, MAX_REPEATS};
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Config {
@@ -56,6 +57,21 @@ pub struct Config {
     pub metro_sub: usize,
     /// Show the loaded score rolling by on the Metronome tab.
     pub metro_preview: bool,
+    /// Hardware controller: a built-in preset's name or the name of a file in the
+    /// controllers folder; empty = none.
+    pub controller_preset: String,
+    /// Part of the controller's MIDI port name; empty = the preset's own.
+    pub controller_port: String,
+    /// The Rudiments tab: the rudiment chosen (PAS number, 1 to 40) and how often it is repeated.
+    pub rudiment: u8,
+    pub rudiment_repeats: usize,
+    /// List only the original NARD Standard 26.
+    pub rudiment_nard_only: bool,
+    /// Raise the tempo after every clean take.
+    pub rudiment_ladder: bool,
+    /// The tempo (BPM) last used with each rudiment, and the fastest clean take of each.
+    pub rudiment_bpm: BTreeMap<u8, f32>,
+    pub rudiment_best: BTreeMap<u8, f32>,
 }
 
 /// How many scores the welcome panel remembers.
@@ -96,6 +112,14 @@ impl Default for Config {
             metro_beats: 4,
             metro_sub: 0,
             metro_preview: true,
+            controller_preset: String::new(),
+            controller_port: String::new(),
+            rudiment: 1,
+            rudiment_repeats: DEFAULT_REPEATS,
+            rudiment_nard_only: false,
+            rudiment_ladder: false,
+            rudiment_bpm: BTreeMap::new(),
+            rudiment_best: BTreeMap::new(),
         }
     }
 }
@@ -153,6 +177,11 @@ impl Config {
     /// Where the settings were kept when the application was called Drum Tutor.
     fn legacy_dir() -> Option<PathBuf> {
         Config::dir_named("DrumTutor", "drum-tutor")
+    }
+
+    /// Controller presets written by the user, next to the settings file.
+    pub fn controllers_dir() -> Option<PathBuf> {
+        Config::dir().map(|d| d.join("controllers"))
     }
 
     pub fn path() -> Option<PathBuf> {
@@ -234,6 +263,18 @@ impl Config {
         kv("metro_beats", self.metro_beats.to_string());
         kv("metro_sub", self.metro_sub.to_string());
         kv("metro_preview", self.metro_preview.to_string());
+        kv("controller_preset", self.controller_preset.clone());
+        kv("controller_port", self.controller_port.clone());
+        kv("rudiment", self.rudiment.to_string());
+        kv("rudiment_repeats", self.rudiment_repeats.to_string());
+        kv("rudiment_nard_only", self.rudiment_nard_only.to_string());
+        kv("rudiment_ladder", self.rudiment_ladder.to_string());
+        for (n, bpm) in &self.rudiment_bpm {
+            kv(&format!("rudiment_bpm.{n}"), bpm.to_string());
+        }
+        for (n, bpm) in &self.rudiment_best {
+            kv(&format!("rudiment_best.{n}"), bpm.to_string());
+        }
         for lane in Lane::ALL {
             if self.gain_of(lane) != 1.0 {
                 kv(&format!("gain.{}", lane.name()), self.gain_of(lane).to_string());
@@ -300,6 +341,12 @@ impl Config {
                 }
                 "metro_beats" => c.metro_beats = v.parse().unwrap_or(c.metro_beats).clamp(1, 12),
                 "metro_preview" => c.metro_preview = b(c.metro_preview),
+                "controller_preset" => c.controller_preset = v.to_string(),
+                "controller_port" => c.controller_port = v.to_string(),
+                "rudiment" => c.rudiment = v.parse().ok().filter(|n| rudiments::by_number(*n).is_some()).unwrap_or(c.rudiment),
+                "rudiment_repeats" => c.rudiment_repeats = v.parse().unwrap_or(c.rudiment_repeats).clamp(1, MAX_REPEATS),
+                "rudiment_nard_only" => c.rudiment_nard_only = b(c.rudiment_nard_only),
+                "rudiment_ladder" => c.rudiment_ladder = b(c.rudiment_ladder),
                 "metro_sub" => c.metro_sub = v.parse().unwrap_or(c.metro_sub).min(3),
                 _ => {
                     if let Some(lane) = k.strip_prefix("map.").and_then(Lane::from_name) {
@@ -314,6 +361,14 @@ impl Config {
                     } else if let Some(lane) = k.strip_prefix("mute.").and_then(Lane::from_name) {
                         if b(false) {
                             c.lane_mute.insert(lane);
+                        }
+                    } else if let Some(n) = k.strip_prefix("rudiment_bpm.").and_then(|n| n.parse::<u8>().ok()) {
+                        if let (Some(_), Some(bpm)) = (rudiments::by_number(n), v.parse::<f32>().ok().filter(|x| x.is_finite())) {
+                            c.rudiment_bpm.insert(n, bpm.clamp(20.0, 300.0));
+                        }
+                    } else if let Some(n) = k.strip_prefix("rudiment_best.").and_then(|n| n.parse::<u8>().ok()) {
+                        if let (Some(_), Some(bpm)) = (rudiments::by_number(n), v.parse::<f32>().ok().filter(|x| x.is_finite())) {
+                            c.rudiment_best.insert(n, bpm.clamp(20.0, 300.0));
                         }
                     }
                 }
@@ -375,14 +430,41 @@ mod tests {
             metro_sub: 2,
             metro_preview: false,
             hihat_cc_max: 90,
+            controller_preset: "Behringer X-Touch Mini".into(),
+            controller_port: "X-TOUCH".into(),
             ..Default::default()
         };
         c.note_map.set_lane_notes(Lane::Kick, &[36, 33]);
         c.lane_gain.insert(Lane::Crash1, 0.4);
         c.lane_gain.insert(Lane::Kick, 1.25);
         c.lane_mute.insert(Lane::HiHatClosed);
+        c.rudiment = 24;
+        c.rudiment_repeats = 8;
+        c.rudiment_nard_only = true;
+        c.rudiment_ladder = true;
+        c.rudiment_bpm.insert(24, 72.5);
+        c.rudiment_best.insert(16, 96.0);
         let back = Config::from_text(&c.to_text());
         assert_eq!(back, c);
+    }
+
+    #[test]
+    fn rudiment_settings_are_clamped_and_default_when_missing() {
+        let c = Config::from_text(
+            "rudiment = 99\nrudiment_repeats = 500\nrudiment_bpm.16 = 1000\nrudiment_bpm.99 = 80\nrudiment_bpm.x = 80\n\
+             rudiment_best.20 = abc\nrudiment_best.21 = 88\nrudiment_ladder = maybe\n",
+        );
+        assert_eq!(c.rudiment, 1, "not a rudiment: keeps the default");
+        assert_eq!(c.rudiment_repeats, MAX_REPEATS);
+        assert_eq!(c.rudiment_bpm.get(&16), Some(&300.0));
+        assert_eq!(c.rudiment_bpm.len(), 1, "unknown rudiments are dropped");
+        assert_eq!(c.rudiment_best.len(), 1);
+        assert_eq!(c.rudiment_best.get(&21), Some(&88.0));
+        assert!(!c.rudiment_ladder);
+        let old = Config::from_text("latency_ms = 5\n");
+        assert_eq!((old.rudiment, old.rudiment_repeats), (1, DEFAULT_REPEATS));
+        assert!(old.rudiment_bpm.is_empty() && old.rudiment_best.is_empty());
+        assert!(!Config::default().to_text().contains("rudiment_bpm."), "nothing is written for a rudiment never practised");
     }
 
     #[test]
@@ -418,6 +500,7 @@ mod tests {
         let old = Config::from_text("latency_ms = 5\n");
         assert_eq!((old.bars_per_row, old.layout_align_bar, old.metro_bpm, old.metro_beats), (0, 0, 100.0, 4));
         assert!(old.lane_gain.is_empty() && old.lane_mute.is_empty() && old.audio_output.is_empty());
+        assert!(old.controller_preset.is_empty() && old.controller_port.is_empty(), "no controller unless chosen");
         // Defaults are not written out for the mixer.
         assert!(!Config::default().to_text().contains("gain."));
     }

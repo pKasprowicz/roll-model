@@ -1,8 +1,34 @@
 # Changelog
 
+> **Made with AI.** This project was created with extensive use of AI (Anthropic's Claude), directed and reviewed by the author. Check anything that matters.
+
 All notable changes are recorded here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html); see "Versioning" in the README.
 
 ## [Unreleased]
+
+## [0.6.0] - 2026-10-26
+
+Rudiments, a hardware controller, a new licence, and a user manual and developer guide in every release. Covered by unit tests (132); the Rudiments tab was looked at in the running app for two rudiments. Not yet tried with a real V31, a real controller, or by ear.
+
+### Changed
+- The grey helper texts (the small text style) are half as big again.
+- Releases now include `LICENSE` and **`THIRD_PARTY_NOTICES.txt`**, the licence texts and copyright notices of all libraries and bundled fonts, as their licences require for binary copies. The README and manual say that the product names they mention are trademarks of their owners.
+- The licence is now the **PolyForm Noncommercial License 1.0.0** (file `LICENSE`): free for any noncommercial purpose, no commercial use. Earlier releases stay under MIT.
+
+### Added
+- A **developer guide** (`roll-model-developer-guide.html`) in the same format as the user manual: architecture, concepts, threads and real time, the controller and rudiment subsystems, Rust constructs, extension points and seven tutorials. Its code excerpts are extracted from the source at build time. Built during the release and included in both archives and as a release file; build it locally with `python3 tools/build_devguide.py`.
+- **Rudiments tab** between Score and Metronome: the 40 PAS international drum rudiments (rolls, diddles, flams, drags; the original NARD Standard 26 are marked). Pick one from the list (family groups, search, "original 26 only") or with Prev/Next, repeat it with the *repeats* slider instead of choosing measures, choose which hand leads (right, left, alternating), and Listen, Record, count in, click and loop as on the Score tab. The rudiment is drawn on the usual two staves with the sticking (R and L, the grace notes of flams and drags as small letters) under the notes. The tempo is in BPM and remembered per rudiment. The multiple bounce (buzz) roll can only be listened to. The catalogue and where it comes from are in `docs/rudiments.md`.
+- Grading of rudiments: the hit window follows the spacing of the notes (45 % of the gap to the neighbours, not less than the "perfect" tolerance), the Results tab has a **Hands** table, and the feedback says when one hand is late or softer than the other. A drag's two grace notes are expected at different times before the main note.
+- A take of a whole rudiment that scores 85 or better is a *clean take*: its tempo becomes the rudiment's **best clean tempo**, shown with the rudiment and in the list. A **ladder** switch raises the tempo by 5 BPM after each clean take.
+- Controller: with a rudiment, encoder 2 sets the repeats, encoder 3 the lead, encoder 8 browses the rudiments, range back/forward step through them and the tempo controls are in BPM. No change to the presets is needed. New preset names: buttons `prev_rudiment`, `next_rudiment`; values `repeats`, `lead`; `rudiment` (only turned). Next tab includes the Rudiments tab.
+- New settings keys `rudiment`, `rudiment_repeats`, `rudiment_nard_only`, `rudiment_ladder`, `rudiment_bpm.N`, `rudiment_best.N`.
+- The Home tab has a button that opens the Rudiments tab.
+- An extensive **user manual** (`roll-model-manual.html`, one self-contained page with contents, diagrams and a searchable reference of the 40 rudiments) is built during the release and included in both archives and as a release file. Build it locally with `python3 tools/build_manual.py`.
+- Hardware controller support for Mackie Control surfaces, with built-in presets for the **Behringer X-Touch Mini** (MC mode, two layers switched by the program) and **X-Touch Compact**: record, listen, stop, click, loop, notes, metronome and tab switching, tap tempo, tempo and measure range on encoders and a fader, "loop the worst bar" of the last take, browsing and opening recent scores, and the instrument mixer (volume, mute, solo, play) on eight instrument groups. Lights and LED rings follow the application. Shift (held) makes encoder turns five times as large. A fader takes over only once it reaches the current value.
+- **Settings → Controller**: choose the preset and port, see what each control is bound to, watch the incoming messages, and copy a built-in preset as a start for your own.
+- A controller that is plugged in after the program started connects by itself, and one that is pulled out is let go of.
+- Your own controller presets: text files in the `controllers` folder next to the settings file, listed with the built-in ones. New settings keys `controller_preset` and `controller_port`.
+- The X-Touch Mini preset is written from the Mackie Control table as remembered and has not been tried on the device; the Compact preset follows the standard Mackie Control numbers and is untested.
 
 ## [0.5.0] - 2026-10-26
 

@@ -1,0 +1,669 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Roll Model Developer Guide</title>
+<style>
+{{STYLE}}</style>
+</head>
+<body>
+<div class="layout">
+<nav id="toc" aria-label="Contents">
+  <div class="brand">Roll Model</div>
+  <div class="ver">Developer guide &middot; {{LABEL}}</div>
+  <ol>
+    <li><a href="#intro">Introduction</a></li>
+    <li><a href="#start">Getting started</a>
+      <ol><li><a href="#build">Build, run, test</a></li><li><a href="#workflow">Workflow and conventions</a></li><li><a href="#debug">Debugging and looking at the UI</a></li></ol></li>
+    <li><a href="#arch">Architecture</a>
+      <ol><li><a href="#layers">Layers</a></li><li><a href="#modules">Module map</a></li><li><a href="#deps">Dependencies</a></li><li><a href="#dataflow">Data flow</a></li></ol></li>
+    <li><a href="#concepts">Core concepts</a>
+      <ol><li><a href="#time">Time</a></li><li><a href="#model">The score model</a></li><li><a href="#kit">The kit: lanes and note maps</a></li><li><a href="#take">The life of a take</a></li><li><a href="#grading">Matching and grading</a></li></ol></li>
+    <li><a href="#realtime">Threads and real time</a>
+      <ol><li><a href="#midi-in">MIDI input</a></li><li><a href="#timing">The timing threads</a></li><li><a href="#control">Shared live settings</a></li><li><a href="#sink">The Sink seam</a></li></ol></li>
+    <li><a href="#ui">The user interface</a>
+      <ol><li><a href="#frame">One frame</a></li><li><a href="#sources">Practice sources</a></li><li><a href="#render">The score renderer</a></li><li><a href="#widgets">Widgets and style</a></li></ol></li>
+    <li><a href="#controller">The controller subsystem</a></li>
+    <li><a href="#rudiments">The rudiment subsystem</a></li>
+    <li><a href="#config">Settings and persistence</a></li>
+    <li><a href="#rust">Rust constructs that carry the design</a></li>
+    <li><a href="#testing">Testing</a></li>
+    <li><a href="#extend">Extension points</a></li>
+    <li><a href="#tutorials">Tutorials</a>
+      <ol><li><a href="#t-rudiment">1. Add a rudiment</a></li><li><a href="#t-setting">2. Add a setting</a></li><li><a href="#t-metric">3. Add a metric to the report</a></li><li><a href="#t-action">4. Add a controller action</a></li><li><a href="#t-tab">5. Add a tab</a></li><li><a href="#t-lane">6. Add an instrument</a></li><li><a href="#t-sink">7. Test sound without a sound card</a></li></ol></li>
+    <li><a href="#release">Releases and CI</a></li>
+    <li><a href="#gaps">Known gaps and roadmap</a></li>
+    <li><a href="#invariants">Invariants checklist</a></li>
+  </ol>
+</nav>
+
+<main>
+<header class="title">
+  <h1>Roll Model: developer guide</h1>
+  <p>For version {{VERSION}} ({{LABEL}}) &middot; built {{DATE}}</p>
+  <div class="callout warn"><strong class="label">Made with AI</strong>Roll Model and this guide were created with extensive use of AI (Anthropic's Claude), directed and reviewed by the author. The code snippets in this guide are extracted from the source when the guide is built, so they match it; the explanations are written by hand and can lag behind. When the two disagree, the code is right.</div>
+</header>
+
+<section id="intro">
+<h2>1. Introduction</h2>
+<p>Roll Model is a desktop application for drummers, written in Rust with the <code>egui</code> immediate-mode GUI. It loads MusicXML drum scores (or generates one of the 40 PAS drum rudiments), plays them, captures a Roland V31 drum module over MIDI, draws the played notes under the written ones and grades the performance. A Mackie Control surface can drive it.</p>
+<p>This guide is for someone who wants to <em>change</em> the program: fix a bug, add a feature, port it, or learn how a real-time desktop application can be structured in Rust. It explains the ideas first, then the code, then walks through concrete changes step by step.</p>
+<div class="cards">
+  <div class="card"><h4>Architecture</h4><p>Layers, modules, threads and the data that flows between them.</p></div>
+  <div class="card"><h4>Concepts</h4><p>Time in quarter notes, the score model, takes, matching and grading.</p></div>
+  <div class="card"><h4>Rust constructs</h4><p>The language features the design leans on, with the real code.</p></div>
+  <div class="card"><h4>Tutorials</h4><p>Seven worked changes, each with the files to touch and the tests to write.</p></div>
+</div>
+<p>{{STATS}}</p>
+<h3>Licence</h3>
+<p>The project is under the <strong>PolyForm Noncommercial License 1.0.0</strong> (file <code>LICENSE</code>): you may read, study, change and share it for any noncommercial purpose, not make money from it. Libraries and fonts it uses are under their own licences (<code>THIRD_PARTY_NOTICES.txt</code>). Contributions are accepted under the same terms.</p>
+<h3>Where the other documents are</h3>
+<table class="compact">
+<tbody>
+<tr><td><code>README.md</code></td><td>What the program does, how to build it</td></tr>
+<tr><td><code>HANDOFF.md</code></td><td>Current status, the todo list for the next session, invariants, known gaps. Read it before changing code.</td></tr>
+<tr><td><code>CHANGELOG.md</code></td><td>User-visible changes per release (Keep a Changelog)</td></tr>
+<tr><td><code>CLAUDE.md</code></td><td>Short instructions for AI coding assistants working on the repository</td></tr>
+<tr><td><code>docs/rudiments.md</code></td><td>The rudiment catalogue and where it comes from</td></tr>
+<tr><td>User manual</td><td>Built from <code>docs/manual</code>; this guide is built from <code>docs/developer</code></td></tr>
+</tbody></table>
+</section>
+
+<section id="start">
+<h2>2. Getting started</h2>
+
+<h3 id="build">Build, run, test</h3>
+<p>You need a recent Rust toolchain (<a href="https://rustup.rs">rustup</a>; 1.99 is the tested version, 1.85 the oldest that can parse the dependencies). On Linux install <code>libasound2-dev</code> and <code>pkg-config</code> first.</p>
+<pre><code>cargo run --release                                  # start empty
+cargo run --release -- examples/basic_rock_beat.musicxml
+cargo test                                           # all unit tests (no devices needed)
+cargo build --release --no-default-features          # without the sound card (no rodio/cpal)
+cargo check --no-default-features                    # quick check of the other feature set</code></pre>
+<ul>
+<li>It is a <strong>binary crate only</strong> (<code>src/main.rs</code> declares every module). Tests therefore run with <code>cargo test</code>, not <code>cargo test --lib</code>, and a single test with <code>cargo test the_hands_are</code>.</li>
+<li>Use a <strong>release build</strong> for anything that depends on timing (recording takes, keyboard pads): debug frames are slow enough to make timestamps unreliable.</li>
+<li>The feature <code>audio</code> (default) pulls in <code>rodio</code>. Without it the click and Listen can still go to a MIDI output. Code that needs the sound card is behind <code>#[cfg(feature = "audio")]</code> with a stub for the other case.</li>
+</ul>
+<h4>Building the documentation</h4>
+<pre><code>python3 tools/build_manual.py       # target/manual/roll-model-manual.html
+python3 tools/build_devguide.py     # target/devguide/roll-model-developer-guide.html (this file)
+python3 tools/build_notices.py      # target/notices/THIRD_PARTY_NOTICES.txt</code></pre>
+<p>All three use only the Python standard library. They run in CI during a release.</p>
+
+<h3 id="workflow">Workflow and conventions</h3>
+<ul>
+<li><strong>Branches.</strong> <code>main</code> holds releases, <code>develop</code> the work in progress, <code>feature/&lt;name&gt;</code> branches are merged into <code>develop</code> with a merge commit. Moving the tag <code>preview</code> onto a commit of <code>develop</code> and pushing it builds a pre-release.</li>
+<li><strong>Versioning</strong> is SemVer. The version lives in <code>Cargo.toml</code> (bump <code>Cargo.lock</code> with it), release tags are <code>vX.Y.Z</code>. Every user-visible change goes under <code>[Unreleased]</code> in <code>CHANGELOG.md</code>.</li>
+<li><strong>Commit messages</strong> are <code>feat:</code>, <code>fix:</code>, <code>docs:</code>, <code>chore:</code>, <code>test:</code>, <code>ci:</code> followed by a sentence.</li>
+<li><strong>Keep the pure modules pure.</strong> <code>analysis.rs</code>, <code>musicxml.rs</code>, <code>score.rs</code>, <code>drums.rs</code>, <code>xml.rs</code> and <code>rudiments.rs</code> must not depend on the GUI or on MIDI. That is what makes them testable without devices, and it is the first thing to check in a review.</li>
+<li><strong>Time is quarter notes.</strong> Score positions are quarter notes (<code>q</code>); convert to seconds only through <code>TempoMap</code>.</li>
+<li><strong>Style.</strong> Write code that reads like the code around it: same comment density, naming, idiom. Doc comments say <em>why</em> and what the caller can rely on; a test name is a sentence describing behaviour.</li>
+<li><strong>Update the docs with the code.</strong> <code>HANDOFF.md</code> (status, architecture list, conventions), the README, the manual template and, if behaviour is user visible, the changelog. This guide's code excerpts update themselves; its prose does not.</li>
+<li><strong>Glyphs.</strong> egui 0.29's default fonts lack several symbols (a filled circle, a cross, an arrow); a missing glyph is drawn as a box. Check any new glyph in the running app before using it. The proven ones are listed in <code>HANDOFF.md</code>.</li>
+</ul>
+
+<h3 id="debug">Debugging and looking at the UI</h3>
+<ul>
+<li><strong>No kit?</strong> Tick <em>Settings &rarr; General &rarr; Computer keyboard plays pads</em>. The keys call the same <code>handle_event</code> as a real MIDI hit (time-stamped at frame time).</li>
+<li><strong>Monitors.</strong> <em>Settings &rarr; MIDI input</em> shows every drum hit; <em>Settings &rarr; Controller</em> shows every controller message and what it is bound to.</li>
+<li><strong>Seeing a screen without clicking.</strong> There is no UI test harness, so to look at a tab temporarily set <code>app.tab</code> (and any state) at the end of <code>DrumApp::new</code>, build, start the program with <code>APPDATA</code> pointing at a scratch folder (so your settings are not touched) and screenshot its window. Remove the patch afterwards. Headless <code>egui::Context::run</code> tests cover that a screen draws without panicking.</li>
+<li><strong>Logging.</strong> There is no logging framework; use <code>dbg!</code>/<code>eprintln!</code> from a debug build (the Windows release build hides the console).</li>
+<li><strong>Sound.</strong> Nothing in the test suite hears anything. On Windows the per-application peak meter of the output device is the way to see that the program is silent or sounding (see <code>HANDOFF.md</code> &rarr; Testing).</li>
+</ul>
+</section>
+
+<section id="arch">
+<h2>3. Architecture</h2>
+
+<h3 id="layers">Layers</h3>
+<p>The program has three layers. Dependencies point downwards only: the UI knows the devices and the core; the devices know the core; the core knows nothing about either.</p>
+<figure>
+<svg viewBox="0 0 760 360" role="img" aria-label="Layers of the architecture" xmlns="http://www.w3.org/2000/svg" font-family="system-ui, sans-serif" font-size="13">
+  <rect x="10" y="10" width="740" height="110" rx="8" fill="currentColor" opacity=".08"/>
+  <text x="24" y="32" font-weight="700">User interface &mdash; egui, one thread, immediate mode</text>
+  <rect x="24" y="44" width="150" height="30" rx="5" fill="none" stroke="currentColor"/><text x="34" y="64">app.rs (DrumApp)</text>
+  <rect x="184" y="44" width="150" height="30" rx="5" fill="none" stroke="currentColor"/><text x="194" y="64">app/rudiment.rs</text>
+  <rect x="344" y="44" width="150" height="30" rx="5" fill="none" stroke="currentColor"/><text x="354" y="64">app/controls.rs</text>
+  <rect x="504" y="44" width="110" height="30" rx="5" fill="none" stroke="currentColor"/><text x="514" y="64">app/metro.rs</text>
+  <rect x="624" y="44" width="116" height="30" rx="5" fill="none" stroke="currentColor"/><text x="634" y="64">app/mixer.rs</text>
+  <rect x="24" y="82" width="150" height="28" rx="5" fill="none" stroke="currentColor"/><text x="34" y="101">render.rs</text>
+  <rect x="184" y="82" width="150" height="28" rx="5" fill="none" stroke="currentColor"/><text x="194" y="101">widgets.rs</text>
+  <rect x="344" y="82" width="150" height="28" rx="5" fill="none" stroke="currentColor"/><text x="354" y="101">config.rs</text>
+  <rect x="10" y="130" width="740" height="100" rx="8" fill="currentColor" opacity=".14"/>
+  <text x="24" y="152" font-weight="700">Devices &mdash; threads and I/O</text>
+  <rect x="24" y="164" width="130" height="30" rx="5" fill="none" stroke="currentColor"/><text x="34" y="184">midi.rs</text>
+  <rect x="164" y="164" width="130" height="30" rx="5" fill="none" stroke="currentColor"/><text x="174" y="184">metronome.rs</text>
+  <rect x="304" y="164" width="130" height="30" rx="5" fill="none" stroke="currentColor"/><text x="314" y="184">playback.rs</text>
+  <rect x="444" y="164" width="130" height="30" rx="5" fill="none" stroke="currentColor"/><text x="454" y="184">control.rs</text>
+  <rect x="584" y="164" width="156" height="30" rx="5" fill="none" stroke="currentColor"/><text x="594" y="184">synth.rs, loader.rs</text>
+  <rect x="10" y="240" width="740" height="110" rx="8" fill="currentColor" opacity=".22"/>
+  <text x="24" y="262" font-weight="700">Pure core &mdash; no GUI, no MIDI, no audio; fully unit-tested</text>
+  <rect x="24" y="274" width="110" height="30" rx="5" fill="none" stroke="currentColor"/><text x="34" y="294">score.rs</text>
+  <rect x="144" y="274" width="110" height="30" rx="5" fill="none" stroke="currentColor"/><text x="154" y="294">drums.rs</text>
+  <rect x="264" y="274" width="110" height="30" rx="5" fill="none" stroke="currentColor"/><text x="274" y="294">analysis.rs</text>
+  <rect x="384" y="274" width="110" height="30" rx="5" fill="none" stroke="currentColor"/><text x="394" y="294">musicxml.rs</text>
+  <rect x="504" y="274" width="110" height="30" rx="5" fill="none" stroke="currentColor"/><text x="514" y="294">xml.rs</text>
+  <rect x="624" y="274" width="116" height="30" rx="5" fill="none" stroke="currentColor"/><text x="634" y="294">rudiments.rs</text>
+  <rect x="24" y="312" width="150" height="28" rx="5" fill="none" stroke="currentColor"/><text x="34" y="331">controller.rs</text>
+  <text x="190" y="331" opacity=".8">(controller.rs is pure too: bytes in, commands and light messages out)</text>
+</svg>
+<figcaption>Dependencies point downwards. A pure module never imports from the layers above it.</figcaption>
+</figure>
+<p>The payoff is visible in the tests: matching and grading, the rudiment builder, the MusicXML importer, the controller mapping and the playback scheduler are all tested with no MIDI port, sound card or window.</p>
+
+<h3 id="modules">Module map</h3>
+<p>Generated from the source: line counts, test counts and the first sentence of each file's <code>//!</code> documentation.</p>
+{{MODULES}}
+
+<h3 id="deps">Dependencies</h3>
+{{DEPENDENCIES}}
+<p>Dependency versions are deliberately old (eframe 0.29, rodio 0.19, zip 2) because those APIs were known. Upgrading eframe means at least handling <code>rect_stroke</code> gaining a <code>StrokeKind</code> and <code>Rounding</code> becoming <code>CornerRadius</code>. The XML parser is hand-written (<code>xml.rs</code>) because MusicXML is namespace-free and a dependency would be heavier than the 300 lines.</p>
+
+<h3 id="dataflow">Data flow</h3>
+<figure>
+<svg viewBox="0 0 760 330" role="img" aria-label="Data flow between threads" xmlns="http://www.w3.org/2000/svg" font-family="system-ui, sans-serif" font-size="13">
+  <defs><marker id="ar" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="currentColor"/></marker></defs>
+  <g fill="none" stroke="currentColor">
+    <rect x="10" y="20" width="150" height="48" rx="6"/><rect x="10" y="130" width="150" height="48" rx="6"/><rect x="10" y="240" width="150" height="48" rx="6"/>
+    <rect x="300" y="110" width="170" height="90" rx="8" stroke-width="2"/>
+    <rect x="600" y="20" width="150" height="48" rx="6"/><rect x="600" y="130" width="150" height="48" rx="6"/><rect x="600" y="240" width="150" height="48" rx="6"/>
+    <path d="M160 44 L300 130" marker-end="url(#ar)"/><path d="M160 154 L300 154" marker-end="url(#ar)"/><path d="M300 180 L160 262" marker-end="url(#ar)"/>
+    <path d="M470 130 L600 44" marker-end="url(#ar)"/><path d="M470 160 L600 154" marker-end="url(#ar)"/><path d="M470 190 L600 264" marker-end="url(#ar)"/>
+  </g>
+  <text x="22" y="40">Drum module</text><text x="22" y="58" opacity=".7">midir callback thread</text>
+  <text x="22" y="150">Control surface</text><text x="22" y="168" opacity=".7">midir callback thread</text>
+  <text x="22" y="260">Score file / rudiment</text><text x="22" y="278" opacity=".7">loader, musicxml, rudiments</text>
+  <text x="318" y="140" font-weight="700">DrumApp</text><text x="318" y="160">UI thread, one frame at a time</text><text x="318" y="180" opacity=".7">state, take, config</text>
+  <text x="612" y="40">Metronome thread</text><text x="612" y="58" opacity=".7">count-in + click of a take</text>
+  <text x="612" y="150">Player threads</text><text x="612" y="168" opacity=".7">Listen, metronome tab, audition</text>
+  <text x="612" y="260">Screen</text><text x="612" y="278" opacity=".7">render.rs paints the staves</text>
+  <text x="172" y="78" opacity=".8">RawEvent queue</text><text x="172" y="146" opacity=".8">bytes queue</text><text x="172" y="238" opacity=".8">Score</text>
+  <text x="480" y="78" opacity=".8">clicks, Control</text><text x="480" y="150" opacity=".8">cues, Control</text><text x="480" y="242" opacity=".8">ScoreView</text>
+</svg>
+<figcaption>Devices put messages in queues; the UI thread drains them once per frame. The UI starts the sound threads and steers them through atomics.</figcaption>
+</figure>
+<p>Two rules keep this simple. <strong>Callback threads only append to a <code>Mutex&lt;Vec&gt;</code></strong>; they never touch application state. <strong>The sound threads never block on the UI</strong>: they read atomics and plain data they were given at start. The UI thread alone owns <code>DrumApp</code>.</p>
+</section>
+
+<section id="concepts">
+<h2>4. Core concepts</h2>
+
+<h3 id="time">Time</h3>
+<p>There are two kinds of time and they must not be mixed.</p>
+<ul>
+<li><strong>Score time</strong> is in <em>quarter notes</em> from the start of the (unrolled) score: <code>q</code>. A bar of 4/4 is 4.0 long, a 16th note is 0.25, a triplet 16th is 1/6.</li>
+<li><strong>Wall time</strong> is in seconds. It exists only through <code>TempoMap</code>, a piecewise-constant tempo curve, with a <em>scale</em> factor for the practice tempo.</li>
+</ul>
+{{code:src/score.rs::pub struct TempoMap}}
+<p><code>q_to_sec(q, scale)</code> and its inverse <code>sec_to_q</code> are the only conversions; <code>sec_to_q</code> extrapolates for negative times, which is how a count-in lands before the first bar. Rudiment scores are written at a fixed 100 BPM and use the scale as the BPM (see <a href="#rudiments">The rudiment subsystem</a>).</p>
+<p><strong>Take time zero</strong> is the start of the first measure of the practice range. <code>Take.t0</code> is that measure's absolute time, so a hit's score position is <code>sec_to_q(hit.t + t0, scale)</code>. In <code>start_take</code> zero is <code>now + 0.5 s lead + count-in</code>: half a second is reserved so the sound device has time to open, so the first score note comes 0.5 s after the count-in alone would suggest. Anything that scripts a take from outside has to add that lead.</p>
+<figure>
+<svg viewBox="0 0 760 170" role="img" aria-label="Timeline of a take" xmlns="http://www.w3.org/2000/svg" font-family="system-ui, sans-serif" font-size="12">
+  <line x1="20" y1="90" x2="740" y2="90" stroke="currentColor"/>
+  <g stroke="currentColor"><line x1="40" y1="80" x2="40" y2="100"/><line x1="120" y1="80" x2="120" y2="100"/><line x1="290" y1="70" x2="290" y2="110" stroke-width="3"/><line x1="680" y1="80" x2="680" y2="100"/></g>
+  <text x="26" y="125">pressed R</text><text x="94" y="68">+0.5 s lead</text><text x="200" y="125">count-in clicks (negative time)</text>
+  <text x="260" y="58" font-weight="700">time zero</text><text x="300" y="125">music: expected notes, hits are stamped with Instant::now()</text><text x="640" y="125">end + 1 s: stop</text>
+  <g fill="#2eb85c"><circle cx="150" cy="90" r="4"/><circle cx="190" cy="90" r="4"/><circle cx="230" cy="90" r="4"/><circle cx="270" cy="90" r="4"/></g>
+  <g fill="currentColor"><circle cx="330" cy="90" r="4"/><circle cx="400" cy="90" r="4"/><circle cx="470" cy="90" r="4"/><circle cx="540" cy="90" r="4"/><circle cx="610" cy="90" r="4"/></g>
+  <text x="26" y="155" opacity=".8">hit time = (arrival &minus; zero) &minus; latency compensation</text>
+</svg>
+<figcaption>Hit timestamps are taken in the MIDI callback with <code>Instant::now()</code> (not midir's own stamp) and the configured latency is subtracted when a hit is recorded.</figcaption>
+</figure>
+
+<h3 id="model">The score model</h3>
+<p>A <code>Score</code> is deliberately flat: a time-ordered list of drum onsets, a list of measures and a tempo map. Nothing in it knows where it came from. A MusicXML file, a rudiment and the metronome's click bar all produce the same type, which is why Listen, takes, grading and the staff work on all of them.</p>
+{{code:src/score.rs::pub struct ScoreNote}}
+{{code:src/score.rs::pub struct Score}}
+<ul>
+<li><code>staff_step</code>: step 0 is the bottom staff line (E4), the top line (F5) is step 8; each step is one line or space. Played notes are drawn where the score draws the same lane (<code>Score::staff_for_lane</code>).</li>
+<li><code>grace</code> / <code>grace_order</code>: a flam is one grace note, a drag two; order 1 is nearest the main note. They have the same <code>q</code> as the main note and are placed in front of it in <code>notes</code>.</li>
+<li><code>hand</code>: only rudiments set it. It drives the sticking letters and the per-hand statistics.</li>
+<li>Repeats and voltas are <em>unrolled</em> by the importer, so score time is always the order of playing.</li>
+</ul>
+
+<h3 id="kit">The kit: lanes and note maps</h3>
+<p>A <code>Lane</code> is an instrument as the program sees it (kick, snare, cross-stick, closed/open/pedal hi-hat, four toms, two crashes, ride, bell, china, splash, cowbell, other). Everything that varies per instrument is a <code>match</code> on <code>Lane</code>, so adding one is a compiler-guided change (<a href="#t-lane">tutorial 6</a>).</p>
+{{code:src/drums.rs::pub fn family::12}}
+<p>A <code>NoteMap</code> maps MIDI notes to lanes; <code>NoteMap::roland_v31()</code> is the factory map and the user can edit it. <code>Lane::by_hihat_pedal</code> turns a hit on the closed or open hi-hat note into one or the other from the pedal position (CC#4) attached to the hit.</p>
+
+<h3 id="take">The life of a take</h3>
+<ol class="steps">
+<li><strong><code>plan_run</code></strong> works out the range, tempo scale, count-in, time zero and the click track for the practice range. Takes and Listen share it, so what you hear is what a take asks for.</li>
+<li><strong><code>start_take</code></strong> expands the score into <code>Expected</code> notes (seconds, relative to the start of the range), starts a <code>Metronome</code> thread for the count-in and click, and stores a <code>Take</code> with an empty report.</li>
+<li><strong><code>drain_midi</code> and <code>handle_event</code></strong> (every frame) turn queued <code>RawEvent</code>s into <code>Hit</code>s: map the note to a lane, apply the hi-hat pedal, subtract the latency, and keep hits from three quarters of a count-in beat before zero on.</li>
+<li><strong><code>update_take</code></strong> re-analyses the whole take every frame (it is cheap) so the colours appear as you play; notes later than the elapsed time stay <code>Pending</code>.</li>
+<li><strong><code>stop_take</code></strong> freezes the report, pushes a <code>TakeSummary</code> to the history and, for a clean rudiment take, records the best tempo.</li>
+</ol>
+{{code:src/app.rs::fn handle_event::30}}
+
+<h3 id="grading">Matching and grading</h3>
+<p><code>analysis.rs</code> is a pure function from <code>(expected, hits, tolerances, elapsed)</code> to a <code>Report</code>.</p>
+<ol class="steps">
+<li><strong>Candidates.</strong> Every (expected, hit) pair within the hit window of the expected note is a candidate: same lane at cost |dt|, a <em>related</em> lane (same <code>family</code>: snare/cross-stick, closed/open hi-hat, ride/bell, the crashes) at cost |dt| + 40 ms and flagged <em>wrong pad</em>.</li>
+<li><strong>Assignment.</strong> Pairs are taken cheapest first, one-to-one (greedy). That is simple, deterministic and good enough for drum scores; an optimal assignment would only matter for pathological overlaps.</li>
+<li><strong>Grades.</strong> Perfect, good, OK by |dt|, wrong pad, missed; notes later than the elapsed time are pending and excluded from the statistics. Grace notes are optional: never missed, and a hit that matches one is not extra.</li>
+<li><strong>Summary.</strong> Accuracy (credit-weighted), mean/abs/std of offsets, drift (regression slope of offset over time), timing score, extra hits, dynamics (accents louder than the median plain stroke, ghost notes softer), per-lane and per-hand statistics, and feedback sentences.</li>
+<li><strong>Overall</strong> = 55 % accuracy + 25 % timing + 10 % (1 &minus; extra ratio) + 10 % dynamics; without accents/ghosts the dynamics weight is redistributed. The weights are first guesses.</li>
+</ol>
+<p>For fast exercises the fixed window (default &plusmn;100 ms) would reach several strokes. <code>windows()</code> computes a window per expected note that never exceeds 45 % of the distance to its neighbours:</p>
+{{code:src/analysis.rs::fn windows(}}
+{{code:src/analysis.rs::pub fn analyze_with::24}}
+</section>
+
+<section id="realtime">
+<h2>5. Threads and real time</h2>
+<p>Drum timing is judged in tens of milliseconds, so the parts that touch the clock are small, isolated and boring.</p>
+
+<h3 id="midi-in">MIDI input</h3>
+<p><code>midir</code> calls a closure on its own thread for every message. The closure takes <code>Instant::now()</code> first, remembers the last hi-hat pedal value, and for a note-on pushes a <code>RawEvent</code> into <code>Arc&lt;Mutex&lt;Vec&lt;RawEvent&gt;&gt;&gt;</code>. The UI thread <code>std::mem::take</code>s the vector once per frame.</p>
+{{code:src/midi.rs::pub fn connect_input::40}}
+<p>The queue lock is the only synchronisation. Timestamps are made before the lock, so a busy UI thread delays only the <em>processing</em> of a hit, never its time.</p>
+
+<h3 id="timing">The timing threads</h3>
+<p>Two kinds of thread schedule sounds: <code>Metronome</code> (the count-in and click of a take, and the calibration clicks) and <code>Player</code> (Listen, the free metronome, the audition button). Both walk a sorted list of (time, what) and wait for each target with the same helper: sleep coarsely, then spin for the last 1.5 ms.</p>
+{{code:src/metronome.rs::pub(crate) fn wait_until}}
+<p>A <code>Player</code> owns one audio stream and one MIDI connection so that the click and the drums can share a MIDI port (Windows ports are exclusive). Cues that are more than 250 ms late are dropped rather than played as a burst. <code>stop()</code> sets an <code>AtomicBool</code> and joins the thread; <code>Drop</code> calls <code>stop()</code>, so letting a handle go out of scope cannot leak a thread.</p>
+{{code:src/playback.rs::impl Drop for Player}}
+<p><code>DrumApp.listen</code> exists only while the playhead runs; the <code>player</code> may outlive it by up to 2.2 seconds so the last cymbal rings out.</p>
+
+<h3 id="control">Shared live settings</h3>
+<p>Click on/off, notes on/off, looping, volumes and per-instrument gain must change <em>while</em> sound plays. They live in <code>Control</code>, a struct of atomics shared by <code>Arc</code>. Floats are stored as their bit pattern in an <code>AtomicU32</code>, so the sound threads read them without locks.</p>
+{{code:src/control.rs::pub struct Control}}
+{{code:src/control.rs::fn store(}}
+<p>Every frame <code>sync_control</code> copies the relevant settings (and the effective gain, with mute and solo applied) into the <code>Control</code>s. There are three: one for takes and Listen, one for the free metronome and one for the audition button, so the audition never disturbs Listen.</p>
+
+<h3 id="sink">The Sink seam</h3>
+<p>What a cue <em>sounds like</em> is decided in one pure function, <code>dispatch</code>, which talks to a trait. The real implementation drives the devices; tests pass a fake that records calls.</p>
+{{code:src/playback.rs::pub trait Sink}}
+{{code:src/playback.rs::fn dispatch}}
+<p>That is why the click switch, the count-in exemption, per-instrument gain, mute, MIDI routing, looping and late-cue dropping are all unit-tested although no test ever opens a sound card (<a href="#t-sink">tutorial 7</a>).</p>
+</section>
+
+<section id="ui">
+<h2>6. The user interface</h2>
+
+<h3 id="frame">One frame</h3>
+<p><code>egui</code> is <em>immediate mode</em>: there is no widget tree to keep in sync. Each frame the program runs <code>update</code>, which reads state, draws widgets and writes state back in the same calls. The order inside <code>update</code> matters:</p>
+<ol class="steps">
+<li>Handle dropped files.</li>
+<li><code>sync_source</code>: put the right practice source in place for the visible tab.</li>
+<li><code>drain_midi</code>, <code>update_controller</code>, <code>keyboard_pads</code>: input becomes state.</li>
+<li><code>sync_control</code>, <code>update_take</code>, <code>update_listen</code>, <code>update_metro</code>, <code>update_audition</code>, <code>update_calibration</code>, <code>show_sound_errors</code>: state advances, threads are steered and errors surface.</li>
+<li>Keyboard shortcuts (ignored while a widget has the focus).</li>
+<li>Draw the panels; <code>sync_source</code> again after the top bar, because a tab clicked now needs its source before it is drawn.</li>
+<li>If <code>cfg != saved_cfg</code>, save the settings (so settings are persisted by <em>diffing</em>, not by event).</li>
+<li>Ask for a repaint: continuously while recording, listening or calibrating; otherwise every 50 ms so the MIDI monitor stays live.</li>
+</ol>
+<p><code>DrumApp</code> is a single large struct. Subsystems that grew large were moved to files under <code>src/app/</code> as additional <code>impl DrumApp</code> blocks with <code>pub(super)</code> methods: the Metronome tab, the mixer, the controller, the Rudiments tab. That keeps one owner of the state while keeping files readable.</p>
+
+<h3 id="sources">Practice sources</h3>
+<p>The Score tab and the Rudiments tab must each keep their own score, range, tempo, take and history, yet almost every method (<code>plan_run</code>, <code>start_take</code>, Listen, Results, the controller) works on "the" score. Instead of threading a session object through everything, <code>DrumApp</code> keeps <em>one</em> set of practice fields and parks the other source's in a struct; showing the other tab swaps them.</p>
+{{code:src/app.rs::struct Parked}}
+{{code:src/app.rs::fn activate}}
+<p>The destructuring pattern in <code>activate</code> names every field of <code>Parked</code>: add a field to the struct and forget the swap, and it does not compile. <code>sync_source()</code> runs every frame and after tab changes; <code>open_file</code> always activates the Score source. <code>score_gen</code> is bumped whenever a score is put in place, and Listen's restart signature includes it, so a new rudiment restarts a running Listen.</p>
+<figure>
+<svg viewBox="0 0 760 170" role="img" aria-label="Practice source swap" xmlns="http://www.w3.org/2000/svg" font-family="system-ui, sans-serif" font-size="13">
+  <rect x="20" y="20" width="330" height="130" rx="8" fill="none" stroke="currentColor" stroke-width="2"/><text x="34" y="44" font-weight="700">DrumApp (active source)</text>
+  <text x="34" y="68">score, score_path, range_*, tempo_pct,</text><text x="34" y="88">take, takes_started, history</text><text x="34" y="118" opacity=".8">source = Rudiments</text>
+  <rect x="410" y="20" width="330" height="130" rx="8" fill="none" stroke="currentColor" stroke-dasharray="6 4"/><text x="424" y="44" font-weight="700">Parked (the other source)</text>
+  <text x="424" y="68">score (the loaded file), its path,</text><text x="424" y="88">range, tempo, take, history</text>
+  <path d="M352 70 L408 70 M408 100 L352 100" stroke="currentColor" fill="none"/><text x="358" y="62" font-size="11">swap</text>
+</svg>
+<figcaption><code>activate(source)</code> swaps the two sets with <code>std::mem::swap</code> and stops what is playing.</figcaption>
+</figure>
+
+<h3 id="render">The score renderer</h3>
+<p><code>render.rs</code> draws with egui's <code>Painter</code>, not with widgets. It is a function of a view struct, which keeps it free of application state:</p>
+{{code:src/render.rs::pub struct ScoreView}}
+<ul>
+<li><strong>Layout</strong> (<code>layout()</code>, <code>row_starts()</code>) splits bars into rows, by available width and zoom or by a fixed bars-per-row with an optional alignment bar. It is plain geometry and is unit-tested.</li>
+<li><strong>Proportional spacing</strong>: a note's x is its quarter-note position inside the bar times pixels per quarter. There are no beams, flags, rests or tuplet brackets; that is a known simplification (<a href="#gaps">gaps</a>).</li>
+<li>Each system draws two staves: the score and "You". Played notes use the lane's staff position from the score, so they look like the notes they answer. Velocity is a small bar chart under them.</li>
+<li><code>show()</code> returns a <code>ViewOutput</code> (clicked measure, how many bars fit) instead of mutating anything; the caller decides what a click means.</li>
+<li><code>rolling()</code> is a second, simpler view: a staff that scrolls past a fixed "now" line, used by the Metronome tab.</li>
+</ul>
+
+<h3 id="widgets">Widgets and style</h3>
+<ul>
+<li>Every slider goes through <code>widgets::slider</code>: the caption comes first and the mouse wheel moves the value by a step per notch (and is consumed so a surrounding scroll area stays put). Do not add a bare <code>egui::Slider</code>.</li>
+{{code:src/widgets.rs::pub fn slider<N}}
+<li><code>widgets::roomy</code> scales text and spacing for the controls used from the drum stool; it is applied with <code>ui.scope</code> so it does not leak.</li>
+<li><code>ui.horizontal</code> follows its parent's direction, so a right-to-left parent reverses it; do not put captioned sliders inside one. Sliders do not wrap inside <code>horizontal_wrapped</code>, so wide control rows are plain <code>horizontal</code> rows that must still fit a 760 px window.</li>
+<li>The "small" text style is scaled by 1.5 at start-up for the grey helper texts, in both the light and the dark style (<code>all_styles_mut</code>).</li>
+</ul>
+</section>
+
+<section id="controller">
+<h2>7. The controller subsystem</h2>
+<p><code>controller.rs</code> is a pure state machine: MIDI bytes in, application commands and light messages out. A <em>preset</em> is a text file that says which message means which action, so supporting another Mackie-style surface is writing a text file, not code.</p>
+<pre><code>layer = A note 84                     # this message switches to layer A
+bind  = A note 89 -&gt; record           # a button
+bind  = A cc 16 rel -&gt; tempo          # an endless encoder
+bind  = bend 1 -&gt; tempo               # a fader
+led   = A record -&gt; note 89           # a button light that follows the state
+ring  = A tempo -&gt; cc 48              # an LED ring that shows a value</code></pre>
+{{code:src/controller.rs::pub enum Command}}
+<p>The pieces:</p>
+<dl class="api">
+<dt>parse(bytes) -&gt; Option&lt;Msg&gt;</dt><dd>Note on/off, control change and 14-bit pitch bend (the faders).</dd>
+<dt>Preset::parse(text)</dt><dd>Reads the lines; a bad line becomes a warning and the rest still works. Unknown layers are dropped, repeated controls reported.</dd>
+<dt>Mapper::handle(msg, &amp;State) -&gt; Vec&lt;Command&gt;</dt><dd>Applies layer switching, Shift (held: encoder turns five times as far, except browsing), relative-encoder decoding, and <em>fader pickup</em>: a fader that does not move by itself must reach the value it controls before it takes over, or the value would jump.</dd>
+<dt>Mapper::lights(&amp;State) -&gt; Vec&lt;[u8; 3]&gt;</dt><dd>The messages that bring lights and rings up to date: only what changed, and lights of another layer are put out.</dd>
+</dl>
+<p><code>app/controls.rs</code> is the impure half: it owns the MIDI port (<code>midi::connect_controller</code>), watches for the device being plugged in or pulled out every two seconds, builds the <code>State</code> from <code>DrumApp</code> every message, and turns <code>Command</code>s into method calls. Because <code>Command</code> has only three shapes, <code>apply_command</code> is a short dispatcher:</p>
+{{code:src/app/controls.rs::pub(super) fn apply_command}}
+<h4>Context-dependent controls</h4>
+<p>The Mini has no spare controls, so while a rudiment is the active practice source the same physical controls mean something else (repeats, lead, rudiment). One small function rewrites the action; the presets stay untouched:</p>
+{{code:src/app/controls.rs::fn in_context}}
+</section>
+
+<section id="rudiments">
+<h2>8. The rudiment subsystem</h2>
+<p><code>rudiments.rs</code> is a pure module with two jobs: hold the 40 PAS rudiments as data, and build a <code>Score</code> from one. The data is written in a tiny pattern language so each rudiment is one readable line that can be checked against the chart:</p>
+{{RUDIMENT_DSL}}
+{{code:src/rudiments.rs::static CATALOGUE::6}}
+{{code:src/rudiments.rs::const fn rud}}
+<p>The patterns are static strings parsed on demand (<code>Rudiment::cell()</code>), validated by tests rather than at start-up. Parsing and building:</p>
+{{code:src/rudiments.rs::fn parse(}}
+{{code:src/rudiments.rs::pub fn build}}
+<p>Design decisions worth knowing:</p>
+<ul>
+<li><strong>One bar per repetition</strong>, each as long as the cell rounded up to whole beats, written at <code>BASE_BPM</code> (100). The practice tempo (percent) is therefore the BPM, which lets the existing tempo slider, Listen restart logic and controller work unchanged.</li>
+<li><strong>Lead.</strong> A cell that ends with the hand it begins with would play that hand twice at the join, so such rudiments default to alternating leads. <code>default_lead()</code> encodes that rule and a test checks that every rudiment's default lead flows.</li>
+<li><strong>Rolls are on a 16th grid</strong>, not the chart's 32nds: the renderer has no beams and 32nds would be about 3 px apart.</li>
+<li><strong>The tab</strong> (<code>app/rudiment.rs</code>) rebuilds the score only when (rudiment, repeats, lead) changed, remembers the tempo per rudiment in <code>Config::rudiment_bpm</code> only when it differs from <code>default_bpm()</code>, and records a <em>clean take</em> (a whole take of 85 or better) as the best tempo, optionally climbing a ladder.</li>
+<li><strong>Grading differences</strong> are switched by one flag, <code>Take.adaptive</code>, which selects the neighbour-spacing hit window.</li>
+</ul>
+</section>
+
+<section id="config">
+<h2>9. Settings and persistence</h2>
+<p>Settings are a small hand-written <code>key = value</code> text file (<code>%APPDATA%\RollModel\config.txt</code> and equivalents). There is no serialisation framework: <code>Config::to_text</code> and <code>Config::from_text</code> are explicit, which keeps the file stable, hand-editable and tolerant.</p>
+{{code:src/config.rs::pub fn from_text::28}}
+<ul>
+<li><strong>Tolerant loading.</strong> Unknown keys are ignored, an unreadable value keeps the default, numbers are clamped, so a settings file from any earlier version loads.</li>
+<li><strong>Defaults are not written</strong> where that avoids clutter (mixer gains, per-rudiment tempos never changed).</li>
+<li><strong>Persistence by diffing</strong>: <code>Config</code> derives <code>PartialEq</code>, and <code>update()</code> saves when it differs from the last saved copy. UI code just mutates <code>self.cfg</code>.</li>
+<li><strong>Maps with prefixes</strong> (<code>gain.Kick</code>, <code>rudiment_bpm.16</code>) are parsed in the fallback arm of the <code>match</code>; <code>BTreeMap</code> keeps the written order deterministic.</li>
+<li><strong>Session-only state</strong> (practice tempo of a score, range, solo, lead override) is deliberately <em>not</em> in <code>Config</code>.</li>
+<li>Every new key needs a round-trip test; <code>roundtrip</code> in <code>config.rs</code> compares whole <code>Config</code> values.</li>
+<li><code>Config::migrate</code> copies the settings folder of the old application name once; it is the pattern to follow for a future rename.</li>
+</ul>
+</section>
+
+<section id="rust">
+<h2>10. Rust constructs that carry the design</h2>
+<p>None of this is exotic Rust. The design leans on a handful of constructs used consistently. Each appears below with the real code.</p>
+
+<h3>Enums with data and exhaustive <code>match</code></h3>
+<p>Closed sets of things are enums, and every <code>match</code> over them is exhaustive, so adding a variant produces compile errors at every place that must care. <code>Lane</code>, <code>Action</code>, <code>Command</code>, <code>Msg</code>, <code>Grade</code>, <code>Tab</code>, <code>Source</code>, <code>Lead</code> all work this way.</p>
+{{code:src/controller.rs::pub enum Msg}}
+<h3>Traits as seams for testing</h3>
+<p><code>Sink</code> separates "decide what to play" from "play it" (see <a href="#sink">the Sink seam</a>). The trait is used as <code>&amp;mut dyn Sink</code>: dynamic dispatch costs nothing that matters here, and the scheduler takes one reference instead of being generic.</p>
+<h3>Atomics behind <code>Arc</code> for live settings</h3>
+<p><code>Arc&lt;Control&gt;</code> of <code>AtomicBool</code>/<code>AtomicU32</code> with <code>Relaxed</code> ordering: independent flags and levels, no invariants spanning two of them, so nothing stronger is needed and no thread can block another.</p>
+<h3>RAII for threads</h3>
+<p>Thread handles wrap a stop flag and a <code>JoinHandle</code>; <code>Drop</code> stops and joins. Replacing an <code>Option&lt;Player&gt;</code> with <code>None</code> therefore stops its sound.</p>
+<h3><code>let &hellip; else</code> for early exit</h3>
+<p>The code is full of <code>let Some(x) = &hellip; else { return }</code>. It keeps the happy path unindented and makes the preconditions of a function a list at its top, for example in <code>ensure_rudiment</code>:</p>
+{{code:src/app/rudiment.rs::pub(super) fn ensure_rudiment}}
+<h3>Exhaustive destructuring as a compile-time checklist</h3>
+<p>See <code>activate</code> above: naming all fields without <code>..</code> turns "I forgot a field" into a compile error. Use it wherever two structs must be kept in step.</p>
+<h3>Const tables and <code>const fn</code></h3>
+<p>The rudiment catalogue is a <code>static</code> array of a fixed length (<code>[Rudiment; 40]</code>) built with a <code>const fn</code>; the compiler checks the count and the data costs no start-up work. <code>Lane::ALL</code> plays the same role, and <code>Control</code> sizes an atomic array from it with <code>[AtomicU32; Lane::ALL.len()]</code>.</p>
+<h3>Conditional compilation with a stub</h3>
+<p>Audio is an optional feature. Rather than sprinkling <code>cfg</code> through callers, the module offers two implementations with the same signature, so the rest of the code is feature-agnostic:</p>
+{{code:src/metronome.rs::pub(crate) fn open_audio(_enabled}}
+<h3>Generics where they remove duplication</h3>
+<p><code>widgets::slider&lt;N: Numeric&gt;</code> serves integers and floats with one body. Elsewhere the code prefers plain functions over clever generics.</p>
+<h3>Iterators returning <code>impl Trait</code></h3>
+<p>Small, lazy filters are returned as iterators instead of allocated vectors, for example the cues of a playback pass:</p>
+{{code:src/playback.rs::fn pass_cues}}
+<h3>Errors are <code>Result&lt;T, String&gt;</code> at the edges</h3>
+<p>Importers and device connectors return a user-readable <code>String</code> error that is shown verbatim in the status bar. There is no error hierarchy because nothing branches on error kinds; the message <em>is</em> the product. Thread errors travel through an <code>ErrorLog</code> that the UI polls.</p>
+<h3>Visibility as architecture</h3>
+<p><code>pub(super)</code> methods in <code>app/*.rs</code> expose a subsystem to <code>DrumApp</code> only; <code>pub(crate)</code> marks helpers shared between the two timing threads. Child modules (including <code>#[cfg(test)] mod tests</code>) can see their parent's private items, which is why tests can call private functions such as <code>plan_run</code>.</p>
+<h3>Closures with egui</h3>
+<p>Layout is expressed with closures (<code>ui.horizontal(|ui| &hellip;)</code>). A closure that mutates <code>self</code> borrows it exclusively, so computed values are copied out first (for example <code>let n = score.measures.len();</code> before the closure). Splitting borrows by field (<code>self.cfg</code> vs <code>self.take</code>) is why state lives in fields of one struct rather than behind accessors.</p>
+</section>
+
+<section id="testing">
+<h2>11. Testing</h2>
+<p>All tests are unit tests inside the module they test (<code>#[cfg(test)] mod tests</code>), run by <code>cargo test</code> with no devices. Test names are sentences.</p>
+<table>
+<thead><tr><th>Layer</th><th>How it is tested</th><th>Example</th></tr></thead>
+<tbody>
+<tr><td>Pure core</td><td>Direct calls with small fixtures; the sample score <code>examples/basic_rock_beat.musicxml</code> is embedded with <code>include_str!</code> (tests depend on its exact content)</td><td><code>analysis.rs</code>, <code>musicxml.rs</code>, <code>rudiments.rs</code></td></tr>
+<tr><td>Real-time core</td><td>A fake <code>Sink</code> records what would sound; times are given as numbers, no sleeping</td><td><code>playback.rs</code></td></tr>
+<tr><td>Controller</td><td>Messages in, commands and light bytes out; presets parsed from strings; the built-in presets are loaded and must have no warnings</td><td><code>controller.rs</code></td></tr>
+<tr><td>App logic</td><td><code>DrumApp::with_config(Config::default())</code> touches no devices; tests call <code>apply_command</code>, <code>sync_source</code>, <code>start_take</code> directly</td><td><code>app/controls.rs</code>, <code>app/rudiment.rs</code></td></tr>
+<tr><td>Screens</td><td>Headless <code>egui::Context::run</code> with default input: proves a screen draws without panicking; wheel tests feed <code>Event::MouseWheel</code></td><td><code>widgets.rs</code>, <code>the_tab_draws_for_every_rudiment</code></td></tr>
+<tr><td>Sound</td><td>Spectral guards on the synthesised kit (bounded, decaying, deterministic); the real outputs are <em>not</em> tested</td><td><code>synth.rs</code></td></tr>
+</tbody></table>
+<p>A representative test: building a take of a rudiment, feeding it synthetic hits, and checking grading, hand statistics and the recorded best tempo.</p>
+{{code:src/app/rudiment.rs::fn a_take_of_a_rudiment_is_graded_with_hands_and_remembers_what_it_was}}
+<h3>Guidelines</h3>
+<ul>
+<li>Put the test next to the code; prefer testing the pure function over testing through the UI.</li>
+<li>A bug fix starts with a failing test.</li>
+<li>Do not start real audio in a test: set <code>cfg.click_audio</code> and <code>cfg.click_midi</code> to false before <code>start_take</code>.</li>
+<li>Tests that change shared tables (the catalogue size, the number of lanes) will fail loudly: update the counts in the tests deliberately.</li>
+<li>Before committing: <code>cargo test</code>, <code>cargo build</code> (no warnings) and <code>cargo check --no-default-features</code>.</li>
+</ul>
+</section>
+
+<section id="extend">
+<h2>12. Extension points</h2>
+<p>Where the design has room to grow, roughly by effort. <span class="pill easy">small</span> is an afternoon, <span class="pill">medium</span> a few days, <span class="pill hard">large</span> needs design.</p>
+<table>
+<thead><tr><th>Feature</th><th>Effort</th><th>Where</th><th>Notes</th></tr></thead>
+<tbody>
+<tr><td>More rudiments, hybrid rudiments</td><td><span class="pill easy">small</span></td><td><code>rudiments.rs</code></td><td>One line each (<a href="#t-rudiment">tutorial 1</a>). A user-file loader (text files in a <code>rudiments</code> folder, like controller presets) would remove the fixed array.</td></tr>
+<tr><td>New settings</td><td><span class="pill easy">small</span></td><td><code>config.rs</code>, a Settings page</td><td><a href="#t-setting">Tutorial 2</a>.</td></tr>
+<tr><td>New grading metric</td><td><span class="pill easy">small</span></td><td><code>analysis.rs</code>, Results tab</td><td><a href="#t-metric">Tutorial 3</a>. Candidates: streaks, per-beat bias, rush/drag by position in the bar, hand-specific accent quality.</td></tr>
+<tr><td>New controller action or preset</td><td><span class="pill easy">small</span></td><td><code>controller.rs</code>, <code>app/controls.rs</code>, <code>presets/</code></td><td><a href="#t-action">Tutorial 4</a>. Another Mackie surface is a new preset file.</td></tr>
+<tr><td>New tab</td><td><span class="pill">medium</span></td><td><code>app.rs</code>, <code>app/&lt;tab&gt;.rs</code></td><td><a href="#t-tab">Tutorial 5</a>.</td></tr>
+<tr><td>New instrument</td><td><span class="pill">medium</span></td><td><code>drums.rs</code> and every <code>match</code> on <code>Lane</code></td><td><a href="#t-lane">Tutorial 6</a>; the compiler lists the places.</td></tr>
+<tr><td>Required flams/drags with a spacing check</td><td><span class="pill">medium</span></td><td><code>analysis.rs</code> (<code>GRACE_SPACING</code>, optional graces)</td><td>Make grace <code>Expected</code> notes non-optional for rudiments and report the interval between grace and main stroke.</td></tr>
+<tr><td>Practice history on disk</td><td><span class="pill">medium</span></td><td>new <code>history.rs</code> (pure), <code>stop_take</code></td><td>Takes are only in memory today (<code>TakeSummary</code>). Append a line per take to a file next to <code>config.txt</code>; chart progress per score or rudiment.</td></tr>
+<tr><td>Tempo ramp, practice sets, routines</td><td><span class="pill">medium</span></td><td><code>app/rudiment.rs</code>, new sequencing struct</td><td>The ladder is a first step; a routine is a list of (rudiment, repeats, bpm) stepped through when a take is clean.</td></tr>
+<tr><td>More input formats (MIDI file, Guitar Pro, MuseScore native)</td><td><span class="pill">medium</span></td><td>new importer module returning <code>Score</code></td><td>Anything that produces a <code>Score</code> works with the rest of the program unchanged. A MIDI-file importer is the simplest start (GM drum notes map through <code>gm_lane</code>).</td></tr>
+<tr><td>Export (take to MIDI or MusicXML)</td><td><span class="pill">medium</span></td><td>new module over <code>Take</code> and <code>Score</code></td><td>CSV export exists in <code>export_csv</code> as a pattern.</td></tr>
+<tr><td>Sampled drum kits</td><td><span class="pill">medium</span></td><td><code>synth.rs</code> (<code>Kit</code>), Settings &rarr; Sound</td><td>WAV overrides per instrument exist; a kit is a folder of them plus a selector.</td></tr>
+<tr><td>Orchestrating a rudiment around the kit</td><td><span class="pill">medium</span></td><td><code>Rudiment::build</code></td><td>Give <code>build</code> a map from hand or stroke index to <code>Lane</code>; the grader already matches by lane and the renderer already uses the lane's staff position.</td></tr>
+<tr><td>Beams, rests, tuplet brackets</td><td><span class="pill hard">large</span></td><td><code>render.rs</code></td><td>Needs a rhythm-grouping step on <code>Score</code> before drawing; keep the proportional x positions.</td></tr>
+<tr><td>Following D.S./D.C./coda jumps</td><td><span class="pill">medium</span></td><td><code>musicxml.rs</code> (<code>playback_order</code>)</td><td>The importer already unrolls repeats and voltas.</td></tr>
+<tr><td>Merging the two timing threads</td><td><span class="pill hard">large</span></td><td><code>metronome.rs</code>, <code>playback.rs</code></td><td>Duplicated click and loop logic; touching it risks take timing, which works today.</td></tr>
+<tr><td>Library crate split</td><td><span class="pill">medium</span></td><td><code>Cargo.toml</code>, <code>main.rs</code></td><td>Putting the pure core in its own crate would stop tests of it from building the GUI dependencies; today a workspace or optional dependencies would be needed.</td></tr>
+<tr><td>UI language, themes, accessibility</td><td><span class="pill hard">large</span></td><td>all UI strings</td><td>Strings are literals in the UI code; a string table is needed first.</td></tr>
+<tr><td>Hand-aware input hardware</td><td><span class="pill hard">large</span></td><td><code>midi.rs</code>, <code>analysis.rs</code></td><td>Some practice pads or sensors can report the hand; <code>Hand</code> on notes and hits would turn the Hands table from inferred into measured.</td></tr>
+</tbody></table>
+</section>
+
+<section id="tutorials">
+<h2>13. Tutorials</h2>
+<p>Each tutorial changes the real program and ends with tests. The code shown is what you type; names of existing items are real (look them up with the excerpts above). Create a branch first: <code>git switch -c feature/&lt;name&gt; develop</code>.</p>
+
+<h3 id="t-rudiment">Tutorial 1: add a rudiment</h3>
+<p><span class="pill easy">small</span> Goal: add a made-up rudiment <em>Demo triple</em> to the catalogue to see the mechanics. (Real rudiments are listed in <code>docs/rudiments.md</code>.)</p>
+<ol class="steps">
+<li><strong>Write the pattern.</strong> Strokes are on a grid; <code>&gt;</code> accents, a lower-case prefix is a flam. Three right strokes, an accented left, a flam: <code>R R R L&gt; lR</code> on a 16th grid.</li>
+<li><strong>Add the row</strong> to <code>CATALOGUE</code> and change the array length. The list is ordered by family, so the new number is the last of its family and everything after it shifts; for a quick experiment append it as number 41 and change <code>[Rudiment; 40]</code> to <code>[Rudiment; 41]</code>:
+<pre class="code"><code>    rud(41, "Demo triple", Family::Diddle, false, S16, "R R R L&gt; lR", "An example rudiment for the tutorial."),</code></pre></li>
+<li><strong>Run the tests.</strong> They will tell you what encodes the old size: <code>there_are_forty_numbered_in_order_with_the_known_counts</code> (counts per family, 26 NARD), <code>every_pattern_reads_and_has_the_length_of_the_catalogue</code> (a beats table), <code>the_sticking_is_the_one_of_the_chart</code> if you add a row there. Update the counts and add the new rudiment's beats (5 strokes = 1.25 beats, rounded up to 2).</li>
+<li><strong>Add a sticking test</strong> for the new row:
+<pre class="code"><code>assert_eq!(rudiment(41).sticking(), "R R R L lR");</code></pre></li>
+<li><strong>Look at it.</strong> Run the program, open the Rudiments tab and pick it. Check that the flam's grace note is drawn left of its main note and that the default lead flows (the cell begins with R and ends with R, so the default is alternate).</li>
+<li><strong>Docs.</strong> Add a row to <code>docs/rudiments.md</code>. The manual's reference table and this guide's counts regenerate themselves; the manual build checks that it finds exactly 40 rudiments, so change that number in <code>tools/build_manual.py</code> if you keep a 41st.</li>
+</ol>
+<div class="callout tip"><strong class="label">Next step</strong>The fixed-size array is the obstacle to user-added rudiments. Replace it with a <code>Vec</code> filled from the built-in table plus text files in a <code>rudiments</code> folder (copy <code>controller::custom_presets</code>), and parse with <code>parse()</code>, reporting bad lines as warnings like <code>Preset::parse</code> does.</div>
+
+<h3 id="t-setting">Tutorial 2: add a setting</h3>
+<p><span class="pill easy">small</span> Goal: a <em>Show hand letters</em> checkbox that hides the sticking letters.</p>
+<ol class="steps">
+<li><strong>Config.</strong> In <code>src/config.rs</code> add the field, its default, the writer and the reader:
+<pre class="code"><code>// struct Config
+pub show_sticking: bool,
+// Default
+show_sticking: true,
+// to_text
+kv("show_sticking", self.show_sticking.to_string());
+// from_text, in the match
+"show_sticking" =&gt; c.show_sticking = b(c.show_sticking),</code></pre></li>
+<li><strong>Test.</strong> Add the field to the <code>roundtrip</code> test (set it to <code>false</code> so it differs from the default) and run <code>cargo test config</code>. A forgotten writer or reader fails there.</li>
+<li><strong>UI.</strong> A setting goes on the page it belongs to. In <code>settings_general</code> (<code>app.rs</code>) add:
+<pre class="code"><code>ui.checkbox(&amp;mut self.cfg.show_sticking, "Show hand letters under the notes");</code></pre>
+Saving is automatic: <code>update()</code> notices <code>cfg != saved_cfg</code>.</li>
+<li><strong>Use it.</strong> The renderer must not read <code>Config</code>, so pass the flag through the view struct: add <code>pub show_hands: bool</code> to <code>ScoreView</code>, set it where the view is built in <code>score_body</code> (<code>show_hands: self.cfg.show_sticking</code>), and guard the <code>draw_hand</code> call in <code>render::show</code> with <code>view.show_hands</code>. The metronome's <code>RollingView</code> can stay as it is.</li>
+<li><strong>Docs.</strong> One line in the changelog under <code>[Unreleased]</code>, one in the manual's Settings page and its settings-key table.</li>
+</ol>
+
+<h3 id="t-metric">Tutorial 3: add a metric to the report</h3>
+<p><span class="pill easy">small</span> Goal: report the <em>longest streak of perfect notes</em>.</p>
+<ol class="steps">
+<li><strong>Field.</strong> In <code>analysis.rs</code> add <code>pub best_streak: usize</code> to <code>Report</code> (it derives <code>Default</code>, so nothing else needs initialising).</li>
+<li><strong>Compute.</strong> In <code>summarize</code> the loop over <code>r.expected.iter().zip(&amp;r.results)</code> already visits notes in time order. Add a running counter next to the other accumulators:
+<pre class="code"><code>let (mut streak, mut best) = (0usize, 0usize);
+// inside the loop, after the pending / optional-grace checks:
+if res.grade == Grade::Perfect {
+    streak += 1;
+    best = best.max(streak);
+} else if !e.grace {
+    streak = 0;
+}
+// after the loop:
+r.best_streak = best;</code></pre></li>
+<li><strong>Test</strong> in <code>analysis.rs</code>, in the style of <code>perfect_take_scores_high</code>: twenty exact hits, one hit 70 ms late, twenty more; assert <code>best_streak == 20</code>.</li>
+<li><strong>Show it.</strong> In <code>results_tab</code> add a row to the metrics grid: <code>row("Longest streak of perfect notes", r.best_streak.to_string());</code>.</li>
+<li><strong>Optional feedback.</strong> In <code>feedback()</code> push a sentence when the streak is short compared with <code>r.evaluated</code>. Keep feedback sentences actionable.</li>
+</ol>
+
+<h3 id="t-action">Tutorial 4: add a controller action</h3>
+<p><span class="pill easy">small</span> Goal: a button that toggles <em>follow</em> (the score scrolling with the playhead).</p>
+<ol class="steps">
+<li><strong>Name it.</strong> In <code>controller.rs</code> add <code>Follow</code> to <code>enum Action</code> (under the buttons) and <code>("follow", Action::Follow)</code> to <code>SIMPLE</code>. A test, <code>actions_round_trip_through_their_names</code>, checks the table. If the button should light, add it to <code>has_light</code>, a <code>follow: bool</code> to <code>State</code> and an arm to <code>State::lit</code>.</li>
+<li><strong>Do it.</strong> In <code>app/controls.rs</code>, <code>press()</code>:
+<pre class="code"><code>Action::Follow =&gt; self.follow = !self.follow,</code></pre>
+and, if you added a light, fill <code>follow: self.follow</code> in <code>controller_state()</code>.</li>
+<li><strong>Bind it.</strong> In a preset, for example a copy of the Mini preset in your <code>controllers</code> folder: <code>bind = A note 94 -&gt; follow</code> (replace the "discard take" button) and <code>led = A follow -&gt; note 94</code>.</li>
+<li><strong>Test</strong> in <code>controls.rs</code> like <code>switches_and_tabs</code>:
+<pre class="code"><code>let mut app = app_with_score();
+assert!(app.follow);
+app.apply_command(Command::Press(Action::Follow));
+assert!(!app.follow);</code></pre>
+and a <code>Mapper</code> test in <code>controller.rs</code> that a preset line binding <code>follow</code> parses without warnings and a note-on yields <code>Command::Press(Action::Follow)</code>.</li>
+<li><strong>Docs.</strong> The button list in the README and the manual's controller section.</li>
+</ol>
+<p>A <em>value</em> action (an encoder or fader) additionally goes into <code>is_level</code>, <code>State::level</code> and <code>turn()</code>/<code>set()</code>; look at <code>Repeats</code> as the model.</p>
+
+<h3 id="t-tab">Tutorial 5: add a tab</h3>
+<p><span class="pill">medium</span> Goal: a <em>Stats</em> tab that lists the session's takes.</p>
+<ol class="steps">
+<li><strong>Enum and bar.</strong> In <code>app.rs</code> add <code>Stats</code> to <code>enum Tab</code>, a <code>selectable_value</code> line in <code>top_bar</code> and an arm in the <code>match self.tab</code> that fills the central panel: <code>Tab::Stats =&gt; self.stats_tab(ui),</code>. The compiler points at the other <code>match</code> on <code>Tab</code> you must extend.</li>
+<li><strong>Module.</strong> Create <code>src/app/stats.rs</code> and declare it with <code>mod stats;</code> next to <code>mod mixer;</code>:
+<pre class="code"><code>//! The Stats tab: every take of this session in one table.
+
+use super::DrumApp;
+
+impl DrumApp {
+    pub(super) fn stats_tab(&amp;mut self, ui: &amp;mut egui::Ui) {
+        ui.heading("Session");
+        egui::Grid::new("stats").striped(true).show(ui, |ui| {
+            for t in self.history.iter().rev() {
+                ui.label(t.number.to_string());
+                ui.label(t.range.as_str());
+                ui.label(format!("{:.0} {}", t.overall, t.letter));
+                ui.end_row();
+            }
+        });
+    }
+}</code></pre></li>
+<li><strong>Which session?</strong> The history is per practice source (it is swapped with the source). Decide whether the new tab shows the active one (as here) or reads <code>self.parked.history</code> too. Tabs other than Score and Rudiments leave the source as it is.</li>
+<li><strong>Keyboard tab cycling.</strong> Add <code>Tab::Stats</code> to the list in <code>next_tab</code> (<code>app/controls.rs</code>) and fix the expected order in <code>switches_and_tabs</code>.</li>
+<li><strong>Test</strong> that it draws: copy <code>the_tab_draws_for_every_rudiment</code> (a headless <code>Context::run</code> calling <code>app.stats_tab(ui)</code>) and add a take to the history first.</li>
+<li><strong>Docs.</strong> A section in the manual, a line in the changelog, the module list in <code>HANDOFF.md</code>.</li>
+</ol>
+
+<h3 id="t-lane">Tutorial 6: add an instrument</h3>
+<p><span class="pill">medium</span> Goal: a <em>Rim click</em> lane, separate from the cross-stick.</p>
+<ol class="steps">
+<li><strong>Enum.</strong> Add <code>RimClick</code> to <code>enum Lane</code> and to <code>Lane::ALL</code> (change the array length from 18 to 19). Everything sized from <code>Lane::ALL.len()</code>, such as the atomic array in <code>Control</code>, follows.</li>
+<li><strong>Let the compiler lead.</strong> <code>cargo build</code> lists each exhaustive <code>match</code> on <code>Lane</code> that lacks the new variant: <code>name</code> (settings key), <code>label</code> (shown name), <code>standard_note</code> (General MIDI key, for example 37 is taken by the cross-stick; pick a free note), <code>default_staff</code> (position and notehead) and the synthesiser in <code>synth.rs</code>. Give it a sound: copy a similar lane's recipe and change its parameters.</li>
+<li><strong>Family.</strong> If it is easily confused with another instrument and should earn partial credit, put it in the same <code>family()</code> arm (here: with <code>CrossStick</code> and <code>Snare</code>).</li>
+<li><strong>Mapper and groups.</strong> Add the MIDI notes to <code>NoteMap::roland_v31()</code> if the module has the pad. For the controller's mixer strips add it to a group in <code>controller::group_lanes</code> (a test requires every instrument but <code>Other</code> to be in exactly one group).</li>
+<li><strong>Import.</strong> Teach <code>gm_lane</code>, <code>lane_from_name</code> and <code>lane_from_staff</code> if scores should map to it.</li>
+<li><strong>Tests</strong> that now fail show what else to adapt (the kit test renders every lane, the config test writes <code>map.</code> and <code>gain.</code> for every lane). Add a test that the new lane's default MIDI note maps back to it.</li>
+<li>Settings files need no migration: <code>map.&lt;Name&gt;</code> keys are read by <code>Lane::from_name</code>, unknown names are ignored, and a lane without a stored map gets the defaults.</li>
+</ol>
+
+<h3 id="t-sink">Tutorial 7: test sound without a sound card</h3>
+<p><span class="pill easy">small</span> Goal: a test that the click is silenced during the music but not during the count-in. The pattern applies to anything that decides what sounds.</p>
+<ol class="steps">
+<li><strong>Find the helpers.</strong> The <code>tests</code> module of <code>playback.rs</code> defines a <code>Fake</code> sink that records <code>Ev</code> events, <code>opts()</code> (a <code>PlayOptions</code> with audio and MIDI on), <code>click(t)</code> and <code>drum(lane, t)</code> to make cues, and <code>play(cue, opts, control)</code> which runs <code>dispatch</code> once and returns the recorded events. <code>PlayOptions</code> has no <code>Default</code>, so build on <code>opts()</code>.</li>
+<li><strong>Read the existing test.</strong> This exact behaviour is already covered; it is the model to copy. The live switch is in <code>Control</code>, the count-in is a cue at negative time:
+{{code:src/playback.rs::fn click_switch_mutes_the_music_but_not_the_count_in}}</li>
+<li><strong>Write yours the same way:</strong> build the <code>Control</code> and cues, call <code>play(&amp;cue, &amp;opts(), &amp;control)</code>, assert on the returned events. Run it with <code>cargo test click_switch</code>. Change one thing (for example a second <code>Control</code> with <code>set_notes(false)</code>) to see the test fail for the right reason.</li>
+<li><strong>Time-dependent behaviour</strong> (looping, stopping, late cues) goes through <code>run_with</code>, which takes the zero instant, the cues, a stop flag and the sink, with a short <code>tail</code>, so a test can run a real pass in a few milliseconds. Look at <code>looping_repeats_until_switched_off_and_finishes_the_pass</code>.</li>
+</ol>
+<div class="callout"><strong class="label">What cannot be tested</strong>That a real device makes the right sound at the right moment. Check it by ear and, on Windows, with the per-application peak meter, and record the result in <code>HANDOFF.md</code>.</div>
+</section>
+
+<section id="release">
+<h2>14. Releases and CI</h2>
+<p><code>.github/workflows/release.yml</code> builds on pushes to <code>main</code>, on tags <code>vX.Y.Z</code> and on the <code>preview</code> tag (only when its commit is on <code>develop</code>).</p>
+<ol class="steps">
+<li><strong>plan</strong> decides whether to build at all (a branch push of a commit that also carries a release tag is covered by the tag run).</li>
+<li><strong>manual</strong> (Ubuntu) runs the three Python tools: the user manual, the developer guide and the third-party notices, and uploads them as one artifact.</li>
+<li><strong>build-linux</strong> and <strong>build-windows</strong> (self-hosted) run <code>cargo test --release</code>, <code>cargo build --release</code> and package the binary with <code>README.md</code>, <code>CHANGELOG.md</code>, <code>LICENSE</code>, the manual, the developer guide, the notices and <code>examples/</code>.</li>
+<li><strong>publish</strong> attaches everything to a GitHub release (a normal one for <code>v*.*.*</code>, a replaced pre-release for <code>preview</code>).</li>
+</ol>
+<h3>Making a release</h3>
+<ol class="steps">
+<li>On <code>develop</code>: move <code>[Unreleased]</code> in the changelog under the new version and date; bump <code>version</code> in <code>Cargo.toml</code> and <code>Cargo.lock</code>; commit <code>chore: release X.Y.Z</code>.</li>
+<li>Merge to <code>main</code>, tag <code>vX.Y.Z</code> and push the tag. The workflow does the rest.</li>
+<li>A pre-release from <code>develop</code>: <code>git tag -f preview &amp;&amp; git push -f origin preview</code>.</li>
+</ol>
+<div class="callout"><strong class="label">Build failures of the docs</strong>The developer guide extracts code by searching for text such as <code>pub trait Sink</code>. If you rename or move an item that the guide shows, the build stops and names the missing snippet; update <code>docs/developer/developer.template.html</code> to the new name. The manual's build stops if it does not find exactly 40 rudiments.</div>
+</section>
+
+<section id="gaps">
+<h2>15. Known gaps and roadmap</h2>
+<ul>
+<li><strong>V31 and controllers are untested on hardware.</strong> The note map is the common Roland V-Drums factory map; the hi-hat pedal polarity (127 = closed) is the Roland convention; the controller presets are from the Mackie Control table.</li>
+<li><strong>Nobody has listened to the synthesised kit</strong> (only spectral guards test it). The built-in sounds are intentionally simple.</li>
+<li><strong>Notation</strong>: proportional spacing, noteheads and stems only.</li>
+<li><strong>MusicXML</strong>: D.S./D.C./coda are not followed, <code>score-timewise</code> is rejected, only the first drum-looking part is used.</li>
+<li><strong>Two timing threads</strong> with duplicated click logic.</li>
+<li><strong>No persistence of takes</strong>; CSV export only.</li>
+<li><strong>Follow mode</strong> scrolls every frame while recording, so manual scrolling is impossible during a take.</li>
+<li>The weights of the overall score are first guesses and need tuning with real takes.</li>
+<li>Bar numbers: bars show their printed number, the sliders use the position; with repeats expanded the two differ.</li>
+</ul>
+<p>The living list is in <code>HANDOFF.md</code> under "Todo" and "Known gaps".</p>
+</section>
+
+<section id="invariants">
+<h2>16. Invariants checklist</h2>
+<p>Before you open a pull request, check you did not break one of these.</p>
+<ul>
+<li>Score positions are quarter notes; seconds only through <code>TempoMap</code>.</li>
+<li>Take time zero is the start of the first measure of the range; <code>start_take</code> adds 0.5 s lead plus the count-in.</li>
+<li>Hit timestamps come from <code>Instant::now()</code> in the MIDI callback; <code>latency_ms</code> is subtracted when a hit is recorded.</li>
+<li>Staff step 0 is the bottom line (E4), 8 the top (F5).</li>
+<li>Matching is greedy, one-to-one, cheapest first; grace notes are optional; later notes stay pending.</li>
+<li>The pure modules do not import GUI, MIDI or audio code.</li>
+<li>Callbacks only push to queues; sound threads never block on the UI; the UI thread owns <code>DrumApp</code>.</li>
+<li>Every slider goes through <code>widgets::slider</code>; new settings go on their page and into <code>config.rs</code> with a round-trip test.</li>
+<li>Practice fields are swapped only by <code>activate</code>; <code>open_file</code> activates the Score source.</li>
+<li>Rudiment scores are written at <code>BASE_BPM</code>, so the practice tempo in percent is the BPM.</li>
+<li>Listen and takes share <code>plan_run</code>; changing it changes both.</li>
+<li>Shortcuts are ignored while a widget has the keyboard focus.</li>
+<li>New glyphs are checked in the running app; new user-visible behaviour is in the changelog, the manual and <code>HANDOFF.md</code>.</li>
+</ul>
+<p style="margin-top:3rem;color:var(--muted)">Created with extensive use of AI. Roll Model {{VERSION}} developer guide, built {{DATE}}. Licensed under the PolyForm Noncommercial License 1.0.0.</p>
+</section>
+</main>
+</div>
+</body>
+</html>

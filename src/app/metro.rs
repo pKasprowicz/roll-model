@@ -6,7 +6,7 @@ use std::time::{Duration, Instant};
 
 use egui::{pos2, vec2, RichText, Sense, Stroke};
 
-use super::DrumApp;
+use super::{DrumApp, Source};
 use crate::metronome::HAS_AUDIO;
 use crate::playback::{self, PlayOptions, Player, Subdivision};
 use crate::render;
@@ -177,7 +177,9 @@ impl DrumApp {
             None => (self.range_from.min(last), self.range_to.clamp(self.range_from.min(last), last)),
         };
         let (start_q, len_q) = (score.measures[a].start_q, score.measures[b].end_q() - score.measures[a].start_q);
-        let (score_bpm, bar_q) = (score.tempo.bpm_at(start_q), score.measures[a].len_q);
+        // A rudiment is written at a fixed tempo; its practice tempo in percent is its BPM.
+        let tempo_factor = if self.source == Source::Rudiments { f64::from(self.tempo_pct) / 100.0 } else { 1.0 };
+        let (score_bpm, bar_q) = (score.tempo.bpm_at(start_q) * tempo_factor, score.measures[a].len_q);
         let description = match click_bar {
             Some(_) => "no score loaded: the click pattern".to_string(),
             None => format!("\"{}\", bars {}–{} repeating", score.title, a + 1, b + 1),
@@ -210,7 +212,7 @@ impl DrumApp {
         }
         ui.label(
             RichText::new(if has_score {
-                "The practice range of the Score tab repeats at the metronome's tempo; the first note arrives on the first beat. Change the range on the Score tab."
+                "The practice range of the Score tab (or the rudiment of the Rudiments tab) repeats at the metronome's tempo; the first note arrives on the first beat. Change the range on the Score tab."
             } else {
                 "Every click of the bar rolls by: the first beat (accent), the other beats, and the softer subdivisions in brackets. Load a score to play its notes instead."
             })

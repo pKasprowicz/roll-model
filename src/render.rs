@@ -6,7 +6,7 @@ use egui::{pos2, vec2, Align2, Color32, FontId, Painter, Pos2, Rect, Sense, Shap
 
 use crate::analysis::Grade;
 use crate::drums::{Lane, NoteHead};
-use crate::score::Score;
+use crate::score::{Hand, Score, ScoreNote};
 
 const LS: f32 = 8.0; // staff line spacing
 const STEP: f32 = LS / 2.0;
@@ -293,6 +293,28 @@ fn draw_clef(p: &Painter, x: f32, top: f32, color: Color32) {
     p.rect_filled(r2, 0.0, color);
 }
 
+/// How far left of its main note a grace note is drawn.
+fn grace_dx(n: &ScoreNote) -> f32 {
+    if n.grace {
+        -9.0 * f32::from(n.grace_order.max(1))
+    } else {
+        0.0
+    }
+}
+
+/// The letter of the hand that plays a note, under it (the grace notes' ones are small): right
+/// in the text colour, left in the accent colour.
+fn draw_hand(p: &Painter, x: f32, y: f32, n: &ScoreNote, text: Color32) {
+    let Some(hand) = n.hand else { return };
+    let (size, color) = match (n.grace, hand) {
+        (true, _) => (8.0, text.gamma_multiply(0.6)),
+        (false, Hand::Right) => (11.0, text),
+        (false, Hand::Left) => (11.0, ACCENT),
+    };
+    let letter = if n.grace { hand.letter().to_lowercase() } else { hand.letter().to_string() };
+    p.text(pos2(x, y), Align2::CENTER_CENTER, letter, FontId::proportional(size), color);
+}
+
 /// A single staff that scrolls past a fixed "now" line, for playing along
 /// with a click: the practice range repeats endlessly.
 pub struct RollingView<'a> {
@@ -362,7 +384,7 @@ pub fn rolling(ui: &mut Ui, view: &RollingView) {
             }
         }
         for n in score.notes.iter().filter(|n| n.measure >= a && n.measure <= b) {
-            let x = x_of(n.q + shift) - if n.grace { 9.0 } else { 0.0 };
+            let x = x_of(n.q + shift) + grace_dx(n);
             if x < x_min - 12.0 || x > x_max + 12.0 {
                 continue;
             }
@@ -371,6 +393,7 @@ pub fn rolling(ui: &mut Ui, view: &RollingView) {
             let scale = if n.grace { 0.65 } else { 1.0 };
             draw_ledgers(&clipped, x, n.staff_step, bot, line_col);
             draw_head(&clipped, pos2(x, y), n.head, col, scale);
+            draw_hand(&clipped, x, bot + 16.0, n, col);
             let up = n.stem_up.unwrap_or(!n.lane.is_foot());
             let rx = 5.0 * scale;
             let sx = if up { x + rx - 0.5 } else { x - rx + 0.5 };
@@ -518,12 +541,13 @@ pub fn show(ui: &mut Ui, view: &ScoreView) -> ViewOutput {
             // expected notes
             for &ni in &notes_by_measure[mi] {
                 let n = &score.notes[ni];
-                let x = note_x(n.q) - if n.grace { 9.0 } else { 0.0 };
+                let x = note_x(n.q) + grace_dx(n);
                 let y = y_of(n.staff_step, exp_bot);
                 let col = view.grades.get(ni).copied().flatten().map(|g| grade_color(g, text)).unwrap_or(text);
                 let scale = if n.grace { 0.65 } else { 1.0 };
                 draw_ledgers(&painter, x, n.staff_step, exp_bot, line_col);
                 draw_head(&painter, pos2(x, y), n.head, col, scale);
+                draw_hand(&painter, x, exp_bot + 18.0, n, text);
                 let up = n.stem_up.unwrap_or(!n.lane.is_foot());
                 let rx = 5.0 * scale;
                 if up {
