@@ -13,6 +13,7 @@ mod midi;
 mod musicxml;
 mod playback;
 mod render;
+mod rudiments;
 mod score;
 mod synth;
 mod widgets;

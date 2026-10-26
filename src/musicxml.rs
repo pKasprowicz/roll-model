@@ -164,6 +164,8 @@ pub fn parse_musicxml(text: &str, opts: &ParseOptions) -> Result<Score, String> 
                 accent: n.accent,
                 ghost: n.ghost,
                 grace: n.grace,
+                grace_order: u8::from(n.grace),
+                hand: None,
                 stem_up: n.stem_up,
             });
         }

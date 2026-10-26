@@ -18,6 +18,11 @@
 # Layer A: Record · Listen · Stop · Click · Loop · Notes · Metronome tab · Next tab
 #          Loop worst bar · Range back · Range forward · Tap tempo · Tempo -5 % · Tempo +5 % · Discard take · Shift
 # Layer B: mute (top row) and solo (bottom row) of eight instrument groups, their volume on the encoders.
+#
+# While the Rudiments tab's practice is in use, layer A's measure controls mean something else
+# (no change to this file is needed): encoder 2 = repeats, encoder 3 = which hand leads, encoder 8
+# = the rudiment (turn), "range back" / "range forward" = previous / next rudiment, the tempo
+# controls are in BPM, and the push of encoder 1 goes back to the rudiment's starting tempo.
 
 name = Behringer X-Touch Mini
 port = X-TOUCH MINI

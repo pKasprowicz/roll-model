@@ -3,6 +3,7 @@
 mod controls;
 mod metro;
 mod mixer;
+mod rudiment;
 
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use std::path::{Path, PathBuf};
@@ -11,7 +12,7 @@ use std::time::{Duration, Instant};
 
 use egui::{Color32, RichText};
 
-use crate::analysis::{analyze, expected_notes, Expected, Grade, Hit, Report};
+use crate::analysis::{analyze_with, expected_notes, Expected, Grade, Hit, Report};
 use crate::config::Config;
 use crate::control::Control;
 use crate::drums::{format_note_list, parse_note_list, Lane};
@@ -28,6 +29,7 @@ use crate::widgets;
 enum Tab {
     Home,
     Score,
+    Rudiments,
     Metronome,
     Results,
     Settings,
@@ -61,9 +63,52 @@ impl SettingsPage {
     }
 }
 
+/// Which practice source the practice fields of `DrumApp` (score, range, tempo, take, history)
+/// belong to: the Score tab's file or the Rudiments tab's rudiment.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Source {
+    Score,
+    Rudiments,
+}
+
+/// The practice fields of the source that is not shown: swapped with the ones in `DrumApp` by
+/// `DrumApp::activate`, so each tab keeps its own score, range, tempo, take and history.
+struct Parked {
+    score: Option<Score>,
+    score_path: Option<PathBuf>,
+    range_from: usize,
+    range_to: usize,
+    tempo_pct: f32,
+    take: Option<Take>,
+    takes_started: usize,
+    history: Vec<TakeSummary>,
+}
+
+impl Parked {
+    fn new() -> Parked {
+        Parked {
+            score: None,
+            score_path: None,
+            range_from: 0,
+            range_to: 0,
+            tempo_pct: 100.0,
+            take: None,
+            takes_started: 0,
+            history: Vec::new(),
+        }
+    }
+}
+
+/// A take of a rudiment counts as clean from this overall score on.
+const CLEAN_TAKE: f64 = 85.0;
+
 /// One recorded attempt over a measure range.
 struct Take {
     number: usize,
+    /// What was played: the score's title, or the rudiment with its repetitions.
+    label: String,
+    /// Match hits to notes with a window that follows the spacing of the notes (rudiments).
+    adaptive: bool,
     /// Score time zero = start of `from` measure.
     zero: Instant,
     from: usize,
@@ -90,10 +135,11 @@ struct Listen {
     /// Seconds per beat of the first measure, and the beats of the count-in.
     beat_sec: f64,
     count_in_beats: u32,
-    /// What it was started with; a change of range or tempo restarts it.
+    /// What it was started with; a change of range or tempo (or of the score) restarts it.
     from: usize,
     to: usize,
     tempo_pct: i32,
+    gen: u32,
 }
 
 /// What a take or a playback of the selected range needs: where time zero is
@@ -135,6 +181,13 @@ pub struct DrumApp {
     saved_cfg: Config,
     tab: Tab,
     settings_page: SettingsPage,
+    /// Whose practice fields (`score` to `history`, below) are in use; the other's are in `parked`.
+    source: Source,
+    parked: Parked,
+    /// Counts the scores put in place, so that Listen notices a new one.
+    score_gen: u32,
+    /// The Rudiments tab's own state (the chosen rudiment itself is in `cfg`).
+    rud: rudiment::State,
     score: Option<Score>,
     score_path: Option<PathBuf>,
     status: String,
@@ -179,7 +232,7 @@ pub struct DrumApp {
     /// A fixed bars-per-row that does not fit, as reported by the last drawing of the score.
     fit_bars: Option<usize>,
     /// Range and tempo changed while listening, and since when: restarts once it settles.
-    listen_pending: Option<((usize, usize, i32), Instant)>,
+    listen_pending: Option<((usize, usize, i32, u32), Instant)>,
 
     /// The free metronome tab.
     metro: Option<metro::Run>,
@@ -226,6 +279,10 @@ impl DrumApp {
             cfg,
             tab: Tab::Home,
             settings_page: SettingsPage::MidiInput,
+            source: Source::Score,
+            parked: Parked::new(),
+            score_gen: 0,
+            rud: rudiment::State::default(),
             score: None,
             score_path: None,
             status: String::new(),
@@ -348,7 +405,55 @@ impl DrumApp {
         }
     }
 
+    /// Makes `source` the one the practice fields belong to. What is playing or recording stops;
+    /// the other source's score, range, tempo, take and history are parked, not lost.
+    fn activate(&mut self, source: Source) {
+        if self.source == source {
+            return;
+        }
+        self.stop_take(false);
+        self.stop_listen();
+        self.listen_pending = None;
+        let Parked { score, score_path, range_from, range_to, tempo_pct, take, takes_started, history } = &mut self.parked;
+        std::mem::swap(&mut self.score, score);
+        std::mem::swap(&mut self.score_path, score_path);
+        std::mem::swap(&mut self.range_from, range_from);
+        std::mem::swap(&mut self.range_to, range_to);
+        std::mem::swap(&mut self.tempo_pct, tempo_pct);
+        std::mem::swap(&mut self.take, take);
+        std::mem::swap(&mut self.takes_started, takes_started);
+        std::mem::swap(&mut self.history, history);
+        self.source = source;
+        self.score_gen += 1;
+    }
+
+    /// Whether a score file is loaded, whichever tab is showing.
+    fn has_main_score(&self) -> bool {
+        match self.source {
+            Source::Score => self.score.is_some(),
+            Source::Rudiments => self.parked.score.is_some(),
+        }
+    }
+
+    /// The file of the loaded score, whichever tab is showing.
+    fn main_path(&self) -> Option<PathBuf> {
+        match self.source {
+            Source::Score => self.score_path.clone(),
+            Source::Rudiments => self.parked.score_path.clone(),
+        }
+    }
+
+    /// What the current practice is called: the score's title, or the rudiment and its repetitions.
+    fn practice_label(&self) -> String {
+        let Some(score) = self.score.as_ref() else { return String::new() };
+        match self.source {
+            Source::Score => score.title.clone(),
+            Source::Rudiments => format!("{} ×{}", score.title, score.measures.len()),
+        }
+    }
+
     fn open_file(&mut self, path: &Path) {
+        self.activate(Source::Score);
         self.stop_take(false);
         self.stop_listen();
         let opts = ParseOptions { expand_repeats: self.cfg.expand_repeats };
@@ -369,6 +474,7 @@ impl DrumApp {
                 self.cfg.remember_recent(&absolute.to_string_lossy());
                 self.take = None;
                 self.error = None;
+                self.score_gen += 1;
                 self.tab = Tab::Score;
             }
             Err(e) => self.error = Some(format!("Could not load {}: {e}", path.display())),
@@ -442,6 +548,12 @@ impl DrumApp {
         self.stop_listen();
         self.stop_metro();
         self.sync_control();
+        if self.source == Source::Rudiments && !self.rudiment().gradable() {
+            self.status = format!("{} cannot be graded stroke by stroke: use Listen.", self.rudiment().name);
+            return;
+        }
+        let label = self.practice_label();
+        let adaptive = self.source == Source::Rudiments;
         let Some(plan) = self.plan_run(true) else { return };
         let Some(score) = self.score.as_ref() else { return };
         let expected = expected_notes(score, plan.from, plan.to, plan.scale);
@@ -461,7 +573,9 @@ impl DrumApp {
             tempo_scale: plan.scale,
             t0: plan.t0,
             end_sec: plan.end_sec,
-            report: analyze(&expected, &[], &self.cfg.tol, f64::NEG_INFINITY),
+            report: analyze_with(&expected, &[], &self.cfg.tol, f64::NEG_INFINITY, adaptive),
+            label,
+            adaptive,
             expected,
             hits: Vec::new(),
             running: true,
@@ -542,6 +656,7 @@ impl DrumApp {
             from: plan.from,
             to: plan.to,
             tempo_pct: self.tempo_pct.round() as i32,
+            gen: self.score_gen,
         });
     }
 
@@ -554,13 +669,13 @@ impl DrumApp {
     }
 
     /// The range and tempo Listen would start with now.
-    fn listen_signature(&self) -> Option<(usize, usize, i32)> {
+    fn listen_signature(&self) -> Option<(usize, usize, i32, u32)> {
         let n = self.score.as_ref()?.measures.len();
         if n == 0 {
             return None;
         }
         let from = self.range_from.min(n - 1);
-        Some((from, self.range_to.clamp(from, n - 1), self.tempo_pct.round() as i32))
+        Some((from, self.range_to.clamp(from, n - 1), self.tempo_pct.round() as i32, self.score_gen))
     }
 
     fn update_listen(&mut self) {
@@ -570,7 +685,7 @@ impl DrumApp {
         // Changing the range or the tempo while listening restarts it, without the count-in, once the
         // change has settled (a slider being dragged changes it on every frame).
         let wanted = match (self.listen.as_ref(), self.listen_signature()) {
-            (Some(l), Some(sig)) if (l.from, l.to, l.tempo_pct) != sig => Some(sig),
+            (Some(l), Some(sig)) if (l.from, l.to, l.tempo_pct, l.gen) != sig => Some(sig),
             _ => None,
         };
         match (wanted, self.listen_pending) {
@@ -666,7 +781,7 @@ impl DrumApp {
         }
         take.running = false;
         let elapsed = if completed { f64::INFINITY } else { signed_secs(Instant::now(), take.zero) };
-        take.report = analyze(&take.expected, &take.hits, &self.cfg.tol, elapsed);
+        take.report = analyze_with(&take.expected, &take.hits, &self.cfg.tol, elapsed, take.adaptive);
         let r = &take.report;
         if r.evaluated == 0 {
             self.status = "Take stopped before any notes were due — nothing to grade.".into();
@@ -677,11 +792,15 @@ impl DrumApp {
             .as_ref()
             .map(|s| s.tempo.bpm_at(s.measures[take.from].start_q) * take.tempo_scale)
             .unwrap_or(0.0);
-        let range = self
-            .score
-            .as_ref()
-            .map(|s| format!("{}–{}", s.measures[take.from].number, s.measures[take.to].number))
-            .unwrap_or_default();
+        let range = if take.adaptive {
+            take.label.clone()
+        } else {
+            self.score
+                .as_ref()
+                .map(|s| format!("{}–{}", s.measures[take.from].number, s.measures[take.to].number))
+                .unwrap_or_default()
+        };
+        let clean = completed && take.adaptive && r.overall >= CLEAN_TAKE;
         self.history.push(TakeSummary {
             number: take.number,
             range,
@@ -704,6 +823,9 @@ impl DrumApp {
             r.missed,
             r.extra
         );
+        if clean {
+            self.note_clean_rudiment(bpm);
+        }
     }
 
     fn update_take(&mut self) {
@@ -712,7 +834,7 @@ impl DrumApp {
             return;
         }
         let elapsed = signed_secs(Instant::now(), take.zero);
-        take.report = analyze(&take.expected, &take.hits, &self.cfg.tol, elapsed);
+        take.report = analyze_with(&take.expected, &take.hits, &self.cfg.tol, elapsed, take.adaptive);
         if elapsed > take.end_sec + 1.0 {
             self.stop_take(true);
         }
@@ -814,16 +936,17 @@ impl DrumApp {
             if ui.button("📂 Open MusicXML…").clicked() {
                 self.open_dialog();
             }
-            if let Some(p) = self.score_path.clone() {
+            if let Some(p) = self.main_path() {
                 if ui.button("⟳ Reload").on_hover_text("Reload the file (e.g. after editing it)").clicked() {
                     self.open_file(&p);
                 }
             }
             ui.separator();
             ui.selectable_value(&mut self.tab, Tab::Home, "🏠 Home");
-            ui.add_enabled_ui(self.score.is_some(), |ui| {
+            ui.add_enabled_ui(self.has_main_score(), |ui| {
                 ui.selectable_value(&mut self.tab, Tab::Score, "🎼 Score");
             });
+            ui.selectable_value(&mut self.tab, Tab::Rudiments, "🔁 Rudiments");
             ui.selectable_value(&mut self.tab, Tab::Metronome, "⏱ Metronome");
             ui.selectable_value(&mut self.tab, Tab::Results, "📊 Results");
             ui.selectable_value(&mut self.tab, Tab::Settings, "⚙ Settings");
@@ -864,6 +987,11 @@ impl DrumApp {
             }
             ui.add_space(6.0);
             ui.label(RichText::new("or drop a file onto the window — .musicxml, .xml or .mxl, exported from MuseScore, Guitar Pro, Sibelius, Dorico…").small().weak());
+            ui.add_space(14.0);
+            let rudiments = egui::Button::new(RichText::new("Practise the 40 rudiments").size(16.0)).min_size(egui::vec2(260.0, 38.0));
+            if ui.add(rudiments).on_hover_text("Singles, rolls, paradiddles, flams and drags: pick one, repeat it and play it along with the click").clicked() {
+                self.tab = Tab::Rudiments;
+            }
         });
         ui.add_space(28.0);
 
@@ -933,46 +1061,7 @@ impl DrumApp {
         // come first, and the wheel tunes any slider under the pointer.
         ui.scope(|ui| {
             widgets::roomy(ui);
-            ui.horizontal(|ui| {
-                if running {
-                    if ui.button(RichText::new("⏹ Stop (Esc)").strong()).clicked() {
-                        self.stop_take(false);
-                    }
-                } else if ui.button(RichText::new("⏺ Record (R)").strong().color(render::RED)).clicked() {
-                    self.start_take();
-                }
-                if self.listen.is_some() {
-                    if ui.button(RichText::new("⏹ Stop listening (L)").strong()).clicked() {
-                        self.stop_listen();
-                    }
-                } else if ui
-                    .add_enabled(!running, egui::Button::new(RichText::new("⏵ Listen (L)").strong()))
-                    .on_hover_text("Hear the selected measures at the chosen tempo, with the count-in and click, before you play them")
-                    .clicked()
-                {
-                    self.start_listen();
-                }
-                // Where Listen is in the music; a fixed width, so the controls after it stay put.
-                let position = self.listen_position().unwrap_or_default();
-                ui.add_sized([150.0, 30.0], egui::Label::new(RichText::new(position).weak()));
-                ui.separator();
-                widgets::slider(ui, "zoom", &mut self.cfg.zoom, 0.5..=3.0, "", 0.05);
-                ui.checkbox(&mut self.follow, "follow");
-                ui.menu_button("Layout", |ui| {
-                    ui.set_min_width(320.0);
-                    widgets::slider_with_zero(ui, "bars per row", &mut self.cfg.bars_per_row, 0..=8, "", 1.0, Some("auto"));
-                    widgets::slider_with_zero(ui, "start a row at bar", &mut self.cfg.layout_align_bar, 0..=n_measures, "", 1.0, Some("off"));
-                    let printed = self
-                        .score
-                        .as_ref()
-                        .and_then(|s| s.measures.get(self.cfg.layout_align_bar.wrapping_sub(1)))
-                        .map(|m| m.number.clone());
-                    if let Some(number) = printed {
-                        ui.label(RichText::new(format!("Bar {} of the score as shown, printed as bar {number} in the file.", self.cfg.layout_align_bar)).small().weak());
-                    }
-                    ui.label(RichText::new("With a fixed number of bars per row every bar has the same width and the zoom no longer matters.").small().weak());
-                });
-            });
+            self.transport_row(ui, running, n_measures);
             ui.horizontal(|ui| {
                 ui.add_enabled_ui(!running, |ui| {
                     let mut from = self.range_from + 1;
@@ -989,19 +1078,81 @@ impl DrumApp {
                     widgets::slider(ui, "tempo", &mut self.tempo_pct, 25.0..=150.0, "%", 1.0);
                     ui.label(format!("= {:.0} BPM", base_bpm * self.tempo_pct as f64 / 100.0));
                 });
-                // The click can be switched on and off while the music plays, in Listen and in a take.
-                ui.checkbox(&mut self.cfg.metronome_during_take, "click (K)")
-                    .on_hover_text("Switch the metronome on or off at any time, also while playing or recording. The count-in always sounds.");
-                ui.add_enabled_ui(!running, |ui| {
-                    ui.checkbox(&mut self.listen_notes, "notes")
-                        .on_hover_text("Play the notes of the score in Listen. Switch them off to use Listen as a click track.");
-                    ui.checkbox(&mut self.listen_loop, "loop")
-                        .on_hover_text("Repeat the selected measures in Listen until it is stopped. Switching it off lets the current round finish.");
-                    widgets::slider(ui, "count-in bars", &mut self.cfg.count_in_bars, 0..=2, "", 1.0);
-                });
+                self.playback_switches(ui, running);
             });
         });
+        self.score_body(ui, running, n_measures);
+    }
 
+    /// The first row of the Score and Rudiments tabs: record, listen, zoom, follow, layout.
+    fn transport_row(&mut self, ui: &mut egui::Ui, running: bool, n_measures: usize) {
+        ui.horizontal(|ui| {
+            if running {
+                if ui.button(RichText::new("⏹ Stop (Esc)").strong()).clicked() {
+                    self.stop_take(false);
+                }
+            } else {
+                let gradable = self.source == Source::Score || self.rudiment().gradable();
+                let record = egui::Button::new(RichText::new("⏺ Record (R)").strong().color(render::RED));
+                if ui
+                    .add_enabled(gradable, record)
+                    .on_disabled_hover_text("A closed roll cannot be graded stroke by stroke: use Listen")
+                    .clicked()
+                {
+                    self.start_take();
+                }
+            }
+            if self.listen.is_some() {
+                if ui.button(RichText::new("⏹ Stop listening (L)").strong()).clicked() {
+                    self.stop_listen();
+                }
+            } else if ui
+                .add_enabled(!running, egui::Button::new(RichText::new("⏵ Listen (L)").strong()))
+                .on_hover_text("Hear the selected measures at the chosen tempo, with the count-in and click, before you play them")
+                .clicked()
+            {
+                self.start_listen();
+            }
+            // Where Listen is in the music; a fixed width, so the controls after it stay put.
+            let position = self.listen_position().unwrap_or_default();
+            ui.add_sized([150.0, 30.0], egui::Label::new(RichText::new(position).weak()));
+            ui.separator();
+            widgets::slider(ui, "zoom", &mut self.cfg.zoom, 0.5..=3.0, "", 0.05);
+            ui.checkbox(&mut self.follow, "follow");
+            ui.menu_button("Layout", |ui| {
+                ui.set_min_width(320.0);
+                widgets::slider_with_zero(ui, "bars per row", &mut self.cfg.bars_per_row, 0..=8, "", 1.0, Some("auto"));
+                widgets::slider_with_zero(ui, "start a row at bar", &mut self.cfg.layout_align_bar, 0..=n_measures, "", 1.0, Some("off"));
+                let printed = self
+                    .score
+                    .as_ref()
+                    .and_then(|s| s.measures.get(self.cfg.layout_align_bar.wrapping_sub(1)))
+                    .map(|m| m.number.clone());
+                if let Some(number) = printed {
+                    ui.label(RichText::new(format!("Bar {} of the score as shown, printed as bar {number} in the file.", self.cfg.layout_align_bar)).small().weak());
+                }
+                ui.label(RichText::new("With a fixed number of bars per row every bar has the same width and the zoom no longer matters.").small().weak());
+            });
+        });
+    }
+
+    /// The switches that work while the music plays, and the count-in.
+    fn playback_switches(&mut self, ui: &mut egui::Ui, running: bool) {
+        // The click can be switched on and off while the music plays, in Listen and in a take.
+        ui.checkbox(&mut self.cfg.metronome_during_take, "click (K)")
+            .on_hover_text("Switch the metronome on or off at any time, also while playing or recording. The count-in always sounds.");
+        ui.add_enabled_ui(!running, |ui| {
+            ui.checkbox(&mut self.listen_notes, "notes")
+                .on_hover_text("Play the notes of the score in Listen. Switch them off to use Listen as a click track.");
+            ui.checkbox(&mut self.listen_loop, "loop")
+                .on_hover_text("Repeat the selected measures in Listen until it is stopped. Switching it off lets the current round finish.");
+            widgets::slider(ui, "count-in bars", &mut self.cfg.count_in_bars, 0..=2, "", 1.0);
+        });
+    }
+
+    /// The take's live figures, the colour legend and the score with the notes played, shared by
+    /// the Score and Rudiments tabs.
+    fn score_body(&mut self, ui: &mut egui::Ui, running: bool, n_measures: usize) {
         // Count-in / live stats line
         if let Some(take) = self.take.as_ref() {
             let r = &take.report;
@@ -1090,7 +1241,7 @@ impl DrumApp {
     fn results_tab(&mut self, ui: &mut egui::Ui) {
         egui::ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| {
             let Some(take) = self.take.as_ref() else {
-                ui.label("Record a take on the Score tab to see the analysis here.");
+                ui.label("Record a take on the Score or Rudiments tab to see the analysis here.");
                 return;
             };
             let r = &take.report;
@@ -1103,9 +1254,10 @@ impl DrumApp {
                 ui.vertical(|ui| {
                     ui.label(RichText::new(format!("{:.1} / 100", r.overall)).size(24.0).strong());
                     ui.label(format!(
-                        "Take {}{}",
+                        "Take {}{} · {}",
                         take.number,
-                        if take.running { " (in progress)" } else { "" }
+                        if take.running { " (in progress)" } else { "" },
+                        take.label
                     ));
                 });
             });
@@ -1168,6 +1320,24 @@ impl DrumApp {
                     ui.end_row();
                 }
             });
+
+            if !r.hands.is_empty() {
+                ui.add_space(8.0);
+                ui.heading("Hands");
+                egui::Grid::new("hands").num_columns(4).striped(true).show(ui, |ui| {
+                    for h in ["Hand", "Strokes hit", "Offset", "Velocity (unaccented)"] {
+                        ui.label(RichText::new(h).strong());
+                    }
+                    ui.end_row();
+                    for (hand, hs) in &r.hands {
+                        ui.label(hand.label());
+                        ui.label(hs.hit.to_string());
+                        ui.label(if hs.hit > 0 { format!("{:+.0} ms", hs.mean_dt_ms) } else { "–".into() });
+                        ui.label(if hs.plain > 0 { format!("{:.0}", hs.mean_velocity) } else { "–".into() });
+                        ui.end_row();
+                    }
+                });
+            }
 
             ui.add_space(8.0);
             if ui.button("💾 Export take as CSV…").clicked() {
@@ -1456,7 +1626,7 @@ impl DrumApp {
     fn settings_general(&mut self, ui: &mut egui::Ui) {
         ui.heading("Score");
         if ui.checkbox(&mut self.cfg.expand_repeats, "Expand repeats and 1st/2nd endings").changed() {
-            if let Some(p) = self.score_path.clone() {
+            if let Some(p) = self.main_path() {
                 self.open_file(&p);
             }
         }
@@ -1599,6 +1769,7 @@ impl eframe::App for DrumApp {
             self.open_file(p);
         }
 
+        self.sync_source();
         self.drain_midi();
         self.update_controller();
         self.keyboard_pads(ctx);
@@ -1646,6 +1817,8 @@ impl eframe::App for DrumApp {
         }
 
         egui::TopBottomPanel::top("top").show(ctx, |ui| self.top_bar(ui));
+        // A tab clicked just now needs its practice source before it is drawn.
+        self.sync_source();
         egui::TopBottomPanel::bottom("status").show(ctx, |ui| {
             ui.horizontal(|ui| {
                 if let Some(e) = self.error.clone() {
@@ -1661,6 +1834,7 @@ impl eframe::App for DrumApp {
         egui::CentralPanel::default().show(ctx, |ui| match self.tab {
             Tab::Home => egui::ScrollArea::vertical().show(ui, |ui| self.welcome_panel(ui)).inner,
             Tab::Score => self.score_tab(ui),
+            Tab::Rudiments => self.rudiments_tab(ui),
             Tab::Metronome => self.metronome_tab(ui),
             Tab::Results => self.results_tab(ui),
             Tab::Settings => self.settings_tab(ui),

@@ -3,6 +3,36 @@
 
 use crate::drums::{Lane, NoteHead};
 
+/// The hand a stroke is played with, when the score says (rudiments do).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Hand {
+    Right,
+    Left,
+}
+
+impl Hand {
+    pub fn other(self) -> Hand {
+        match self {
+            Hand::Right => Hand::Left,
+            Hand::Left => Hand::Right,
+        }
+    }
+
+    pub fn letter(self) -> &'static str {
+        match self {
+            Hand::Right => "R",
+            Hand::Left => "L",
+        }
+    }
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Hand::Right => "Right hand",
+            Hand::Left => "Left hand",
+        }
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct ScoreNote {
     /// Onset in quarter notes from the start of the (unrolled) score.
@@ -15,6 +45,11 @@ pub struct ScoreNote {
     pub accent: bool,
     pub ghost: bool,
     pub grace: bool,
+    /// For a grace note: 1 = the one right before its main note, 2 = the one before that
+    /// (a drag has two). 0 for every other note.
+    pub grace_order: u8,
+    /// Which hand plays it, if the score says; drawn as a letter under the note.
+    pub hand: Option<Hand>,
     pub stem_up: Option<bool>,
 }
 
@@ -190,6 +225,8 @@ impl Score {
                     accent: b == 0 && p == 0,
                     ghost: p > 0,
                     grace: false,
+                    grace_order: 0,
+                    hand: None,
                     stem_up: Some(true),
                 });
             }

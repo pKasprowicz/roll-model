@@ -12,6 +12,8 @@
 # The encoders under the faders: tempo, first bar, last bar, click volume, count-in,
 # bars per row, (unused), recent scores. The push of an encoder: encoder 1 = 100 % tempo,
 # encoder 8 = open the score. The jog wheel is the tempo as well.
+# While the Rudiments tab's practice is in use, "first bar" = repeats, "last bar" = which hand
+# leads and the recent-scores encoder = the rudiment; the tempo is in BPM.
 
 name = Behringer X-Touch Compact
 port = X-TOUCH COMPACT

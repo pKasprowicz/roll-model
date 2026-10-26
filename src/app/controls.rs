@@ -10,12 +10,13 @@ use std::time::{Duration, Instant};
 
 use egui::RichText;
 
-use super::{DrumApp, Tab};
+use super::{rudiment, DrumApp, Source, Tab};
 use crate::analysis::Report;
 use crate::config::{Config, MAX_LANE_GAIN};
 use crate::controller::{self, Action, Command, Mapper, State, GROUPS};
 use crate::midi::{self, ControllerHandle, MessageQueue};
 use crate::render;
+use crate::rudiments::{Lead, MAX_REPEATS};
 use crate::score::Score;
 
 const MONITOR_LINES: usize = 14;
@@ -268,14 +269,40 @@ impl DrumApp {
         self.tab == Tab::Metronome || self.score.is_none()
     }
 
+    /// The range of the practice tempo: percent of the written tempo, or BPM for a rudiment.
+    fn tempo_range(&self) -> (f32, f32) {
+        match self.source {
+            Source::Rudiments => rudiment::BPM_RANGE,
+            Source::Score => TEMPO_RANGE,
+        }
+    }
+
+    /// What a control means for the practice at hand. With a rudiment, the controls that choose
+    /// the measures choose its repetitions and lead instead, the range buttons step through the
+    /// rudiments, and the encoder that browses recent scores browses rudiments.
+    fn in_context(&self, action: Action) -> Action {
+        if self.source != Source::Rudiments {
+            return action;
+        }
+        match action {
+            Action::RangeFrom => Action::Repeats,
+            Action::RangeTo => Action::Lead,
+            Action::RangeBack => Action::PrevRudiment,
+            Action::RangeForward => Action::NextRudiment,
+            Action::Score => Action::Rudiment,
+            other => other,
+        }
+    }
+
     fn controller_state(&self) -> State {
         let c = &self.cfg;
         let measures = self.score.as_ref().map_or(0, |s| s.measures.len());
         let along = |i: usize| if measures > 1 { i as f32 / (measures - 1) as f32 } else { 0.0 };
+        let range = self.tempo_range();
         let tempo = if self.tempo_is_metronome() {
             (c.metro_bpm - METRO_RANGE.0) / (METRO_RANGE.1 - METRO_RANGE.0)
         } else {
-            (self.tempo_pct - TEMPO_RANGE.0) / (TEMPO_RANGE.1 - TEMPO_RANGE.0)
+            (self.tempo_pct - range.0) / (range.1 - range.0)
         };
         let mut s = State {
             record: self.take.as_ref().is_some_and(|t| t.running),
@@ -291,8 +318,15 @@ impl DrumApp {
             music_volume: c.playback_volume,
             count_in: c.count_in_bars as f32 / 2.0,
             bars_per_row: c.bars_per_row as f32 / 8.0,
+            repeats: (c.rudiment_repeats - 1) as f32 / (MAX_REPEATS - 1) as f32,
+            lead: Lead::ALL.iter().position(|l| *l == self.rudiment_lead()).unwrap_or(0) as f32 / 2.0,
             ..Default::default()
         };
+        if self.source == Source::Rudiments {
+            // The range encoders' rings show the repetitions and the lead.
+            s.range_from = s.repeats;
+            s.range_to = s.lead;
+        }
         for i in 0..GROUPS {
             let lanes = controller::group_lanes(i);
             s.gain[i] = (c.gain_of(lanes[0]) / MAX_LANE_GAIN).clamp(0.0, 1.0);
@@ -317,9 +351,9 @@ impl DrumApp {
 
     pub(super) fn apply_command(&mut self, command: Command) {
         match command {
-            Command::Press(action) => self.press(action),
-            Command::Turn(action, steps) => self.turn(action, steps),
-            Command::Set(action, x) => self.set(action, x),
+            Command::Press(action) => self.press(self.in_context(action)),
+            Command::Turn(action, steps) => self.turn(self.in_context(action), steps),
+            Command::Set(action, x) => self.set(self.in_context(action), x),
         }
     }
 
@@ -365,11 +399,15 @@ impl DrumApp {
             Action::TempoReset if self.unlocked() => {
                 if self.tempo_is_metronome() {
                     self.cfg.metro_bpm = Config::default().metro_bpm;
+                } else if self.source == Source::Rudiments {
+                    self.reset_rudiment_tempo();
                 } else {
                     self.tempo_pct = 100.0;
                 }
                 self.status = "Tempo reset.".into();
             }
+            Action::PrevRudiment if self.unlocked() => self.step_rudiment(-1),
+            Action::NextRudiment if self.unlocked() => self.step_rudiment(1),
             Action::DiscardTake if self.unlocked() => {
                 if let Some(take) = self.take.take() {
                     self.history.retain(|h| h.number != take.number);
@@ -399,8 +437,12 @@ impl DrumApp {
                     self.cfg.metro_bpm = (self.cfg.metro_bpm.round() + steps as f32).clamp(METRO_RANGE.0, METRO_RANGE.1);
                     self.status = format!("Metronome {:.0} BPM", self.cfg.metro_bpm);
                 } else {
-                    self.tempo_pct = (self.tempo_pct.round() + steps as f32).clamp(TEMPO_RANGE.0, TEMPO_RANGE.1);
-                    self.status = format!("Tempo {:.0} %", self.tempo_pct);
+                    let range = self.tempo_range();
+                    self.tempo_pct = (self.tempo_pct.round() + steps as f32).clamp(range.0, range.1);
+                    self.status = match self.source {
+                        Source::Rudiments => format!("Tempo {:.0} BPM", self.tempo_pct),
+                        Source::Score => format!("Tempo {:.0} %", self.tempo_pct),
+                    };
                 }
             }
             Action::RangeFrom if measures > 0 && self.unlocked() => {
@@ -420,6 +462,15 @@ impl DrumApp {
                 self.set_group_gain(i as usize, (g + 0.05 * steps as f32).clamp(0.0, MAX_LANE_GAIN));
             }
             Action::Score if self.unlocked() => self.browse_scores(steps),
+            Action::Repeats if self.unlocked() => {
+                self.step_repeats(steps);
+                self.status = format!("{} repeats", self.cfg.rudiment_repeats);
+            }
+            Action::Lead if self.unlocked() => {
+                self.step_lead(one);
+                self.status = format!("{} hand leads", self.rudiment_lead().label());
+            }
+            Action::Rudiment if self.unlocked() => self.step_rudiment(one),
             _ => {}
         }
     }
@@ -433,7 +484,8 @@ impl DrumApp {
                 if self.tempo_is_metronome() {
                     self.cfg.metro_bpm = (METRO_RANGE.0 + x * (METRO_RANGE.1 - METRO_RANGE.0)).round();
                 } else {
-                    self.tempo_pct = (TEMPO_RANGE.0 + x * (TEMPO_RANGE.1 - TEMPO_RANGE.0)).round();
+                    let range = self.tempo_range();
+                    self.tempo_pct = (range.0 + x * (range.1 - range.0)).round();
                 }
             }
             Action::RangeFrom if measures > 0 && self.unlocked() => self.range_from = bar(x).min(self.range_to),
@@ -442,6 +494,14 @@ impl DrumApp {
             Action::MusicVolume => self.cfg.playback_volume = x,
             Action::CountIn => self.cfg.count_in_bars = (x * 2.0).round() as u32,
             Action::BarsPerRow => self.cfg.bars_per_row = (x * 8.0).round() as usize,
+            Action::Repeats if self.unlocked() => {
+                self.cfg.rudiment_repeats = 1 + (x * (MAX_REPEATS - 1) as f32).round() as usize;
+                self.ensure_rudiment();
+            }
+            Action::Lead if self.unlocked() => {
+                self.rud.lead = Some(Lead::ALL[(x * 2.0).round() as usize]);
+                self.ensure_rudiment();
+            }
             Action::Gain(i) => self.set_group_gain(i as usize, x * MAX_LANE_GAIN),
             _ => {}
         }
@@ -456,14 +516,15 @@ impl DrumApp {
 
     fn next_tab(&mut self) {
         let mut tabs = Vec::new();
-        if self.score.is_some() {
+        if self.has_main_score() {
             tabs.push(Tab::Score);
         }
-        tabs.extend([Tab::Metronome, Tab::Results, Tab::Settings]);
+        tabs.extend([Tab::Rudiments, Tab::Metronome, Tab::Results, Tab::Settings]);
         self.tab = match tabs.iter().position(|t| *t == self.tab) {
             Some(i) => tabs[(i + 1) % tabs.len()],
             None => tabs[0],
         };
+        self.sync_source();
     }
 
     fn tap_tempo(&mut self) {
@@ -476,8 +537,12 @@ impl DrumApp {
             self.status = format!("Metronome {:.0} BPM (tapped)", self.cfg.metro_bpm);
         } else if let Some(score) = self.score.as_ref() {
             let written = score.tempo.bpm_at(score.measures[self.range_from.min(score.measures.len() - 1)].start_q);
-            self.tempo_pct = (bpm / written * 100.0).clamp(TEMPO_RANGE.0 as f64, TEMPO_RANGE.1 as f64).round() as f32;
-            self.status = format!("Tempo {:.0} % = {bpm:.0} BPM (tapped)", self.tempo_pct);
+            let range = self.tempo_range();
+            self.tempo_pct = (bpm / written * 100.0).clamp(f64::from(range.0), f64::from(range.1)).round() as f32;
+            self.status = match self.source {
+                Source::Rudiments => format!("Tempo {:.0} BPM (tapped)", self.tempo_pct),
+                Source::Score => format!("Tempo {:.0} % = {bpm:.0} BPM (tapped)", self.tempo_pct),
+            };
         }
     }
 
@@ -924,13 +989,95 @@ mod tests {
         assert!(s.looping && !s.notes && !s.record && !s.listen && !s.metronome);
 
         assert!(app.tab == Tab::Score);
-        for expected in [Tab::Metronome, Tab::Results, Tab::Settings, Tab::Score] {
+        for expected in [Tab::Rudiments, Tab::Metronome, Tab::Results, Tab::Settings, Tab::Score] {
             app.apply_command(Command::Press(Action::NextTab));
             assert!(app.tab == expected);
         }
         let mut bare = DrumApp::with_config(Config::default());
         bare.apply_command(Command::Press(Action::NextTab));
-        assert!(bare.tab == Tab::Metronome, "no Score tab without a score");
+        assert!(bare.tab == Tab::Rudiments, "no Score tab without a score");
+    }
+
+    #[test]
+    fn with_a_rudiment_the_range_controls_choose_repetitions_lead_and_rudiment() {
+        let mut app = app_with_score();
+        app.apply_command(Command::Press(Action::NextTab));
+        assert!(app.tab == Tab::Rudiments && app.source == Source::Rudiments);
+        assert_eq!(app.cfg.rudiment, 1);
+
+        // The encoder that browses the recent scores browses the rudiments, one at a time.
+        app.apply_command(Command::Turn(Action::Score, 1));
+        assert_eq!(app.cfg.rudiment, 2);
+        app.apply_command(Command::Turn(Action::Score, 50));
+        assert_eq!(app.cfg.rudiment, 3);
+        app.apply_command(Command::Press(Action::RangeForward));
+        assert_eq!(app.cfg.rudiment, 4);
+        app.apply_command(Command::Press(Action::RangeBack));
+        app.apply_command(Command::Press(Action::RangeBack));
+        assert_eq!(app.cfg.rudiment, 2);
+        assert_eq!(app.score.as_ref().unwrap().title, "Single stroke four", "the score follows at once");
+
+        // First and last measure become the repetitions and the lead; the rings show them.
+        let repeats = app.cfg.rudiment_repeats;
+        app.apply_command(Command::Turn(Action::RangeFrom, 3));
+        assert_eq!(app.cfg.rudiment_repeats, repeats + 3);
+        assert_eq!(app.score.as_ref().unwrap().measures.len(), repeats + 3);
+        app.apply_command(Command::Turn(Action::RangeTo, 1));
+        assert_eq!(app.rudiment_lead(), Lead::Left);
+        app.apply_command(Command::Turn(Action::RangeTo, -1));
+        assert_eq!(app.rudiment_lead(), Lead::Right);
+        app.apply_command(Command::Turn(Action::RangeTo, -1));
+        assert_eq!(app.rudiment_lead(), Lead::Alternate, "the choice goes round");
+        let s = app.controller_state();
+        assert!((s.range_from - (repeats + 2) as f32 / (MAX_REPEATS - 1) as f32).abs() < 1e-6);
+        assert_eq!(s.range_to, 1.0);
+        app.apply_command(Command::Set(Action::RangeFrom, 0.0));
+        assert_eq!(app.cfg.rudiment_repeats, 1);
+        app.apply_command(Command::Set(Action::Repeats, 1.0));
+        assert_eq!(app.cfg.rudiment_repeats, MAX_REPEATS);
+
+        // The tempo is in BPM, within its own range, and resets to the rudiment's starting tempo.
+        assert_eq!(app.tempo_pct, 60.0);
+        app.apply_command(Command::Turn(Action::Tempo, 5));
+        assert_eq!(app.tempo_pct, 65.0);
+        app.apply_command(Command::Set(Action::Tempo, 1.0));
+        assert_eq!(app.tempo_pct, rudiment::BPM_RANGE.1);
+        app.apply_command(Command::Set(Action::Tempo, 0.0));
+        assert_eq!(app.tempo_pct, rudiment::BPM_RANGE.0);
+        app.apply_command(Command::Press(Action::TempoReset));
+        assert_eq!(app.tempo_pct, 60.0);
+        assert!((app.controller_state().tempo - (60.0 - 30.0) / (240.0 - 30.0)).abs() < 1e-6);
+
+        // Back on the Score tab the same controls are about the measures again.
+        app.apply_command(Command::Press(Action::NextTab));
+        app.apply_command(Command::Press(Action::NextTab));
+        app.apply_command(Command::Press(Action::NextTab));
+        app.apply_command(Command::Press(Action::NextTab));
+        assert!(app.tab == Tab::Score && app.source == Source::Score);
+        let (from, to) = (app.range_from, app.range_to);
+        app.apply_command(Command::Turn(Action::RangeTo, -1));
+        assert_eq!((app.range_from, app.range_to), (from, to - 1));
+        assert_eq!(app.cfg.rudiment_repeats, MAX_REPEATS, "the rudiment is left alone");
+    }
+
+    #[test]
+    fn the_rudiment_controls_are_locked_while_a_take_records() {
+        let mut app = app_with_score();
+        app.cfg.click_audio = false;
+        app.cfg.click_midi = false;
+        app.apply_command(Command::Press(Action::NextTab));
+        app.apply_command(Command::Press(Action::Record));
+        assert!(app.take_running());
+        app.apply_command(Command::Press(Action::NextRudiment));
+        app.apply_command(Command::Turn(Action::Repeats, 3));
+        app.apply_command(Command::Turn(Action::Lead, 1));
+        assert_eq!(app.cfg.rudiment, 1);
+        assert_eq!(app.cfg.rudiment_repeats, crate::rudiments::DEFAULT_REPEATS);
+        assert!(app.rud.lead.is_none());
+        assert!(app.status.contains("Locked"), "{}", app.status);
+        app.apply_command(Command::Press(Action::Stop));
+        app.apply_command(Command::Press(Action::NextRudiment));
+        assert_eq!(app.cfg.rudiment, 2);
     }
 
     #[test]
