@@ -162,6 +162,9 @@ pub enum Action {
     DiscardTake,
     TempoReset,
     OpenScore,
+    /// Rudiments: the previous and the next rudiment.
+    PrevRudiment,
+    NextRudiment,
     /// Held to make encoder turns five times as large.
     Shift,
     /// Strip number `0..GROUPS`.
@@ -177,8 +180,13 @@ pub enum Action {
     CountIn,
     BarsPerRow,
     Gain(u8),
+    /// Rudiments: how often the rudiment repeats, and which hand starts it.
+    Repeats,
+    Lead,
     /// Browses the recent scores; only turned.
     Score,
+    /// Browses the rudiments; only turned.
+    Rudiment,
 }
 
 const SIMPLE: &[(&str, Action)] = &[
@@ -199,6 +207,8 @@ const SIMPLE: &[(&str, Action)] = &[
     ("discard_take", Action::DiscardTake),
     ("tempo_reset", Action::TempoReset),
     ("open_score", Action::OpenScore),
+    ("prev_rudiment", Action::PrevRudiment),
+    ("next_rudiment", Action::NextRudiment),
     ("shift", Action::Shift),
     ("tempo", Action::Tempo),
     ("range_from", Action::RangeFrom),
@@ -207,7 +217,10 @@ const SIMPLE: &[(&str, Action)] = &[
     ("music_volume", Action::MusicVolume),
     ("count_in", Action::CountIn),
     ("bars_per_row", Action::BarsPerRow),
+    ("repeats", Action::Repeats),
+    ("lead", Action::Lead),
     ("score", Action::Score),
+    ("rudiment", Action::Rudiment),
 ];
 
 impl Action {
@@ -253,8 +266,15 @@ impl Action {
                 | Action::MusicVolume
                 | Action::CountIn
                 | Action::BarsPerRow
+                | Action::Repeats
+                | Action::Lead
                 | Action::Gain(_)
         )
+    }
+
+    /// Browses a list: only turned, and not sped up by Shift.
+    pub fn is_browse(self) -> bool {
+        matches!(self, Action::Score | Action::Rudiment)
     }
 
     /// A button's light can show this.
@@ -294,6 +314,8 @@ pub struct State {
     pub music_volume: f32,
     pub count_in: f32,
     pub bars_per_row: f32,
+    pub repeats: f32,
+    pub lead: f32,
     pub gain: [f32; GROUPS],
 }
 
@@ -322,6 +344,8 @@ impl State {
             Action::MusicVolume => self.music_volume,
             Action::CountIn => self.count_in,
             Action::BarsPerRow => self.bars_per_row,
+            Action::Repeats => self.repeats,
+            Action::Lead => self.lead,
             Action::Gain(i) => self.gain[i as usize % GROUPS],
             _ => return None,
         })
@@ -423,8 +447,8 @@ impl Preset {
                 if matches!(src, Src::Bend(_)) && !action.is_level() {
                     return Err("a fader can only set a value".into());
                 }
-                if action == Action::Score && !relative {
-                    return Err("\"score\" is only turned: add \"rel\"".into());
+                if action.is_browse() && !relative {
+                    return Err(format!("\"{}\" is only turned: add \"rel\"", action.text()));
                 }
                 self.binds.push(Binding { layer, src, relative, action });
             }
@@ -642,10 +666,10 @@ impl Mapper {
                 }
                 Vec::new()
             }
-            a if a.is_level() || a == Action::Score => match msg {
+            a if a.is_level() || a.is_browse() => match msg {
                 Msg::Cc { val, .. } if relative => match decode_relative(val) {
                     0 => Vec::new(),
-                    n => vec![Command::Turn(a, if self.shift && a != Action::Score { n * SHIFT_FACTOR } else { n })],
+                    n => vec![Command::Turn(a, if self.shift && !a.is_browse() { n * SHIFT_FACTOR } else { n })],
                 },
                 Msg::Cc { val, .. } if a.is_level() => self.absolute(i, a, val as f32 / 127.0, state),
                 Msg::Bend { value, .. } if a.is_level() => self.absolute(i, a, value as f32 / 16383.0, state),
@@ -743,6 +767,41 @@ mod tests {
         assert_eq!([1, 3, 63].map(decode_relative), [1, 3, 63]);
         assert_eq!([65, 67, 127].map(decode_relative), [-1, -3, -63]);
         assert_eq!(decode_relative(0), 0);
+    }
+
+    #[test]
+    fn the_rudiment_actions_can_be_bound_in_a_custom_preset() {
+        let p = Preset::parse(
+            "layer = A note 84\n\
+             bind = A cc 16 rel -> repeats\n\
+             bind = A cc 17 rel -> lead\n\
+             bind = A cc 18 rel -> rudiment\n\
+             bind = A note 70 -> next_rudiment\n\
+             bind = A note 71 -> prev_rudiment\n\
+             bind = A bend 1 -> repeats\n\
+             ring = A repeats -> cc 48\n\
+             ring = A lead -> cc 49\n",
+        );
+        assert!(p.warnings.is_empty(), "{:?}", p.warnings);
+        for text in ["repeats", "lead", "rudiment", "next_rudiment", "prev_rudiment"] {
+            assert_eq!(Action::parse(text).unwrap().text(), text);
+        }
+        // Browsing the rudiments is only turned, like browsing the scores.
+        let bad = Preset::parse("layer = A note 84\nbind = A cc 18 -> rudiment\nbind = A bend 1 -> rudiment\n");
+        assert_eq!(bad.warnings.len(), 2, "{:?}", bad.warnings);
+        assert!(Preset::parse("layer = A note 84\nring = A rudiment -> cc 48\n").warnings.len() == 1, "no ring for a list");
+
+        let mut m = Mapper::new(p);
+        let s = State { repeats: 0.25, lead: 0.5, ..State::default() };
+        assert!(m.handle(note(84), &s).is_empty(), "the layer switch");
+        assert_eq!(m.handle(cc(16, 2), &s), [Command::Turn(Action::Repeats, 2)]);
+        assert_eq!(m.handle(cc(18, 65), &s), [Command::Turn(Action::Rudiment, -1)]);
+        assert_eq!(m.handle(note(70), &s), [Command::Press(Action::NextRudiment)]);
+        assert_eq!(s.level(Action::Repeats), Some(0.25));
+        assert_eq!(s.level(Action::Lead), Some(0.5));
+        // A fader catches up with the repetitions before it takes over.
+        assert!(m.handle(Msg::Bend { ch: 1, value: 0 }, &s).is_empty());
+        assert_eq!(m.lights(&s), [[0xB0, 48, ring_value(0.25)], [0xB0, 49, ring_value(0.5)]], "the rings show the values");
     }
 
     #[test]

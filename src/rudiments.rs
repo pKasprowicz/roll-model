@@ -66,26 +66,6 @@ impl Lead {
         }
     }
 
-    pub fn name(self) -> &'static str {
-        match self {
-            Lead::Right => "right",
-            Lead::Left => "left",
-            Lead::Alternate => "alternate",
-        }
-    }
-
-    pub fn from_name(s: &str) -> Option<Lead> {
-        Lead::ALL.into_iter().find(|l| l.name() == s)
-    }
-
-    /// The next one in the list, wrapping around.
-    pub fn next(self) -> Lead {
-        match self {
-            Lead::Right => Lead::Left,
-            Lead::Left => Lead::Alternate,
-            Lead::Alternate => Lead::Right,
-        }
-    }
 }
 
 /// One stroke of a cell.
@@ -539,7 +519,5 @@ mod tests {
         assert!(rudiment(16).matches("16") && !rudiment(16).matches("17"));
         assert!(rudiment(16).matches("  "));
         assert_eq!(all().iter().filter(|r| r.matches("paradiddle")).count(), 8);
-        assert_eq!(Lead::from_name("alternate"), Some(Lead::Alternate));
-        assert_eq!(Lead::from_name("both"), None);
     }
 }

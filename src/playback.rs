@@ -473,7 +473,7 @@ mod tests {
     use crate::synth::SAMPLE_RATE;
 
     fn note(lane: Lane, t: f64) -> Expected {
-        Expected { note_idx: 0, t, lane, accent: false, ghost: false, grace: false }
+        Expected { note_idx: 0, t, lane, accent: false, ghost: false, grace: false, hand: None }
     }
 
     #[derive(Debug, PartialEq)]
