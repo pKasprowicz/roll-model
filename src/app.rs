@@ -260,7 +260,13 @@ const KEYBOARD_PADS: [(egui::Key, Lane, &str); 13] = [
 ];
 
 impl DrumApp {
-    pub fn new(_cc: &eframe::CreationContext<'_>, initial_file: Option<PathBuf>) -> DrumApp {
+    pub fn new(cc: &eframe::CreationContext<'_>, initial_file: Option<PathBuf>) -> DrumApp {
+        // The grey helper texts are the "small" style: half as big again as egui's default.
+        cc.egui_ctx.all_styles_mut(|style| {
+            if let Some(small) = style.text_styles.get_mut(&egui::TextStyle::Small) {
+                small.size *= 1.5;
+            }
+        });
         let mut app = DrumApp::with_config(Config::load());
         app.refresh_ports();
         app.connect_midi(None);
