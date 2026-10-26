@@ -841,7 +841,7 @@ impl DrumApp {
     fn welcome_panel(&mut self, ui: &mut egui::Ui) {
         ui.add_space(36.0);
         ui.vertical_centered(|ui| {
-            ui.label(RichText::new("Drum Tutor").size(34.0).strong());
+            ui.label(RichText::new("Roll Model").size(34.0).strong());
             ui.add_space(4.0);
             ui.label("Load a MusicXML drum score, listen to it, then play it on your kit and see how you did.");
             ui.add_space(18.0);

@@ -1,4 +1,4 @@
-# Drum Tutor
+# Roll Model
 
 A Rust desktop app (egui) for practising drum parts against a score:
 
@@ -15,7 +15,7 @@ cargo run --release                                 # start empty
 cargo run --release -- examples/basic_rock_beat.musicxml
 ```
 
-The binary ends up in `target/release/drum-tutor(.exe)`.
+The binary ends up in `target/release/roll-model(.exe)`.
 
 | Platform | Extra requirements |
 |---|---|
@@ -123,4 +123,4 @@ What counts as the public interface: the settings file keys, the CSV export colu
 | `src/render.rs` | Score and played-notes staves |
 | `src/app.rs` | UI: welcome panel, Score, Results and Settings tabs; `src/app/metro.rs` is the Metronome tab, `src/app/mixer.rs` the instrument mixer |
 | `src/widgets.rs` | Shared UI helpers: the wheel-aware slider and the larger Score-tab style |
-| `src/config.rs` | Settings file (`%APPDATA%\DrumTutor\config.txt` on Windows) |
+| `src/config.rs` | Settings file (`%APPDATA%\RollModel\config.txt` on Windows) |
