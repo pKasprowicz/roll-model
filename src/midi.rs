@@ -84,6 +84,65 @@ pub fn connect_input(wanted: &str, queue: EventQueue) -> Result<InputHandle, Str
     Ok(InputHandle { _conn: conn, port_name })
 }
 
+/// Raw messages from a control surface, filled by its callback thread.
+pub type MessageQueue = Arc<Mutex<Vec<Vec<u8>>>>;
+
+/// A control surface: its messages arrive in a queue; the lights are set with `send`.
+pub struct ControllerHandle {
+    _conn: MidiInputConnection<()>,
+    out: Option<MidiOutputConnection>,
+    pub port_name: String,
+}
+
+impl ControllerHandle {
+    /// Whether the lights can be set (the device has an output port that could be opened).
+    pub fn has_output(&self) -> bool {
+        self.out.is_some()
+    }
+
+    pub fn send(&mut self, message: &[u8]) {
+        if let Some(out) = self.out.as_mut() {
+            let _ = out.send(message);
+        }
+    }
+}
+
+/// Most messages kept between two frames of the window; a runaway device cannot fill memory.
+const MAX_QUEUED: usize = 2000;
+
+/// Opens the input port whose name matches `wanted` and, if there is one with
+/// the same name, its output port too (for the lights).
+pub fn connect_controller(wanted: &str, queue: MessageQueue) -> Result<ControllerHandle, String> {
+    let mut mi = MidiInput::new("roll-model-controller").map_err(|e| e.to_string())?;
+    mi.ignore(Ignore::All);
+    let ports = mi.ports();
+    let names: Vec<String> = ports.iter().map(|p| mi.port_name(p).unwrap_or_default()).collect();
+    let idx = pick(names.iter().map(|s| s.as_str()).enumerate(), wanted)
+        .ok_or_else(|| format!("MIDI input matching \"{wanted}\" not found"))?;
+    let port_name = names[idx].clone();
+    let conn = mi
+        .connect(
+            &ports[idx],
+            "roll-model-controller-in",
+            move |_stamp, msg, _| {
+                if let Ok(mut q) = queue.lock() {
+                    if q.len() < MAX_QUEUED {
+                        q.push(msg.to_vec());
+                    }
+                }
+            },
+            (),
+        )
+        .map_err(|e| format!("could not open \"{port_name}\": {e}"))?;
+    let out = MidiOutput::new("roll-model-controller").ok().and_then(|mo| {
+        let ports = mo.ports();
+        let names: Vec<String> = ports.iter().map(|p| mo.port_name(p).unwrap_or_default()).collect();
+        let i = pick(names.iter().map(|s| s.as_str()).enumerate(), &port_name)?;
+        mo.connect(&ports[i], "roll-model-controller-out").ok()
+    });
+    Ok(ControllerHandle { _conn: conn, out, port_name })
+}
+
 pub fn connect_output(wanted: &str) -> Result<MidiOutputConnection, String> {
     let mo = MidiOutput::new("roll-model").map_err(|e| e.to_string())?;
     let ports = mo.ports();

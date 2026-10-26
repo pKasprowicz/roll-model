@@ -1,5 +1,6 @@
 //! Application state and UI (Score / Metronome / Results / Settings tabs).
 
+mod controls;
 mod metro;
 mod mixer;
 
@@ -39,17 +40,20 @@ const LISTEN_RESTART_DELAY: Duration = Duration::from_millis(300);
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum SettingsPage {
     MidiInput,
+    Controller,
     Timing,
     Sound,
     General,
 }
 
 impl SettingsPage {
-    const ALL: [SettingsPage; 4] = [SettingsPage::MidiInput, SettingsPage::Timing, SettingsPage::Sound, SettingsPage::General];
+    const ALL: [SettingsPage; 5] =
+        [SettingsPage::MidiInput, SettingsPage::Controller, SettingsPage::Timing, SettingsPage::Sound, SettingsPage::General];
 
     fn label(self) -> &'static str {
         match self {
             SettingsPage::MidiInput => "MIDI input",
+            SettingsPage::Controller => "Controller",
             SettingsPage::Timing => "Timing",
             SettingsPage::Sound => "Sound",
             SettingsPage::General => "General",
@@ -181,6 +185,9 @@ pub struct DrumApp {
     metro: Option<metro::Run>,
     metro_player: Option<Player>,
     metro_control: Arc<Control>,
+
+    /// The Mackie Control surface (X-Touch).
+    controller: controls::Controller,
 }
 
 const KEYBOARD_PADS: [(egui::Key, Lane, &str); 13] = [
@@ -204,6 +211,8 @@ impl DrumApp {
         let mut app = DrumApp::with_config(Config::load());
         app.refresh_ports();
         app.connect_midi(None);
+        app.refresh_controllers();
+        app.connect_controller();
         if let Some(p) = initial_file {
             app.open_file(&p);
         }
@@ -252,6 +261,7 @@ impl DrumApp {
             metro: None,
             metro_player: None,
             metro_control: Control::new(),
+            controller: controls::Controller::new(),
         }
     }
 
@@ -822,6 +832,9 @@ impl DrumApp {
                     Some(h) => ui.label(RichText::new(format!("⏺ {}", h.port_name)).color(render::GREEN)),
                     None => ui.label(RichText::new("⏺ no MIDI input").color(render::RED)),
                 };
+                if let Some(label) = self.controller.label() {
+                    ui.label(RichText::new(label).small().weak());
+                }
                 if let Some((ev, lane)) = self.monitor.front() {
                     if ev.at.elapsed() < Duration::from_millis(1500) {
                         ui.label(format!(
@@ -1246,6 +1259,7 @@ impl DrumApp {
             .auto_shrink([false, false])
             .show(ui, |ui| match self.settings_page {
                 SettingsPage::MidiInput => self.settings_midi_input(ui),
+                SettingsPage::Controller => self.settings_controller(ui),
                 SettingsPage::Timing => self.settings_timing(ui),
                 SettingsPage::Sound => self.settings_sound(ui),
                 SettingsPage::General => self.settings_general(ui),
@@ -1586,6 +1600,7 @@ impl eframe::App for DrumApp {
         }
 
         self.drain_midi();
+        self.update_controller();
         self.keyboard_pads(ctx);
         self.sync_control();
         self.update_take();

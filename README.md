@@ -67,13 +67,51 @@ Next to the tempo on the Score tab there are three switches that work **while it
 
 The **Metronome** tab is a click track that needs no score: tempo, beats per bar, subdivision (eighths, triplets, sixteenths) and volume, with one light per beat. `M` starts and stops it. The first beat of each bar is accented and subdivisions are softer. Its notes roll by below the lights: the click pattern of the bar, or with a score loaded its practice range below the lights as a staff, repeating at the metronome's tempo so you can play the notes along with the click; **Match score tempo and bar** sets the tempo and beats per bar to the score's. Changes while it runs take effect after a moment. It plays through the click output chosen on **Settings → Sound** (the sound card and/or MIDI).
 
+## Controller (Mackie Control, X-Touch)
+
+A control surface that speaks the Mackie Control protocol runs the program from the stool, with sticks in your hands. Built-in presets: **Behringer X-Touch Mini** (set it to *MC mode*) and **X-Touch Compact**. Choose one on **Settings → Controller**; the program finds its MIDI port by name (or pick the port there) and remembers the choice. The controller has its own MIDI port, separate from the drum module, so its buttons never count as hits. The page also has a monitor that shows every message the controller sends and what it is bound to. The presets have not been tried on a device yet: if a number in one is wrong, the monitor shows the real one.
+
+**X-Touch Mini.** The LAYER A / LAYER B buttons switch between two sets of controls (the program does this itself).
+
+| Layer A: practice | |
+|---|---|
+| Top row | Record · Listen · Stop · Click · Loop · Notes · Metronome tab · Next tab |
+| Bottom row | Loop the worst bar of the last take · Range back · Range forward (by the length of the range) · Tap tempo · Tempo −5 % · Tempo +5 % · Discard take · **Shift** (hold: encoders turn five times as far) |
+| Encoders 1–8 | Tempo (push: 100 %) · First measure · Last measure · Click volume · Music volume · Count-in bars · Bars per row · Recent scores (push: open) |
+| Fader | Tempo (it takes over once it reaches the current value, so nothing jumps) |
+
+| Layer B: mixer | |
+|---|---|
+| Top row / bottom row | Mute / solo of eight instrument groups: Kick, Snare (with cross-stick), Hi-hat, Tom 1, Tom 2, Tom 3 and 4, Crash (all crashes, china, splash), Ride (with bell and cowbell) |
+| Encoders 1–8 | Volume of the group (push: play it) |
+| Fader | Music volume |
+
+Tempo controls act on the practice tempo, or on the metronome while the Metronome tab is open. Tempo, measures and the score are locked while a take records. The lights show what is on (recording, listening, click, loop, notes, metronome, mute, solo, shift) and the rings around the encoders show their values.
+
+**Your own preset.** A preset is a text file ending in `.txt` in the `controllers` folder next to the settings file (the Controller page shows the path); it then shows up in the list. The page can copy a built-in preset there to start from. Each line is `key = value`, `#` starts a comment:
+
+```
+name  = My surface
+port  = X-TOUCH MINI                  # part of the MIDI port's name
+layer = A note 84                     # this message switches to layer A (optional)
+layer = B note 85
+bind  = A note 89 -> record           # a button; without "A" it works on every layer
+bind  = A cc 16 rel -> tempo          # an endless encoder (Mackie relative values)
+bind  = bend 1 -> tempo               # a fader (pitch bend on MIDI channel 1)
+led   = A record -> note 89           # a button light that follows the state
+ring  = A tempo -> cc 48              # an LED ring that shows a value
+```
+
+*Buttons:* `record listen stop click loop notes metronome next_tab loop_worst_bar range_back range_forward tap_tempo tempo_down tempo_up discard_take tempo_reset open_score shift`, and `mute N`, `solo N`, `audition N` for the mixer strips 1–8. *Values* (an encoder with `rel`, or a fader): `tempo range_from range_to click_volume music_volume count_in bars_per_row`, `gain N`; `score` (recent scores) is only turned. *Lights:* `record listen stop click loop notes metronome shift`, `mute N`, `solo N`; *rings* take any of the values. A line that cannot be used is reported on the Controller page and the rest still works.
+
 ## Settings
 
-The Settings tab has four pages:
+The Settings tab has five pages:
 
 | Page | What is on it |
 |---|---|
 | **MIDI input** | Input port, a monitor of incoming notes, the pad-to-instrument mapping (with *Learn*) |
+| **Controller** | The Mackie Control surface: preset, port, monitor, your own presets |
 | **Timing** | Latency compensation and calibration, the perfect/good/hit-window tolerances |
 | **Sound** | Audio output device, MIDI output port, the metronome click, Listen (built-in kit and MIDI), the instrument mixer |
 | **General** | Repeat expansion, the recent-scores list, keyboard test input |
@@ -115,12 +153,14 @@ What counts as the public interface: the settings file keys, the CSV export colu
 | `src/drums.rs` | Drum instruments, General MIDI and Roland note maps, staff positions |
 | `src/score.rs` | Score model and tempo map (beats ↔ seconds) |
 | `src/analysis.rs` | Matching hits to notes and all metrics |
-| `src/midi.rs` | MIDI input capture and output (midir) |
+| `src/midi.rs` | MIDI input capture and output (midir), and the control surface's port |
+| `src/controller.rs` | Control surfaces: messages, presets, which control does what, lights (no MIDI port, no GUI) |
+| `presets/` | The built-in controller presets (text files) |
 | `src/metronome.rs` | Count-in/metronome thread (audio and/or MIDI click) |
 | `src/playback.rs` | "Listen" and the free metronome: plays notes and clicks on one thread (sound card and/or MIDI) |
 | `src/control.rs` | Settings shared with the sound threads so they can change while playing (click, notes, loop, volumes) |
 | `src/synth.rs` | The built-in software drum kit (one synthesised sample per instrument) and the WAV override loader |
 | `src/render.rs` | Score and played-notes staves |
-| `src/app.rs` | UI: welcome panel, Score, Results and Settings tabs; `src/app/metro.rs` is the Metronome tab, `src/app/mixer.rs` the instrument mixer |
+| `src/app.rs` | UI: welcome panel, Score, Results and Settings tabs; `src/app/metro.rs` is the Metronome tab, `src/app/mixer.rs` the instrument mixer, `src/app/controls.rs` what the controller does and its Settings page |
 | `src/widgets.rs` | Shared UI helpers: the wheel-aware slider and the larger Score-tab style |
 | `src/config.rs` | Settings file (`%APPDATA%\RollModel\config.txt` on Windows) |

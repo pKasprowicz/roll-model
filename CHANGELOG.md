@@ -4,6 +4,12 @@ All notable changes are recorded here. The format follows [Keep a Changelog](htt
 
 ## [Unreleased]
 
+### Added
+- Hardware controller support for Mackie Control surfaces, with built-in presets for the **Behringer X-Touch Mini** (MC mode, two layers switched by the program) and **X-Touch Compact**: record, listen, stop, click, loop, notes, metronome and tab switching, tap tempo, tempo and measure range on encoders and a fader, "loop the worst bar" of the last take, browsing and opening recent scores, and the instrument mixer (volume, mute, solo, play) on eight instrument groups. Lights and LED rings follow the application. Shift (held) makes encoder turns five times as large. A fader takes over only once it reaches the current value.
+- **Settings → Controller**: choose the preset and port, see what each control is bound to, watch the incoming messages, and copy a built-in preset as a start for your own.
+- Your own controller presets: text files in the `controllers` folder next to the settings file, listed with the built-in ones. New settings keys `controller_preset` and `controller_port`.
+- The X-Touch Mini preset is written from the Mackie Control table as remembered and has not been tried on the device; the Compact preset follows the standard Mackie Control numbers and is untested.
+
 ## [0.5.0] - 2026-10-26
 
 The application is renamed Roll Model, and gets a Home tab, a rolling score preview on the Metronome tab and hi-hat pedal (CC#4) support. Covered by unit tests; the new screens were not looked at in the running app and the V31 has still not been connected.

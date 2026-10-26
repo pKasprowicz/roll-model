@@ -56,6 +56,11 @@ pub struct Config {
     pub metro_sub: usize,
     /// Show the loaded score rolling by on the Metronome tab.
     pub metro_preview: bool,
+    /// Hardware controller: a built-in preset's name or the name of a file in the
+    /// controllers folder; empty = none.
+    pub controller_preset: String,
+    /// Part of the controller's MIDI port name; empty = the preset's own.
+    pub controller_port: String,
 }
 
 /// How many scores the welcome panel remembers.
@@ -96,6 +101,8 @@ impl Default for Config {
             metro_beats: 4,
             metro_sub: 0,
             metro_preview: true,
+            controller_preset: String::new(),
+            controller_port: String::new(),
         }
     }
 }
@@ -153,6 +160,11 @@ impl Config {
     /// Where the settings were kept when the application was called Drum Tutor.
     fn legacy_dir() -> Option<PathBuf> {
         Config::dir_named("DrumTutor", "drum-tutor")
+    }
+
+    /// Controller presets written by the user, next to the settings file.
+    pub fn controllers_dir() -> Option<PathBuf> {
+        Config::dir().map(|d| d.join("controllers"))
     }
 
     pub fn path() -> Option<PathBuf> {
@@ -234,6 +246,8 @@ impl Config {
         kv("metro_beats", self.metro_beats.to_string());
         kv("metro_sub", self.metro_sub.to_string());
         kv("metro_preview", self.metro_preview.to_string());
+        kv("controller_preset", self.controller_preset.clone());
+        kv("controller_port", self.controller_port.clone());
         for lane in Lane::ALL {
             if self.gain_of(lane) != 1.0 {
                 kv(&format!("gain.{}", lane.name()), self.gain_of(lane).to_string());
@@ -300,6 +314,8 @@ impl Config {
                 }
                 "metro_beats" => c.metro_beats = v.parse().unwrap_or(c.metro_beats).clamp(1, 12),
                 "metro_preview" => c.metro_preview = b(c.metro_preview),
+                "controller_preset" => c.controller_preset = v.to_string(),
+                "controller_port" => c.controller_port = v.to_string(),
                 "metro_sub" => c.metro_sub = v.parse().unwrap_or(c.metro_sub).min(3),
                 _ => {
                     if let Some(lane) = k.strip_prefix("map.").and_then(Lane::from_name) {
@@ -375,6 +391,8 @@ mod tests {
             metro_sub: 2,
             metro_preview: false,
             hihat_cc_max: 90,
+            controller_preset: "Behringer X-Touch Mini".into(),
+            controller_port: "X-TOUCH".into(),
             ..Default::default()
         };
         c.note_map.set_lane_notes(Lane::Kick, &[36, 33]);
@@ -418,6 +436,7 @@ mod tests {
         let old = Config::from_text("latency_ms = 5\n");
         assert_eq!((old.bars_per_row, old.layout_align_bar, old.metro_bpm, old.metro_beats), (0, 0, 100.0, 4));
         assert!(old.lane_gain.is_empty() && old.lane_mute.is_empty() && old.audio_output.is_empty());
+        assert!(old.controller_preset.is_empty() && old.controller_port.is_empty(), "no controller unless chosen");
         // Defaults are not written out for the mixer.
         assert!(!Config::default().to_text().contains("gain."));
     }

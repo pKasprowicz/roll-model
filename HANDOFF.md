@@ -42,6 +42,16 @@ The five items requested after 0.3.0 are implemented, tested, and were checked i
 - **Score layout** (`render::LayoutOpts`, `layout()`, `row_starts()`; config `bars_per_row`, `layout_align_bar`; *Layout* button): see the README. Alignment is by the 1-based position in the score as shown, and the popup shows the printed number. A fixed count draws every bar at the same width (`MIN_PPQ` = 28 px per quarter at the narrowest); when it does not fit, `ViewOutput::fit_bars` reports the smaller number and the legend row says so.
 - **Sounds**: cymbals rebuilt (`synth::cymbal`, `Cymbal` parameters) as dense inharmonic partial clusters plus shaped noise, with spectral guard tests; instrument mixer (`src/app/mixer.rs`, config `gain.<Lane>` / `mute.<Lane>`, solo is session-only, `Config::effective_gain`); audition button (`DrumApp::audition`, its own `Control` so it never disturbs Listen); WAV override (`synth::load_wav`, `Kit::load`, folder `Config::sounds_dir()` = `sounds` next to `config.txt`, uses the `hound` crate); open hi-hat choked by closed/pedal (`Lane::chokes`, a fade-out in `playback::Voice`).
 
+### Controller (uncommitted, after 0.5.0)
+
+Mackie Control support, see `README.md` ("Controller"). `controller.rs` is pure and unit-tested (parsing, layers, shift, fader pickup, lights); `app/controls.rs` applies the commands to `DrumApp` and is tested through `apply_command`. No device was connected.
+
+- [ ] **Try the X-Touch Mini** (MC mode) and check `presets/x-touch-mini.txt` against the monitor on Settings -> Controller: note numbers of the two button rows, the LAYER A/B buttons (84/85 assumed), the encoder pushes (32-39), the fader (pitch bend ch 1), and whether the button lights (note on, 127/0) and the ring values (cc 48-55, `0x20 | position`) are accepted. Fix the numbers in the preset file, not in the code.
+- [ ] Does the Mini in MC mode already switch its own layers (and change what it sends)? The program switches layers itself from the layer buttons' messages; if the device remaps instead, the layer lines are wrong.
+- [ ] `presets/x-touch-compact.txt` is from the Mackie Control spec only; the faders are not motorised by the program (a fader takes over when it reaches the value).
+- [ ] Not done: motor faders, scribble strip / time display feedback, a second (XT) unit, blinking lights, MIDI-learn for custom presets (the monitor shows the numbers to type).
+- [ ] The port is chosen by name once at start; unplugging the controller is not noticed (use "Refresh and reconnect").
+
 ### Still open
 
 - [ ] **Listen to the new cymbals and the rest of the kit.** Nobody has heard them; only their spectra are tested (centroid, share below 2 kHz, lone low partials). Tune `Cymbal` parameters in `synth.rs` by ear, then adjust the guard bands if needed. The hi-hats are untouched and still very bright (spectral centroid about 13 kHz).
@@ -83,7 +93,8 @@ xml.rs         Dependency-free XML DOM parser
 score.rs       Score, Measure, ScoreNote, TempoMap (q <-> seconds)
 drums.rs       Lane enum, GM + Roland note maps, staff positions, name heuristics
 analysis.rs    expected_notes(), analyze() -> Report (matching + metrics + feedback)
-midi.rs        midir input (callback -> Arc<Mutex<Vec<RawEvent>>>) and output
+midi.rs        midir input (callback -> Arc<Mutex<Vec<RawEvent>>>) and output; `connect_controller` for the control surface (raw messages in a queue, lights out)
+controller.rs  Mackie Control surfaces, pure: `parse`, `Preset` (text files in `presets/` and the user's `controllers` folder), `Mapper` (message -> `Command`, layers, shift, fader pickup, lights), `State`
 metronome.rs   Click thread for takes and calibration: precise sleep+spin; audio (feature "audio") and/or MIDI; also opens the sound output device (`open_audio`, `output_devices`)
 playback.rs    "Listen" and the free metronome: Player thread plays cues to a `Sink` (sound card and/or MIDI out); `dispatch` decides what sounds
 control.rs     `Control`: atomics shared with the sound threads (click, notes, loop, volumes, per-instrument gain), `ClickLevel`, `ErrorLog`
@@ -91,6 +102,7 @@ synth.rs       Software drum kit: one synthesised mono sample per Lane, WAV over
 widgets.rs     UI helpers: `slider()` (caption first, mouse wheel), `roomy()` (bigger Score-tab style)
 app/metro.rs   The Metronome tab (free click track)
 app/mixer.rs   The instrument mixer on Settings -> Sound
+app/controls.rs The controller: connection, `Command` -> app actions, the Settings -> Controller page
 config.rs      key = value settings file, auto-saved when Config changes
 ```
 
