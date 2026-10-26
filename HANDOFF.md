@@ -62,6 +62,10 @@ The Rudiments tab sits between Score and Metronome. `docs/rudiments.md` is the c
 - [ ] Not done: the multiple bounce (buzz) roll is listen-only; flam/drag graces are optional (a spacing check would need them required); the sticking is shown but never graded (the module cannot hear hands), only compared per hand; orchestration of a rudiment around the kit; user-defined rudiment files (like the controller presets); practice sets / routines; a progress history beyond the best clean tempo.
 - [ ] The score view draws no beams or tuplet brackets, so triplet and 32nd-note rudiments rely on proportional spacing and the beat grid.
 
+### User manual
+
+`docs/manual/manual.template.html` is the manual; `tools/build_manual.py` (standard library only) fills in the version/label/date and generates the rudiment tables from the `rud(...)` lines of `src/rudiments.rs` (it fails unless it finds 40). The release workflow has a `manual` job whose artifact goes into both archives and the release. **When behaviour or UI text changes, update the template** (it is written by hand; settings keys, shortcuts and controller tables are copied from the code). The manual says in two places that the V31 map and the controller presets are untested; update that when they are tried.
+
 ### Still open
 
 - [ ] **Listen to the new cymbals and the rest of the kit.** Nobody has heard them; only their spectra are tested (centroid, share below 2 kHz, lone low partials). Tune `Cymbal` parameters in `synth.rs` by ear, then adjust the guard bands if needed. The hi-hats are untouched and still very bright (spectral centroid about 13 kHz).

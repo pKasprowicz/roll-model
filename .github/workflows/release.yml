@@ -43,13 +43,32 @@ jobs:
             echo "build=false" >> "$GITHUB_OUTPUT"
           fi
 
-  build-linux:
-    name: Build Linux
+  # The user manual is one HTML file, built from docs/manual and the rudiment
+  # data in the source; it goes into both archives and is also a release file.
+  manual:
+    name: Build the user manual
     needs: plan
     if: needs.plan.outputs.build == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - run: python3 tools/build_manual.py --label "${GITHUB_REF_NAME}" --out manual/roll-model-manual.html
+      - uses: actions/upload-artifact@v4
+        with:
+          name: manual
+          path: manual/roll-model-manual.html
+
+  build-linux:
+    name: Build Linux
+    needs: [plan, manual]
+    if: needs.plan.outputs.build == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: manual
+          path: manual
       - name: Install system dependencies
         run: |
           sudo apt-get update
@@ -64,7 +83,7 @@ jobs:
         run: |
           name="roll-model-${GITHUB_REF_NAME}-linux-x86_64"
           mkdir "$name"
-          cp target/release/roll-model README.md CHANGELOG.md "$name/"
+          cp target/release/roll-model README.md CHANGELOG.md manual/roll-model-manual.html "$name/"
           cp -r examples "$name/"
           tar czf "$name.tar.gz" "$name"
       - uses: actions/upload-artifact@v4
@@ -74,11 +93,15 @@ jobs:
 
   build-windows:
     name: Build Windows (self-hosted)
-    needs: plan
+    needs: [plan, manual]
     if: needs.plan.outputs.build == 'true'
     runs-on: [self-hosted, windows]
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: manual
+          path: manual
       - name: Test
         shell: pwsh
         run: cargo test --release
@@ -90,7 +113,7 @@ jobs:
         run: |
           $name = "roll-model-$env:GITHUB_REF_NAME-windows-x86_64"
           New-Item -ItemType Directory $name | Out-Null
-          Copy-Item target/release/roll-model.exe, README.md, CHANGELOG.md $name
+          Copy-Item target/release/roll-model.exe, README.md, CHANGELOG.md, manual/roll-model-manual.html $name
           Copy-Item examples $name -Recurse
           Compress-Archive $name "$name.zip"
       - uses: actions/upload-artifact@v4
@@ -101,7 +124,7 @@ jobs:
   publish:
     name: Publish GitHub release
     if: startsWith(github.ref, 'refs/tags/v') || github.ref == 'refs/tags/preview'
-    needs: [build-linux, build-windows]
+    needs: [build-linux, build-windows, manual]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v4

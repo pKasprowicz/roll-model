@@ -1,0 +1,677 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Roll Model User Manual</title>
+<style>
+:root {
+  --bg: #fbfbfa; --panel: #f1f1ef; --text: #1f2328; --muted: #5b6470; --line: #d9dbde;
+  --accent: #2f6fe4; --accent-soft: #e4edff; --good: #1f9d4c; --amber: #b8780a; --bad: #c93a3a;
+  --code-bg: #eceef1; --note-bg: #eef4ff; --warn-bg: #fff6e0; --tip-bg: #eaf7ee;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #15171a; --panel: #1d2024; --text: #e4e6e9; --muted: #98a1ad; --line: #33383f;
+    --accent: #6ea0ff; --accent-soft: #1f2a40; --good: #4fd17f; --amber: #f0b445; --bad: #ff7676;
+    --code-bg: #262a30; --note-bg: #1b2538; --warn-bg: #352b14; --tip-bg: #17301f;
+  }
+}
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; scroll-padding-top: 1rem; }
+body { margin: 0; background: var(--bg); color: var(--text); font: 16px/1.6 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+.layout { display: grid; grid-template-columns: 19rem minmax(0, 1fr); min-height: 100vh; }
+nav#toc { position: sticky; top: 0; align-self: start; height: 100vh; overflow-y: auto; padding: 1.5rem 1rem 2rem 1.5rem; background: var(--panel); border-right: 1px solid var(--line); font-size: .92rem; }
+nav#toc .brand { font-weight: 700; font-size: 1.15rem; margin-bottom: .2rem; }
+nav#toc .ver { color: var(--muted); font-size: .85rem; margin-bottom: 1rem; }
+nav#toc ol { list-style: none; margin: 0; padding: 0; counter-reset: s; }
+nav#toc > ol > li { counter-increment: s; margin: .15rem 0; }
+nav#toc > ol > li > a::before { content: counter(s) ". "; color: var(--muted); }
+nav#toc ol ol { margin: .1rem 0 .4rem 1.1rem; }
+nav#toc a { color: var(--text); text-decoration: none; display: block; padding: .1rem .3rem; border-radius: 4px; }
+nav#toc a:hover { background: var(--accent-soft); }
+main { max-width: 56rem; padding: 2rem 2.5rem 6rem; }
+header.title { border-bottom: 2px solid var(--accent); margin-bottom: 2rem; padding-bottom: 1rem; }
+header.title h1 { margin: 0; font-size: 2.4rem; }
+header.title p { margin: .3rem 0 0; color: var(--muted); }
+h2 { margin-top: 3.2rem; padding-top: .6rem; border-top: 1px solid var(--line); font-size: 1.7rem; }
+h3 { margin-top: 2rem; font-size: 1.25rem; }
+h4 { margin-top: 1.4rem; font-size: 1.05rem; }
+a { color: var(--accent); }
+code, kbd, .mono { font-family: ui-monospace, "Cascadia Mono", Consolas, Menlo, monospace; }
+code { background: var(--code-bg); padding: .1em .35em; border-radius: 4px; font-size: .92em; }
+pre { background: var(--code-bg); padding: .9rem 1.1rem; border-radius: 8px; overflow-x: auto; line-height: 1.45; }
+pre code { background: none; padding: 0; }
+kbd { background: var(--panel); border: 1px solid var(--line); border-bottom-width: 2px; border-radius: 5px; padding: .05em .45em; font-size: .88em; white-space: nowrap; }
+table { border-collapse: collapse; width: 100%; margin: 1rem 0; font-size: .95rem; }
+@media (max-width: 62rem) { table { display: block; overflow-x: auto; } }
+th, td { border: 1px solid var(--line); padding: .4rem .65rem; text-align: left; vertical-align: top; }
+th { background: var(--panel); }
+tbody tr:nth-child(even) { background: color-mix(in srgb, var(--panel) 55%, transparent); }
+.callout { border-left: 4px solid var(--accent); background: var(--note-bg); padding: .7rem 1rem; border-radius: 0 8px 8px 0; margin: 1.2rem 0; }
+.callout.warn { border-color: var(--amber); background: var(--warn-bg); }
+.callout.tip { border-color: var(--good); background: var(--tip-bg); }
+.callout strong.label { display: block; font-size: .8rem; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); margin-bottom: .15rem; }
+.swatch { display: inline-block; width: .85em; height: .85em; border-radius: 2px; vertical-align: baseline; margin-right: .25em; }
+.steps { counter-reset: step; list-style: none; padding-left: 0; }
+.steps > li { counter-increment: step; position: relative; padding-left: 2.6rem; margin: .8rem 0; }
+.steps > li::before { content: counter(step); position: absolute; left: 0; top: 0; width: 1.8rem; height: 1.8rem; border-radius: 50%; background: var(--accent); color: #fff; text-align: center; font-weight: 700; line-height: 1.8rem; }
+figure { margin: 1.5rem 0; }
+figure svg { max-width: 100%; height: auto; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; }
+figcaption { color: var(--muted); font-size: .9rem; margin-top: .3rem; }
+.sticking { font-family: ui-monospace, "Cascadia Mono", Consolas, Menlo, monospace; white-space: nowrap; }
+.sticking b { color: var(--accent); }
+.nard { color: var(--accent); font-weight: 700; }
+#rudiment-filter { width: 100%; max-width: 22rem; padding: .45rem .7rem; font: inherit; color: var(--text); background: var(--panel); border: 1px solid var(--line); border-radius: 8px; }
+.cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr)); gap: 1rem; margin: 1.2rem 0; }
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: .9rem 1rem; }
+.card h4 { margin: 0 0 .3rem; }
+.card p { margin: 0; font-size: .93rem; color: var(--muted); }
+@media (max-width: 62rem) {
+  .layout { grid-template-columns: minmax(0, 1fr); }
+  nav#toc { position: static; height: auto; border-right: 0; border-bottom: 1px solid var(--line); }
+  main { padding: 1.5rem 1.2rem 4rem; }
+}
+@media print {
+  nav#toc { display: none; }
+  .layout { display: block; }
+  main { max-width: none; padding: 0; }
+  h2 { break-before: page; }
+  a { color: inherit; }
+  tbody tr:nth-child(even) { background: none; }
+}
+</style>
+</head>
+<body>
+<div class="layout">
+<nav id="toc" aria-label="Contents">
+  <div class="brand">Roll Model</div>
+  <div class="ver">User manual &middot; {{LABEL}}</div>
+  <ol>
+    <li><a href="#welcome">Welcome</a>
+      <ol><li><a href="#what">What it does</a></li><li><a href="#quickstart">Quick start</a></li><li><a href="#install">Installing</a></li></ol></li>
+    <li><a href="#connect">Connecting your kit</a>
+      <ol><li><a href="#v31">The Roland V31</a></li><li><a href="#hihat">Hi-hat pedal</a></li><li><a href="#nokit">No kit at hand</a></li></ol></li>
+    <li><a href="#tour">A tour of the window</a></li>
+    <li><a href="#home">Home</a></li>
+    <li><a href="#score">The Score tab</a>
+      <ol><li><a href="#score-load">Loading a score</a></li><li><a href="#score-range">Range and tempo</a></li><li><a href="#score-listen">Listen</a></li><li><a href="#score-record">Record</a></li><li><a href="#score-colours">Reading the colours</a></li><li><a href="#score-layout">Layout and zoom</a></li></ol></li>
+    <li><a href="#rudiments">The Rudiments tab</a>
+      <ol><li><a href="#rud-choose">Choosing a rudiment</a></li><li><a href="#rud-repeat">Repeats and lead</a></li><li><a href="#rud-tempo">Tempo and progress</a></li><li><a href="#rud-grading">How rudiments are graded</a></li><li><a href="#rud-notation">Reading the notation</a></li></ol></li>
+    <li><a href="#metronome">The Metronome tab</a></li>
+    <li><a href="#results">The Results tab</a></li>
+    <li><a href="#settings">Settings</a>
+      <ol><li><a href="#set-midi">MIDI input</a></li><li><a href="#set-controller">Controller</a></li><li><a href="#set-timing">Timing</a></li><li><a href="#set-sound">Sound</a></li><li><a href="#set-general">General</a></li></ol></li>
+    <li><a href="#controller">Hardware controller</a>
+      <ol><li><a href="#ctl-mini">X-Touch Mini</a></li><li><a href="#ctl-compact">X-Touch Compact</a></li><li><a href="#ctl-custom">Your own preset</a></li></ol></li>
+    <li><a href="#grading">How grading works</a></li>
+    <li><a href="#latency">Latency and calibration</a></li>
+    <li><a href="#sound">Sound and instrument mixer</a></li>
+    <li><a href="#musicxml">MusicXML scores</a></li>
+    <li><a href="#shortcuts">Keyboard shortcuts</a></li>
+    <li><a href="#files">Settings file and folders</a></li>
+    <li><a href="#trouble">Troubleshooting</a></li>
+    <li><a href="#reference">Rudiment reference</a></li>
+    <li><a href="#glossary">Glossary</a></li>
+  </ol>
+</nav>
+
+<main>
+<header class="title">
+  <h1>Roll Model</h1>
+  <p>User manual for version {{VERSION}} ({{LABEL}}) &middot; built {{DATE}}</p>
+</header>
+
+<section id="welcome">
+<h2>1. Welcome</h2>
+
+<h3 id="what">What it does</h3>
+<p>Roll Model is a desktop practice tool for drummers with an electronic kit. It does three things:</p>
+<div class="cards">
+  <div class="card"><h4>Shows the music</h4><p>Loads a MusicXML drum score, or one of the 40 drum rudiments, and draws it on a percussion staff.</p></div>
+  <div class="card"><h4>Listens to you</h4><p>Captures what you play on a Roland V31 (or any e-kit with MIDI) and draws your hits directly under the written notes, on the same time axis.</p></div>
+  <div class="card"><h4>Grades you</h4><p>Compares your hits with the notes: accuracy, timing, consistency, tempo drift, wrong pads, extra notes, dynamics, and for rudiments, how even your two hands are.</p></div>
+</div>
+<p>You can also <em>listen</em> to anything before you play it, with a built-in drum kit or your module's own sounds, and practise against a free metronome. A control surface (Behringer X-Touch Mini or Compact, or any Mackie Control device) can run the program while your hands hold sticks.</p>
+
+<h3 id="quickstart">Quick start</h3>
+<ol class="steps">
+  <li><strong>Connect the kit.</strong> Plug the V31 into the computer by USB and start Roll Model. The program connects to the first MIDI input whose name contains <code>V31</code>; the top right corner shows a green dot and the port name when it worked (see <a href="#connect">Connecting your kit</a>).</li>
+  <li><strong>Open a score or a rudiment.</strong> Click <em>Open MusicXML&hellip;</em> or drop a file on the window, or press <em>Practise the 40 rudiments</em> on the Home tab.</li>
+  <li><strong>Listen first.</strong> Press <kbd>L</kbd> to hear what you are about to play, with the count-in and click.</li>
+  <li><strong>Record.</strong> Press <kbd>R</kbd>. After the count-in, play. Your hits appear under the notes as you play and the take stops by itself at the end.</li>
+  <li><strong>Read the result.</strong> Green notes were right. The <em>Results</em> tab explains everything else.</li>
+</ol>
+<div class="callout tip"><strong class="label">First time</strong>Run <em>Settings &rarr; Timing &rarr; Calibrate</em> once (<a href="#latency">Latency and calibration</a>). It removes the delay of your sound card and MIDI path, so that a note you play exactly on the click is graded as exactly on time.</div>
+
+<h3 id="install">Installing</h3>
+<p>Roll Model is a single program; there is no installer.</p>
+<table>
+<thead><tr><th>System</th><th>What to do</th></tr></thead>
+<tbody>
+<tr><td>Windows</td><td>Unzip the release archive and run <code>roll-model.exe</code>. Nothing else is needed (Windows MIDI and WASAPI audio are used).</td></tr>
+<tr><td>Linux</td><td>Unpack the archive and run <code>roll-model</code>. The ALSA libraries must be present (<code>libasound2</code>); building from source needs <code>libasound2-dev</code> and <code>pkg-config</code>.</td></tr>
+<tr><td>macOS</td><td>No extra requirements (CoreMIDI and CoreAudio). Build from source with Rust.</td></tr>
+</tbody></table>
+<p>The archive also holds this manual (<code>roll-model-manual.html</code>), the README, the changelog and the <code>examples</code> folder with a sample score. To open a score at start-up, give its path as the only argument: <code>roll-model examples/basic_rock_beat.musicxml</code>.</p>
+<h4>Building from source</h4>
+<p>Install a recent Rust from <a href="https://rustup.rs">rustup.rs</a> (1.85 is the oldest that can read the dependencies; 1.99 is the version it is tested with), then:</p>
+<pre><code>cargo run --release                                  # start empty
+cargo run --release -- examples/basic_rock_beat.musicxml
+cargo test                                           # the unit tests
+cargo build --release --no-default-features          # without the sound card (drops rodio/cpal)</code></pre>
+<p>Without the sound card the click and Listen can still be sent to a MIDI output.</p>
+</section>
+
+<section id="connect">
+<h2>2. Connecting your kit</h2>
+
+<h3 id="v31">The Roland V31</h3>
+<ul>
+<li>Connect the module by USB, or through a MIDI interface on the module's MIDI OUT. The program connects automatically to the first input port whose name contains <code>V31</code>. Otherwise choose the port on <em>Settings &rarr; MIDI input</em>.</li>
+<li>On Windows a MIDI port can be opened by <strong>one program at a time</strong>. Close your DAW, drum software or any other MIDI monitor first.</li>
+<li>The <em>monitor</em> on <em>Settings &rarr; MIDI input</em> lists each incoming note with its velocity and the instrument it was mapped to. Hit every pad and zone once to see that each one is recognised.</li>
+<li>The default pad map is the common Roland V-Drums factory map:</li>
+</ul>
+<table>
+<thead><tr><th>Instrument</th><th>MIDI notes</th><th>Instrument</th><th>MIDI notes</th></tr></thead>
+<tbody>
+<tr><td>Kick</td><td>36</td><td>Crash 1 / 2</td><td>49, 55 / 57, 52</td></tr>
+<tr><td>Snare (head / rim shot)</td><td>38 / 40</td><td>Ride (bow / bell)</td><td>51, 59 / 53</td></tr>
+<tr><td>Cross-stick</td><td>37</td><td>Hi-hat closed</td><td>42, 22</td></tr>
+<tr><td>Tom 1</td><td>48, 50</td><td>Hi-hat open</td><td>46, 26</td></tr>
+<tr><td>Tom 2</td><td>45, 47</td><td>Hi-hat pedal</td><td>44</td></tr>
+<tr><td>Tom 3</td><td>43, 58</td><td>Tom 4</td><td>41, 39</td></tr>
+</tbody></table>
+<div class="callout warn"><strong class="label">Not verified</strong>This map is the factory map of Roland V-Drums in general. It has not been checked against a V31 itself. If your module is set up differently, use <em>Learn</em> (below).</div>
+<h4>Changing the map: Learn</h4>
+<p>On <em>Settings &rarr; MIDI input</em>, every instrument has a text field with its note numbers and a <em>Learn</em> button. Press <em>Learn</em>, then hit the pad or zone: the note now belongs to that instrument only. You can also type note numbers separated by commas. <em>Reset to Roland V31 defaults</em> restores the table.</p>
+
+<h3 id="hihat">Hi-hat pedal</h3>
+<p>The pedal (MIDI CC#4) tells the program whether the hi-hat was closed or open when you hit it. A stick hit on the closed or open hi-hat note counts as <em>closed</em> when the pedal is at least three quarters of the way down, otherwise as <em>open</em>. Until the first pedal message arrives, the note number alone decides.</p>
+<p>If your pedal never reports the full 0&ndash;127 range, lower <em>Hi-hat pedal value when closed</em> on <em>Settings &rarr; MIDI input</em>: close the pedal, hit the hi-hat and read the <em>pedal</em> value in the monitor, then enter that value. Roland's convention (127 = closed) is assumed.</p>
+
+<h3 id="nokit">No kit at hand</h3>
+<p>Tick <em>Settings &rarr; General &rarr; Computer keyboard plays pads</em> and the keys act as pads: <kbd>Z</kbd> kick, <kbd>X</kbd> snare, <kbd>G</kbd> cross-stick, <kbd>C</kbd> / <kbd>V</kbd> / <kbd>B</kbd> hi-hat closed / open / pedal, <kbd>A</kbd> <kbd>S</kbd> <kbd>D</kbd> <kbd>F</kbd> toms 1&ndash;4, <kbd>Q</kbd> crash 1, <kbd>W</kbd> ride, <kbd>E</kbd> crash 2.</p>
+<div class="callout"><strong class="label">Good for testing only</strong>Key presses are time-stamped when the window handles them, about 16 ms late and uneven. That is fine for trying the program, not for judging your timing.</div>
+</section>
+
+<section id="tour">
+<h2>3. A tour of the window</h2>
+<figure>
+<svg viewBox="0 0 760 330" role="img" aria-label="Layout of the Roll Model window" xmlns="http://www.w3.org/2000/svg" font-family="system-ui, sans-serif" font-size="13">
+  <rect x="10" y="10" width="740" height="310" rx="8" fill="none" stroke="currentColor" opacity=".5"/>
+  <rect x="10" y="10" width="740" height="34" rx="8" fill="currentColor" opacity=".12"/>
+  <text x="22" y="32">Open MusicXML&hellip;</text>
+  <text x="170" y="32">Home</text><text x="225" y="32">Score</text><text x="283" y="32" font-weight="700">Rudiments</text><text x="365" y="32">Metronome</text><text x="445" y="32">Results</text><text x="505" y="32">Settings</text>
+  <text x="590" y="32" opacity=".8">controller &middot; last hit</text><circle cx="738" cy="27" r="5" fill="#2eb85c"/>
+  <text x="22" y="68" opacity=".8">Heading, title of the score or rudiment</text>
+  <rect x="22" y="78" width="716" height="64" rx="6" fill="currentColor" opacity=".08"/>
+  <text x="32" y="98">Record &middot; Listen &middot; position &middot; zoom &middot; follow &middot; Layout</text>
+  <text x="32" y="118">Range / repeats &middot; tempo &middot; click &middot; notes &middot; loop &middot; count-in</text>
+  <text x="32" y="136" opacity=".7">Colour legend and hints</text>
+  <rect x="22" y="152" width="716" height="130" rx="6" fill="none" stroke="currentColor" opacity=".35"/>
+  <line x1="40" y1="180" x2="730" y2="180" stroke="currentColor" opacity=".6"/><line x1="40" y1="190" x2="730" y2="190" stroke="currentColor" opacity=".6"/><line x1="40" y1="200" x2="730" y2="200" stroke="currentColor" opacity=".6"/>
+  <text x="40" y="172" opacity=".8">Score staff: the notes to play</text>
+  <circle cx="140" cy="190" r="4" fill="#2eb85c"/><circle cx="260" cy="190" r="4" fill="#8bc34a"/><circle cx="380" cy="190" r="4" fill="#e03e3e"/>
+  <line x1="40" y1="236" x2="730" y2="236" stroke="currentColor" opacity=".6"/><line x1="40" y1="246" x2="730" y2="246" stroke="currentColor" opacity=".6"/><line x1="40" y1="256" x2="730" y2="256" stroke="currentColor" opacity=".6"/>
+  <text x="40" y="228" fill="#3d8bfd">&ldquo;You&rdquo; staff: your hits, in the same time positions</text>
+  <circle cx="146" cy="246" r="4" fill="#2eb85c"/><circle cx="252" cy="246" r="4" fill="#8bc34a"/><circle cx="430" cy="246" r="4" fill="#e03e3e"/>
+  <text x="40" y="274" opacity=".7">vel: bars showing how hard you hit</text>
+  <text x="22" y="308" opacity=".8">Status line: what just happened, or the last error</text>
+</svg>
+<figcaption>The window while a score or rudiment is open.</figcaption>
+</figure>
+<h3>Top bar</h3>
+<ul>
+<li><strong>Open MusicXML&hellip;</strong> loads a score; <strong>Reload</strong> reads the same file again (after editing it in your notation program).</li>
+<li><strong>Tabs:</strong> Home, Score, Rudiments, Metronome, Results, Settings. <em>Score</em> is greyed until a score is loaded.</li>
+<li><strong>Right side:</strong> the controller (if one is chosen) with its layer, the last drum hit (instrument, note, velocity) and a dot for the MIDI input: green with the port name when connected, red with <em>no MIDI input</em> when not.</li>
+</ul>
+<h3>Status line</h3>
+<p>The bottom line shows the latest message: what was loaded, the result of a take, a controller change. Problems appear there in red with a <em>Dismiss</em> button.</p>
+<h3>Mouse wheel on sliders</h3>
+<p>Every slider follows the mouse wheel: hover it and scroll to change the value one step per notch. The page does not scroll while you do it. The controls above the score are drawn larger than the rest because they are used with the mouse from the drum stool.</p>
+</section>
+
+<section id="home">
+<h2>4. Home</h2>
+<p>The Home tab is where the program starts. It has the <em>Open MusicXML&hellip;</em> button, a button that takes you to the <a href="#rudiments">Rudiments</a>, and the list of <strong>recent scores</strong> (the last ten). Click an entry to open it; the <kbd>&times;</kbd> removes it from the list and <em>Clear list</em> empties it. A file that no longer exists is greyed out and marked &ldquo;file not found&rdquo;. You can also drop <code>.musicxml</code>, <code>.xml</code> or <code>.mxl</code> files on the window.</p>
+</section>
+
+<section id="score">
+<h2>5. The Score tab</h2>
+
+<h3 id="score-load">Loading a score</h3>
+<p>Export the drum part from MuseScore, Guitar Pro, Sibelius, Dorico or similar as MusicXML and open it. The status line reports the title, the number of measures and notes and the tempo. Warnings from the import (for example a missing tempo marking) are shown in amber under the title. See <a href="#musicxml">MusicXML scores</a> for what is supported.</p>
+
+<h3 id="score-range">Range and tempo</h3>
+<table>
+<thead><tr><th>Control</th><th>What it does</th></tr></thead>
+<tbody>
+<tr><td><em>Measures from / to</em></td><td>The bars to practise. You can also click a bar to start there, and <kbd>Shift</kbd>+click to set the end. The chosen range has a blue background.</td></tr>
+<tr><td><em>tempo</em></td><td>25&ndash;150 % of the written tempo, with the resulting BPM next to it. The score's own tempo changes are respected.</td></tr>
+<tr><td><em>click (K)</em></td><td>Switches the metronome on or off at any moment, also while playing or recording. The count-in always sounds.</td></tr>
+<tr><td><em>notes</em></td><td>Plays the notes of the score in Listen. Switch them off to use Listen as a click track of the selected bars.</td></tr>
+<tr><td><em>loop</em></td><td>Repeats the selected bars in Listen until you stop it. Unticking it lets the current round finish.</td></tr>
+<tr><td><em>count-in bars</em></td><td>0&ndash;2 bars of clicks before the music (and before recording).</td></tr>
+</tbody></table>
+<p>Range and tempo are not saved; they start fresh with each score.</p>
+
+<h3 id="score-listen">Listen</h3>
+<p><kbd>L</kbd> or the <em>Listen</em> button plays exactly what a take would ask of you: the selected bars at the chosen tempo with the same count-in and click. Accents are louder than normal strokes, ghost notes softer, grace notes land just before the beat. A moving playhead follows along and the label next to the button shows the bar and beat (or the count-in). Press <kbd>L</kbd> again or <kbd>Esc</kbd> to stop.</p>
+<p>If you change the range or the tempo while it plays, Listen restarts after a moment (without the count-in). The playhead follows the clock, not the sound: a sound card with a large buffer plays a few tens of milliseconds later. See <a href="#sound">Sound and instrument mixer</a> for what you hear.</p>
+
+<h3 id="score-record">Record</h3>
+<ol class="steps">
+<li>Choose the bars and the tempo.</li>
+<li>Press <kbd>R</kbd>. The count-in plays (the number of clicks left is shown big), then <strong>&#9210; REC</strong> appears.</li>
+<li>Play. Each hit is drawn on the &ldquo;You&rdquo; staff as it happens and coloured as soon as it is matched to a note. The line above the score shows the running grade.</li>
+<li>The take ends by itself one second after the last note, or press <kbd>Esc</kbd>. Notes after the point where you stopped are left ungraded.</li>
+</ol>
+<p>Range, tempo and score are locked while a take records. Every finished take is added to the session history on the <a href="#results">Results</a> tab.</p>
+
+<h3 id="score-colours">Reading the colours</h3>
+<table>
+<thead><tr><th>Colour</th><th>On a written note</th><th>On one of your hits</th></tr></thead>
+<tbody>
+<tr><td><span class="swatch" style="background:#2eb85c"></span>Green</td><td colspan="2">Perfect: within 20 ms of the note (adjustable)</td></tr>
+<tr><td><span class="swatch" style="background:#8bc34a"></span>Light green</td><td colspan="2">Good: within 45 ms</td></tr>
+<tr><td><span class="swatch" style="background:#f2b134"></span>Amber</td><td colspan="2">OK: inside the hit window but further out</td></tr>
+<tr><td><span class="swatch" style="background:#f27a1d"></span>Orange</td><td colspan="2">Right time, wrong pad or zone (for example an open instead of a closed hi-hat)</td></tr>
+<tr><td><span class="swatch" style="background:#e03e3e"></span>Red</td><td>Missed (no hit found)</td><td>Extra (a hit that matches no note)</td></tr>
+</tbody></table>
+<p>A hit placed left of its note was early, right of it late. Hover a hit to see its exact offset in milliseconds. The small bars under your staff show velocity, the beat lines show where the beats are.</p>
+
+<h3 id="score-layout">Layout and zoom</h3>
+<ul>
+<li><em>zoom</em> (0.5&ndash;3) scales the notation. <em>follow</em> scrolls the score along with the playhead during playback and recording.</li>
+<li><strong>Layout</strong> opens two settings. <em>Bars per row</em>: <em>auto</em> fits as many as the width allows; a fixed number (1&ndash;8) gives every bar the same width so barlines line up from row to row (and the zoom no longer matters). If that many bars do not fit, fewer are shown and a note says so. <em>Start a row at bar</em> forces a given bar to begin a row; with 4 bars per row and a row starting at bar 2 you get <code>[1] [2&ndash;5] [6&ndash;9] &hellip;</code>.</li>
+<li>The bar number in these settings is the position in the score as shown. With repeats expanded, the numbers printed above the bars can repeat; the Layout menu shows the printed number of the chosen bar.</li>
+</ul>
+<div class="callout"><strong class="label">Notation</strong>The staff has proportional spacing and draws noteheads and stems only: no beams, flags, rests or tuplet brackets. It is made for judging timing, not for engraving.</div>
+</section>
+
+<section id="rudiments">
+<h2>6. The Rudiments tab</h2>
+<p>The <strong>Rudiments</strong> tab, between Score and Metronome, teaches the <strong>PAS international drum rudiments</strong>: all 40, grouped as rolls, diddles (paradiddles), flams and drags. The 26 that belong to the original NARD Standard 26 American Drum Rudiments are marked with <span class="nard">*</span>. A complete list with sticking is in the <a href="#reference">Rudiment reference</a>.</p>
+<p>A rudiment is drawn on the same two staves as a score, with the sticking (<strong>R</strong> and <strong>L</strong>) under each note, and everything you know from the Score tab works: Listen, Record, count-in, click, notes, loop, colours, Results. What is different is how you choose what to practise.</p>
+
+<h3 id="rud-choose">Choosing a rudiment</h3>
+<ul>
+<li><strong>Prev</strong> and <strong>Next</strong> step through the list.</li>
+<li>The button with the rudiment's name opens the list, grouped by family. Type in <em>Search</em> to narrow it (by name or number), and tick <em>Only the original 26 (NARD)</em> to list just those. Hover an entry for a one-line description. Rudiments you have played cleanly show their best tempo.</li>
+<li>Below the title are the one-line description, the <em>sticking</em> written out (right-hand lead; in flams and drags a lower-case letter is the grace note) and the best clean tempo.</li>
+</ul>
+
+<h3 id="rud-repeat">Repeats and lead</h3>
+<p>Instead of the <em>Measures</em> range, a rudiment has <em>repeats</em>: how many times the pattern is written one after the other, one bar each. That whole row of bars is the exercise. Press <em>Listen</em> with <em>loop</em> on to hear it endlessly while you get the feel.</p>
+<p><em>Lead</em> chooses which hand starts each repetition:</p>
+<table>
+<thead><tr><th>Lead</th><th>Meaning</th></tr></thead>
+<tbody>
+<tr><td>Right</td><td>Every repetition starts with the right hand (the way the pattern is written).</td></tr>
+<tr><td>Left</td><td>The mirror image: every repetition starts with the left hand.</td></tr>
+<tr><td>Alternate</td><td>Right, then left, then right again&hellip;</td></tr>
+</tbody></table>
+<p>Each rudiment starts with the lead that lets its repetitions flow without playing one hand twice in a row at the join. A five stroke roll (<span class="mono">R R L L R</span>) therefore starts as <em>Alternate</em> (R-lead then L-lead), a paradiddle as <em>Right</em> (its pattern already contains both leads). You can still click a bar to narrow the range, as on the Score tab.</p>
+
+<h3 id="rud-tempo">Tempo and progress</h3>
+<ul>
+<li>The tempo slider is in <strong>BPM</strong> (quarter notes, 30&ndash;240). Each rudiment starts at a tempo giving about six strokes a second on its closest strokes, and the tempo is remembered for each rudiment separately. <em>Starting tempo</em> goes back to the suggested one.</li>
+<li>Rolls are written on a 16th-note grid (the PAS writes them in 32nds). A 16th at 120 BPM is the same speed as a 32nd at 60 BPM; you choose the speed with the tempo.</li>
+<li>A <strong>clean take</strong> is a whole take of the exercise with an overall score of 85 or better. Its tempo is remembered as the <strong>best clean tempo</strong> of the rudiment.</li>
+<li>With <strong>ladder</strong> ticked, the tempo goes up by 5 BPM after every clean take (as long as you played it at the current tempo or faster), so you climb as long as you play cleanly.</li>
+</ul>
+<div class="callout tip"><strong class="label">The PAS advice</strong>Practise every rudiment open (slow) to close (fast) to open (slow), or at an even moderate march tempo. The tempo slider, loop and ladder are made for exactly that.</div>
+<div class="callout"><strong class="label">Buzz roll</strong>The multiple bounce roll (rudiment 4) is one held note. A drum module cannot be graded stroke by stroke on a buzz, so <em>Record</em> is switched off for it. You can still listen to it.</div>
+
+<h3 id="rud-grading">How rudiments are graded</h3>
+<p>Grading works as for a score (<a href="#grading">How grading works</a>), with differences made for fast, repeated patterns:</p>
+<ul>
+<li><strong>The hit window follows the notes.</strong> The usual &plusmn;100 ms would reach several strokes of a fast rudiment. For rudiments the window is 45 % of the distance to the neighbouring strokes (never below your <em>perfect</em> tolerance), so a hit can never be within reach of two strokes at once.</li>
+<li><strong>Hands are compared.</strong> A drum module cannot tell which hand struck, but the expected hand of every stroke is known. The Results tab has a <em>Hands</em> table (strokes hit, average offset, average velocity of unaccented strokes for each hand), and the feedback tells you when one hand is behind the other or plays softer.</li>
+<li><strong>Flams and drags are grace notes.</strong> The soft grace notes are expected 35 ms before the main stroke (a drag's earlier note 70 ms). Playing them is never required and never counts as an extra hit; skipping them is not a miss.</li>
+<li><strong>Accents</strong> are graded by velocity like accents in a score.</li>
+</ul>
+<div class="callout warn"><strong class="label">Mesh pads</strong>Very fast diddles on a mesh pad can double-trigger and appear as extra hits. If you see that, check the pad's sensitivity and retrigger settings on the module.</div>
+
+<h3 id="rud-notation">Reading the notation</h3>
+<table>
+<thead><tr><th>You see</th><th>It means</th></tr></thead>
+<tbody>
+<tr><td><strong>R</strong> / <strong>L</strong> under a note</td><td>Play it with the right (dark letter) or left (blue letter) hand.</td></tr>
+<tr><td>A small note just left of a main note, small <em>l</em> / <em>r</em> under it</td><td>A <strong>flam</strong>: a soft grace note with the other hand an instant before the main stroke. Two small notes make a <strong>drag</strong> (ruff).</td></tr>
+<tr><td><code>&gt;</code> above a note</td><td>Accent: play that stroke louder.</td></tr>
+<tr><td>Two equal strokes with one hand (<code>R R</code>)</td><td>A <strong>diddle</strong> (double stroke).</td></tr>
+</tbody></table>
+</section>
+
+<section id="metronome">
+<h2>7. The Metronome tab</h2>
+<p>A click track that needs no score. Press <em>Start</em> (or <kbd>M</kbd>) and set:</p>
+<ul>
+<li><em>tempo</em> 20&ndash;300 BPM, <em>beats per bar</em> 1&ndash;12, and the <em>subdivision</em>: none, eighths, triplets or sixteenths; <em>volume</em>.</li>
+<li>The first beat of each bar is accented and subdivisions are softer. One circle per beat lights up as it sounds (the first in red).</li>
+<li>Changes while it runs take effect after a moment.</li>
+</ul>
+<p>The metronome plays through the click output chosen on <em>Settings &rarr; Sound</em> (the sound card and/or MIDI) and uses the click volume.</p>
+<h3>Rolling preview</h3>
+<p>Below the lights, the <strong>rolling preview</strong> scrolls notes past a fixed line, so you can play along with the click. With a score or rudiment loaded it shows the practice range (repeating at the metronome's tempo, the first note arriving on the first beat); with none it shows the click pattern of the bar. <em>Match score tempo and bar</em> sets the tempo and the beats per bar to the score's so the click lines up with the bars. <em>Show the notes</em> hides the preview.</p>
+</section>
+
+<section id="results">
+<h2>8. The Results tab</h2>
+<p>The full report of the latest take. Which take that is follows the practice you used last (Score or Rudiments); each keeps its own take and history.</p>
+<table>
+<thead><tr><th>Part</th><th>What it tells you</th></tr></thead>
+<tbody>
+<tr><td>Letter and score</td><td>Overall grade from A+ to E and the 0&ndash;100 score (see <a href="#grading">How grading works</a>).</td></tr>
+<tr><td>Note accuracy</td><td>Credit-weighted share of notes you hit (perfect counts fully, wrong pad partly).</td></tr>
+<tr><td>Perfect / Good / OK, Wrong pad / Missed / Extra</td><td>How the notes and hits were classified.</td></tr>
+<tr><td>Average offset</td><td>Positive means behind the beat (dragging), negative ahead (rushing).</td></tr>
+<tr><td>Average |offset|, Consistency</td><td>How far you are from the beat on average, and how much that varies (standard deviation).</td></tr>
+<tr><td>Tempo drift</td><td>The trend of your offsets over the take in ms per minute: positive means you slow down.</td></tr>
+<tr><td>Timing score, Dynamics</td><td>Timing as a percentage; how distinct accents and ghost notes were (n/a if the score has none).</td></tr>
+<tr><td>Feedback</td><td>Plain sentences about the main weaknesses: dragging or rushing, drift, uneven timing, instruments with many misses or extra hits, and for rudiments the hands.</td></tr>
+<tr><td>Timing distribution</td><td>A histogram of all offsets from early to late, coloured by grade.</td></tr>
+<tr><td>Per instrument</td><td>For each instrument: expected, hit, missed, wrong pad, extra, offset and velocity.</td></tr>
+<tr><td>Hands</td><td>(Rudiments) strokes, offset and velocity per hand.</td></tr>
+<tr><td>Session history</td><td>Every take since the program started: measures (or rudiment), BPM, score, accuracy, timing and extras. Not saved when you quit.</td></tr>
+</tbody></table>
+<h3>CSV export</h3>
+<p><em>Export take as CSV&hellip;</em> saves the take with one row per expected note and one per extra hit. Columns: <code>measure, beat, instrument, expected_ms, played_ms, offset_ms, midi_note, velocity, grade</code>.</p>
+</section>
+
+<section id="settings">
+<h2>9. Settings</h2>
+<p>Settings are saved automatically whenever they change. The tab has five pages.</p>
+
+<h3 id="set-midi">MIDI input</h3>
+<ul>
+<li><em>Input port</em>, <em>Refresh ports</em>, <em>Disconnect</em>.</li>
+<li>The <em>monitor</em> of incoming notes (latest first): channel, note, velocity, hi-hat pedal value and the instrument it maps to or <em>unmapped</em>.</li>
+<li><em>Hi-hat pedal value when closed</em> (see <a href="#hihat">Hi-hat pedal</a>).</li>
+<li>The <em>pad-to-instrument mapping</em> with <em>Learn</em> and <em>Reset to Roland V31 defaults</em>.</li>
+</ul>
+
+<h3 id="set-controller">Controller</h3>
+<p>Choose the control surface, its port and see what each control is bound to; details in <a href="#controller">Hardware controller</a>.</p>
+
+<h3 id="set-timing">Timing</h3>
+<table>
+<thead><tr><th>Setting</th><th>Range</th><th>Meaning</th></tr></thead>
+<tbody>
+<tr><td>Latency compensation</td><td>&minus;50&hellip;200 ms</td><td>Subtracted from every hit. <em>Calibrate&hellip;</em> measures it.</td></tr>
+<tr><td>Perfect within</td><td>5&hellip;50 ms</td><td>Hits this close to a note are green.</td></tr>
+<tr><td>Good within</td><td>10&hellip;100 ms</td><td>Light green. Never smaller than <em>perfect</em>.</td></tr>
+<tr><td>Hit window</td><td>40&hellip;250 ms</td><td>Hits further than this from every note are extra; notes with no hit inside are missed. Never smaller than <em>good</em>.</td></tr>
+</tbody></table>
+
+<h3 id="set-sound">Sound</h3>
+<ul>
+<li><strong>Audio output:</strong> the sound card used for the click, Listen and calibration. A change applies the next time sound starts. If the chosen device is not connected, the system default is used and a message says so.</li>
+<li><strong>MIDI output:</strong> the port that receives the click and the notes of Listen when they are sent over MIDI, such as the V31 or Windows' <em>Microsoft GS Wavetable Synth</em>.</li>
+<li><strong>Metronome:</strong> click through the sound card (with volume) and/or send it to the MIDI output (note and channel). Sending the click to the V31 (channel 10, an unmapped note such as 76, a wood block) puts it in your headphones with no computer-audio latency.</li>
+<li><strong>Listening:</strong> play Listen through the sound card (built-in drum sounds, volume) and/or send the notes to the MIDI output on a channel (default 10), so the V31 plays its own kit.</li>
+<li><strong>Instruments:</strong> the mixer (see <a href="#sound">Sound and instrument mixer</a>).</li>
+</ul>
+
+<h3 id="set-general">General</h3>
+<ul>
+<li><em>Expand repeats and 1st/2nd endings</em>: unrolls repeats when a score is loaded (on by default). Changing it reloads the file.</li>
+<li><em>Recent scores</em>: how many are remembered and <em>Clear list</em>.</li>
+<li><em>Computer keyboard plays pads</em>, with the key list.</li>
+<li>The path of the settings file.</li>
+</ul>
+</section>
+
+<section id="controller">
+<h2>10. Hardware controller (Mackie Control)</h2>
+<p>A control surface that speaks the Mackie Control protocol runs the program from the stool, with sticks in your hands. Built-in presets: <strong>Behringer X-Touch Mini</strong> (set it to <em>MC mode</em>) and <strong>X-Touch Compact</strong>.</p>
+<ol class="steps">
+<li>Open <em>Settings &rarr; Controller</em> and choose the preset. The program finds the controller's MIDI port by name; you can pick the port by hand too. The choice is remembered.</li>
+<li>The controller has its own MIDI port, separate from the drum module, so its buttons never count as hits. If you pick the drum module's port by mistake, the page says so.</li>
+<li>Plug the controller in after the start, or pull it out: it connects or lets go by itself (the port list is looked at every two seconds).</li>
+</ol>
+<p>The Controller page has a <em>monitor</em> showing every message the controller sends and what it is bound to. The top bar shows the controller and, on the Mini, the layer in use.</p>
+<div class="callout warn"><strong class="label">Not tried on a device</strong>The presets are written from the Mackie Control table and have not been tried on a real controller. If a number is wrong, the monitor shows the real one; copy the preset and fix the number (see <a href="#ctl-custom">Your own preset</a>).</div>
+
+<h3 id="ctl-mini">X-Touch Mini</h3>
+<p>The LAYER A / LAYER B buttons switch between two sets of controls (the program does the switching itself).</p>
+<h4>Layer A: practice</h4>
+<table>
+<thead><tr><th>Control</th><th>Function</th></tr></thead>
+<tbody>
+<tr><td>Top row</td><td>Record &middot; Listen &middot; Stop &middot; Click &middot; Loop &middot; Notes &middot; Metronome tab &middot; Next tab</td></tr>
+<tr><td>Bottom row</td><td>Loop the worst bar of the last take &middot; Range back &middot; Range forward (by the length of the range) &middot; Tap tempo &middot; Tempo &minus;5 % &middot; Tempo +5 % &middot; Discard take &middot; <strong>Shift</strong> (hold: encoders turn five times as far)</td></tr>
+<tr><td>Encoders 1&ndash;8</td><td>Tempo (push: 100 %) &middot; First measure &middot; Last measure &middot; Click volume &middot; Music volume &middot; Count-in bars &middot; Bars per row &middot; Recent scores (push: open)</td></tr>
+<tr><td>Fader</td><td>Tempo. It takes over only once it reaches the current value, so nothing jumps.</td></tr>
+</tbody></table>
+<h4>Layer B: mixer</h4>
+<table>
+<thead><tr><th>Control</th><th>Function</th></tr></thead>
+<tbody>
+<tr><td>Top row / bottom row</td><td>Mute / solo of eight instrument groups: Kick, Snare (with cross-stick), Hi-hat, Tom 1, Tom 2, Tom 3 and 4, Crash (all crashes, china, splash), Ride (with bell and cowbell)</td></tr>
+<tr><td>Encoders 1&ndash;8</td><td>Volume of the group (push: play it)</td></tr>
+<tr><td>Fader</td><td>Music volume</td></tr>
+</tbody></table>
+<p>Tempo controls act on the practice tempo, or on the metronome while the Metronome tab is open. Tempo, measures and the score are locked while a take records. The lights show what is on (recording, listening, click, loop, notes, metronome, mute, solo, shift) and the rings around the encoders show their values.</p>
+<h4>With a rudiment</h4>
+<p>While the Rudiments tab's practice is in use (the Rudiments tab, or any tab opened after it until the Score tab is shown again), the same controls mean something else, with no change to the preset:</p>
+<table>
+<thead><tr><th>Control</th><th>Score</th><th>Rudiment</th></tr></thead>
+<tbody>
+<tr><td>Encoder 2</td><td>First measure</td><td>Repeats</td></tr>
+<tr><td>Encoder 3</td><td>Last measure</td><td>Lead (right, left, alternate)</td></tr>
+<tr><td>Encoder 8</td><td>Recent scores</td><td>Browse the rudiments (one per click)</td></tr>
+<tr><td>Range back / forward</td><td>Move the range</td><td>Previous / next rudiment</td></tr>
+<tr><td>Tempo (encoder 1, fader, tap, &plusmn;5 %)</td><td>Percent</td><td>BPM</td></tr>
+<tr><td>Encoder 1 push</td><td>100 %</td><td>The rudiment's starting tempo</td></tr>
+</tbody></table>
+<p>The rings of encoders 2 and 3 show the repeats and the lead.</p>
+
+<h3 id="ctl-compact">X-Touch Compact</h3>
+<p>The faders set the volume of the eight instrument groups, the ninth (main) fader the music volume. Faders are not moved by the program; a fader takes over once it reaches the value shown. REC plays the group, SOLO and MUTE do what they say. The encoders under the faders are tempo, first bar, last bar, click volume, count-in, bars per row, (unused) and recent scores; the push of encoder 1 resets the tempo, of encoder 8 opens the score. The jog wheel is the tempo as well.</p>
+
+<h3 id="ctl-custom">Your own preset</h3>
+<p>A preset is a text file ending in <code>.txt</code> in the <code>controllers</code> folder next to the settings file (the Controller page shows the path); it then appears in the list. The page can copy a built-in preset there as a starting point. Each line is <code>key = value</code>; <code>#</code> starts a comment:</p>
+<pre><code>name  = My surface
+port  = X-TOUCH MINI                  # part of the MIDI port's name
+layer = A note 84                     # this message switches to layer A (optional)
+layer = B note 85
+bind  = A note 89 -&gt; record           # a button; without "A" it works on every layer
+bind  = A cc 16 rel -&gt; tempo          # an endless encoder (Mackie relative values)
+bind  = bend 1 -&gt; tempo               # a fader (pitch bend on MIDI channel 1)
+led   = A record -&gt; note 89           # a button light that follows the state
+ring  = A tempo -&gt; cc 48              # an LED ring that shows a value</code></pre>
+<table>
+<thead><tr><th>Kind</th><th>Names</th></tr></thead>
+<tbody>
+<tr><td>Buttons</td><td><code>record listen stop click loop notes metronome next_tab loop_worst_bar range_back range_forward tap_tempo tempo_down tempo_up discard_take tempo_reset open_score prev_rudiment next_rudiment shift</code>, and <code>mute N</code>, <code>solo N</code>, <code>audition N</code> for mixer strips 1&ndash;8</td></tr>
+<tr><td>Values (encoder with <code>rel</code>, or a fader)</td><td><code>tempo range_from range_to click_volume music_volume count_in bars_per_row repeats lead</code>, and <code>gain N</code></td></tr>
+<tr><td>Only turned (need <code>rel</code>)</td><td><code>score</code> (recent scores), <code>rudiment</code> (the rudiments)</td></tr>
+<tr><td>Lights</td><td><code>record listen stop click loop notes metronome shift</code>, <code>mute N</code>, <code>solo N</code></td></tr>
+<tr><td>Rings</td><td>any of the values, including <code>repeats</code> and <code>lead</code></td></tr>
+</tbody></table>
+<p>A line that cannot be used is reported on the Controller page and the rest still works. Messages are written <code>note N</code>, <code>cc N</code> or <code>bend CHANNEL</code>. A line for the current layer wins over one for all layers.</p>
+<p>Not supported: motor faders, scribble strip or time display, a second (XT) unit, blinking lights, MIDI-learn for presets.</p>
+</section>
+
+<section id="grading">
+<h2>11. How grading works</h2>
+<h3>Matching hits to notes</h3>
+<ul>
+<li>Each written note gets at most one hit and each hit at most one note. All pairs within the hit window are candidates; a hit on the same instrument costs its distance in time, a hit on a <em>related</em> instrument costs 40 ms more. Pairs are assigned closest first.</li>
+<li>Related instruments are snare / cross-stick, hi-hat closed / open, ride / bell and the crashes. A hit on one of them at the right time counts as <em>wrong pad</em> with partial credit.</li>
+<li>Notes not yet reached when you stop are not graded. Grace notes and flams are optional: skipping them is no miss, playing them is no extra.</li>
+</ul>
+<h3>Grades and credit</h3>
+<table>
+<thead><tr><th>Grade</th><th>Condition (defaults)</th><th>Credit</th></tr></thead>
+<tbody>
+<tr><td>Perfect</td><td>&le; 20 ms</td><td>1.00</td></tr>
+<tr><td>Good</td><td>&le; 45 ms</td><td>0.85</td></tr>
+<tr><td>OK</td><td>inside the hit window (100 ms)</td><td>0.60</td></tr>
+<tr><td>Wrong pad</td><td>right time, related instrument</td><td>0.30</td></tr>
+<tr><td>Missed</td><td>no hit</td><td>0</td></tr>
+</tbody></table>
+<h3>Overall score</h3>
+<p>The 0&ndash;100 score is <strong>55 %</strong> note accuracy + <strong>25 %</strong> timing (average distance and spread) + <strong>10 %</strong> no extra hits + <strong>10 %</strong> dynamics. If the score has no accents or ghost notes, the dynamics share goes to the other three. Timing credit only counts as far as notes were played. Letters: A+ &ge; 95, A &ge; 90, B &ge; 80, C &ge; 70, D &ge; 60, otherwise E.</p>
+<p><em>Dynamics</em>: an accent should be at least 10 velocity points louder than the plain notes of that instrument, a ghost note at least 15 softer.</p>
+<div class="callout"><strong class="label">First guesses</strong>These weights are first guesses and are meant to be tuned with real takes. Tell the author how they feel.</div>
+</section>
+
+<section id="latency">
+<h2>12. Latency and calibration</h2>
+<p>Every audio and MIDI path adds some delay: the module, USB, the program, and the sound card that plays the click. If you play exactly on the click you hear, your hit still arrives a little late. Roll Model subtracts a <em>latency compensation</em> from every hit to correct that.</p>
+<ol class="steps">
+<li>Open <em>Settings &rarr; Timing</em> and press <em>Calibrate&hellip;</em>.</li>
+<li>Sixteen clicks play at 100 BPM. Hit any pad exactly with each click (the first four are for getting into the groove).</li>
+<li>The median offset becomes the latency compensation. At least six of the hits must lie within a quarter of a second of a click, otherwise calibration fails (is the click audible?).</li>
+</ol>
+<div class="callout tip"><strong class="label">Lower latency</strong>Sending the click to the V31 (<em>Settings &rarr; Sound &rarr; Metronome</em>, channel 10, an unmapped note) puts it in your headphones without computer-audio latency. Calibrate again after changing the click path.</div>
+</section>
+
+<section id="sound">
+<h2>13. Sound and instrument mixer</h2>
+<h3>What you hear</h3>
+<ul>
+<li><strong>Computer sound output</strong> (default): a small built-in drum kit, synthesised on the fly. No sample files and no hardware are needed. It is meant for hearing rhythm and instrument, not for sounding like a studio kit.</li>
+<li><strong>MIDI output:</strong> each instrument is sent as its standard General MIDI / Roland note (or the note you mapped to it) on the chosen channel, to the chosen port. This works with the V31 or Windows' built-in synth. Both outputs can be on at the same time.</li>
+</ul>
+<h3>Instrument mixer</h3>
+<p>On <em>Settings &rarr; Sound</em>, every instrument has a <strong>volume</strong>, a <strong>mute</strong> and a <strong>solo</strong> (solo is not saved), live while Listen plays, and a play button that sounds it on its own. An open hi-hat is cut off when the hi-hat is closed.</p>
+<h3>Your own sounds</h3>
+<p>Put a WAV file named after the instrument in the <code>sounds</code> folder next to the settings file (the Sound page shows the path): <code>Kick.wav</code>, <code>Snare.wav</code>, <code>CrossStick.wav</code>, <code>HiHatClosed.wav</code>, <code>HiHatOpen.wav</code>, <code>HiHatPedal.wav</code>, <code>Tom1.wav</code> to <code>Tom4.wav</code>, <code>Crash1.wav</code>, <code>Crash2.wav</code>, <code>Ride.wav</code>, <code>RideBell.wav</code>, <code>China.wav</code>, <code>Splash.wav</code>, <code>Cowbell.wav</code>. Any instrument without a file keeps its built-in sound; a file that cannot be read is reported and replaced by the built-in one.</p>
+</section>
+
+<section id="musicxml">
+<h2>14. MusicXML scores</h2>
+<h3>Supported</h3>
+<p>Partwise MusicXML 2.0&ndash;4.0, plain (<code>.musicxml</code>, <code>.xml</code>) or compressed (<code>.mxl</code>): multiple voices (<code>backup</code>/<code>forward</code>), chords, tempo changes (<code>sound tempo</code> or metronome marks), time-signature changes, pickup bars, repeats with 1st/2nd endings (expanded by default), ties, accents, ghost notes (parenthesised noteheads), grace notes and notehead shapes.</p>
+<p>Instruments are recognised, in this order, from the General MIDI number in the file (<code>midi-unpitched</code>), the instrument name, or the staff position and notehead.</p>
+<h3>Not supported</h3>
+<ul>
+<li>D.S., D.C. and coda jumps are not followed.</li>
+<li><code>score-timewise</code> files are rejected.</li>
+<li>With several parts, only the first part that looks like drums is used.</li>
+</ul>
+<div class="callout tip"><strong class="label">Export tip</strong>Export only the drum part and make sure instruments have their General MIDI numbers (most notation programs do this when you use their drum kit staff). If an instrument is shown on the wrong line, check its name and notehead in the source program.</div>
+</section>
+
+<section id="shortcuts">
+<h2>15. Keyboard shortcuts</h2>
+<table>
+<thead><tr><th>Key</th><th>Action</th></tr></thead>
+<tbody>
+<tr><td><kbd>R</kbd></td><td>Record a take (needs a score or a gradable rudiment)</td></tr>
+<tr><td><kbd>L</kbd></td><td>Listen / stop listening</td></tr>
+<tr><td><kbd>K</kbd></td><td>Click on or off</td></tr>
+<tr><td><kbd>M</kbd></td><td>Metronome start or stop</td></tr>
+<tr><td><kbd>Esc</kbd></td><td>Stop recording, listening and the metronome</td></tr>
+<tr><td><kbd>Z X G C V B A S D F Q W E</kbd></td><td>Pads, when <em>Computer keyboard plays pads</em> is on</td></tr>
+</tbody></table>
+<p>The shortcuts are ignored while a widget has the keyboard focus (for example after pressing <kbd>Tab</kbd>, or while typing in the search box). <kbd>Esc</kbd> clears the focus.</p>
+</section>
+
+<section id="files">
+<h2>16. Settings file and folders</h2>
+<table>
+<thead><tr><th>System</th><th>Folder</th></tr></thead>
+<tbody>
+<tr><td>Windows</td><td><code>%APPDATA%\RollModel\</code></td></tr>
+<tr><td>macOS</td><td><code>~/Library/Application Support/RollModel/</code></td></tr>
+<tr><td>Linux</td><td><code>$XDG_CONFIG_HOME/roll-model/</code> (or <code>~/.config/roll-model/</code>)</td></tr>
+</tbody></table>
+<p>It holds <code>config.txt</code> (the settings), <code>sounds</code> (your WAV files) and <code>controllers</code> (your controller presets). Settings of the program's earlier name (Drum Tutor) are copied across once on the first start; the old folder is left alone.</p>
+<h3>Settings keys</h3>
+<p>The settings file is plain text, one <code>key = value</code> per line. You may edit it while the program is closed.</p>
+<table>
+<thead><tr><th>Key</th><th>Meaning</th></tr></thead>
+<tbody>
+<tr><td><code>midi_in_port</code>, <code>midi_out_port</code></td><td>Part of the MIDI port names</td></tr>
+<tr><td><code>latency_ms</code>, <code>perfect_ms</code>, <code>good_ms</code>, <code>window_ms</code></td><td>Timing</td></tr>
+<tr><td><code>metronome_during_take</code>, <code>count_in_bars</code></td><td>Click switch and count-in</td></tr>
+<tr><td><code>click_audio</code>, <code>click_volume</code>, <code>click_midi</code>, <code>click_note</code>, <code>click_channel</code></td><td>Metronome click</td></tr>
+<tr><td><code>playback_audio</code>, <code>playback_volume</code>, <code>playback_midi</code>, <code>playback_channel</code></td><td>Listen</td></tr>
+<tr><td><code>audio_output</code></td><td>Sound device name (empty: system default)</td></tr>
+<tr><td><code>hihat_cc_max</code></td><td>Hi-hat pedal value when closed</td></tr>
+<tr><td><code>keyboard_input</code>, <code>zoom</code>, <code>expand_repeats</code></td><td>General</td></tr>
+<tr><td><code>bars_per_row</code>, <code>layout_align_bar</code></td><td>Score layout</td></tr>
+<tr><td><code>recent</code> (repeated)</td><td>Recent scores, newest first</td></tr>
+<tr><td><code>metro_bpm</code>, <code>metro_beats</code>, <code>metro_sub</code>, <code>metro_preview</code></td><td>Metronome tab</td></tr>
+<tr><td><code>controller_preset</code>, <code>controller_port</code></td><td>Control surface</td></tr>
+<tr><td><code>rudiment</code>, <code>rudiment_repeats</code>, <code>rudiment_nard_only</code>, <code>rudiment_ladder</code></td><td>Rudiments tab</td></tr>
+<tr><td><code>rudiment_bpm.N</code>, <code>rudiment_best.N</code></td><td>Tempo last used and best clean tempo of rudiment N</td></tr>
+<tr><td><code>gain.Name</code>, <code>mute.Name</code></td><td>Instrument volume and mute</td></tr>
+<tr><td><code>map.Name</code></td><td>MIDI notes of an instrument</td></tr>
+</tbody></table>
+</section>
+
+<section id="trouble">
+<h2>17. Troubleshooting</h2>
+<table>
+<thead><tr><th>Problem</th><th>What to try</th></tr></thead>
+<tbody>
+<tr><td>The top right shows <em>no MIDI input</em></td><td>Is the module on and connected? Close other programs that use the port (Windows allows one at a time). Open <em>Settings &rarr; MIDI input</em>, press <em>Refresh ports</em> and choose the port.</td></tr>
+<tr><td>Hits show on the monitor as <em>unmapped</em></td><td>The pad sends a note that is not in the map. Use <em>Learn</em> to assign it.</td></tr>
+<tr><td>Hits are drawn but always early or late by the same amount</td><td>Run the latency calibration. A steady offset is latency, not your playing.</td></tr>
+<tr><td>Hits are wrong when you hit the hi-hat</td><td>Check the pedal value in the monitor and <em>Hi-hat pedal value when closed</em>.</td></tr>
+<tr><td>No click or no sound in Listen</td><td>Is the click / playback ticked on <em>Settings &rarr; Sound</em>? Is the right output device chosen? An amber message says when the chosen device is not connected. The click switch (<kbd>K</kbd>) must be on; the count-in always sounds.</td></tr>
+<tr><td>Cymbals sound odd</td><td>The built-in kit is simple. Use your own WAV files or send Listen to the module over MIDI.</td></tr>
+<tr><td>Many extra hits on fast rudiments</td><td>A mesh pad may double-trigger; check the module's retrigger settings. Slow the tempo.</td></tr>
+<tr><td>A score loads but looks wrong</td><td>See <a href="#musicxml">MusicXML scores</a>. Check instrument names and General MIDI numbers in the source program, and export only the drum part.</td></tr>
+<tr><td>Bars are numbered strangely</td><td>With repeats expanded, printed bar numbers repeat. The sliders and the Layout menu use the position in the score as shown; untick <em>Expand repeats</em> to see the file as written.</td></tr>
+<tr><td>The controller does nothing</td><td>Is it in Mackie Control (MC) mode? Is the right preset chosen? Watch the monitor on the Controller page: <em>(not bound)</em> means the number differs from the preset.</td></tr>
+<tr><td>The score scrolls and I cannot scroll back during a take</td><td>Untick <em>follow</em>.</td></tr>
+<tr><td>Shortcuts do not work</td><td>A widget has the keyboard focus. Press <kbd>Esc</kbd> or click an empty area.</td></tr>
+</tbody></table>
+</section>
+
+<section id="reference">
+<h2>18. Rudiment reference</h2>
+<p>The 40 PAS international drum rudiments, as the Rudiments tab plays them. This table is generated from the program's own rudiment data when the manual is built. Sticking is for the <strong>right-hand lead</strong>; the left lead is the mirror image. A lower-case letter is the grace note of a flam (one) or a drag (two); <strong>bold</strong> marks an accent. <em>Beats</em> is the length of one repetition in quarter notes. <span class="nard">*</span> marks the original NARD Standard 26.</p>
+<p><input id="rudiment-filter" type="search" placeholder="Filter by name or number&hellip;" aria-label="Filter rudiments"></p>
+{{RUDIMENT_TABLES}}
+<p>Rudiment list after the Percussive Arts Society's <em>International Drum Rudiments</em> (1984). Rolls are placed on a 16th-note grid; see <a href="#rud-tempo">Tempo and progress</a>.</p>
+</section>
+
+<section id="glossary">
+<h2>19. Glossary</h2>
+<dl>
+<dt>Accent</dt><dd>A stroke played louder than its neighbours.</dd>
+<dt>BPM</dt><dd>Beats per minute; here always quarter notes.</dd>
+<dt>Count-in</dt><dd>Clicks before the music starts, so you can join in on time.</dd>
+<dt>Diddle</dt><dd>A double stroke: two equal strokes with one hand.</dd>
+<dt>Drag (ruff)</dt><dd>Two soft grace notes before a main stroke, played with the other hand.</dd>
+<dt>Flam</dt><dd>A soft grace note an instant before a main stroke, played with the other hand.</dd>
+<dt>Ghost note</dt><dd>A very soft note, shown in parentheses.</dd>
+<dt>Hit window</dt><dd>How far from a note's time a hit may be to count for that note.</dd>
+<dt>Lead</dt><dd>The hand that starts a pattern.</dd>
+<dt>Mackie Control</dt><dd>A protocol for control surfaces, used by the X-Touch devices in MC mode.</dd>
+<dt>NARD</dt><dd>National Association of Rudimental Drummers, source of the Standard 26 American Drum Rudiments.</dd>
+<dt>PAS</dt><dd>Percussive Arts Society, which published the 40 International Drum Rudiments.</dd>
+<dt>Rudiment</dt><dd>A basic sticking pattern from which drum technique is built.</dd>
+<dt>Sticking</dt><dd>Which hand plays which stroke, written R and L.</dd>
+<dt>Take</dt><dd>One recorded attempt over a range of bars, or over a rudiment.</dd>
+</dl>
+<p style="margin-top:3rem;color:var(--muted)">Roll Model {{VERSION}} &middot; manual built {{DATE}}. Released under the MIT licence.</p>
+</section>
+</main>
+</div>
+<script>
+(function () {
+  var box = document.getElementById('rudiment-filter');
+  if (!box) return;
+  box.addEventListener('input', function () {
+    var q = box.value.trim().toLowerCase();
+    document.querySelectorAll('table.rudiments tbody tr').forEach(function (row) {
+      var hit = !q || row.dataset.name.indexOf(q) >= 0 || row.cells[0].textContent.trim() === q;
+      row.style.display = hit ? '' : 'none';
+    });
+  });
+})();
+</script>
+</body>
+</html>

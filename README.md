@@ -7,6 +7,16 @@ A Rust desktop app (egui) for practising drum parts against a score:
 3. **Captures MIDI from a Roland V31** (or any V-Drums / e-kit) and draws every hit as a note on a second staff **directly under the score**, on the same time axis — early hits sit left of the written note, late hits to the right.
 4. **Compares the performance with the score** and grades it: note accuracy, timing offset and consistency, tempo drift, wrong pads, missed and extra notes, and dynamics (accents and ghost notes).
 
+## User manual
+
+An extensive manual (setup, every tab, the controller, grading, troubleshooting, and a reference of the 40 rudiments) is one HTML file, `roll-model-manual.html`, included in every release archive and attached to the release. It is built from `docs/manual/manual.template.html` and the rudiment data in `src/rudiments.rs`:
+
+```sh
+python3 tools/build_manual.py      # writes target/manual/roll-model-manual.html (standard library only)
+```
+
+Edit the template when behaviour changes; the rudiment tables regenerate themselves.
+
 ## Build and run
 
 Install a recent Rust from <https://rustup.rs> (tested with 1.99; 1.82 is too old for the dependencies), then:
@@ -181,4 +191,5 @@ What counts as the public interface: the settings file keys, the CSV export colu
 | `src/render.rs` | Score and played-notes staves |
 | `src/app.rs` | UI: welcome panel, Score, Results and Settings tabs; `src/app/metro.rs` is the Metronome tab, `src/app/rudiment.rs` the Rudiments tab, `src/app/mixer.rs` the instrument mixer, `src/app/controls.rs` what the controller does and its Settings page |
 | `src/widgets.rs` | Shared UI helpers: the wheel-aware slider and the larger Score-tab style |
+| `docs/manual/`, `tools/build_manual.py` | The user manual (HTML template) and the script that builds it for releases |
 | `src/config.rs` | Settings file (`%APPDATA%\RollModel\config.txt` on Windows) |
