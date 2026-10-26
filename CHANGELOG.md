@@ -4,19 +4,21 @@ All notable changes are recorded here. The format follows [Keep a Changelog](htt
 
 ## [Unreleased]
 
-### Changed
-- The application is now called **Roll Model** (window title, binary `roll-model`, release archives, MIDI client names). The settings folder moved from `DrumTutor` to `RollModel` (`drum-tutor` to `roll-model` on Linux): on first start the old folder is copied across, including the `sounds` folder, and is left in place.
+## [0.5.0] - 2026-10-26
+
+The application is renamed Roll Model, and gets a Home tab, a rolling score preview on the Metronome tab and hi-hat pedal (CC#4) support. Covered by unit tests; the new screens were not looked at in the running app and the V31 has still not been connected.
 
 ### Added
 - The Metronome tab shows the loaded score as a rolling staff: the practice range of the Score tab repeats, its notes scroll past a fixed line at the metronome's tempo, and the first note arrives with the first beat. With no score loaded it shows the metronome's own bar (accent, beats, subdivisions in brackets). A switch hides it, and "Match score tempo and bar" sets the metronome to the score's tempo and bar length so the click lines up with the bars.
+- Hi-hat pedal (CC#4) is read: a stick hit on the closed or open hi-hat note is closed when the pedal is at least three quarters of the way to the "value when closed" and open otherwise. The value is a setting (Settings → MIDI input, default 127) for pedals that never report the full 0-127 range. The monitor shows the pedal value next to each hit.
 
 ### Changed
-- The first beat light on the Metronome tab is no longer clipped at its left edge.
+- The application is now called **Roll Model** (window title, binary `roll-model`, release archives, MIDI client names). The settings folder moved from `DrumTutor` to `RollModel` (`drum-tutor` to `roll-model` on Linux): on first start the old folder is copied across, including the `sounds` folder, and is left in place.
 - The **Score** tab is greyed out until a score is loaded, and the app starts on **Home**.
 - A **Home** tab shows the welcome panel with the recent scores at any time, not only while no score is open.
 
-### Added
-- Hi-hat pedal (CC#4) is read: a stick hit on the closed or open hi-hat note is closed when the pedal is at least three quarters of the way to the "value when closed" and open otherwise. The value is a setting (Settings → MIDI input, default 127) for pedals that never report the full 0-127 range. The monitor shows the pedal value next to each hit.
+### Fixed
+- The first beat light on the Metronome tab is no longer clipped at its left edge.
 
 ## [0.4.1] - 2026-10-25
 
