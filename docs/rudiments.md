@@ -1,6 +1,6 @@
 # Rudiment catalogue for the Rudiments tab
 
-Working document for the planned **Rudiments** tab (not implemented yet). It lists what the tab will offer and how each rudiment is built from strokes, so the data can be turned into code and tests without going back to the sources.
+The catalogue behind the **Rudiments** tab: what it offers and how each rudiment is built from strokes. `src/rudiments.rs` holds the same data as patterns, and its tests check them against the sticking, accents, grace notes and lengths listed here. Rows marked ⚑ have note values that still have to be compared with the PAS chart.
 
 ## Source and how it was checked
 
@@ -106,9 +106,12 @@ Accents are on the main stroke of the flams unless said otherwise.
 
 ## What the grader does with them
 
-- A flam's and a drag's grace notes are the existing optional grace notes: not required, never counted as extra. Required graces (with a spacing check) are proposed in the plan.
+- A flam's and a drag's grace notes are the existing optional grace notes: not required, never counted as extra. They are expected 35 ms before the main note, a drag's earlier one 70 ms. Requiring them, with a check of the spacing, is not done.
+- The hit window shrinks to 45 % of the distance to the neighbouring strokes (not below the "perfect" tolerance), because the usual ±100 ms would reach several strokes of a fast rudiment.
 - Accents are graded by the existing dynamics score.
-- Sticking cannot be heard by a drum module, so it is shown, not graded. It is used to report how even the two hands are: the expected stroke is known for every hit, so velocity and timing can be averaged per hand.
+- Sticking cannot be heard by a drum module, so it is shown, not graded. It is used to report how even the two hands are: the expected stroke is known for every hit, so the Results tab averages timing and (unaccented) velocity per hand and the feedback names a hand that is late or softer.
+- The multiple bounce (buzz) roll is one held note and can only be listened to: Record is switched off for it.
+- A clean take is a whole take scoring 85 or better; its tempo is kept as the rudiment's best clean tempo.
 
 ## Links
 

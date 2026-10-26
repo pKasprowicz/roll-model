@@ -3,8 +3,9 @@
 A Rust desktop app (egui) for practising drum parts against a score:
 
 1. **Loads MusicXML drum scores** (`.musicxml`, `.xml`, compressed `.mxl`) and draws them on a percussion staff in the **Score** tab.
-2. **Captures MIDI from a Roland V31** (or any V-Drums / e-kit) and draws every hit as a note on a second staff **directly under the score**, on the same time axis — early hits sit left of the written note, late hits to the right.
-3. **Compares the performance with the score** and grades it: note accuracy, timing offset and consistency, tempo drift, wrong pads, missed and extra notes, and dynamics (accents and ghost notes).
+2. **Practises the 40 drum rudiments** on the **Rudiments** tab: pick one, repeat it as often as you like, hear it, play it along with the click and get graded, hand by hand.
+3. **Captures MIDI from a Roland V31** (or any V-Drums / e-kit) and draws every hit as a note on a second staff **directly under the score**, on the same time axis — early hits sit left of the written note, late hits to the right.
+4. **Compares the performance with the score** and grades it: note accuracy, timing offset and consistency, tempo drift, wrong pads, missed and extra notes, and dynamics (accents and ghost notes).
 
 ## Build and run
 
@@ -46,6 +47,18 @@ Run the unit tests (XML parser, MusicXML import, repeats, tempo maps, scoring): 
 
 No kit at hand? Enable **Settings → General → Computer keyboard plays pads** (Z kick, X snare, C/V/B hi-hat closed/open/pedal, A S D F toms, Q W E cymbals).
 
+## Rudiments
+
+The **Rudiments** tab (between Score and Metronome) teaches the **PAS international drum rudiments**: all 40, grouped as rolls, diddles (paradiddles), flams and drags, with the original NARD Standard 26 marked `*`. The notation, sticking and how each rudiment was transcribed are in [docs/rudiments.md](docs/rudiments.md).
+
+- **Choosing.** *Prev* and *Next* step through the list; the button with the name opens it by family, with a search box and a switch for only the original 26. Each rudiment is drawn on the same two staves as a score, with the sticking (`R` and `L`, the grace notes of flams and drags as small letters) under the notes, and your hits below, coloured as on the Score tab.
+- **Repeats instead of measures.** The *repeats* slider says how many times the pattern is written one after the other, one bar each; that is the whole exercise. *Lead* chooses the hand that starts: right, left, or alternating (right then left, and so on). Each rudiment starts with the lead that makes its repetitions flow without playing a hand twice in a row. Clicking a bar still narrows the range, as on the Score tab.
+- **Tempo in BPM.** The tempo slider is the tempo in quarter-note BPM (30–240) and each rudiment starts at a tempo of about six strokes a second. The tempo is remembered per rudiment. Rolls are written on a 16th-note grid (the PAS writes them in 32nds), so a 16th at 120 BPM is a 32nd at 60 BPM.
+- **Listen, Record, count-in, click, loop** work as on the Score tab (`L`, `R`, `K`, `Esc`), also the notes switch and the loop. The multiple bounce (buzz) roll is one held note and can only be listened to.
+- **Grading** is as for a score, with two differences made for fast, repeated patterns: the hit window shrinks to 45 % of the distance between neighbouring notes (but never below the "perfect" tolerance), so a hit can never be within reach of two strokes, and the **Results** tab adds a **Hands** table. The drum module cannot tell which hand played, but the expected hand of every stroke is known, so the table and the feedback compare the hands: how far apart in time they are and how much softer one plays than the other. Flams and drags are graded as grace notes: playing them is never required and never counts as extra.
+- **Progress.** A take of the whole exercise that scores 85 or better is a *clean take*: its tempo is remembered as the **best clean tempo** of that rudiment (shown next to the rudiment and in the list). With **ladder** on, the tempo then goes up by 5 BPM, so you climb as long as you play it cleanly. The PAS advises practising open to close to open (slow, fast, slow).
+- **Controller.** While the Rudiments tab's practice is in use, the controls that choose measures choose repetitions and rudiment instead, with no change to the presets; see below.
+
 ## Listening to the score
 
 **Listen** plays exactly what a take would ask of you: the selected measures, the practice tempo, and the same count-in and click. Accents are louder than normal strokes, ghost notes softer, and grace notes land just before the beat.
@@ -86,6 +99,8 @@ A control surface that speaks the Mackie Control protocol runs the program from 
 | Encoders 1–8 | Volume of the group (push: play it) |
 | Fader | Music volume |
 
+**With a rudiment.** While the Rudiments tab's practice is in use (the Rudiments tab, or any tab opened after it until the Score tab is shown again), the same controls mean: encoder 2 (*first measure*) = repeats, encoder 3 (*last measure*) = lead (right, left, alternate), encoder 8 (*recent scores*) = browse the rudiments, *range back* / *range forward* = previous / next rudiment, tempo (encoder 1, the fader, tap tempo, ±5 %) = BPM, and the push of encoder 1 = the rudiment's starting tempo. The rings of encoders 2 and 3 show the repeats and the lead. Everything else (record, listen, stop, click, loop, notes, mixer) is unchanged.
+
 Tempo controls act on the practice tempo, or on the metronome while the Metronome tab is open. Tempo, measures and the score are locked while a take records. The lights show what is on (recording, listening, click, loop, notes, metronome, mute, solo, shift) and the rings around the encoders show their values.
 
 **Your own preset.** A preset is a text file ending in `.txt` in the `controllers` folder next to the settings file (the Controller page shows the path); it then shows up in the list. The page can copy a built-in preset there to start from. Each line is `key = value`, `#` starts a comment:
@@ -102,7 +117,7 @@ led   = A record -> note 89           # a button light that follows the state
 ring  = A tempo -> cc 48              # an LED ring that shows a value
 ```
 
-*Buttons:* `record listen stop click loop notes metronome next_tab loop_worst_bar range_back range_forward tap_tempo tempo_down tempo_up discard_take tempo_reset open_score shift`, and `mute N`, `solo N`, `audition N` for the mixer strips 1–8. *Values* (an encoder with `rel`, or a fader): `tempo range_from range_to click_volume music_volume count_in bars_per_row`, `gain N`; `score` (recent scores) is only turned. *Lights:* `record listen stop click loop notes metronome shift`, `mute N`, `solo N`; *rings* take any of the values. A line that cannot be used is reported on the Controller page and the rest still works.
+*Buttons:* `record listen stop click loop notes metronome next_tab loop_worst_bar range_back range_forward tap_tempo tempo_down tempo_up discard_take tempo_reset open_score prev_rudiment next_rudiment shift`, and `mute N`, `solo N`, `audition N` for the mixer strips 1–8. *Values* (an encoder with `rel`, or a fader): `tempo range_from range_to click_volume music_volume count_in bars_per_row repeats lead`, `gain N`; `score` (recent scores) and `rudiment` (the rudiments) are only turned. *Lights:* `record listen stop click loop notes metronome shift`, `mute N`, `solo N`; *rings* take any of the values (`repeats` and `lead` too). A line that cannot be used is reported on the Controller page and the rest still works.
 
 ## Settings
 
@@ -128,6 +143,8 @@ Every audio and MIDI path adds some delay. Use **Settings → Timing → Calibra
 
 ## How grading works
 
+(For rudiments, see "Rudiments" above: the hit window follows the note spacing and the hands are compared.)
+
 - Each written note gets at most one hit and each hit at most one note. Pairs are matched closest-first within the hit window (default ±100 ms). A hit on a related pad (snare/x-stick, hi-hat closed/open, ride/bell, crashes) counts as *wrong pad* with partial credit.
 - Grades: perfect ≤ 20 ms (credit 1.0), good ≤ 45 ms (0.85), OK inside the window (0.6), wrong pad (0.3), missed (0). All thresholds are adjustable.
 - **Overall score (0–100)** = 55 % note accuracy + 25 % timing (mean |offset| and spread) + 10 % no extra hits + 10 % dynamics. Without accents or ghost notes in the score, the dynamics share goes to the other three. Grades: A+ ≥ 95, A ≥ 90, B ≥ 80, C ≥ 70, D ≥ 60.
@@ -152,6 +169,7 @@ What counts as the public interface: the settings file keys, the CSV export colu
 | `src/musicxml.rs` | MusicXML → score (measures, notes, tempo map, repeats) |
 | `src/drums.rs` | Drum instruments, General MIDI and Roland note maps, staff positions |
 | `src/score.rs` | Score model and tempo map (beats ↔ seconds) |
+| `src/rudiments.rs` | The 40 PAS rudiments as stroke patterns and the builder that turns one into a score (no GUI or MIDI) |
 | `src/analysis.rs` | Matching hits to notes and all metrics |
 | `src/midi.rs` | MIDI input capture and output (midir), and the control surface's port |
 | `src/controller.rs` | Control surfaces: messages, presets, which control does what, lights (no MIDI port, no GUI) |
@@ -161,6 +179,6 @@ What counts as the public interface: the settings file keys, the CSV export colu
 | `src/control.rs` | Settings shared with the sound threads so they can change while playing (click, notes, loop, volumes) |
 | `src/synth.rs` | The built-in software drum kit (one synthesised sample per instrument) and the WAV override loader |
 | `src/render.rs` | Score and played-notes staves |
-| `src/app.rs` | UI: welcome panel, Score, Results and Settings tabs; `src/app/metro.rs` is the Metronome tab, `src/app/mixer.rs` the instrument mixer, `src/app/controls.rs` what the controller does and its Settings page |
+| `src/app.rs` | UI: welcome panel, Score, Results and Settings tabs; `src/app/metro.rs` is the Metronome tab, `src/app/rudiment.rs` the Rudiments tab, `src/app/mixer.rs` the instrument mixer, `src/app/controls.rs` what the controller does and its Settings page |
 | `src/widgets.rs` | Shared UI helpers: the wheel-aware slider and the larger Score-tab style |
 | `src/config.rs` | Settings file (`%APPDATA%\RollModel\config.txt` on Windows) |

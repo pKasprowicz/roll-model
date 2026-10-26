@@ -10,7 +10,7 @@ A Rust desktop app that:
 2. captures MIDI from a **Roland V31** drum module and draws the hits as notes directly under the score notes, on the same time axis;
 3. compares the captured hits with the score and grades the drummer.
 
-All three are implemented. User-facing documentation is in `README.md`.
+All three are implemented. User-facing documentation is in `README.md`. A fourth part, the **Rudiments** tab (the 40 PAS rudiments practised like a score), is on the branch `feature/rudiments`, see below.
 
 ## Status: builds, tests pass, UI smoke-tested; V31 never connected
 
@@ -51,6 +51,16 @@ Mackie Control support, see `README.md` ("Controller"). `controller.rs` is pure 
 - [ ] `presets/x-touch-compact.txt` is from the Mackie Control spec only; the faders are not motorised by the program (a fader takes over when it reaches the value).
 - [ ] Not done: motor faders, scribble strip / time display feedback, a second (XT) unit, blinking lights, MIDI-learn for custom presets (the monitor shows the numbers to type).
 - The controller's port is looked for every 2 s (`watch_controller`): plugging it in after the start connects it, pulling it out drops it. Not tried with a real unplug.
+
+### Rudiments (branch `feature/rudiments`, after 0.5.0)
+
+The Rudiments tab sits between Score and Metronome. `docs/rudiments.md` is the catalogue and its source (the PAS chart, read off the notation); `src/rudiments.rs` is that catalogue as patterns plus `Rudiment::build(repeats, lead) -> Score`, so Listen, takes, grading, the staff, the Results tab and the controller all work on a rudiment as on a file. `src/app/rudiment.rs` is the tab. 132 tests pass; the tab was looked at in the running app (screenshots of two rudiments), nothing was heard and no V31 was connected.
+
+- [ ] **Check the ⚑ rows of `docs/rudiments.md` against the PAS chart**: the closing note values of rolls 7-15, drag paradiddles #1 and #2, and the flam drag were read from a small engraving and may be off. Only the note values are in doubt (the sticking was read carefully and is tested). The chart is `https://www.coloradomesa.edu/marching-band/documents/rudiments.pdf` (PAS, 1984).
+- [ ] **Try it with the V31.** Fast diddles on a mesh pad may double-trigger (extra hits); the adaptive window helps but the pad's retrigger setting matters. Listen to the rudiments (grace notes are 35 ms per step before the main note, `analysis::GRACE_SPACING`).
+- [ ] Try the controller on the Rudiments tab (encoder 2 repeats, 3 lead, 8 rudiments, range buttons prev/next) on a real X-Touch Mini.
+- [ ] Not done: the multiple bounce (buzz) roll is listen-only; flam/drag graces are optional (a spacing check would need them required); the sticking is shown but never graded (the module cannot hear hands), only compared per hand; orchestration of a rudiment around the kit; user-defined rudiment files (like the controller presets); practice sets / routines; a progress history beyond the best clean tempo.
+- [ ] The score view draws no beams or tuplet brackets, so triplet and 32nd-note rudiments rely on proportional spacing and the beat grid.
 
 ### Still open
 
@@ -94,6 +104,7 @@ score.rs       Score, Measure, ScoreNote, TempoMap (q <-> seconds)
 drums.rs       Lane enum, GM + Roland note maps, staff positions, name heuristics
 analysis.rs    expected_notes(), analyze() -> Report (matching + metrics + feedback)
 midi.rs        midir input (callback -> Arc<Mutex<Vec<RawEvent>>>) and output; `connect_controller` for the control surface (raw messages in a queue, lights out)
+rudiments.rs   The 40 PAS rudiments as stroke patterns (a tiny pattern language, see its header) and `Rudiment::build` -> `Score`; no GUI or MIDI
 controller.rs  Mackie Control surfaces, pure: `parse`, `Preset` (text files in `presets/` and the user's `controllers` folder), `Mapper` (message -> `Command`, layers, shift, fader pickup, lights), `State`
 metronome.rs   Click thread for takes and calibration: precise sleep+spin; audio (feature "audio") and/or MIDI; also opens the sound output device (`open_audio`, `output_devices`)
 playback.rs    "Listen" and the free metronome: Player thread plays cues to a `Sink` (sound card and/or MIDI out); `dispatch` decides what sounds
@@ -102,6 +113,7 @@ synth.rs       Software drum kit: one synthesised mono sample per Lane, WAV over
 widgets.rs     UI helpers: `slider()` (caption first, mouse wheel), `roomy()` (bigger Score-tab style)
 app/metro.rs   The Metronome tab (free click track)
 app/mixer.rs   The instrument mixer on Settings -> Sound
+app/rudiment.rs The Rudiments tab: choosing, repeats, lead, tempo per rudiment, best clean tempo, ladder
 app/controls.rs The controller: connection, `Command` -> app actions, the Settings -> Controller page
 config.rs      key = value settings file, auto-saved when Config changes
 ```
@@ -109,6 +121,9 @@ config.rs      key = value settings file, auto-saved when Config changes
 ### Key conventions and invariants
 
 - **Time units.** Score positions are in quarter notes (`q`) from the start of the *unrolled* score. Seconds come only from `TempoMap::q_to_sec(q, scale)`, where `scale` is the practice tempo factor (1.0 = written tempo). `sec_to_q` is its inverse and extrapolates for negative times (count-in).
+- **Practice sources.** `DrumApp` has one set of *practice fields* (`score`, `score_path`, `range_from`, `range_to`, `tempo_pct`, `take`, `takes_started`, `history`) and `source` says whose they are: the Score tab's file or the Rudiments tab's rudiment. The other source's fields sit in `parked`; `activate(source)` swaps them (and stops Listen and a take). `sync_source()` runs every frame and when the controller changes tab: the Score tab activates the file, the Rudiments tab the rudiment, the other tabs leave it as it is. `open_file` always activates the Score source. Everything that works on "the score" (`plan_run`, `start_take`, Listen, Results, the controller) therefore works on a rudiment unchanged. `score_gen` counts the scores put in place; Listen's restart signature includes it, so a new rudiment restarts a running Listen.
+- **Rudiment scores** are written at `BASE_BPM` = 100 and the practice tempo `tempo_pct` is then the BPM (range 30-240, `rudiment::BPM_RANGE`); the tempo is stored per rudiment in `Config::rudiment_bpm` only when it differs from `Rudiment::default_bpm()`. One bar per repetition, one `ScoreNote` per stroke plus one grace note per flam/drag grace (`grace_order` 1 = nearest the main note), `hand` on every note. `Take.adaptive` makes `analysis::analyze_with` shrink the hit window to the note spacing.
+- **Controller context.** `controls.rs::in_context` maps `RangeFrom/RangeTo/RangeBack/RangeForward/Score` to `Repeats/Lead/PrevRudiment/NextRudiment/Rudiment` while the source is the rudiment, and `controller_state` fills the range rings with the repeats and the lead, so the built-in presets need no change.
 - **Take time zero** is the start of the first measure of the practice range. `Take.t0` is that measure's absolute time in seconds, so hit `q = sec_to_q(hit.t + t0, scale)`. In `start_take`, zero is `now + 0.5 s lead + count-in`, so the first score note comes 0.5 s later than the count-in alone suggests. Anything that scripts a take from outside has to add that lead.
 - **Hit timestamps** come from `Instant::now()` in the midir callback (not midir's `stamp`). `latency_ms` from config is subtracted when a hit is recorded.
 - **Staff steps.** Step 0 is the bottom line (E4), the top line (F5) is step 8. Played notes are drawn at the position the score uses for the same lane (`Score::staff_for_lane`), falling back to `Lane::default_staff`.
