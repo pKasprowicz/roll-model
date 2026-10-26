@@ -173,6 +173,35 @@ impl Score {
 
     /// Staff position/notehead used for a lane in this file (so played notes
     /// are drawn the way the score draws the same instrument).
+    /// One bar of a click track as a score, for the metronome's preview: a note
+    /// on every click (`parts` per beat), the first beat accented and the
+    /// subdivisions in brackets (soft).
+    pub fn click_bar(beats: u32, parts: u32) -> Score {
+        let (beats, parts) = (beats.max(1), parts.max(1));
+        let mut notes = Vec::new();
+        for b in 0..beats {
+            for p in 0..parts {
+                notes.push(ScoreNote {
+                    q: f64::from(b) + f64::from(p) / f64::from(parts),
+                    measure: 0,
+                    lane: Lane::Other,
+                    staff_step: 4,
+                    head: NoteHead::Normal,
+                    accent: b == 0 && p == 0,
+                    ghost: p > 0,
+                    grace: false,
+                    stem_up: Some(true),
+                });
+            }
+        }
+        Score {
+            title: "Click".into(),
+            measures: vec![Measure { number: "1".into(), start_q: 0.0, len_q: f64::from(beats), beats, beat_type: 4 }],
+            notes,
+            ..Score::default()
+        }
+    }
+
     pub fn staff_for_lane(&self, lane: Lane) -> (i32, NoteHead) {
         self.notes
             .iter()
@@ -185,6 +214,18 @@ impl Score {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_click_bar_has_a_note_per_click_and_an_accent_on_the_first() {
+        let bar = Score::click_bar(3, 2);
+        assert_eq!(bar.notes.len(), 6);
+        assert_eq!(bar.measures[0].len_q, 3.0);
+        assert!(bar.notes[0].accent && bar.notes.iter().filter(|n| n.accent).count() == 1);
+        let soft: Vec<f64> = bar.notes.iter().filter(|n| n.ghost).map(|n| n.q).collect();
+        assert_eq!(soft, [0.5, 1.5, 2.5]);
+        assert!(bar.notes.windows(2).all(|w| w[0].q < w[1].q), "in time order");
+        assert_eq!(Score::click_bar(0, 0).notes.len(), 1, "never empty");
+    }
 
     #[test]
     fn tempo_conversion_roundtrip() {

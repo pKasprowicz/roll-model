@@ -37,7 +37,7 @@ Run the unit tests (XML parser, MusicXML import, repeats, tempo maps, scoring): 
 
 ## Practising
 
-1. **Open MusicXML…** (or drop a file on the window). Export the drum part from MuseScore, Guitar Pro, Sibelius, Dorico, etc. When no score is open, the welcome panel lists the scores you opened before (the last ten); click one to open it, `×` removes it from the list.
+1. **Open MusicXML…** (or drop a file on the window). Export the drum part from MuseScore, Guitar Pro, Sibelius, Dorico, etc. The welcome panel lists the scores you opened before (the last ten); click one to open it, `×` removes it from the list. It is shown on the **Home** tab, so it is always one click away,.
 2. Pick the measures to practise (sliders, or click a measure to start there and shift+click to set the end), and the tempo (25–150 %). Every slider also follows the mouse wheel: hover it and scroll to change the value one step per notch.
 3. Press **⏵ Listen** (or `L`) to hear the selected measures at the chosen tempo, with a moving playhead and the current bar and beat next to the button. Press it again, or `Esc`, to stop. See "Listening to the score" below.
 4. Press **⏺ Record** (or `R`). After a count-in (0–2 bars, with click) play along. The take stops by itself at the end of the range, or press `Esc`. The click can be switched off and on while you play (`K`).
@@ -65,7 +65,7 @@ Next to the tempo on the Score tab there are three switches that work **while it
 
 ## Metronome
 
-The **Metronome** tab is a click track that needs no score: tempo, beats per bar, subdivision (eighths, triplets, sixteenths) and volume, with one light per beat. `M` starts and stops it. The first beat of each bar is accented and subdivisions are softer. Changes while it runs take effect after a moment. It plays through the click output chosen on **Settings → Sound** (the sound card and/or MIDI).
+The **Metronome** tab is a click track that needs no score: tempo, beats per bar, subdivision (eighths, triplets, sixteenths) and volume, with one light per beat. `M` starts and stops it. The first beat of each bar is accented and subdivisions are softer. Its notes roll by below the lights: the click pattern of the bar, or with a score loaded its practice range below the lights as a staff, repeating at the metronome's tempo so you can play the notes along with the click; **Match score tempo and bar** sets the tempo and beats per bar to the score's. Changes while it runs take effect after a moment. It plays through the click output chosen on **Settings → Sound** (the sound card and/or MIDI).
 
 ## Settings
 
