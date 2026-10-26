@@ -44,7 +44,7 @@ The five items requested after 0.3.0 are implemented, tested, and were checked i
 - **Score layout** (`render::LayoutOpts`, `layout()`, `row_starts()`; config `bars_per_row`, `layout_align_bar`; *Layout* button): see the README. Alignment is by the 1-based position in the score as shown, and the popup shows the printed number. A fixed count draws every bar at the same width (`MIN_PPQ` = 28 px per quarter at the narrowest); when it does not fit, `ViewOutput::fit_bars` reports the smaller number and the legend row says so.
 - **Sounds**: cymbals rebuilt (`synth::cymbal`, `Cymbal` parameters) as dense inharmonic partial clusters plus shaped noise, with spectral guard tests; instrument mixer (`src/app/mixer.rs`, config `gain.<Lane>` / `mute.<Lane>`, solo is session-only, `Config::effective_gain`); audition button (`DrumApp::audition`, its own `Control` so it never disturbs Listen); WAV override (`synth::load_wav`, `Kit::load`, folder `Config::sounds_dir()` = `sounds` next to `config.txt`, uses the `hound` crate); open hi-hat choked by closed/pedal (`Lane::chokes`, a fade-out in `playback::Voice`).
 
-### Controller (uncommitted, after 0.5.0)
+### Controller (in 0.6.0)
 
 Mackie Control support, see `README.md` ("Controller"). `controller.rs` is pure and unit-tested (parsing, layers, shift, fader pickup, lights); `app/controls.rs` applies the commands to `DrumApp` and is tested through `apply_command`. No device was connected.
 
@@ -54,7 +54,7 @@ Mackie Control support, see `README.md` ("Controller"). `controller.rs` is pure 
 - [ ] Not done: motor faders, scribble strip / time display feedback, a second (XT) unit, blinking lights, MIDI-learn for custom presets (the monitor shows the numbers to type).
 - The controller's port is looked for every 2 s (`watch_controller`): plugging it in after the start connects it, pulling it out drops it. Not tried with a real unplug.
 
-### Rudiments (branch `feature/rudiments`, after 0.5.0)
+### Rudiments (in 0.6.0)
 
 The Rudiments tab sits between Score and Metronome. `docs/rudiments.md` is the catalogue and its source (the PAS chart, read off the notation); `src/rudiments.rs` is that catalogue as patterns plus `Rudiment::build(repeats, lead) -> Score`, so Listen, takes, grading, the staff, the Results tab and the controller all work on a rudiment as on a file. `src/app/rudiment.rs` is the tab. 132 tests pass; the tab was looked at in the running app (screenshots of two rudiments), nothing was heard and no V31 was connected.
 
@@ -93,7 +93,7 @@ The application was renamed from "Drum Tutor" to **Roll Model** (crate and binar
 
 - [ ] Check the name (GitHub, web, trademark, domain) before shipping it widely.
 - [ ] Rename the local folder `D:\projects\DrumTutor` if wanted (the GitHub repository is already `roll-model`).
-- [ ] Release it as a minor version (0.5.0): the changelog entry is under `[Unreleased]`.
+- [x] Released as 0.6.0 (the rename, rudiments, controller, licence and docs): see `CHANGELOG.md`.
 
 ## First tasks
 

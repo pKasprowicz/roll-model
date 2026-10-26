@@ -6,7 +6,12 @@ All notable changes are recorded here. The format follows [Keep a Changelog](htt
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-10-26
+
+Rudiments, a hardware controller, a new licence, and a user manual and developer guide in every release. Covered by unit tests (132); the Rudiments tab was looked at in the running app for two rudiments. Not yet tried with a real V31, a real controller, or by ear.
+
 ### Changed
+- The grey helper texts (the small text style) are half as big again.
 - Releases now include `LICENSE` and **`THIRD_PARTY_NOTICES.txt`**, the licence texts and copyright notices of all libraries and bundled fonts, as their licences require for binary copies. The README and manual say that the product names they mention are trademarks of their owners.
 - The licence is now the **PolyForm Noncommercial License 1.0.0** (file `LICENSE`): free for any noncommercial purpose, no commercial use. Earlier releases stay under MIT.
 
