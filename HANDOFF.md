@@ -119,6 +119,7 @@ drums.rs       Lane enum, GM + Roland note maps, staff positions, name heuristic
 analysis.rs    expected_notes(), analyze() -> Report (matching + metrics + feedback)
 midi.rs        midir input (callback -> Arc<Mutex<Vec<RawEvent>>>) and output; `connect_controller` for the control surface (raw messages in a queue, lights out)
 rudiments.rs   The 40 PAS rudiments as stroke patterns (a tiny pattern language, see its header) and `Rudiment::build` -> `Score`; no GUI or MIDI
+trigger.rs     The start trigger: `Detector::feed(sequence, lane, at)` says when two hits in a row (0.5 s window) complete it; pure. `app/trigger.rs` decides when it may fire (Score/Rudiments tab, no take recording), starts the take, has the Settings section and the hint
 controller.rs  Mackie Control surfaces, pure: `parse`, `Preset` (text files in `presets/` and the user's `controllers` folder), `Mapper` (message -> `Command`, layers, shift, fader pickup, lights), `State`
 metronome.rs   Click thread for takes and calibration: precise sleep+spin; audio (feature "audio") and/or MIDI; also opens the sound output device (`open_audio`, `output_devices`)
 playback.rs    "Listen" and the free metronome: Player thread plays cues to a `Sink` (sound card and/or MIDI out); `dispatch` decides what sounds
