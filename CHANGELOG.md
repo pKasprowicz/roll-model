@@ -1,5 +1,7 @@
 # Changelog
 
+> **Made with AI.** This project was created with extensive use of AI (Anthropic's Claude), directed and reviewed by the author. Check anything that matters.
+
 All notable changes are recorded here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html); see "Versioning" in the README.
 
 ## [Unreleased]

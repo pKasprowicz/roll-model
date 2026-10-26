@@ -1,4 +1,5 @@
 # Behringer X-Touch Compact in Mackie Control (MC) mode.
+# (Written with extensive use of AI, from the Mackie Control table as remembered; not verified on the device.)
 #
 # NOT TESTED on a device: it follows the standard Mackie Control note and cc
 # numbers. Check it with the monitor in Settings -> Controller; if a number

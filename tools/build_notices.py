@@ -70,6 +70,8 @@ def main() -> None:
         "Third-party notices for Roll Model",
         "=" * 34,
         "",
+        "Roll Model was created with extensive use of AI.",
+        "",
         "Roll Model is built from the open-source components below. Each is used under",
         "its own licence, the text of which follows. Roll Model's own licence is in the",
         "file LICENSE.",

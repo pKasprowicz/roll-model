@@ -1,4 +1,5 @@
 # Behringer X-Touch Mini in Mackie Control (MC) mode.
+# (Written with extensive use of AI, from the Mackie Control table as remembered; not verified on the device.)
 #
 # Layer A (practice) and layer B (mixer). The application switches layers itself
 # when the two LAYER buttons are pressed.

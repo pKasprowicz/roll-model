@@ -1,5 +1,7 @@
 # Roll Model
 
+> **Made with AI.** Roll Model was created with extensive use of AI: most of its code, tests, documentation and rudiment transcriptions were written by AI models (Anthropic's Claude), directed and reviewed by the author. It has not been independently audited, and parts have never been tried on real hardware (the Roland V31, the controller presets); expect mistakes and check anything that matters.
+
 A Rust desktop app (egui) for practising drum parts against a score:
 
 1. **Loads MusicXML drum scores** (`.musicxml`, `.xml`, compressed `.mxl`) and draws them on a percussion staff in the **Score** tab.

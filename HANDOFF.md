@@ -1,5 +1,7 @@
 # Handoff — Roll Model
 
+> **Made with AI.** This project was created with extensive use of AI (Anthropic's Claude), directed and reviewed by the author. Check anything that matters.
+
 State of the project at handoff (2026-10-24) and what to do next. Read this before changing code.
 
 ## Goal
