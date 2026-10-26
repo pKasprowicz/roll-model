@@ -19,6 +19,16 @@ python3 tools/build_manual.py      # writes target/manual/roll-model-manual.html
 
 Edit the template when behaviour changes; the rudiment tables regenerate themselves.
 
+## Developer guide
+
+For anyone who wants to change the program: `roll-model-developer-guide.html`, also in every release archive. It explains the architecture and the ideas behind it (layers, time in quarter notes, takes and grading, the real-time threads, the controller and rudiment subsystems), the Rust constructs the design leans on, where the program can be extended, and seven step-by-step tutorials. It is built from `docs/developer/developer.template.html`, and its code excerpts, module map and statistics are generated from the source, so they cannot go stale:
+
+```sh
+python3 tools/build_devguide.py    # writes target/devguide/roll-model-developer-guide.html
+```
+
+If a refactoring renames an item the guide shows, that command fails and names the snippet to update.
+
 ## Build and run
 
 Install a recent Rust from <https://rustup.rs> (tested with 1.99; 1.82 is too old for the dependencies), then:
@@ -200,5 +210,7 @@ What counts as the public interface: the settings file keys, the CSV export colu
 | `src/app.rs` | UI: welcome panel, Score, Results and Settings tabs; `src/app/metro.rs` is the Metronome tab, `src/app/rudiment.rs` the Rudiments tab, `src/app/mixer.rs` the instrument mixer, `src/app/controls.rs` what the controller does and its Settings page |
 | `src/widgets.rs` | Shared UI helpers: the wheel-aware slider and the larger Score-tab style |
 | `tools/build_notices.py` | Generates `THIRD_PARTY_NOTICES.txt`, the licence texts of all dependencies, for the release archives |
+| `docs/developer/`, `tools/build_devguide.py` | The developer guide (HTML template with code excerpts pulled from the source) and its build script |
+| `docs/style.css` | The stylesheet shared by the manual and the developer guide |
 | `docs/manual/`, `tools/build_manual.py` | The user manual (HTML template) and the script that builds it for releases |
 | `src/config.rs` | Settings file (`%APPDATA%\RollModel\config.txt` on Windows) |

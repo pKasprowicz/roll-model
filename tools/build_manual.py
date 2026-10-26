@@ -24,6 +24,11 @@ RUD = re.compile(
 )
 
 
+def style() -> str:
+    """The stylesheet shared by the manual and the developer guide."""
+    return (ROOT / "docs" / "style.css").read_text(encoding="utf-8")
+
+
 def version() -> str:
     for line in (ROOT / "Cargo.toml").read_text(encoding="utf-8").splitlines():
         m = re.match(r'version\s*=\s*"([^"]+)"', line)
@@ -91,6 +96,7 @@ def main() -> None:
         "{{LABEL}}": html.escape(label),
         "{{DATE}}": date.today().isoformat(),
         "{{RUDIMENT_TABLES}}": rudiment_tables(),
+        "{{STYLE}}": style(),
     }
     for key, value in replacements.items():
         if key not in text:

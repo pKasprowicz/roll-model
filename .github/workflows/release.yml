@@ -43,24 +43,27 @@ jobs:
             echo "build=false" >> "$GITHUB_OUTPUT"
           fi
 
-  # The user manual is one HTML file, built from docs/manual and the rudiment
-  # data in the source. THIRD_PARTY_NOTICES.txt holds the licence texts of every
+  # The user manual and the developer guide are one HTML file each, built from
+  # docs/manual and docs/developer (the guide extracts its code from the source, so
+  # a renamed item fails this job). THIRD_PARTY_NOTICES.txt holds the licence texts of every
   # dependency, which their licences require to accompany the binary. Both go into
   # both archives and are also release files.
   manual:
-    name: Build the user manual and third-party notices
+    name: Build the manual, developer guide and third-party notices
     needs: plan
     if: needs.plan.outputs.build == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - run: python3 tools/build_manual.py --label "${GITHUB_REF_NAME}" --out manual/roll-model-manual.html
+      - run: python3 tools/build_devguide.py --label "${GITHUB_REF_NAME}" --out manual/roll-model-developer-guide.html
       - run: python3 tools/build_notices.py --out manual/THIRD_PARTY_NOTICES.txt
       - uses: actions/upload-artifact@v4
         with:
           name: manual
           path: |
             manual/roll-model-manual.html
+            manual/roll-model-developer-guide.html
             manual/THIRD_PARTY_NOTICES.txt
 
   build-linux:
@@ -88,7 +91,7 @@ jobs:
         run: |
           name="roll-model-${GITHUB_REF_NAME}-linux-x86_64"
           mkdir "$name"
-          cp target/release/roll-model README.md CHANGELOG.md LICENSE manual/roll-model-manual.html manual/THIRD_PARTY_NOTICES.txt "$name/"
+          cp target/release/roll-model README.md CHANGELOG.md LICENSE manual/roll-model-manual.html manual/roll-model-developer-guide.html manual/THIRD_PARTY_NOTICES.txt "$name/"
           cp -r examples "$name/"
           tar czf "$name.tar.gz" "$name"
       - uses: actions/upload-artifact@v4
@@ -118,7 +121,7 @@ jobs:
         run: |
           $name = "roll-model-$env:GITHUB_REF_NAME-windows-x86_64"
           New-Item -ItemType Directory $name | Out-Null
-          Copy-Item target/release/roll-model.exe, README.md, CHANGELOG.md, LICENSE, manual/roll-model-manual.html, manual/THIRD_PARTY_NOTICES.txt $name
+          Copy-Item target/release/roll-model.exe, README.md, CHANGELOG.md, LICENSE, manual/roll-model-manual.html, manual/roll-model-developer-guide.html, manual/THIRD_PARTY_NOTICES.txt $name
           Copy-Item examples $name -Recurse
           Compress-Archive $name "$name.zip"
       - uses: actions/upload-artifact@v4

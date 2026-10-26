@@ -68,6 +68,10 @@ The Rudiments tab sits between Score and Metronome. `docs/rudiments.md` is the c
 
 `docs/manual/manual.template.html` is the manual; `tools/build_manual.py` (standard library only) fills in the version/label/date and generates the rudiment tables from the `rud(...)` lines of `src/rudiments.rs` (it fails unless it finds 40). The release workflow has a `manual` job whose artifact goes into both archives and the release. **When behaviour or UI text changes, update the template** (it is written by hand; settings keys, shortcuts and controller tables are copied from the code). The manual says in two places that the V31 map and the controller presets are untested; update that when they are tried.
 
+### Developer guide
+
+`docs/developer/developer.template.html` + `tools/build_devguide.py`, same style as the manual (`docs/style.css` is shared). Placeholders `{{code:PATH::TEXT}}` pull the Rust item whose first line contains TEXT (with doc comments and attributes, highlighted) so excerpts never go stale; the module table, test counts, dependency table and the rudiment pattern language are generated. **A refactoring that renames or moves a shown item fails the guide build** (and the release): change the TEXT in the template. The prose is hand-written; update it when architecture changes (sections: layers, threads, practice sources, controller, rudiments, invariants, tutorials).
+
 ### Licence
 
 `LICENSE` is PolyForm Noncommercial 1.0.0 (copyright notice line on top). A copyright review on 2026-10-26 found no infringement: no binary assets, synthesised sounds, an original sample score, dependencies all permissive (no GPL/MPL), PAS rudiments used as facts with own wording. `tools/build_notices.py` makes `THIRD_PARTY_NOTICES.txt` for the archives (run by the `manual` job). After adding a dependency nothing needs doing: the file is rebuilt from `cargo metadata`. Not done: the product names are unchecked as trademarks ("Roll Model" included).

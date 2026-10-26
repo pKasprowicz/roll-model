@@ -5,82 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Roll Model User Manual</title>
 <style>
-:root {
-  --bg: #fbfbfa; --panel: #f1f1ef; --text: #1f2328; --muted: #5b6470; --line: #d9dbde;
-  --accent: #2f6fe4; --accent-soft: #e4edff; --good: #1f9d4c; --amber: #b8780a; --bad: #c93a3a;
-  --code-bg: #eceef1; --note-bg: #eef4ff; --warn-bg: #fff6e0; --tip-bg: #eaf7ee;
-}
-@media (prefers-color-scheme: dark) {
-  :root {
-    --bg: #15171a; --panel: #1d2024; --text: #e4e6e9; --muted: #98a1ad; --line: #33383f;
-    --accent: #6ea0ff; --accent-soft: #1f2a40; --good: #4fd17f; --amber: #f0b445; --bad: #ff7676;
-    --code-bg: #262a30; --note-bg: #1b2538; --warn-bg: #352b14; --tip-bg: #17301f;
-  }
-}
-* { box-sizing: border-box; }
-html { scroll-behavior: smooth; scroll-padding-top: 1rem; }
-body { margin: 0; background: var(--bg); color: var(--text); font: 16px/1.6 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
-.layout { display: grid; grid-template-columns: 19rem minmax(0, 1fr); min-height: 100vh; }
-nav#toc { position: sticky; top: 0; align-self: start; height: 100vh; overflow-y: auto; padding: 1.5rem 1rem 2rem 1.5rem; background: var(--panel); border-right: 1px solid var(--line); font-size: .92rem; }
-nav#toc .brand { font-weight: 700; font-size: 1.15rem; margin-bottom: .2rem; }
-nav#toc .ver { color: var(--muted); font-size: .85rem; margin-bottom: 1rem; }
-nav#toc ol { list-style: none; margin: 0; padding: 0; counter-reset: s; }
-nav#toc > ol > li { counter-increment: s; margin: .15rem 0; }
-nav#toc > ol > li > a::before { content: counter(s) ". "; color: var(--muted); }
-nav#toc ol ol { margin: .1rem 0 .4rem 1.1rem; }
-nav#toc a { color: var(--text); text-decoration: none; display: block; padding: .1rem .3rem; border-radius: 4px; }
-nav#toc a:hover { background: var(--accent-soft); }
-main { max-width: 56rem; padding: 2rem 2.5rem 6rem; }
-header.title { border-bottom: 2px solid var(--accent); margin-bottom: 2rem; padding-bottom: 1rem; }
-header.title h1 { margin: 0; font-size: 2.4rem; }
-header.title p { margin: .3rem 0 0; color: var(--muted); }
-h2 { margin-top: 3.2rem; padding-top: .6rem; border-top: 1px solid var(--line); font-size: 1.7rem; }
-h3 { margin-top: 2rem; font-size: 1.25rem; }
-h4 { margin-top: 1.4rem; font-size: 1.05rem; }
-a { color: var(--accent); }
-code, kbd, .mono { font-family: ui-monospace, "Cascadia Mono", Consolas, Menlo, monospace; }
-code { background: var(--code-bg); padding: .1em .35em; border-radius: 4px; font-size: .92em; }
-pre { background: var(--code-bg); padding: .9rem 1.1rem; border-radius: 8px; overflow-x: auto; line-height: 1.45; }
-pre code { background: none; padding: 0; }
-kbd { background: var(--panel); border: 1px solid var(--line); border-bottom-width: 2px; border-radius: 5px; padding: .05em .45em; font-size: .88em; white-space: nowrap; }
-table { border-collapse: collapse; width: 100%; margin: 1rem 0; font-size: .95rem; }
-@media (max-width: 62rem) { table { display: block; overflow-x: auto; } }
-th, td { border: 1px solid var(--line); padding: .4rem .65rem; text-align: left; vertical-align: top; }
-th { background: var(--panel); }
-tbody tr:nth-child(even) { background: color-mix(in srgb, var(--panel) 55%, transparent); }
-.callout { border-left: 4px solid var(--accent); background: var(--note-bg); padding: .7rem 1rem; border-radius: 0 8px 8px 0; margin: 1.2rem 0; }
-.callout.warn { border-color: var(--amber); background: var(--warn-bg); }
-.callout.tip { border-color: var(--good); background: var(--tip-bg); }
-.callout strong.label { display: block; font-size: .8rem; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); margin-bottom: .15rem; }
-.swatch { display: inline-block; width: .85em; height: .85em; border-radius: 2px; vertical-align: baseline; margin-right: .25em; }
-.steps { counter-reset: step; list-style: none; padding-left: 0; }
-.steps > li { counter-increment: step; position: relative; padding-left: 2.6rem; margin: .8rem 0; }
-.steps > li::before { content: counter(step); position: absolute; left: 0; top: 0; width: 1.8rem; height: 1.8rem; border-radius: 50%; background: var(--accent); color: #fff; text-align: center; font-weight: 700; line-height: 1.8rem; }
-figure { margin: 1.5rem 0; }
-figure svg { max-width: 100%; height: auto; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; }
-figcaption { color: var(--muted); font-size: .9rem; margin-top: .3rem; }
-.sticking { font-family: ui-monospace, "Cascadia Mono", Consolas, Menlo, monospace; white-space: nowrap; }
-.sticking b { color: var(--accent); }
-.nard { color: var(--accent); font-weight: 700; }
-#rudiment-filter { width: 100%; max-width: 22rem; padding: .45rem .7rem; font: inherit; color: var(--text); background: var(--panel); border: 1px solid var(--line); border-radius: 8px; }
-.cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr)); gap: 1rem; margin: 1.2rem 0; }
-.card { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: .9rem 1rem; }
-.card h4 { margin: 0 0 .3rem; }
-.card p { margin: 0; font-size: .93rem; color: var(--muted); }
-@media (max-width: 62rem) {
-  .layout { grid-template-columns: minmax(0, 1fr); }
-  nav#toc { position: static; height: auto; border-right: 0; border-bottom: 1px solid var(--line); }
-  main { padding: 1.5rem 1.2rem 4rem; }
-}
-@media print {
-  nav#toc { display: none; }
-  .layout { display: block; }
-  main { max-width: none; padding: 0; }
-  h2 { break-before: page; }
-  a { color: inherit; }
-  tbody tr:nth-child(even) { background: none; }
-}
-</style>
+{{STYLE}}</style>
 </head>
 <body>
 <div class="layout">
@@ -154,7 +79,7 @@ figcaption { color: var(--muted); font-size: .9rem; margin-top: .3rem; }
 <tr><td>Linux</td><td>Unpack the archive and run <code>roll-model</code>. The ALSA libraries must be present (<code>libasound2</code>); building from source needs <code>libasound2-dev</code> and <code>pkg-config</code>.</td></tr>
 <tr><td>macOS</td><td>No extra requirements (CoreMIDI and CoreAudio). Build from source with Rust.</td></tr>
 </tbody></table>
-<p>The archive also holds this manual (<code>roll-model-manual.html</code>), the README, the changelog and the <code>examples</code> folder with a sample score. To open a score at start-up, give its path as the only argument: <code>roll-model examples/basic_rock_beat.musicxml</code>.</p>
+<p>The archive also holds this manual (<code>roll-model-manual.html</code>), a developer guide (<code>roll-model-developer-guide.html</code>) for anyone who wants to change the program, the licence and third-party notices, the README, the changelog and the <code>examples</code> folder with a sample score. To open a score at start-up, give its path as the only argument: <code>roll-model examples/basic_rock_beat.musicxml</code>.</p>
 <h4>Building from source</h4>
 <p>Install a recent Rust from <a href="https://rustup.rs">rustup.rs</a> (1.85 is the oldest that can read the dependencies; 1.99 is the version it is tested with), then:</p>
 <pre><code>cargo run --release                                  # start empty
