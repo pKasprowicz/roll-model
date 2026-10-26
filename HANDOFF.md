@@ -1,4 +1,4 @@
-# Handoff — Drum Tutor
+# Handoff — Roll Model
 
 State of the project at handoff (2026-10-24) and what to do next. Read this before changing code.
 
@@ -25,7 +25,7 @@ First real build and smoke test done on 2026-10-24 (Windows 11, `x86_64-pc-windo
 | Keyboard pads (`app.rs::keyboard_pads`) | Scripted take with synthetic key presses: 20 perfect / 12 good / 1 ok / 11 missed / 1 extra as expected | Medium (frame-time stamps, see below) |
 | `midi.rs` | Compiles. The test machine had no MIDI ports, so capture and port selection were not exercised | Low |
 | `metronome.rs` | Compiles and the thread starts with each take. The click was **not heard**; audio output and timing are unchecked | Low |
-| Listen (`playback.rs`, `synth.rs`, `app.rs`) | Unit tests. Run on Windows with the per-application audio meter: the `drum-tutor` session is silent, starts 0.5 s after `L`, lasts the length of the music, and is silent at once after a stop; the MIDI route into *Microsoft GS Wavetable Synth* also sounds; the "output off" and "MIDI port not found" errors show. **Nobody listened to it**, so how the synthesised kit sounds is unjudged | Medium-high |
+| Listen (`playback.rs`, `synth.rs`, `app.rs`) | Unit tests. Run on Windows with the per-application audio meter: the `roll-model` session is silent, starts 0.5 s after `L`, lasts the length of the music, and is silent at once after a stop; the MIDI route into *Microsoft GS Wavetable Synth* also sounds; the "output off" and "MIDI port not found" errors show. **Nobody listened to it**, so how the synthesised kit sounds is unjudged | Medium-high |
 | Real V31 timing, note map, latency | Not tested | Unknown |
 
 ## Todo for the next session
@@ -53,13 +53,13 @@ The five items requested after 0.3.0 are implemented, tested, and were checked i
 - [ ] The click is implemented twice (a sine blip in `metronome::click_audio`, used by takes and by the player); `Metronome` (takes, calibration) and `Player` (Listen, metronome tab) are two threads with separate loops. Merging them would remove the duplication but touches the take timing, which works.
 - [ ] Shortcuts (`R`, `L`, `K`, `M`, keyboard pads) are ignored while a widget has keyboard focus (after Tab); `Esc` clears it.
 
-### Pick a better name (a decision first)
+### Name
 
-The user wants a more badass name than "Drum Tutor". A brainstorm in three flavours (silly, Japanese, word-play) is stored in [`docs/name-ideas.md`](docs/name-ideas.md), with the crates.io availability of each name, a shortlist (Raijin, Oni-Sensei, Ride or Die) and a rename checklist. Nothing is decided.
+The application was renamed from "Drum Tutor" to **Roll Model** (crate and binary `roll-model`). The settings folder moved to `RollModel` / `roll-model` with a one-time copy from the old one (`Config::migrate`, tested). The brainstorm is kept in [`docs/name-ideas.md`](docs/name-ideas.md).
 
-- [ ] Ask the user which name (or none). Do not rename before they choose.
-- [ ] Check the chosen name (GitHub, web, trademark, domain) before using it.
-- [ ] Rename everything listed in the document, **including a settings-folder migration** with a test, so nobody loses their settings and recent scores. Release as a minor version with a changelog note.
+- [ ] Check the name (GitHub, web, trademark, domain) before shipping it widely.
+- [ ] Rename the local folder `D:\projects\DrumTutor` if wanted (the GitHub repository is already `roll-model`).
+- [ ] Release it as a minor version (0.5.0): the changelog entry is under `[Unreleased]`.
 
 ## First tasks
 
@@ -165,6 +165,6 @@ config.rs      key = value settings file, auto-saved when Config changes
   - the score layout (`render.rs`): fixed bars per row, the alignment bar, zoom independence, mixed bar lengths, too narrow a window, degenerate scores, every bar in exactly one row;
   - the synthesised kit (`synth.rs`): bounded, decaying, deterministic samples, the spectral guard for the cymbals, the WAV loader (bit depths, channels, resampling, bad files) and the kit's fallback to the built-in sound;
   - mixer settings (`Config::effective_gain`, clamping and defaults of the new keys) and the listing of sound outputs.
-- Listening has no automated test of the real outputs. To check them on Windows, play the sample with `cargo run --release` and read the per-application peak meter of the default output device (Core Audio `IAudioSessionManager2` → `IAudioMeterInformation`, e.g. from PowerShell with C# COM interop): the `drum-tutor` session must stay silent until about 0.5 s after pressing `L` and be silent again after stopping. The device-wide meter also hears every other application, so use the per-application one.
+- Listening has no automated test of the real outputs. To check them on Windows, play the sample with `cargo run --release` and read the per-application peak meter of the default output device (Core Audio `IAudioSessionManager2` → `IAudioMeterInformation`, e.g. from PowerShell with C# COM interop): the `roll-model` session must stay silent until about 0.5 s after pressing `L` and be silent again after stopping. The device-wide meter also hears every other application, so use the per-application one.
 - `examples/basic_rock_beat.musicxml` is generated in MuseScore style (4 bars, 100 BPM, `midi-unpitched` instruments, accents, a tom fill). Tests depend on its exact contents. If you edit it, update `musicxml::tests::parses_sample`.
 - There are no UI tests. Add real-world exports (MuseScore 4, Guitar Pro 8, Sibelius) to `examples/` as you find edge cases.

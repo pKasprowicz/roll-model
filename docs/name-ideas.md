@@ -1,3 +1,5 @@
+> **Decided:** the application is called **Roll Model** (it was "Drum Tutor"). This document is kept as the record of the brainstorm.
+
 # Name ideas
 
 Status: **undecided.** The app is still called "Drum Tutor" (crate `drum-tutor`), a working title. These are proposals from 2026-10-24, kept for later. The brief was a more badass name in three flavours: silly, Japanese, word-play. They need not be mixed.

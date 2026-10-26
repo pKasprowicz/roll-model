@@ -28,12 +28,12 @@ pub struct InputHandle {
 }
 
 pub fn list_inputs() -> Result<Vec<String>, String> {
-    let mi = MidiInput::new("drum-tutor-list").map_err(|e| e.to_string())?;
+    let mi = MidiInput::new("roll-model-list").map_err(|e| e.to_string())?;
     Ok(mi.ports().iter().filter_map(|p| mi.port_name(p).ok()).collect())
 }
 
 pub fn list_outputs() -> Result<Vec<String>, String> {
-    let mo = MidiOutput::new("drum-tutor-list").map_err(|e| e.to_string())?;
+    let mo = MidiOutput::new("roll-model-list").map_err(|e| e.to_string())?;
     Ok(mo.ports().iter().filter_map(|p| mo.port_name(p).ok()).collect())
 }
 
@@ -51,7 +51,7 @@ fn pick<'a>(names: impl Iterator<Item = (usize, &'a str)> + Clone, wanted: &str)
 }
 
 pub fn connect_input(wanted: &str, queue: EventQueue) -> Result<InputHandle, String> {
-    let mut mi = MidiInput::new("drum-tutor").map_err(|e| e.to_string())?;
+    let mut mi = MidiInput::new("roll-model").map_err(|e| e.to_string())?;
     // Drop SysEx, clock and active-sensing traffic.
     mi.ignore(Ignore::All);
     let ports = mi.ports();
@@ -64,7 +64,7 @@ pub fn connect_input(wanted: &str, queue: EventQueue) -> Result<InputHandle, Str
     let conn = mi
         .connect(
             &port,
-            "drum-tutor-in",
+            "roll-model-in",
             move |_stamp, msg, _| {
                 let at = Instant::now();
                 // Note-on with velocity > 0 on any channel, and the hi-hat pedal
@@ -85,13 +85,13 @@ pub fn connect_input(wanted: &str, queue: EventQueue) -> Result<InputHandle, Str
 }
 
 pub fn connect_output(wanted: &str) -> Result<MidiOutputConnection, String> {
-    let mo = MidiOutput::new("drum-tutor").map_err(|e| e.to_string())?;
+    let mo = MidiOutput::new("roll-model").map_err(|e| e.to_string())?;
     let ports = mo.ports();
     let names: Vec<String> = ports.iter().map(|p| mo.port_name(p).unwrap_or_default()).collect();
     let idx = pick(names.iter().map(|s| s.as_str()).enumerate(), wanted)
         .ok_or_else(|| format!("MIDI output matching \"{wanted}\" not found"))?;
     let port = ports[idx].clone();
-    mo.connect(&port, "drum-tutor-out")
+    mo.connect(&port, "roll-model-out")
         .map_err(|e| format!("could not open MIDI output: {e}"))
 }
 

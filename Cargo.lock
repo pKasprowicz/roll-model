@@ -1037,19 +1037,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d8b14ccef22fc6f5a8f4d7d768562a182c04ce9a3b3157b91390b52ddfdf1a76"
 
 [[package]]
-name = "drum-tutor"
-version = "0.4.1"
-dependencies = [
- "eframe",
- "egui",
- "hound",
- "midir",
- "rfd",
- "rodio",
- "zip",
-]
-
-[[package]]
 name = "ecolor"
 version = "0.29.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2977,6 +2964,19 @@ checksum = "6006a627c1a38d37f3d3a85c6575418cfe34a5392d60a686d0071e1c8d427acb"
 dependencies = [
  "cpal",
  "thiserror 1.0.69",
+]
+
+[[package]]
+name = "roll-model"
+version = "0.4.1"
+dependencies = [
+ "eframe",
+ "egui",
+ "hound",
+ "midir",
+ "rfd",
+ "rodio",
+ "zip",
 ]
 
 [[package]]

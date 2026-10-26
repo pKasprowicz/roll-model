@@ -1,4 +1,4 @@
-# Drum Tutor
+# Roll Model
 
 Rust (eframe/egui 0.29) desktop app: MusicXML drum score + Roland V31 MIDI capture + performance grading.
 

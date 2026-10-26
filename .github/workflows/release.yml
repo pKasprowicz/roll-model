@@ -47,15 +47,15 @@ jobs:
         run: cargo build --release
       - name: Package
         run: |
-          name="drum-tutor-${GITHUB_REF_NAME}-linux-x86_64"
+          name="roll-model-${GITHUB_REF_NAME}-linux-x86_64"
           mkdir "$name"
-          cp target/release/drum-tutor README.md CHANGELOG.md "$name/"
+          cp target/release/roll-model README.md CHANGELOG.md "$name/"
           cp -r examples "$name/"
           tar czf "$name.tar.gz" "$name"
       - uses: actions/upload-artifact@v4
         with:
           name: linux
-          path: drum-tutor-*.tar.gz
+          path: roll-model-*.tar.gz
 
   build-windows:
     name: Build Windows (self-hosted)
@@ -73,15 +73,15 @@ jobs:
       - name: Package
         shell: pwsh
         run: |
-          $name = "drum-tutor-$env:GITHUB_REF_NAME-windows-x86_64"
+          $name = "roll-model-$env:GITHUB_REF_NAME-windows-x86_64"
           New-Item -ItemType Directory $name | Out-Null
-          Copy-Item target/release/drum-tutor.exe, README.md, CHANGELOG.md $name
+          Copy-Item target/release/roll-model.exe, README.md, CHANGELOG.md $name
           Copy-Item examples $name -Recurse
           Compress-Archive $name "$name.zip"
       - uses: actions/upload-artifact@v4
         with:
           name: windows
-          path: drum-tutor-*.zip
+          path: roll-model-*.zip
 
   publish:
     name: Publish GitHub release

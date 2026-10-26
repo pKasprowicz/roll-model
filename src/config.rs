@@ -1,10 +1,11 @@
 //! Persistent settings, stored as a small `key = value` text file:
-//! Windows `%APPDATA%\DrumTutor\config.txt`, macOS
-//! `~/Library/Application Support/DrumTutor/config.txt`, otherwise
-//! `$XDG_CONFIG_HOME/drum-tutor/config.txt` (or `~/.config/...`).
+//! Windows `%APPDATA%\RollModel\config.txt`, macOS
+//! `~/Library/Application Support/RollModel/config.txt`, otherwise
+//! `$XDG_CONFIG_HOME/roll-model/config.txt` (or `~/.config/...`).
+//! Settings of the application's former name (Drum Tutor) are copied across once.
 
 use std::collections::{BTreeMap, BTreeSet};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use crate::analysis::Tolerances;
 use crate::drums::{format_note_list, parse_note_list, Lane, NoteMap};
@@ -130,21 +131,60 @@ impl Config {
         self.recent_files.truncate(MAX_RECENT);
     }
 
-    pub fn path() -> Option<PathBuf> {
+    /// The settings folder of the application called `windows_mac` (Windows and
+    /// macOS) or `xdg` (elsewhere).
+    fn dir_named(windows_mac: &str, xdg: &str) -> Option<PathBuf> {
         if cfg!(windows) {
-            std::env::var_os("APPDATA").map(|a| PathBuf::from(a).join("DrumTutor").join("config.txt"))
+            std::env::var_os("APPDATA").map(|a| PathBuf::from(a).join(windows_mac))
         } else if cfg!(target_os = "macos") {
-            std::env::var_os("HOME")
-                .map(|h| PathBuf::from(h).join("Library/Application Support/DrumTutor/config.txt"))
+            std::env::var_os("HOME").map(|h| PathBuf::from(h).join("Library/Application Support").join(windows_mac))
         } else {
             std::env::var_os("XDG_CONFIG_HOME")
                 .map(PathBuf::from)
                 .or_else(|| std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".config")))
-                .map(|p| p.join("drum-tutor").join("config.txt"))
+                .map(|p| p.join(xdg))
         }
     }
 
+    fn dir() -> Option<PathBuf> {
+        Config::dir_named("RollModel", "roll-model")
+    }
+
+    /// Where the settings were kept when the application was called Drum Tutor.
+    fn legacy_dir() -> Option<PathBuf> {
+        Config::dir_named("DrumTutor", "drum-tutor")
+    }
+
+    pub fn path() -> Option<PathBuf> {
+        Config::dir().map(|d| d.join("config.txt"))
+    }
+
+    /// Copies the settings folder (settings, sounds) of the old name to the new
+    /// one, if only the old one exists. The old folder is left alone.
+    fn migrate(old: &Path, new: &Path) -> std::io::Result<()> {
+        if new.exists() || !old.is_dir() {
+            return Ok(());
+        }
+        fn copy(from: &Path, to: &Path) -> std::io::Result<()> {
+            std::fs::create_dir_all(to)?;
+            for entry in std::fs::read_dir(from)? {
+                let entry = entry?;
+                let target = to.join(entry.file_name());
+                if entry.file_type()?.is_dir() {
+                    copy(&entry.path(), &target)?;
+                } else {
+                    std::fs::copy(entry.path(), target)?;
+                }
+            }
+            Ok(())
+        }
+        copy(old, new)
+    }
+
     pub fn load() -> Config {
+        if let (Some(old), Some(new)) = (Config::legacy_dir(), Config::dir()) {
+            let _ = Config::migrate(&old, &new);
+        }
         Config::path()
             .and_then(|p| std::fs::read_to_string(p).ok())
             .map(|t| Config::from_text(&t))
@@ -161,7 +201,7 @@ impl Config {
     }
 
     pub fn to_text(&self) -> String {
-        let mut s = String::from("# Drum Tutor settings\n");
+        let mut s = String::from("# Roll Model settings\n");
         let mut kv = |k: &str, v: String| s.push_str(&format!("{k} = {v}\n"));
         kv("midi_in_port", self.midi_in_port.clone());
         kv("midi_out_port", self.midi_out_port.clone());
@@ -289,6 +329,32 @@ impl Config {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn settings_of_the_old_name_are_copied_to_the_new_folder_once() {
+        let base = std::env::temp_dir().join(format!("roll-model-migrate-{}", std::process::id()));
+        let (old, new) = (base.join("DrumTutor"), base.join("RollModel"));
+        let _ = std::fs::remove_dir_all(&base);
+        std::fs::create_dir_all(old.join("sounds")).unwrap();
+        std::fs::write(old.join("config.txt"), "latency_ms = 7\nrecent = a.musicxml\n").unwrap();
+        std::fs::write(old.join("sounds").join("Kick.wav"), b"wav").unwrap();
+
+        Config::migrate(&old, &new).unwrap();
+        let c = Config::from_text(&std::fs::read_to_string(new.join("config.txt")).unwrap());
+        assert_eq!(c.latency_ms, 7.0);
+        assert_eq!(c.recent_files, ["a.musicxml"]);
+        assert!(new.join("sounds").join("Kick.wav").is_file());
+        assert!(old.join("config.txt").is_file(), "the old folder is left alone");
+
+        // Settings changed under the new name are never overwritten by the old ones.
+        std::fs::write(new.join("config.txt"), "latency_ms = 9\n").unwrap();
+        Config::migrate(&old, &new).unwrap();
+        assert_eq!(std::fs::read_to_string(new.join("config.txt")).unwrap(), "latency_ms = 9\n");
+        // Nothing to migrate is not an error.
+        Config::migrate(&base.join("missing"), &base.join("other")).unwrap();
+        assert!(!base.join("other").exists());
+        let _ = std::fs::remove_dir_all(&base);
+    }
 
     #[test]
     fn roundtrip() {
