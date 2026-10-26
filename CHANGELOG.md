@@ -5,6 +5,7 @@ All notable changes are recorded here. The format follows [Keep a Changelog](htt
 ## [Unreleased]
 
 ### Changed
+- Releases now include `LICENSE` and **`THIRD_PARTY_NOTICES.txt`**, the licence texts and copyright notices of all libraries and bundled fonts, as their licences require for binary copies. The README and manual say that the product names they mention are trademarks of their owners.
 - The licence is now the **PolyForm Noncommercial License 1.0.0** (file `LICENSE`): free for any noncommercial purpose, no commercial use. Earlier releases stay under MIT.
 
 ### Added
