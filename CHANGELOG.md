@@ -4,6 +4,9 @@ All notable changes are recorded here. The format follows [Keep a Changelog](htt
 
 ## [Unreleased]
 
+### Changed
+- The licence is now the **PolyForm Noncommercial License 1.0.0** (file `LICENSE`): free for any noncommercial purpose, no commercial use. Earlier releases stay under MIT.
+
 ### Added
 - **Rudiments tab** between Score and Metronome: the 40 PAS international drum rudiments (rolls, diddles, flams, drags; the original NARD Standard 26 are marked). Pick one from the list (family groups, search, "original 26 only") or with Prev/Next, repeat it with the *repeats* slider instead of choosing measures, choose which hand leads (right, left, alternating), and Listen, Record, count in, click and loop as on the Score tab. The rudiment is drawn on the usual two staves with the sticking (R and L, the grace notes of flams and drags as small letters) under the notes. The tempo is in BPM and remembered per rudiment. The multiple bounce (buzz) roll can only be listened to. The catalogue and where it comes from are in `docs/rudiments.md`.
 - Grading of rudiments: the hit window follows the spacing of the notes (45 % of the gap to the neighbours, not less than the "perfect" tolerance), the Results tab has a **Hands** table, and the feedback says when one hand is late or softer than the other. A drag's two grace notes are expected at different times before the main note.

@@ -165,6 +165,10 @@ Every audio and MIDI path adds some delay. Use **Settings → Timing → Calibra
 
 Partwise MusicXML 2.0–4.0: multiple voices (`backup`/`forward`), chords, tempo changes (`sound tempo` or metronome marks), time-signature changes, pickup bars, repeats with 1st/2nd endings (expanded by default), ties, accents, ghost notes (parenthesised noteheads), grace notes, notehead shapes. Instruments are identified from `midi-unpitched` (General MIDI), then the instrument name, then staff position and notehead. Not supported: D.S./D.C./coda jumps and `score-timewise` files.
 
+## License
+
+Roll Model is released under the [PolyForm Noncommercial License 1.0.0](LICENSE): anyone may use, study, change and share it for any noncommercial purpose (personal use, hobby, learning, teaching without charge, research, charities, schools), and nobody may use it to make money. It is source-available rather than open source in the OSI sense, because the licence excludes commercial use. Versions published before this change (up to 0.5.0) were released under the MIT licence and stay under it.
+
 ## Versioning
 
 The project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html). The version lives in `Cargo.toml`, each release is tagged `vMAJOR.MINOR.PATCH`, and every change that users can see is listed in [CHANGELOG.md](CHANGELOG.md). Moving the tag `preview` onto a commit of `develop` (`git tag -f preview && git push -f origin preview`) builds a *preview* release from it: a GitHub pre-release, replaced each time, that may be unfinished.

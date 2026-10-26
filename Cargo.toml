@@ -3,7 +3,7 @@ name = "roll-model"
 version = "0.5.0"
 edition = "2021"
 description = "Load MusicXML drum scores, capture MIDI from a Roland V31 and grade the performance"
-license = "MIT"
+license = "PolyForm-Noncommercial-1.0.0"
 
 [features]
 default = ["audio"]
