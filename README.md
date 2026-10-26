@@ -140,7 +140,7 @@ Partwise MusicXML 2.0–4.0: multiple voices (`backup`/`forward`), chords, tempo
 
 ## Versioning
 
-The project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html). The version lives in `Cargo.toml`, each release is tagged `vMAJOR.MINOR.PATCH`, and every change that users can see is listed in [CHANGELOG.md](CHANGELOG.md).
+The project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html). The version lives in `Cargo.toml`, each release is tagged `vMAJOR.MINOR.PATCH`, and every change that users can see is listed in [CHANGELOG.md](CHANGELOG.md). Moving the tag `preview` onto a commit of `develop` (`git tag -f preview && git push -f origin preview`) builds a *preview* release from it: a GitHub pre-release, replaced each time, that may be unfinished.
 
 What counts as the public interface: the settings file keys, the CSV export columns, and the MusicXML features listed above. While the major version is 0, a minor bump (`0.x.0`) may break any of them and a patch bump (`0.1.x`) is for fixes only. From 1.0.0, breaking one of them needs a major bump.
 

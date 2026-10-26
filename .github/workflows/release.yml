@@ -3,14 +3,22 @@ name: Release
 on:
   push:
     branches: [main]
-    tags: ["v*.*.*"]
+    # `vX.Y.Z` is a release. `preview` is moved onto a commit of develop (git tag -f preview;
+    # git push -f origin preview) to build a preview release from it.
+    tags: ["v*.*.*", "preview"]
 
 permissions:
   contents: write
 
+# A newer preview replaces one that is still building.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref == 'refs/tags/preview' }}
+
 jobs:
   # A branch push of a commit that also carries a release tag is covered by the
-  # tag run, so only untagged branch pushes and tag pushes build.
+  # tag run, so only untagged branch pushes and tag pushes build. The `preview`
+  # tag builds only when its commit is on develop.
   plan:
     name: Decide whether to build
     runs-on: ubuntu-latest
@@ -22,7 +30,14 @@ jobs:
           fetch-depth: 0
       - id: decide
         run: |
-          if [ "$GITHUB_REF_TYPE" = "tag" ] || [ -z "$(git tag --points-at HEAD --list 'v*.*.*')" ]; then
+          if [ "$GITHUB_REF_TYPE" = "tag" ] && [ "$GITHUB_REF_NAME" = "preview" ]; then
+            if git merge-base --is-ancestor HEAD origin/develop; then
+              echo "build=true" >> "$GITHUB_OUTPUT"
+            else
+              echo "::warning::The preview tag is not on the develop branch, so nothing was built."
+              echo "build=false" >> "$GITHUB_OUTPUT"
+            fi
+          elif [ "$GITHUB_REF_TYPE" = "tag" ] || [ -z "$(git tag --points-at HEAD --list 'v*.*.*')" ]; then
             echo "build=true" >> "$GITHUB_OUTPUT"
           else
             echo "build=false" >> "$GITHUB_OUTPUT"
@@ -85,7 +100,7 @@ jobs:
 
   publish:
     name: Publish GitHub release
-    if: startsWith(github.ref, 'refs/tags/v')
+    if: startsWith(github.ref, 'refs/tags/v') || github.ref == 'refs/tags/preview'
     needs: [build-linux, build-windows]
     runs-on: ubuntu-latest
     steps:
@@ -94,6 +109,20 @@ jobs:
           path: dist
           merge-multiple: true
       - uses: softprops/action-gh-release@v2
+        if: startsWith(github.ref, 'refs/tags/v')
         with:
           files: dist/*
           generate_release_notes: true
+      # The same release is updated each time: its files are replaced and it
+      # points at the newest preview commit.
+      - name: Short commit id
+        if: github.ref == 'refs/tags/preview'
+        id: sha
+        run: echo "short=${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+      - uses: softprops/action-gh-release@v2
+        if: github.ref == 'refs/tags/preview'
+        with:
+          name: Preview ${{ steps.sha.outputs.short }}
+          body: Preview build of the develop branch at commit ${{ steps.sha.outputs.short }}. It may be unfinished; use the latest vX.Y.Z release for everyday use.
+          prerelease: true
+          files: dist/*
