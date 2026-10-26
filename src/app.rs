@@ -4,6 +4,7 @@ mod controls;
 mod metro;
 mod mixer;
 mod rudiment;
+mod trigger;
 
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use std::path::{Path, PathBuf};
@@ -99,6 +100,10 @@ impl Parked {
     }
 }
 
+/// Height of the line above the score that shows the count-in and the take's figures, with room
+/// above and below the big count-in number.
+const TAKE_LINE_HEIGHT: f32 = 42.0;
+
 /// A take of a rudiment counts as clean from this overall score on.
 const CLEAN_TAKE: f64 = 85.0;
 
@@ -188,6 +193,10 @@ pub struct DrumApp {
     score_gen: u32,
     /// The Rudiments tab's own state (the chosen rudiment itself is in `cfg`).
     rud: rudiment::State,
+    /// The start trigger: two hits in a row start a recording; `trigger_learn` waits for the
+    /// hit that chooses one of its two instruments.
+    trigger: crate::trigger::Detector,
+    trigger_learn: Option<crate::trigger::Slot>,
     score: Option<Score>,
     score_path: Option<PathBuf>,
     status: String,
@@ -289,6 +298,8 @@ impl DrumApp {
             parked: Parked::new(),
             score_gen: 0,
             rud: rudiment::State::default(),
+            trigger: crate::trigger::Detector::default(),
+            trigger_learn: None,
             score: None,
             score_path: None,
             status: String::new(),
@@ -375,6 +386,12 @@ impl DrumApp {
 
         if let Some(cal) = self.calibration.as_mut() {
             cal.hits.push(signed_secs(ev.at, cal.zero));
+        }
+        // A hit that belongs to the start trigger is no note of the take it starts.
+        if let Some(lane) = lane {
+            if self.handle_trigger(lane, ev.at) {
+                return;
+            }
         }
         let latency = self.cfg.latency_ms / 1000.0;
         if let (Some(take), Some(lane)) = (self.take.as_mut(), lane) {
@@ -1159,10 +1176,12 @@ impl DrumApp {
     /// The take's live figures, the colour legend and the score with the notes played, shared by
     /// the Score and Rudiments tabs.
     fn score_body(&mut self, ui: &mut egui::Ui, running: bool, n_measures: usize) {
-        // Count-in / live stats line
-        if let Some(take) = self.take.as_ref() {
-            let r = &take.report;
-            ui.horizontal(|ui| {
+        // Count-in / live stats line. Its height is reserved (the big count-in number is taller
+        // than the rest), also with no take, so nothing below it moves when a take starts or ends.
+        ui.horizontal(|ui| {
+            ui.set_min_height(TAKE_LINE_HEIGHT);
+            if let Some(take) = self.take.as_ref() {
+                let r = &take.report;
                 if take.running {
                     let el = signed_secs(Instant::now(), take.zero);
                     if el < 0.0 {
@@ -1189,8 +1208,8 @@ impl DrumApp {
                         r.std_dt_ms
                     ));
                 }
-            });
-        }
+            }
+        });
         ui.horizontal(|ui| {
             let legend = |ui: &mut egui::Ui, c: Color32, t: &str| {
                 ui.label(RichText::new("■").color(c));
@@ -1207,6 +1226,11 @@ impl DrumApp {
                 ui.label(RichText::new(msg).small().color(render::AMBER));
             }
         });
+        // On a line of its own: it grows while the trigger waits for the second hit.
+        if let Some((text, armed)) = self.trigger_hint() {
+            let (color, text) = if armed { (render::GREEN, format!("{text}: waiting for the second hit")) } else { (ui.visuals().weak_text_color(), text) };
+            ui.label(RichText::new(text.trim_start_matches("· ")).small().color(color));
+        }
         ui.separator();
 
         let played = self.played_notes();
@@ -1489,6 +1513,9 @@ impl DrumApp {
             widgets::slider(ui, "", &mut self.cfg.hihat_cc_max, 1..=127, "", 1.0);
         });
         ui.label(RichText::new("The hi-hat counts as closed when the pedal is at least three quarters of the way to this value, otherwise open, so hits on the closed or open hi-hat note follow the pedal. Lower it if your pedal never reports up to 127: close the pedal, hit the hi-hat and read the pedal value in the monitor. Hits before any pedal message keep the note's own open/closed meaning.").small().weak());
+
+        ui.add_space(10.0);
+        self.settings_trigger(ui);
 
         ui.add_space(10.0);
         ui.heading("Pad-to-instrument mapping");

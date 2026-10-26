@@ -195,6 +195,7 @@ cargo build --release --no-default-features          # without the sound card (d
 <li>Play. Each hit is drawn on the &ldquo;You&rdquo; staff as it happens and coloured as soon as it is matched to a note. The line above the score shows the running grade.</li>
 <li>The take ends by itself one second after the last note, or press <kbd>Esc</kbd>. Notes after the point where you stopped are left ungraded.</li>
 </ol>
+<p><strong>Starting without the mouse.</strong> With the <a href="#set-midi">start trigger</a> switched on, two hits in a row (by default a crash, then a tom, within half a second) start the recording as <kbd>R</kbd> does, so you can begin with the sticks in your hands. It works on the Score and Rudiments tabs.</p>
 <p>Range, tempo and score are locked while a take records. Every finished take is added to the session history on the <a href="#results">Results</a> tab.</p>
 
 <h3 id="score-colours">Reading the colours</h3>
@@ -318,7 +319,18 @@ cargo build --release --no-default-features          # without the sound card (d
 <li><em>Input port</em>, <em>Refresh ports</em>, <em>Disconnect</em>.</li>
 <li>The <em>monitor</em> of incoming notes (latest first): channel, note, velocity, hi-hat pedal value and the instrument it maps to or <em>unmapped</em>.</li>
 <li><em>Hi-hat pedal value when closed</em> (see <a href="#hihat">Hi-hat pedal</a>).</li>
+<li>The <strong>start trigger</strong> (below).</li>
 <li>The <em>pad-to-instrument mapping</em> with <em>Learn</em> and <em>Reset to Roland V31 defaults</em>.</li>
+</ul>
+<h4>Start trigger</h4>
+<p>Starts a recording from the kit, so you do not have to let go of the sticks. Tick <em>Start recording with the two hits</em> and choose the <em>first hit</em> and the <em>second hit</em> instruments from the lists, or press <em>Learn</em> next to one and hit the pad. Then, on the Score or the Rudiments tab, hit the first instrument and, within <strong>half a second</strong>, the second one, with nothing else played in between: the recording starts with its count-in, exactly as if you had pressed <kbd>R</kbd>.</p>
+<ul>
+<li>The two hits are not graded; they are no part of the take.</li>
+<li>It does nothing on other tabs, and while a take is recording (so a crash and a tom in the music cannot restart it).</li>
+<li>A wrong order, a late second hit, or a hit of another instrument in between starts the wait over. Hitting the first instrument again restarts the half second.</li>
+<li>Under the score a grey line names the pair; it turns green while the program waits for the second hit.</li>
+<li>Choose instruments you do not play right before you start, for example a crash followed by a tom. The same instrument twice is allowed too.</li>
+<li>It is off until you switch it on. A closed (buzz) roll in the Rudiments tab cannot be recorded, so the trigger says so instead.</li>
 </ul>
 
 <h3 id="set-controller">Controller</h3>
@@ -491,7 +503,7 @@ ring  = A tempo -&gt; cc 48              # an LED ring that shows a value</code>
 <table>
 <thead><tr><th>Key</th><th>Action</th></tr></thead>
 <tbody>
-<tr><td><kbd>R</kbd></td><td>Record a take (needs a score or a gradable rudiment)</td></tr>
+<tr><td><kbd>R</kbd></td><td>Record a take (needs a score or a gradable rudiment); the start trigger does the same from the kit</td></tr>
 <tr><td><kbd>L</kbd></td><td>Listen / stop listening</td></tr>
 <tr><td><kbd>K</kbd></td><td>Click on or off</td></tr>
 <tr><td><kbd>M</kbd></td><td>Metronome start or stop</td></tr>
@@ -523,6 +535,7 @@ ring  = A tempo -&gt; cc 48              # an LED ring that shows a value</code>
 <tr><td><code>playback_audio</code>, <code>playback_volume</code>, <code>playback_midi</code>, <code>playback_channel</code></td><td>Listen</td></tr>
 <tr><td><code>audio_output</code></td><td>Sound device name (empty: system default)</td></tr>
 <tr><td><code>hihat_cc_max</code></td><td>Hi-hat pedal value when closed</td></tr>
+<tr><td><code>trigger_enabled</code>, <code>trigger_first</code>, <code>trigger_second</code></td><td>Start trigger: on or off, and the two instruments (names as in <code>map.Name</code>)</td></tr>
 <tr><td><code>keyboard_input</code>, <code>zoom</code>, <code>expand_repeats</code></td><td>General</td></tr>
 <tr><td><code>bars_per_row</code>, <code>layout_align_bar</code></td><td>Score layout</td></tr>
 <tr><td><code>recent</code> (repeated)</td><td>Recent scores, newest first</td></tr>

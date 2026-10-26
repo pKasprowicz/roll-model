@@ -6,6 +6,9 @@ All notable changes are recorded here. The format follows [Keep a Changelog](htt
 
 ## [Unreleased]
 
+### Added
+- **Start trigger**: two drum hits in a row start a recording on the Score and Rudiments tabs, so you can begin a take with sticks in your hands. Switch it on and choose the first and the second instrument (or *Learn* them by hitting the pads) on Settings → MIDI input. The second hit must come within 0.5 s of the first with nothing played in between. The trigger hits are not part of the take, and the trigger is off while a take records and on other tabs. A hint under the score shows the pair and when it is waiting for the second hit. New settings keys `trigger_enabled`, `trigger_first`, `trigger_second`.
+
 ## [0.6.0] - 2026-10-26
 
 Rudiments, a hardware controller, a new licence, and a user manual and developer guide in every release. Covered by unit tests (132); the Rudiments tab was looked at in the running app for two rudiments. Not yet tried with a real V31, a real controller, or by ear.

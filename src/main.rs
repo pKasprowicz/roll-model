@@ -16,6 +16,7 @@ mod render;
 mod rudiments;
 mod score;
 mod synth;
+mod trigger;
 mod widgets;
 mod xml;
 

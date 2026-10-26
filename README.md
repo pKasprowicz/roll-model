@@ -67,6 +67,8 @@ Run the unit tests (XML parser, MusicXML import, repeats, tempo maps, scoring): 
 5. Notes are coloured as you play: green = perfect, light green = good, amber = OK, orange = right time but wrong pad/zone (e.g. open instead of closed hi-hat), red = missed (score) or extra (your staff). Velocity is shown as bars under your staff; hover a hit for its exact offset.
 6. The **Results** tab has the full report, feedback, timing histogram, per-instrument table, session history and CSV export.
 
+**Start a recording with the sticks in your hands.** On **Settings → MIDI input → Start trigger** switch on *Start recording with the two hits* and choose a first and a second instrument (or press *Learn* and hit the pad). On the Score and Rudiments tabs, hitting the first and then the second within half a second, with nothing played in between, starts a take just as `R` does, with its count-in. The trigger hits are not part of the take, it is off while a take records, and it is off by default (a crash followed by a tom is the suggested pair).
+
 No kit at hand? Enable **Settings → General → Computer keyboard plays pads** (Z kick, X snare, C/V/B hi-hat closed/open/pedal, A S D F toms, Q W E cymbals).
 
 ## Rudiments
@@ -147,7 +149,7 @@ The Settings tab has five pages:
 
 | Page | What is on it |
 |---|---|
-| **MIDI input** | Input port, a monitor of incoming notes, the pad-to-instrument mapping (with *Learn*) |
+| **MIDI input** | Input port, a monitor of incoming notes, the start trigger, the pad-to-instrument mapping (with *Learn*) |
 | **Controller** | The Mackie Control surface: preset, port, monitor, your own presets |
 | **Timing** | Latency compensation and calibration, the perfect/good/hit-window tolerances |
 | **Sound** | Audio output device, MIDI output port, the metronome click, Listen (built-in kit and MIDI), the instrument mixer |
