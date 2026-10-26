@@ -832,8 +832,8 @@ impl DrumApp {
                     Some(h) => ui.label(RichText::new(format!("⏺ {}", h.port_name)).color(render::GREEN)),
                     None => ui.label(RichText::new("⏺ no MIDI input").color(render::RED)),
                 };
-                if let Some(label) = self.controller.label() {
-                    ui.label(RichText::new(label).small().weak());
+                if let Some((text, connected)) = self.controller.label(!self.cfg.controller_preset.is_empty()) {
+                    ui.label(RichText::new(text).color(if connected { render::GREEN } else { render::RED }));
                 }
                 if let Some((ev, lane)) = self.monitor.front() {
                     if ev.at.elapsed() < Duration::from_millis(1500) {
