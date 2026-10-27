@@ -6,6 +6,7 @@ mod app;
 mod config;
 mod control;
 mod controller;
+mod controller_layout;
 mod drums;
 mod loader;
 mod metronome;

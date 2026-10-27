@@ -1,5 +1,6 @@
 //! Application state and UI (Score / Metronome / Results / Settings tabs).
 
+mod controller_help;
 mod controls;
 mod metro;
 mod mixer;
@@ -252,6 +253,9 @@ pub struct DrumApp {
     /// The Mackie Control surface (X-Touch).
     controller: controls::Controller,
 
+    /// The help screen of the controller, opened from its indicator in the top bar.
+    controller_help: Option<controller_help::ControllerHelp>,
+
     /// The splash: `Some` until the start-up steps are done.
     startup: Option<startup::Startup>,
 }
@@ -335,6 +339,7 @@ impl DrumApp {
             metro_player: None,
             metro_control: Control::new(),
             controller: controls::Controller::new(),
+            controller_help: None,
             startup: None,
         }
     }
@@ -979,7 +984,11 @@ impl DrumApp {
                     None => ui.label(RichText::new("⏺ no MIDI input").color(render::RED)),
                 };
                 if let Some((text, connected)) = self.controller.label(!self.cfg.controller_preset.is_empty()) {
-                    ui.label(RichText::new(text).color(if connected { render::GREEN } else { render::RED }));
+                    let indicator = egui::Label::new(RichText::new(text).color(if connected { render::GREEN } else { render::RED })).sense(egui::Sense::click());
+                    let response = ui.add(indicator).on_hover_cursor(egui::CursorIcon::PointingHand).on_hover_text("Click to see what the controller's controls do");
+                    if response.clicked() {
+                        self.toggle_controller_help();
+                    }
                 }
                 if let Some((ev, lane)) = self.monitor.front() {
                     if ev.at.elapsed() < Duration::from_millis(1500) {
@@ -1886,6 +1895,8 @@ impl eframe::App for DrumApp {
             Tab::Results => self.results_tab(ui),
             Tab::Settings => self.settings_tab(ui),
         });
+
+        self.controller_help_window(ctx);
 
         if self.cfg != self.saved_cfg {
             if let Err(e) = self.cfg.save() {

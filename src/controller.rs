@@ -255,6 +255,90 @@ impl Action {
         }
     }
 
+    /// A few words for the control's label on the help screen.
+    pub fn title(self) -> String {
+        let group = |i: u8| group_label(i as usize);
+        match self {
+            Action::Record => "Record".into(),
+            Action::Listen => "Listen".into(),
+            Action::Stop => "Stop".into(),
+            Action::Click => "Click".into(),
+            Action::Loop => "Loop".into(),
+            Action::Notes => "Notes".into(),
+            Action::Metronome => "Metronome".into(),
+            Action::NextTab => "Next tab".into(),
+            Action::LoopWorstBar => "Worst bar".into(),
+            Action::RangeBack => "Range back".into(),
+            Action::RangeForward => "Range forward".into(),
+            Action::TapTempo => "Tap tempo".into(),
+            Action::TempoDown => "Tempo −".into(),
+            Action::TempoUp => "Tempo +".into(),
+            Action::DiscardTake => "Discard take".into(),
+            Action::TempoReset => "Reset tempo".into(),
+            Action::OpenScore => "Open score".into(),
+            Action::PrevRudiment => "Prev rudiment".into(),
+            Action::NextRudiment => "Next rudiment".into(),
+            Action::Shift => "Shift".into(),
+            Action::Mute(i) => format!("Mute {}", group(i)),
+            Action::Solo(i) => format!("Solo {}", group(i)),
+            Action::Audition(i) => format!("Play {}", group(i)),
+            Action::Tempo => "Tempo".into(),
+            Action::RangeFrom => "First bar".into(),
+            Action::RangeTo => "Last bar".into(),
+            Action::ClickVolume => "Click volume".into(),
+            Action::MusicVolume => "Music volume".into(),
+            Action::CountIn => "Count-in".into(),
+            Action::BarsPerRow => "Bars per row".into(),
+            Action::Gain(i) => format!("{} volume", group(i)),
+            Action::Repeats => "Repeats".into(),
+            Action::Lead => "Lead hand".into(),
+            Action::Score => "Recent scores".into(),
+            Action::Rudiment => "Rudiment".into(),
+        }
+    }
+
+    /// What the control does, in a sentence or two, for the help screen.
+    pub fn help(self) -> String {
+        let group = |i: u8| group_label(i as usize);
+        match self {
+            Action::Record => "Starts a recording of the selected measures (count-in first); pressed again, it stops. The light is on while it records.".into(),
+            Action::Listen => "Plays the selected measures through the speakers or the MIDI output; pressed again, it stops. The light is on while it plays.".into(),
+            Action::Stop => "Stops a recording, Listen and the metronome.".into(),
+            Action::Click => "Switches the click on or off while you listen or record. The count-in always sounds.".into(),
+            Action::Loop => "Listen repeats the selected measures instead of stopping at the end.".into(),
+            Action::Notes => "Switches the drum notes on or off in Listen, to hear the click alone.".into(),
+            Action::Metronome => "Starts or stops the free metronome.".into(),
+            Action::NextTab => "Goes to the next tab: Score, Rudiments, Metronome, Results, Settings.".into(),
+            Action::LoopWorstBar => "Selects the measure the last take went worst in and plays it in a loop.".into(),
+            Action::RangeBack => "Moves the selected measures back by their own length. On the Rudiments tab: the previous rudiment.".into(),
+            Action::RangeForward => "Moves the selected measures forward by their own length. On the Rudiments tab: the next rudiment.".into(),
+            Action::TapTempo => "Tap it in time: from the second tap on it sets the tempo (the metronome's tempo on the Metronome tab).".into(),
+            Action::TempoDown => "Lowers the practice tempo by 5 (per cent, or BPM for rudiments and the metronome).".into(),
+            Action::TempoUp => "Raises the practice tempo by 5 (per cent, or BPM for rudiments and the metronome).".into(),
+            Action::DiscardTake => "Throws the last take away, so it is not in the results and the history.".into(),
+            Action::TempoReset => "Back to the written tempo (100 %), the rudiment's starting tempo, or the metronome's default.".into(),
+            Action::OpenScore => "Opens the score chosen with the recent-scores encoder.".into(),
+            Action::PrevRudiment => "Chooses the previous rudiment.".into(),
+            Action::NextRudiment => "Chooses the next rudiment.".into(),
+            Action::Shift => "Hold it while turning an encoder: every step counts five times.".into(),
+            Action::Mute(i) => format!("Mutes or unmutes {} in Listen. The light is on while it is muted.", group(i)),
+            Action::Solo(i) => format!("Plays only the soloed instruments in Listen; {} is added or taken away. The light is on while it is solo.", group(i)),
+            Action::Audition(i) => format!("Plays a hit of {}, to hear its volume.", group(i)),
+            Action::Tempo => "The practice tempo: per cent of the written tempo, BPM for rudiments and on the Metronome tab. A fader sets it directly.".into(),
+            Action::RangeFrom => "The first measure of the selected measures. On the Rudiments tab: how often the rudiment repeats.".into(),
+            Action::RangeTo => "The last measure of the selected measures. On the Rudiments tab: which hand leads.".into(),
+            Action::ClickVolume => "The volume of the click.".into(),
+            Action::MusicVolume => "The volume of the drum notes in Listen.".into(),
+            Action::CountIn => "The count-in: none, one bar or two.".into(),
+            Action::BarsPerRow => "Bars per row of the score; none means as many as fit.".into(),
+            Action::Gain(i) => format!("The volume of {} in Listen.", group(i)),
+            Action::Repeats => "How often the rudiment repeats.".into(),
+            Action::Lead => "Which hand leads the rudiment: right, left or alternating.".into(),
+            Action::Score => "Browses the recent scores; push the encoder to open the one shown.".into(),
+            Action::Rudiment => "Browses the rudiments.".into(),
+        }
+    }
+
     /// Set to a position by a fader, or turned by an encoder.
     pub fn is_level(self) -> bool {
         matches!(
@@ -473,6 +557,14 @@ impl Preset {
         Ok(())
     }
 
+    /// The binding of `src` on `layer` (`None`: only the lines for every layer): the line for
+    /// the layer wins over one for all layers.
+    pub fn position(&self, layer: Option<&str>, src: Src) -> Option<usize> {
+        layer
+            .and_then(|l| self.binds.iter().position(|b| b.src == src && b.layer.as_deref() == Some(l)))
+            .or_else(|| self.binds.iter().position(|b| b.src == src && b.layer.is_none()))
+    }
+
     /// Drops lines that name a layer the preset does not declare, and reports repeated controls.
     fn validate(&mut self) {
         let known: Vec<String> = self.layers.iter().map(|l| l.0.clone()).collect();
@@ -624,11 +716,7 @@ impl Mapper {
     }
 
     fn find(&self, src: Src) -> Option<usize> {
-        let layer = self.layer_name();
-        let matches = |b: &Binding| b.src == src;
-        layer
-            .and_then(|l| self.preset.binds.iter().position(|b| matches(b) && b.layer.as_deref() == Some(l)))
-            .or_else(|| self.preset.binds.iter().position(|b| matches(b) && b.layer.is_none()))
+        self.preset.position(self.layer_name(), src)
     }
 
     /// What the message is bound to in the current layer, for the monitor.

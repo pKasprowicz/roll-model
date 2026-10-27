@@ -108,7 +108,7 @@ The **Metronome** tab is a click track that needs no score: tempo, beats per bar
 
 A control surface that speaks the Mackie Control protocol runs the program from the stool, with sticks in your hands. Built-in presets: **Behringer X-Touch Mini** (set it to *MC mode*) and **X-Touch Compact**. The X-Touch Mini is the default; choose another (or none) on **Settings → Controller**; the program finds its MIDI port by name (or pick the port there) and remembers the choice. The controller has its own MIDI port, separate from the drum module, so its buttons never count as hits. The page also has a monitor that shows every message the controller sends and what it is bound to. The presets have not been tried on a device yet: if a number in one is wrong, the monitor shows the real one.
 
-**X-Touch Mini.** The LAYER A / LAYER B buttons switch between two sets of controls (the program does this itself).
+**X-Touch Mini.** The LAYER A / LAYER B buttons switch between two sets of controls (the program does this itself). Click the controller indicator at the top right of the window for a picture of the Mini that shows what every control does on each layer (hover a control for details); the X-Touch Compact has one too.
 
 | Layer A: practice | |
 |---|---|

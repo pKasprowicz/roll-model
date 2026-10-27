@@ -79,6 +79,11 @@ impl Controller {
         self.presets.len()
     }
 
+    /// The preset in use and the layer the controller is on, while it is connected.
+    pub(super) fn live(&self) -> Option<(&controller::Preset, Option<&str>)> {
+        self.link.as_ref().map(|l| (l.mapper.preset(), l.mapper.layer_name()))
+    }
+
     /// For the top bar, like the MIDI input indicator: the port and the layer
     /// in use, and whether the controller is connected. `None` if none is chosen.
     pub(super) fn label(&self, chosen: bool) -> Option<(String, bool)> {
