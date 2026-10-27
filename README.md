@@ -112,8 +112,8 @@ A control surface that speaks the Mackie Control protocol runs the program from 
 
 | Layer A: practice | |
 |---|---|
-| Top row | Record · Listen · Stop · Click · Loop · Notes · Metronome tab · Next tab |
-| Bottom row | Loop the worst bar of the last take · Range back · Range forward (by the length of the range) · Tap tempo · Tempo −5 % · Tempo +5 % · Discard take · **Shift** (hold: encoders turn five times as far) |
+| Top row | **Shift** (hold: encoders turn five times as far) · Tempo −5 % · Tempo +5 % · Click · Tap tempo · Notes · Metronome tab · Next tab |
+| Bottom row | Loop the worst bar of the last take · Discard take · then what is printed beside the buttons: ◀◀ Range back · ▶▶ Range forward (by the length of the range) · LOOP · ■ Stop · ▶ Listen · ● Record |
 | Encoders 1–8 | Tempo (push: 100 %) · First measure · Last measure · Click volume · Music volume · Count-in bars · Bars per row · Recent scores (push: open) |
 | Fader | Tempo (it takes over once it reaches the current value, so nothing jumps) |
 

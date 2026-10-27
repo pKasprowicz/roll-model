@@ -16,8 +16,11 @@
 #   fader                 pitch bend, channel 1
 #   LAYER A / LAYER B     notes 84 / 85
 #
-# Layer A: Record · Listen · Stop · Click · Loop · Notes · Metronome tab · Next tab
-#          Loop worst bar · Range back · Range forward · Tap tempo · Tempo -5 % · Tempo +5 % · Discard take · Shift
+# Layer A: the bottom row has the symbols printed on the device, and does what they say:
+#          [MC] [ ] rewind fast-forward LOOP stop play record
+#          = Loop worst bar · Discard take · Range back · Range forward · Loop · Stop · Listen · Record
+#          (rewind and fast forward step the selected measures back and forward).
+#          The top row: Shift (hold) · Tempo -5 % · Tempo +5 % · Click · Tap tempo · Notes · Metronome tab · Next tab
 # Layer B: mute (top row) and solo (bottom row) of eight instrument groups, their volume on the encoders.
 #
 # While the Rudiments tab's practice is in use, layer A's measure controls mean something else
@@ -32,23 +35,25 @@ layer = A note 84
 layer = B note 85
 
 # ---- layer A: practice ----
-bind = A note 89 -> record
-bind = A note 90 -> listen
-bind = A note 40 -> stop
+# top row
+bind = A note 89 -> shift
+bind = A note 90 -> tempo_down
+bind = A note 40 -> tempo_up
 bind = A note 41 -> click
-bind = A note 42 -> loop
+bind = A note 42 -> tap_tempo
 bind = A note 43 -> notes
 bind = A note 44 -> metronome
 bind = A note 45 -> next_tab
 
+# bottom row: MC, (blank), then the printed rewind, fast forward, LOOP, stop, play, record
 bind = A note 87 -> loop_worst_bar
-bind = A note 88 -> range_back
-bind = A note 91 -> range_forward
-bind = A note 92 -> tap_tempo
-bind = A note 86 -> tempo_down
-bind = A note 93 -> tempo_up
-bind = A note 94 -> discard_take
-bind = A note 95 -> shift
+bind = A note 88 -> discard_take
+bind = A note 91 -> range_back
+bind = A note 92 -> range_forward
+bind = A note 86 -> loop
+bind = A note 93 -> stop
+bind = A note 94 -> listen
+bind = A note 95 -> record
 
 bind = A cc 16 rel -> tempo
 bind = A cc 17 rel -> range_from
@@ -62,14 +67,14 @@ bind = A note 32 -> tempo_reset
 bind = A note 39 -> open_score
 bind = A bend 1 -> tempo
 
-led = A record -> note 89
-led = A listen -> note 90
-led = A stop -> note 40
+led = A shift -> note 89
 led = A click -> note 41
-led = A loop -> note 42
 led = A notes -> note 43
 led = A metronome -> note 44
-led = A shift -> note 95
+led = A loop -> note 86
+led = A stop -> note 93
+led = A listen -> note 94
+led = A record -> note 95
 
 ring = A tempo -> cc 48
 ring = A range_from -> cc 49

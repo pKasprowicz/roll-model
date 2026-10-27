@@ -834,7 +834,7 @@ mod tests {
         let mut m = mini();
         let s = State::default();
         assert_eq!(m.layer_name(), Some("A"));
-        assert_eq!(m.handle(note(89), &s), [Command::Press(Action::Record)]);
+        assert_eq!(m.handle(note(95), &s), [Command::Press(Action::Record)]);
         assert!(m.handle(note(85), &s).is_empty(), "the switch itself does nothing else");
         assert_eq!(m.layer_name(), Some("B"));
         assert_eq!(m.handle(note(89), &s), [Command::Press(Action::Mute(0))]);
@@ -845,12 +845,29 @@ mod tests {
     }
 
     #[test]
+    fn what_is_printed_on_the_minis_transport_buttons_is_what_they_do_on_layer_a() {
+        let mut m = mini();
+        let s = State::default();
+        // Rewind, fast forward, LOOP, stop, play and record are printed beside buttons 3 to 8 of the bottom row.
+        for (note_number, action) in [
+            (91, Action::RangeBack),
+            (92, Action::RangeForward),
+            (86, Action::Loop),
+            (93, Action::Stop),
+            (94, Action::Listen),
+            (95, Action::Record),
+        ] {
+            assert_eq!(m.handle(note(note_number), &s), [Command::Press(action)], "note {note_number}");
+        }
+    }
+
+    #[test]
     fn a_button_acts_when_pressed_not_when_released() {
         let mut m = mini();
         let s = State::default();
-        assert_eq!(m.handle(note(90), &s), [Command::Press(Action::Listen)]);
-        assert!(m.handle(release(90), &s).is_empty());
-        assert!(m.handle(Msg::NoteOff { ch: 1, note: 90 }, &s).is_empty());
+        assert_eq!(m.handle(note(94), &s), [Command::Press(Action::Listen)]);
+        assert!(m.handle(release(94), &s).is_empty());
+        assert!(m.handle(Msg::NoteOff { ch: 1, note: 94 }, &s).is_empty());
         assert!(m.handle(note(1), &s).is_empty(), "an unbound button");
     }
 
@@ -859,19 +876,19 @@ mod tests {
         let mut m = mini();
         let s = State::default();
         assert_eq!(m.handle(cc(16, 1), &s), [Command::Turn(Action::Tempo, 1)]);
-        assert!(m.handle(note(95), &s).is_empty());
+        assert!(m.handle(note(89), &s).is_empty());
         assert!(m.shift());
         assert_eq!(m.handle(cc(16, 1), &s), [Command::Turn(Action::Tempo, 5)]);
         assert_eq!(m.handle(cc(16, 65), &s), [Command::Turn(Action::Tempo, -5)]);
         assert_eq!(m.handle(cc(23, 1), &s), [Command::Turn(Action::Score, 1)], "browsing the scores is not sped up");
-        m.handle(release(95), &s);
+        m.handle(release(89), &s);
         assert!(!m.shift());
         assert_eq!(m.handle(cc(16, 1), &s), [Command::Turn(Action::Tempo, 1)]);
         // Let go on the other layer (where the same button is something else): Shift still ends.
-        m.handle(note(95), &s);
+        m.handle(note(89), &s);
         m.handle(note(85), &s);
         assert!(m.shift());
-        assert!(m.handle(release(95), &s).is_empty());
+        assert!(m.handle(release(89), &s).is_empty());
         assert!(!m.shift());
     }
 
@@ -926,21 +943,21 @@ mod tests {
         let mut m = mini();
         let mut s = State { record: true, tempo: 1.0, ..Default::default() };
         let first = m.lights(&s);
-        assert!(first.contains(&[0x90, 89, 127]), "record lit");
-        assert!(first.contains(&[0x90, 90, 0]), "listen dark");
+        assert!(first.contains(&[0x90, 95, 127]), "record lit");
+        assert!(first.contains(&[0x90, 94, 0]), "listen dark");
         assert!(first.contains(&[0xB0, 48, 0x20 | 11]), "tempo ring full");
         assert!(m.lights(&s).is_empty(), "nothing changed");
         s.record = false;
         s.listen = true;
         let changed = m.lights(&s);
         assert_eq!(changed.len(), 2, "record and listen changed, stop is lit in both cases: {changed:?}");
-        assert!(changed.contains(&[0x90, 89, 0]) && changed.contains(&[0x90, 90, 127]));
+        assert!(changed.contains(&[0x90, 95, 0]) && changed.contains(&[0x90, 94, 127]));
         // Layer B: the mute and solo lights replace the transport lights.
         s.mute[0] = true;
         m.handle(note(85), &s);
         let b = m.lights(&s);
-        assert!(b.contains(&[0x90, 89, 127]), "mute 1 is lit on the button that was Record: {b:?}");
-        assert!(b.contains(&[0x90, 40, 0]), "Stop's button now belongs to mute 3: {b:?}");
+        assert!(b.contains(&[0x90, 89, 127]), "mute 1 is lit on the button that was Shift: {b:?}");
+        assert!(b.contains(&[0x90, 93, 0]), "Stop's button now belongs to solo 6: {b:?}");
         assert!(b.contains(&[0xB0, 48, 0x20]), "the first ring now shows gain 1, which is 0 here: {b:?}");
     }
 
