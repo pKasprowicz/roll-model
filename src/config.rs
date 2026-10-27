@@ -80,6 +80,8 @@ pub struct Config {
 
 /// How many scores the welcome panel remembers.
 pub const MAX_RECENT: usize = 10;
+/// The controller preset used until another is chosen (or "none": an empty name).
+pub const DEFAULT_CONTROLLER: &str = "Behringer X-Touch Mini";
 /// Loudest instrument gain the mixer allows.
 pub const MAX_LANE_GAIN: f32 = 1.5;
 
@@ -116,7 +118,7 @@ impl Default for Config {
             metro_beats: 4,
             metro_sub: 0,
             metro_preview: true,
-            controller_preset: String::new(),
+            controller_preset: DEFAULT_CONTROLLER.to_string(),
             controller_port: String::new(),
             rudiment: 1,
             rudiment_repeats: DEFAULT_REPEATS,
@@ -528,7 +530,8 @@ mod tests {
         let old = Config::from_text("latency_ms = 5\n");
         assert_eq!((old.bars_per_row, old.layout_align_bar, old.metro_bpm, old.metro_beats), (0, 0, 100.0, 4));
         assert!(old.lane_gain.is_empty() && old.lane_mute.is_empty() && old.audio_output.is_empty());
-        assert!(old.controller_preset.is_empty() && old.controller_port.is_empty(), "no controller unless chosen");
+        assert_eq!((old.controller_preset.as_str(), old.controller_port.as_str()), (DEFAULT_CONTROLLER, ""), "the X-Touch Mini unless another is chosen");
+        assert!(Config::from_text("controller_preset = \n").controller_preset.is_empty(), "\"none\" stays chosen");
         // Defaults are not written out for the mixer.
         assert!(!Config::default().to_text().contains("gain."));
     }
