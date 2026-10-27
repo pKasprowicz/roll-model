@@ -7,6 +7,7 @@ All notable changes are recorded here. The format follows [Keep a Changelog](htt
 ## [Unreleased]
 
 ### Changed
+- **X-Touch Compact preset** reworked to fit the real device (seen on a photograph): Shift, Click, Notes, Metronome, Tap tempo, Loop worst bar, Discard take and Next tab are now the eight SELECT buttons under the faders (notes 24-31, left to right) instead of notes the Compact does not seem to have (84, 85, 87, 88, 89, 54, 47, 70), and the jog wheel line (cc 60) is gone, as the Compact has no jog wheel. The lights of Shift, Click, Notes and Metronome moved with them. A copy of the old preset in your `controllers` folder keeps working as before.
 - The **Behringer X-Touch Mini** is the default controller: the program looks for it (and connects when it is plugged in) until you choose another preset or *— none —* on Settings → Controller. A settings file that already names a preset, or none, is not changed.
 
 ### Added

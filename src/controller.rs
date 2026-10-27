@@ -876,6 +876,28 @@ mod tests {
     }
 
     #[test]
+    fn the_compact_has_no_layers_and_its_select_row_holds_the_function_buttons() {
+        let mut m = Mapper::new(load_preset("Behringer X-Touch Compact", None).unwrap());
+        let s = State::default();
+        assert_eq!(m.layer_name(), None);
+        assert_eq!(m.handle(note(25), &s), [Command::Press(Action::Click)]);
+        assert_eq!(m.handle(note(29), &s), [Command::Press(Action::LoopWorstBar)]);
+        assert_eq!(m.handle(note(94), &s), [Command::Press(Action::Listen)]);
+        assert!(m.handle(cc(16, 1), &s) == [Command::Turn(Action::Tempo, 1)]);
+        // The first SELECT button is Shift, held while turning.
+        m.handle(note(24), &s);
+        assert!(m.shift());
+        assert_eq!(m.handle(cc(16, 1), &s), [Command::Turn(Action::Tempo, 5)]);
+        m.handle(release(24), &s);
+        assert!(!m.shift());
+        // What the Compact does not have is no longer bound.
+        for n in [84, 85, 87, 88, 89, 54, 47, 70] {
+            assert!(m.handle(note(n), &s).is_empty(), "note {n}");
+        }
+        assert!(m.handle(cc(60, 1), &s).is_empty(), "there is no jog wheel");
+    }
+
+    #[test]
     fn a_fader_waits_until_it_reaches_the_value() {
         let mut m = mini();
         let s = State { tempo: 0.5, ..Default::default() };
