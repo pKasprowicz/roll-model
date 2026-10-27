@@ -7,6 +7,7 @@ All notable changes are recorded here. The format follows [Keep a Changelog](htt
 ## [Unreleased]
 
 ### Added
+- **Start-up splash**: a small window of its own opens in the middle of the main window at once, with the name, version and copyright, and says what the program is doing while it starts (reading the settings, looking for MIDI ports, connecting the drum module and the controller, listing the sound outputs, opening a score given on the command line), listing what each step found. A drum module or controller that is not there shows in amber. The splash stays open when the program is ready, so that it can be read, and closes at the first key or mouse button pressed in the program (not in the first 0.6 s after the start-up, and the key that closes it is not used as a shortcut). Before, the main window stayed hidden until all of this was done, and listing the sound outputs alone took a third of a second or more.
 - **Start trigger**: two drum hits in a row start a recording on the Score and Rudiments tabs, so you can begin a take with sticks in your hands. Switch it on and choose the first and the second instrument (or *Learn* them by hitting the pads) on Settings → MIDI input. The second hit must come within 0.5 s of the first with nothing played in between. The trigger hits are not part of the take, and the trigger is off while a take records and on other tabs. A hint under the score shows the pair and when it is waiting for the second hit. New settings keys `trigger_enabled`, `trigger_first`, `trigger_second`.
 
 ## [0.6.0] - 2026-10-26

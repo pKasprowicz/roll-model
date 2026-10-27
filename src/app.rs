@@ -4,6 +4,7 @@ mod controls;
 mod metro;
 mod mixer;
 mod rudiment;
+mod startup;
 mod trigger;
 
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
@@ -250,6 +251,9 @@ pub struct DrumApp {
 
     /// The Mackie Control surface (X-Touch).
     controller: controls::Controller,
+
+    /// The splash: `Some` until the start-up steps are done.
+    startup: Option<startup::Startup>,
 }
 
 const KEYBOARD_PADS: [(egui::Key, Lane, &str); 13] = [
@@ -276,14 +280,9 @@ impl DrumApp {
                 small.size *= 1.5;
             }
         });
-        let mut app = DrumApp::with_config(Config::load());
-        app.refresh_ports();
-        app.connect_midi(None);
-        app.refresh_controllers();
-        app.connect_controller();
-        if let Some(p) = initial_file {
-            app.open_file(&p);
-        }
+        // Everything slow is a step of the splash (`startup.rs`), so that the first frame is not late.
+        let mut app = DrumApp::with_config(Config::default());
+        app.startup = Some(startup::Startup::new(initial_file, startup::scan_sound_outputs(), Config::load));
         app
     }
 
@@ -336,6 +335,7 @@ impl DrumApp {
             metro_player: None,
             metro_control: Control::new(),
             controller: controls::Controller::new(),
+            startup: None,
         }
     }
 
@@ -1796,6 +1796,18 @@ fn histogram(ui: &mut egui::Ui, dts: &[f64], window_ms: f64) {
 
 impl eframe::App for DrumApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        // The splash window (`startup.rs`); the main window stays empty while the steps run.
+        let mut key_taken = false;
+        if self.startup.is_some() {
+            match self.run_startup(ctx) {
+                startup::Flow::Starting => {
+                    egui::CentralPanel::default().show(ctx, |_| {});
+                    return;
+                }
+                startup::Flow::KeyTaken => key_taken = true,
+                startup::Flow::Go => {}
+            }
+        }
         // Files dropped onto the window
         let dropped: Vec<PathBuf> = ctx.input(|i| i.raw.dropped_files.iter().filter_map(|f| f.path.clone()).collect());
         if let Some(p) = dropped.first() {
@@ -1805,7 +1817,9 @@ impl eframe::App for DrumApp {
         self.sync_source();
         self.drain_midi();
         self.update_controller();
-        self.keyboard_pads(ctx);
+        if !key_taken {
+            self.keyboard_pads(ctx);
+        }
         self.sync_control();
         self.update_take();
         self.update_listen();
@@ -1814,7 +1828,7 @@ impl eframe::App for DrumApp {
         self.update_calibration();
         self.show_sound_errors();
 
-        if !ctx.wants_keyboard_input() {
+        if !ctx.wants_keyboard_input() && !key_taken {
             let (rec, listen, metro, click, esc) = ctx.input(|i| {
                 (
                     i.key_pressed(egui::Key::R),

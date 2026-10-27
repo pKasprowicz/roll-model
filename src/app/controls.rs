@@ -66,6 +66,19 @@ impl Controller {
         }
     }
 
+    /// The state of the connection, in words.
+    pub(super) fn message(&self) -> &str {
+        &self.message
+    }
+
+    pub(super) fn is_connected(&self) -> bool {
+        self.link.is_some()
+    }
+
+    pub(super) fn preset_count(&self) -> usize {
+        self.presets.len()
+    }
+
     /// For the top bar, like the MIDI input indicator: the port and the layer
     /// in use, and whether the controller is connected. `None` if none is chosen.
     pub(super) fn label(&self, chosen: bool) -> Option<(String, bool)> {
