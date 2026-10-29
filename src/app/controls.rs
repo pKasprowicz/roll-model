@@ -728,7 +728,7 @@ impl DrumApp {
                 }
             });
             if ui.button("Manage").on_hover_text("Create, copy, rename and delete presets, and change what their controls do").clicked() {
-                self.controller.editor.open = true;
+                self.controller.editor.view.open = true;
             }
         });
         if let Some(name) = preset {

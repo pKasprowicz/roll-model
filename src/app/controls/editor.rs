@@ -14,19 +14,11 @@ use super::*;
 use crate::controller::{Binding, Encoding, Preset, Reading};
 use crate::widgets;
 
-/// What the editor remembers between frames.
-pub(super) struct EditorState {
-    /// The action that waits for the next control the device sends.
-    pub(super) learning: Option<Action>,
+/// What the Manage window remembers between frames: widget state, not behaviour.
+#[derive(Default)]
+pub(super) struct ManageView {
     /// The layer being edited (an index of the preset's layers).
     pub(super) layer: usize,
-    /// After a control is learned, wait for one for the next action in the list.
-    pub(super) keep_going: bool,
-    /// Limit a learned control to the MIDI channel it sent on.
-    pub(super) remember_channel: bool,
-    /// How a value's cc is read, chosen before it is learned (by the action's name).
-    pub(super) kinds: BTreeMap<String, Reading>,
-    pub(super) notice: String,
     /// The new name typed for the chosen preset, and the preset it was typed for.
     pub(super) rename_to: String,
     pub(super) rename_for: String,
@@ -34,6 +26,21 @@ pub(super) struct EditorState {
     pub(super) confirm_delete: bool,
     /// The Manage window is open.
     pub(super) open: bool,
+}
+
+/// What the editor remembers between frames: the learn state machine and its choices.
+pub(super) struct EditorState {
+    /// The action that waits for the next control the device sends.
+    pub(super) learning: Option<Action>,
+    /// After a control is learned, wait for one for the next action in the list.
+    pub(super) keep_going: bool,
+    /// Limit a learned control to the MIDI channel it sent on.
+    pub(super) remember_channel: bool,
+    /// How a value's cc is read, chosen before it is learned (by the action's name).
+    pub(super) kinds: BTreeMap<String, Reading>,
+    pub(super) notice: String,
+    /// What the Manage window remembers about itself.
+    pub(super) view: ManageView,
     /// The folder of the user's presets; `None`: the settings folder (tests use another).
     pub(super) dir: Option<PathBuf>,
 }
@@ -67,15 +74,15 @@ impl EditorState {
     /// What the editor was doing belongs to the preset that was chosen: drop it when another is.
     pub(super) fn start_over(&mut self) {
         self.learning = None;
-        self.confirm_delete = false;
-        self.layer = 0;
+        self.view.confirm_delete = false;
+        self.view.layer = 0;
         self.notice.clear();
     }
 }
 
 impl Default for EditorState {
     fn default() -> EditorState {
-        EditorState { learning: None, layer: 0, keep_going: true, remember_channel: false, kinds: BTreeMap::new(), notice: String::new(), rename_to: String::new(), rename_for: String::new(), confirm_delete: false, open: false, dir: None }
+        EditorState { learning: None, keep_going: true, remember_channel: false, kinds: BTreeMap::new(), notice: String::new(), view: ManageView::default(), dir: None }
     }
 }
 
@@ -165,7 +172,7 @@ impl DrumApp {
 
     /// The layer the table edits: `None` for a preset without layers.
     fn editor_layer(&self, preset: &Preset) -> Option<String> {
-        preset.layers.get(self.controller.editor.layer).map(|l| l.0.clone())
+        preset.layers.get(self.controller.editor.view.layer).map(|l| l.0.clone())
     }
 
     /// While an action waits for its control, the next message from the device is taken for it
@@ -248,13 +255,13 @@ impl DrumApp {
             self.select_preset(stem.to_string_lossy().into_owned());
         }
         self.status = status.to_string();
-        self.controller.editor.open = true;
+        self.controller.editor.view.open = true;
     }
 
     /// The editor window, while it is open: a window of its own (inside the main window where the
     /// platform has no second window).
     pub(in crate::app) fn controller_editor_window(&mut self, ctx: &egui::Context) {
-        if !self.controller.editor.open {
+        if !self.controller.editor.view.open {
             return;
         }
         let title = "Manage controller presets".to_string();
@@ -270,7 +277,7 @@ impl DrumApp {
             }
         });
         if closed {
-            self.controller.editor.open = false;
+            self.controller.editor.view.open = false;
             self.controller.editor.stop_learning();
         }
     }
@@ -295,7 +302,7 @@ impl DrumApp {
         let mut choose: Option<String> = None;
         egui::TopBottomPanel::bottom("controller_preset_buttons").show_inside(ui, |ui| {
             ui.add_space(4.0);
-            if self.controller.editor.confirm_delete {
+            if self.controller.editor.view.confirm_delete {
                 ui.label(RichText::new(format!("Delete \"{chosen}\"? Its file is removed.")).color(render::AMBER));
                 ui.horizontal(|ui| {
                     if ui.button("Delete").clicked() {
@@ -352,9 +359,9 @@ impl DrumApp {
     /// The chosen preset's name and type, renaming it, and what cannot be done with a built-in one.
     fn preset_header(&mut self, ui: &mut egui::Ui) {
         let chosen = self.cfg.controller_preset.clone();
-        if self.controller.editor.rename_for != chosen {
-            self.controller.editor.rename_for = chosen.clone();
-            self.controller.editor.rename_to = chosen.clone();
+        if self.controller.editor.view.rename_for != chosen {
+            self.controller.editor.view.rename_for = chosen.clone();
+            self.controller.editor.view.rename_to = chosen.clone();
         }
         if chosen.is_empty() {
             ui.label(RichText::new("No preset is chosen. Pick one in the list, or Add a new one.").weak());
@@ -371,7 +378,7 @@ impl DrumApp {
         if custom {
             ui.horizontal(|ui| {
                 ui.label("Name");
-                ui.add(egui::TextEdit::singleline(&mut self.controller.editor.rename_to).desired_width(240.0));
+                ui.add(egui::TextEdit::singleline(&mut self.controller.editor.view.rename_to).desired_width(240.0));
                 if ui.button("Rename").clicked() {
                     op = Some(Op::Rename);
                 }
@@ -391,7 +398,7 @@ impl DrumApp {
     /// A new name for the chosen preset of the user's: its file is renamed and the `name` line changed.
     fn rename_preset(&mut self) {
         let Some(old) = self.editable_path() else { return };
-        let new = self.controller.editor.rename_to.trim().to_string();
+        let new = self.controller.editor.view.rename_to.trim().to_string();
         let notice = match check_preset_name(&new) {
             _ if new == self.cfg.controller_preset => Some("It already has that name.".to_string()),
             Err(why) => Some(why.to_string()),
@@ -420,7 +427,7 @@ impl DrumApp {
 
     /// Deletes the chosen preset of the user's (its file).
     fn delete_preset(&mut self) {
-        self.controller.editor.confirm_delete = false;
+        self.controller.editor.view.confirm_delete = false;
         let Some(path) = self.editable_path() else { return };
         let name = self.cfg.controller_preset.clone();
         match std::fs::remove_file(&path) {
@@ -451,7 +458,7 @@ impl DrumApp {
             ui.horizontal(|ui| {
                 ui.label("Layer");
                 for (i, (name, _)) in preset.layers.iter().enumerate() {
-                    ui.selectable_value(&mut self.controller.editor.layer, i, name.as_str());
+                    ui.selectable_value(&mut self.controller.editor.view.layer, i, name.as_str());
                 }
             });
         }
@@ -541,7 +548,7 @@ impl DrumApp {
             Op::NewPreset => self.new_learned_preset(),
             Op::CopyToEdit => self.copy_to_edit(),
             Op::Rename => self.rename_preset(),
-            Op::AskDelete(ask) => self.controller.editor.confirm_delete = ask,
+            Op::AskDelete(ask) => self.controller.editor.view.confirm_delete = ask,
             Op::Delete => self.delete_preset(),
         }
     }
@@ -704,19 +711,19 @@ mod tests {
         let mut app = DrumApp::with_config(Config { controller_preset: "Pads".into(), ..Config::default() });
         app.controller.editor.dir = Some(dir.clone());
         // A bad name changes nothing and says why.
-        app.controller.editor.rename_to = "a/b".into();
+        app.controller.editor.view.rename_to = "a/b".into();
         app.rename_preset();
         assert!(dir.join("Pads.txt").exists() && app.controller.editor.notice.contains("cannot contain"), "{}", app.controller.editor.notice);
-        app.controller.editor.rename_to = "Pads".into();
+        app.controller.editor.view.rename_to = "Pads".into();
         app.rename_preset();
         assert!(app.controller.editor.notice.contains("already"));
         // A name in use is refused.
         std::fs::write(dir.join("Other.txt"), "name = Other\n").unwrap();
-        app.controller.editor.rename_to = "Other".into();
+        app.controller.editor.view.rename_to = "Other".into();
         app.rename_preset();
         assert!(app.controller.editor.notice.contains("exists"));
         // A good name renames the file, keeps the content and the comments, and follows the choice.
-        app.controller.editor.rename_to = "Stage pads".into();
+        app.controller.editor.view.rename_to = "Stage pads".into();
         app.rename_preset();
         assert!(!dir.join("Pads.txt").exists() && dir.join("Stage pads.txt").exists());
         assert_eq!(app.cfg.controller_preset, "Stage pads");
@@ -724,14 +731,14 @@ mod tests {
         assert!(text.contains("# my notes") && text.contains("bind = note 1 -> record"), "the file is moved as it is: {text}");
         assert_eq!(controller::load_preset("Stage pads", Some(&dir)).unwrap().name, "Stage pads", "and is known by its new name");
         // Deleting asks first in the window (a flag), then removes the file and the choice.
-        app.controller.editor.confirm_delete = true;
+        app.controller.editor.view.confirm_delete = true;
         app.delete_preset();
         assert!(!dir.join("Stage pads.txt").exists() && dir.join("Other.txt").exists());
         assert_eq!(app.cfg.controller_preset, "");
-        assert!(!app.controller.editor.confirm_delete);
+        assert!(!app.controller.editor.view.confirm_delete);
         // A built-in preset is neither renamed nor deleted.
         app.cfg.controller_preset = "Korg nanoKONTROL2".into();
-        app.controller.editor.rename_to = "Mine".into();
+        app.controller.editor.view.rename_to = "Mine".into();
         app.rename_preset();
         app.delete_preset();
         assert_eq!(app.cfg.controller_preset, "Korg nanoKONTROL2");
@@ -745,11 +752,11 @@ mod tests {
         let mut app = DrumApp::with_config(Config { controller_preset: "Korg nanoKONTROL2".into(), controller_port: "X".into(), ..Config::default() });
         app.controller.editor.dir = Some(dir.clone());
         app.controller.editor.learning = Some(Action::Record);
-        app.controller.editor.confirm_delete = true;
+        app.controller.editor.view.confirm_delete = true;
         app.select_preset("Pads".into());
         assert_eq!(app.cfg.controller_preset, "Pads");
         assert!(app.cfg.controller_port.is_empty(), "the preset's own port is used");
-        assert!(app.controller.editor.learning.is_none() && !app.controller.editor.confirm_delete);
+        assert!(app.controller.editor.learning.is_none() && !app.controller.editor.view.confirm_delete);
         assert!(app.editable_path().is_some(), "and it is one that can be edited");
         // The window draws with the list on the left for a built-in and for an own preset, and for none.
         app.refresh_controllers();
@@ -784,18 +791,18 @@ mod tests {
             let _ = ctx.run(egui::RawInput::default(), |ctx| app.controller_editor_window(ctx));
         };
         frame(&mut app);
-        assert!(!app.controller.editor.open, "closed until asked for");
-        app.controller.editor.open = true;
+        assert!(!app.controller.editor.view.open, "closed until asked for");
+        app.controller.editor.view.open = true;
         frame(&mut app);
         frame(&mut app);
-        assert!(app.controller.editor.open, "it stays open");
+        assert!(app.controller.editor.view.open, "it stays open");
         // Making a preset opens the editor on it.
         let dir = temp_dir("window");
-        app.controller.editor.open = false;
+        app.controller.editor.view.open = false;
         app.controller.editor.dir = Some(dir.clone());
         app.midi_inputs = vec!["Some Pad Controller".into()];
         app.new_learned_preset();
-        assert!(app.controller.editor.open, "a new preset opens the editor");
+        assert!(app.controller.editor.view.open, "a new preset opens the editor");
         frame(&mut app);
         let _ = std::fs::remove_dir_all(&dir);
     }
