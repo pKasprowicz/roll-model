@@ -74,6 +74,18 @@ impl Controller {
         }
     }
 
+    /// What the preset called `name` speaks, once the list has been read.
+    pub(super) fn kind_of(&self, name: &str) -> Option<controller::PresetKind> {
+        self.kinds.get(name).copied()
+    }
+
+    /// Puts an edited preset in place in the running connection, if there is one.
+    pub(super) fn replace_preset(&mut self, preset: controller::Preset) {
+        if let Some(link) = self.link.as_mut() {
+            link.mapper.replace_preset(preset);
+        }
+    }
+
     /// The state of the connection, in words.
     pub(super) fn message(&self) -> &str {
         &self.message

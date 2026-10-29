@@ -38,6 +38,31 @@ pub(super) struct EditorState {
 }
 
 impl EditorState {
+    /// Says something to the user in the window.
+    pub(super) fn say(&mut self, text: impl Into<String>) {
+        self.notice = text.into();
+    }
+
+    /// Waits for the next control the device sends, for `action`.
+    pub(super) fn start_learning(&mut self, action: Action) {
+        self.learning = Some(action);
+        self.notice.clear();
+    }
+
+    pub(super) fn stop_learning(&mut self) {
+        self.learning = None;
+    }
+
+    /// How a value's cc is read for `action` when nothing is bound yet: the choice made in the
+    /// table, or (absolute, except for the lists, which are only turned).
+    pub(super) fn chosen_kind(&self, action: Action) -> (bool, Encoding) {
+        self.kinds.get(&action.text()).copied().unwrap_or((action.is_browse(), Encoding::Mackie))
+    }
+
+    pub(super) fn choose_kind(&mut self, action: Action, relative: bool, encoding: Encoding) {
+        self.kinds.insert(action.text(), (relative, encoding));
+    }
+
     /// What the editor was doing belongs to the preset that was chosen: drop it when another is.
     pub(super) fn start_over(&mut self) {
         self.learning = None;
@@ -135,9 +160,7 @@ impl DrumApp {
             self.error = Some(format!("Could not save {}: {e}", path.display()));
             return None;
         }
-        if let Some(link) = self.controller.link.as_mut() {
-            link.mapper.replace_preset(preset);
-        }
+        self.controller.replace_preset(preset);
         Some(result)
     }
 
@@ -152,12 +175,12 @@ impl DrumApp {
     pub(super) fn learn_message(&mut self, msg: controller::Msg) -> bool {
         let Some(action) = self.controller.editor.learning else { return false };
         let Some(preset) = self.preset_being_edited() else {
-            self.controller.editor.learning = None;
+            self.controller.editor.stop_learning();
             return false;
         };
         let layer = self.editor_layer(&preset);
         let existing = preset.bindings_of(layer.as_deref(), action).into_iter().find(|b| matches!(b.src, controller::Src::Cc(_))).map(|b| (b.relative, b.encoding));
-        let (relative, encoding) = existing.or_else(|| self.controller.editor.kinds.get(&action.text()).copied()).unwrap_or((action.is_browse(), Encoding::Mackie));
+        let (relative, encoding) = existing.unwrap_or_else(|| self.controller.editor.chosen_kind(action));
         let Some(found) = controller::learn(msg, action, relative, encoding, self.controller.editor.remember_channel) else { return true };
         let taken_from = self.edit_preset(|p| p.assign(layer.as_deref(), action, found)).flatten();
         let mut notice = format!("{}: {}", action.title(), control_text(&Binding { layer: None, src: found.src, channel: found.channel, relative: found.relative, encoding: found.encoding, action }));
@@ -183,7 +206,7 @@ impl DrumApp {
             self.midi_inputs.iter().find(|p| Some(*p) != drum.as_ref()).cloned()
         };
         let Some(port) = port else {
-            self.controller.editor.notice = "No MIDI input to use. Plug the controller in, then use Refresh and reconnect.".into();
+            self.controller.editor.say("No MIDI input to use. Plug the controller in, then use Refresh and reconnect.");
             return;
         };
         let Some(dir) = self.preset_dir() else {
@@ -250,7 +273,7 @@ impl DrumApp {
         });
         if closed {
             self.controller.editor.open = false;
-            self.controller.editor.learning = None;
+            self.controller.editor.stop_learning();
         }
     }
 
@@ -305,7 +328,7 @@ impl DrumApp {
                     choose = Some(String::new());
                 }
                 for kind in [controller::PresetKind::Mackie, controller::PresetKind::Midi] {
-                    let of_kind: Vec<&String> = self.controller.presets.iter().filter(|n| self.controller.kinds.get(*n).copied().unwrap_or_default() == kind).collect();
+                    let of_kind: Vec<&String> = self.controller.presets.iter().filter(|n| self.controller.kind_of(n).unwrap_or_default() == kind).collect();
                     if of_kind.is_empty() {
                         continue;
                     }
@@ -343,7 +366,7 @@ impl DrumApp {
         let mut op: Option<Op> = None;
         ui.horizontal(|ui| {
             ui.heading(chosen.as_str());
-            if let Some(kind) = self.controller.kinds.get(&chosen) {
+            if let Some(kind) = self.controller.kind_of(&chosen) {
                 ui.label(RichText::new(format!("{}{}", kind.label(), if custom { "" } else { ", built in" })).small().weak());
             }
         });
@@ -377,13 +400,13 @@ impl DrumApp {
             Ok(()) => None,
         };
         if let Some(notice) = notice {
-            self.controller.editor.notice = notice;
+            self.controller.editor.say(notice);
             return;
         }
         let Some(dir) = self.preset_dir() else { return };
         let target = dir.join(format!("{new}.txt"));
         if target.exists() {
-            self.controller.editor.notice = "A preset with that name exists already.".into();
+            self.controller.editor.say("A preset with that name exists already.");
             return;
         }
         let result = std::fs::read_to_string(&old).and_then(|text| std::fs::write(&target, with_name(&text, &new))).and_then(|_| std::fs::remove_file(&old));
@@ -391,7 +414,7 @@ impl DrumApp {
             Ok(()) => {
                 self.refresh_controllers();
                 self.choose_preset(new.clone(), true);
-                self.controller.editor.notice = format!("Renamed to {new}.");
+                self.controller.editor.say(format!("Renamed to {new}."));
             }
             Err(e) => self.error = Some(format!("Could not rename the preset: {e}")),
         }
@@ -406,7 +429,7 @@ impl DrumApp {
             Ok(()) => {
                 self.refresh_controllers();
                 self.select_preset(String::new());
-                self.controller.editor.notice = format!("Deleted {name}.");
+                self.controller.editor.say(format!("Deleted {name}."));
             }
             Err(e) => self.error = Some(format!("Could not delete {}: {e}", path.display())),
         }
@@ -422,7 +445,7 @@ impl DrumApp {
         };
         let Some(preset) = self.preset_being_edited() else { return };
         ui.separator();
-        let connected = self.controller.link.is_some();
+        let connected = self.controller.is_connected();
         ui.label(RichText::new(format!("Editing {}. Every change is saved at once.", path.display())).small().weak());
         ui.checkbox(&mut self.controller.editor.keep_going, "After learning a control, go on to the next action");
         ui.checkbox(&mut self.controller.editor.remember_channel, "Limit a learned control to the MIDI channel it sends on");
@@ -459,8 +482,7 @@ impl DrumApp {
                                 .iter()
                                 .find(|b| matches!(b.src, controller::Src::Cc(_)))
                                 .map(|b| (b.relative, b.encoding))
-                                .or_else(|| self.controller.editor.kinds.get(&action.text()).copied())
-                                .unwrap_or((action.is_browse(), Encoding::Mackie));
+                                .unwrap_or_else(|| self.controller.editor.chosen_kind(action));
                             egui::ComboBox::from_id_salt(("controller_kind", action.text())).selected_text(kind_text(current.0, current.1)).width(150.0).show_ui(ui, |ui| {
                                 for (relative, encoding) in KINDS {
                                     if action.is_browse() && !relative {
@@ -498,11 +520,10 @@ impl DrumApp {
         let Some(op) = op else { return };
         match op {
             Op::Learn(action) => {
-                if self.controller.link.is_none() {
-                    self.controller.editor.notice = "Connect the controller first (Refresh and reconnect, above).".into();
+                if !self.controller.is_connected() {
+                    self.controller.editor.say("Connect the controller first (Refresh and reconnect, above).");
                 } else {
-                    self.controller.editor.learning = Some(action);
-                    self.controller.editor.notice.clear();
+                    self.controller.editor.start_learning(action);
                 }
             }
             Op::Cancel => self.controller.editor.learning = None,
@@ -513,7 +534,7 @@ impl DrumApp {
                 }
             }
             Op::Kind(action, relative, encoding) => {
-                self.controller.editor.kinds.insert(action.text(), (relative, encoding));
+                self.controller.editor.choose_kind(action, relative, encoding);
                 if let Some(preset) = self.preset_being_edited() {
                     let layer = self.editor_layer(&preset);
                     self.edit_preset(|p| p.set_kind(layer.as_deref(), action, relative, encoding));
