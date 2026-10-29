@@ -3,6 +3,8 @@
 //! application, the lights, and the Controller page of Settings.
 //! Which control sends which command is in the preset (`controller.rs`).
 
+mod editor;
+
 use std::collections::VecDeque;
 use std::path::Path;
 use std::sync::{Arc, Mutex};
@@ -49,6 +51,8 @@ pub(super) struct Controller {
     /// The port name (or part of it) the chosen preset looks for; empty if none is chosen.
     wanted: String,
     last_watch: Instant,
+    /// The preset editor (`controls/editor.rs`).
+    editor: editor::EditorState,
 }
 
 impl Controller {
@@ -63,6 +67,7 @@ impl Controller {
             taps: Vec::new(),
             wanted: String::new(),
             last_watch: Instant::now(),
+            editor: editor::EditorState::default(),
         }
     }
 
@@ -237,6 +242,10 @@ impl DrumApp {
         };
         for bytes in messages {
             let Some(msg) = controller::parse(&bytes) else { continue };
+            // A control is being taught to the preset editor: it does nothing else.
+            if self.learn_message(msg) {
+                continue;
+            }
             // The state is read for every message: a fader that moved the value a moment ago is already counted.
             let state = self.controller_state();
             let Some(link) = self.controller.link.as_mut() else { return };
@@ -742,6 +751,8 @@ impl DrumApp {
             });
         }
 
+        self.controller_editor(ui);
+
         ui.add_space(6.0);
         ui.label(RichText::new("Monitor (latest first): press and turn the controls to see what they send and what they are bound to").strong());
         for line in &self.controller.monitor {
@@ -767,6 +778,11 @@ impl DrumApp {
                             Ok(path) => {
                                 self.status = format!("Saved {}", path.display());
                                 self.refresh_controllers();
+                                if let Some(stem) = path.file_stem() {
+                                    self.cfg.controller_preset = stem.to_string_lossy().into_owned();
+                                    self.cfg.controller_port.clear();
+                                    self.connect_controller();
+                                }
                             }
                             Err(e) => self.error = Some(format!("Could not save the preset: {e}")),
                         }

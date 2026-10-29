@@ -322,6 +322,56 @@ impl Action {
         }
     }
 
+    /// Every action a preset can bind, in sections for the preset editor: (title, actions).
+    pub fn sections() -> Vec<(&'static str, Vec<Action>)> {
+        let strips = |make: fn(u8) -> Action| (0..GROUPS as u8).map(make).collect::<Vec<_>>();
+        let mixer: Vec<Action> = [strips(Action::Gain), strips(Action::Mute), strips(Action::Solo), strips(Action::Audition)].concat();
+        vec![
+            (
+                "Transport and practice",
+                vec![
+                    Action::Record,
+                    Action::Listen,
+                    Action::Stop,
+                    Action::Click,
+                    Action::Loop,
+                    Action::Notes,
+                    Action::Metronome,
+                    Action::NextTab,
+                    Action::LoopWorstBar,
+                    Action::RangeBack,
+                    Action::RangeForward,
+                    Action::TapTempo,
+                    Action::TempoDown,
+                    Action::TempoUp,
+                    Action::TempoReset,
+                    Action::DiscardTake,
+                    Action::OpenScore,
+                    Action::PrevRudiment,
+                    Action::NextRudiment,
+                    Action::Shift,
+                ],
+            ),
+            (
+                "Values (knobs, encoders, faders)",
+                vec![
+                    Action::Tempo,
+                    Action::RangeFrom,
+                    Action::RangeTo,
+                    Action::ClickVolume,
+                    Action::MusicVolume,
+                    Action::CountIn,
+                    Action::BarsPerRow,
+                    Action::Repeats,
+                    Action::Lead,
+                    Action::Score,
+                    Action::Rudiment,
+                ],
+            ),
+            ("Mixer: volume, mute, solo, play, per instrument group", mixer),
+        ]
+    }
+
     /// A few words for the control's label on the help screen.
     pub fn title(self) -> String {
         let group = |i: u8| group_label(i as usize);
@@ -689,6 +739,96 @@ impl Preset {
             .or_else(|| pick(&|b: &Binding| b.layer.is_none()))
     }
 
+    /// The preset as a file: what `Preset::parse` reads back as the same preset (comments are lost).
+    pub fn to_text(&self) -> String {
+        let mut s = String::from("# Edited in Roll Model; the lines are explained in the README (\"Your own preset\").\n");
+        s.push_str(&format!("name = {}\nport = {}\n", self.name, self.port));
+        for (name, src) in &self.layers {
+            s.push_str(&format!("layer = {name} {}\n", src.text()));
+        }
+        for b in &self.binds {
+            let mut left = String::new();
+            if let Some(layer) = &b.layer {
+                left.push_str(&format!("{layer} "));
+            }
+            left.push_str(&b.src.text());
+            if let Some(ch) = b.channel {
+                left.push_str(&format!(" ch {ch}"));
+            }
+            if matches!(b.src, Src::Cc(_)) {
+                if !b.relative {
+                    left.push_str(" abs");
+                } else if b.encoding == Encoding::Mackie {
+                    left.push_str(" rel");
+                } else {
+                    left.push_str(&format!(" rel {}", b.encoding.word()));
+                }
+            }
+            s.push_str(&format!("bind = {left} -> {}\n", b.action.text()));
+        }
+        for l in &self.lights {
+            let key = if l.ring { "ring" } else { "led" };
+            let layer = l.layer.as_ref().map(|x| format!("{x} ")).unwrap_or_default();
+            let out = match l.out {
+                Out::Note(n) => format!("note {n}"),
+                Out::Cc(n) => format!("cc {n}"),
+            };
+            let mut right = out;
+            if l.channel != 1 {
+                right.push_str(&format!(" ch {}", l.channel));
+            }
+            if let Some(scale) = l.scale {
+                right.push_str(&format!(" scale={scale}"));
+            }
+            if !l.ring && (l.on, l.off) != (127, 0) {
+                right.push_str(&format!(" on={} off={}", l.on, l.off));
+            }
+            s.push_str(&format!("{key} = {layer}{} -> {right}\n", l.action.text()));
+        }
+        s
+    }
+
+    /// The bindings of `action` on exactly `layer` (`None`: the lines for every layer).
+    pub fn bindings_of(&self, layer: Option<&str>, action: Action) -> Vec<&Binding> {
+        self.binds.iter().filter(|b| b.layer.as_deref() == layer && b.action == action).collect()
+    }
+
+    /// Binds `action` to the control `found` on `layer`. The control is taken from whatever it was
+    /// bound to on that layer (returned), and the action's old control of the same kind (note, cc or
+    /// fader) is replaced; a control of another kind, such as a fader next to an encoder, stays.
+    pub fn assign(&mut self, layer: Option<&str>, action: Action, found: Learned) -> Option<Action> {
+        let layer = layer.map(str::to_string);
+        let kind = |src: Src| match src {
+            Src::Note(_) => 0,
+            Src::Cc(_) => 1,
+            Src::Bend(_) => 2,
+        };
+        let mut taken_from = None;
+        self.binds.retain(|b| {
+            let same = b.layer == layer && b.src == found.src && b.channel == found.channel;
+            if same && b.action != action {
+                taken_from = Some(b.action);
+            }
+            !same
+        });
+        self.binds.retain(|b| !(b.layer == layer && b.action == action && kind(b.src) == kind(found.src)));
+        self.binds.push(Binding { layer, src: found.src, channel: found.channel, relative: found.relative, encoding: found.encoding, action });
+        taken_from
+    }
+
+    /// Takes every control of `action` on `layer` away.
+    pub fn clear(&mut self, layer: Option<&str>, action: Action) {
+        self.binds.retain(|b| !(b.layer.as_deref() == layer && b.action == action));
+    }
+
+    /// Changes how the cc controls of `action` on `layer` are read: as positions, or as an endless encoder.
+    pub fn set_kind(&mut self, layer: Option<&str>, action: Action, relative: bool, encoding: Encoding) {
+        for b in self.binds.iter_mut().filter(|b| b.layer.as_deref() == layer && b.action == action && matches!(b.src, Src::Cc(_))) {
+            b.relative = relative;
+            b.encoding = encoding;
+        }
+    }
+
     /// Drops lines that name a layer the preset does not declare, and reports repeated controls.
     fn validate(&mut self) {
         let known: Vec<String> = self.layers.iter().map(|l| l.0.clone()).collect();
@@ -758,6 +898,37 @@ pub fn load_preset(name: &str, dir: Option<&Path>) -> Result<Preset, String> {
 }
 
 // -------------------------------------------------------------------- mapper
+
+/// A control found by pressing or turning it, ready to be bound to an action.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Learned {
+    pub src: Src,
+    pub channel: Option<u8>,
+    pub relative: bool,
+    pub encoding: Encoding,
+}
+
+/// What a message from the controller says about the control that sent it, when `action` is
+/// waiting for one. A button needs a press (not the release), a value a cc or a fader, and the
+/// lists (`Score`, `Rudiment`) an endless encoder. `relative` and `encoding` are the choice for
+/// a cc that sets a value; `remember_channel` limits the binding to the channel the message came on.
+/// `None`: not a control this action can use (a note off, a note for a knob's value, ...).
+pub fn learn(msg: Msg, action: Action, relative: bool, encoding: Encoding, remember_channel: bool) -> Option<Learned> {
+    let channel = |src: Src| (remember_channel && !matches!(src, Src::Bend(_))).then(|| msg.channel());
+    let value_like = action.is_level() || action.is_browse();
+    match msg {
+        Msg::NoteOn { note, vel, .. } if vel > 0 && !value_like => {
+            Some(Learned { src: Src::Note(note), channel: channel(Src::Note(note)), relative: false, encoding: Encoding::Mackie })
+        }
+        Msg::Cc { cc, .. } if value_like => {
+            let relative = relative || action.is_browse();
+            Some(Learned { src: Src::Cc(cc), channel: channel(Src::Cc(cc)), relative, encoding: if relative { encoding } else { Encoding::Mackie } })
+        }
+        Msg::Cc { cc, val, .. } if val > 0 => Some(Learned { src: Src::Cc(cc), channel: channel(Src::Cc(cc)), relative: false, encoding: Encoding::Mackie }),
+        Msg::Bend { ch, .. } if action.is_level() => Some(Learned { src: Src::Bend(ch), channel: None, relative: false, encoding: Encoding::Mackie }),
+        _ => None,
+    }
+}
 
 /// What the application should do.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -836,6 +1007,15 @@ impl Mapper {
 
     pub fn preset(&self) -> &Preset {
         &self.preset
+    }
+
+    /// Puts an edited preset in place of the one in use. The layer and Shift stay; faders have to
+    /// catch up again and every light is sent again.
+    pub fn replace_preset(&mut self, preset: Preset) {
+        self.layer = self.layer.min(preset.layers.len().saturating_sub(1));
+        self.pickups = vec![Pickup::default(); preset.binds.len()];
+        self.sent.clear();
+        self.preset = preset;
     }
 
     /// The layer in use, if the preset has layers.
@@ -1276,6 +1456,111 @@ mod tests {
         assert_eq!(m.lights(&s), [[0x99, 36, 21]]);
         m.handle(note(2), &s);
         assert_eq!(m.lights(&s), [[0x99, 36, 3]], "put out with the preset's off value");
+    }
+
+    #[test]
+    fn a_preset_written_as_text_reads_back_the_same() {
+        for (name, text) in BUILTIN {
+            let original = Preset::parse(text);
+            let again = Preset::parse(&original.to_text());
+            assert!(again.warnings.is_empty(), "{name}: {:?}", again.warnings);
+            assert_eq!(original, again, "{name}");
+        }
+        let odd = Preset::parse(
+            "name = X\nport = Y\nlayer = A note 1\nlayer = B note 2\nbind = A cc 5 ch 3 rel twos -> tempo\nbind = cc 6 abs -> click_volume\nbind = B bend 2 -> music_volume\n\
+             led = A record -> note 9 ch 10 on=21 off=3\nring = B tempo -> cc 4 scale=100\nled = shift -> cc 8\n",
+        );
+        assert!(odd.warnings.is_empty(), "{:?}", odd.warnings);
+        assert_eq!(Preset::parse(&odd.to_text()), odd);
+    }
+
+    #[test]
+    fn every_action_is_in_the_editor_once() {
+        let all: Vec<Action> = Action::sections().into_iter().flat_map(|(_, a)| a).collect();
+        let mut texts: Vec<String> = all.iter().map(|a| a.text()).collect();
+        let n = texts.len();
+        texts.sort();
+        texts.dedup();
+        assert_eq!(texts.len(), n, "no action twice");
+        for (name, _) in SIMPLE {
+            assert!(all.iter().any(|a| a.text() == *name), "{name} is missing");
+        }
+        for i in 0..GROUPS as u8 {
+            for a in [Action::Gain(i), Action::Mute(i), Action::Solo(i), Action::Audition(i)] {
+                assert!(all.contains(&a), "{}", a.text());
+            }
+        }
+        for a in &all {
+            assert_eq!(Action::parse(&a.text()), Some(*a), "{}", a.text());
+        }
+    }
+
+    #[test]
+    fn a_pressed_control_is_learned_the_way_its_action_needs() {
+        let on = |ch: u8, n: u8, vel: u8| Msg::NoteOn { ch, note: n, vel };
+        let (m, t) = (Encoding::Mackie, Encoding::Twos);
+        // A button wants a press: a note on, or a cc that is not zero (a button that sends cc).
+        assert_eq!(learn(on(1, 36, 100), Action::Record, false, m, false).map(|l| l.src), Some(Src::Note(36)));
+        assert_eq!(learn(on(1, 36, 0), Action::Record, false, m, false), None, "the release");
+        assert_eq!(learn(Msg::NoteOff { ch: 1, note: 36 }, Action::Record, false, m, false), None);
+        assert_eq!(learn(cc(7, 127), Action::Record, false, m, false).map(|l| l.src), Some(Src::Cc(7)));
+        assert_eq!(learn(cc(7, 0), Action::Record, false, m, false), None);
+        assert_eq!(learn(Msg::Bend { ch: 1, value: 5 }, Action::Record, false, m, false), None, "a fader is no button");
+        // A value takes a cc (any value) or a fader, but not a note.
+        assert_eq!(learn(on(1, 36, 100), Action::Tempo, false, m, false), None);
+        let knob = learn(cc(13, 0), Action::Tempo, false, m, false).unwrap();
+        assert_eq!((knob.src, knob.relative), (Src::Cc(13), false));
+        let endless = learn(cc(14, 65), Action::Tempo, true, t, false).unwrap();
+        assert_eq!((endless.relative, endless.encoding), (true, t));
+        assert_eq!(learn(Msg::Bend { ch: 3, value: 5 }, Action::Tempo, false, m, true).map(|l| (l.src, l.channel)), Some((Src::Bend(3), None)));
+        // The lists are only turned, so they are always relative.
+        assert!(learn(cc(15, 1), Action::Score, false, m, false).unwrap().relative);
+        assert_eq!(learn(Msg::Bend { ch: 1, value: 5 }, Action::Score, false, m, false), None);
+        // The channel is remembered only when asked for.
+        assert_eq!(learn(on(10, 36, 100), Action::Record, false, m, true).and_then(|l| l.channel), Some(10));
+        assert_eq!(learn(on(10, 36, 100), Action::Record, false, m, false).and_then(|l| l.channel), None);
+    }
+
+    #[test]
+    fn assigning_replaces_the_old_control_of_the_same_kind_and_takes_a_used_one() {
+        let mut p = Preset::parse("bind = note 1 -> record\nbind = note 2 -> listen\nbind = cc 5 abs -> tempo\nbind = bend 1 -> tempo\n");
+        let found = |src| Learned { src, channel: None, relative: false, encoding: Encoding::Mackie };
+        // Record moves to note 3: the old note goes.
+        assert_eq!(p.assign(None, Action::Record, found(Src::Note(3))), None);
+        assert_eq!(p.bindings_of(None, Action::Record).len(), 1);
+        assert_eq!(p.bindings_of(None, Action::Record)[0].src, Src::Note(3));
+        // Stop takes note 2 from Listen.
+        assert_eq!(p.assign(None, Action::Stop, found(Src::Note(2))), Some(Action::Listen));
+        assert!(p.bindings_of(None, Action::Listen).is_empty());
+        // Tempo gets a new knob; the fader stays.
+        p.assign(None, Action::Tempo, found(Src::Cc(6)));
+        let tempo: Vec<Src> = p.bindings_of(None, Action::Tempo).iter().map(|b| b.src).collect();
+        assert_eq!(tempo, [Src::Bend(1), Src::Cc(6)]);
+        // Another layer's lines are not touched, and clearing is per layer.
+        let mut q = Preset::parse("layer = A note 8\nlayer = B note 9\nbind = A note 1 -> record\nbind = B note 1 -> mute 1\n");
+        assert_eq!(q.assign(Some("A"), Action::Stop, found(Src::Note(1))), Some(Action::Record));
+        assert_eq!(q.bindings_of(Some("B"), Action::Mute(0)).len(), 1);
+        q.clear(Some("B"), Action::Mute(0));
+        assert!(q.bindings_of(Some("B"), Action::Mute(0)).is_empty() && q.bindings_of(Some("A"), Action::Stop).len() == 1);
+        // The kind of a cc can be changed afterwards.
+        p.set_kind(None, Action::Tempo, true, Encoding::Offset);
+        let cc_bind = p.binds.iter().find(|b| b.src == Src::Cc(6)).unwrap();
+        assert_eq!((cc_bind.relative, cc_bind.encoding), (true, Encoding::Offset));
+        assert!(!p.binds.iter().find(|b| b.src == Src::Bend(1)).unwrap().relative, "a fader is not touched");
+    }
+
+    #[test]
+    fn an_edited_preset_replaces_the_one_in_use_and_keeps_the_layer() {
+        let p = Preset::parse("layer = A note 8\nlayer = B note 9\nbind = A note 1 -> record\nbind = B note 1 -> stop\n");
+        let mut m = Mapper::new(p.clone());
+        let s = State::default();
+        m.handle(note(9), &s);
+        assert_eq!(m.layer_name(), Some("B"));
+        let mut edited = p;
+        edited.assign(Some("B"), Action::Listen, Learned { src: Src::Note(1), channel: None, relative: false, encoding: Encoding::Mackie });
+        m.replace_preset(edited);
+        assert_eq!(m.layer_name(), Some("B"), "still on layer B");
+        assert_eq!(m.handle(note(1), &s), [Command::Press(Action::Listen)]);
     }
 
     #[test]
