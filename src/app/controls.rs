@@ -787,7 +787,7 @@ impl DrumApp {
                 let layer = link.mapper.layer_name();
                 egui::Grid::new("controller_binds").num_columns(2).striped(true).show(ui, |ui| {
                     for b in preset.binds.iter().filter(|b| b.layer.is_none() || b.layer.as_deref() == layer) {
-                        let kind = if b.relative { " (turn)" } else { "" };
+                        let kind = if b.reading.is_relative() { " (turn)" } else { "" };
                         ui.label(format!("{}{kind}", b.src.text()));
                         ui.label(b.action.text());
                         ui.end_row();

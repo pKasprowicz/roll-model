@@ -98,6 +98,7 @@ Every open task has a unique ID; refer to tasks by it. IDs are never reused: a f
 | **CD-18** | Split `handle_event` and `update` into handlers | code |
 | **CD-19** | Separate the editor's view state from its learn state | code |
 | **CD-20** | Split the pure core into a library crate | code |
+| **CD-26** | Rest of CD-7: layer newtype, one channel for every control, one binding type | code |
 | **CD-21** to **CD-25** | Polish suggestions (see the review) | code |
 
 ### Done in 0.4.0 (released; the list of that time)
@@ -205,7 +206,7 @@ Severity: **High** = a structural problem that makes changes costly or risky; **
 
 #### Medium
 
-- [ ] **CD-7 Primitive obsession in the controller domain.** (a) `relative: bool` plus `encoding: Encoding` allows nonsense (an absolute control with an encoding): make it `enum ControlKind { Absolute, Relative(Encoding) }`; the editor's `KINDS: [(bool, Encoding); 5]` and `kinds: BTreeMap<String, (bool, Encoding)>` disappear into it. (b) A layer is an `Option<String>` everywhere: a `LayerId` newtype or an index into `Preset.layers`. (c) `Src::Bend(u8)` carries a MIDI channel while the others use `Binding.channel`: one `Control { src, channel }`. (d) `Learned` repeats `Binding`'s `src`, `channel`, `relative`, `encoding` (a data clump): `Binding { control: Control, action, layer }` and `Learned = Control`. Effort M.
+- [x] **CD-7 Primitive obsession in the controller domain.** (a) `relative: bool` plus `encoding: Encoding` allows nonsense (an absolute control with an encoding): make it `enum ControlKind { Absolute, Relative(Encoding) }`; the editor's `KINDS: [(bool, Encoding); 5]` and `kinds: BTreeMap<String, (bool, Encoding)>` disappear into it. (b) A layer is an `Option<String>` everywhere: a `LayerId` newtype or an index into `Preset.layers`. (c) `Src::Bend(u8)` carries a MIDI channel while the others use `Binding.channel`: one `Control { src, channel }`. (d) `Learned` repeats `Binding`'s `src`, `channel`, `relative`, `encoding` (a data clump): `Binding { control: Control, action, layer }` and `Learned = Control`. Effort M. **Part (a) done**: `Reading { Absolute, Relative(Encoding) }` replaces `relative: bool` plus `encoding` in `Binding`, `Learned`, `learn`, `set_reading` and the editor. Parts (b) to (d) are now **CD-26**.
 - [ ] **CD-8 A preset has three identities.** The list and `config.txt` use the file stem, the help title and `Preset.name` use the `name =` line, and rename rewrites both (`with_name`). `load_preset` returns a built-in preset first when a file has the same name, so "editable" is decided by a name check (`editable_path`).
   *Fix:* one `PresetId { source: BuiltIn(&'static str) | File(PathBuf) }` used for choosing, listing and editing; the `name =` line becomes display-only or is dropped on write. Effort M.
 - [x] **CD-9 Duplicated "choose a preset" code** (DRY). The page's selector (`settings_controller`), `select_preset`, `use_new_preset`, `delete_preset` and `rename_preset` each set `cfg.controller_preset`, clear `cfg.controller_port`, reset the editor and call `connect_controller` in slightly different ways.
@@ -231,6 +232,7 @@ Severity: **High** = a structural problem that makes changes costly or risky; **
 - [ ] **CD-19 The editor's UI state lives in controller state.** `rename_to`, `rename_for`, `confirm_delete`, `open`, `layer` are widget state stored in `Controller.editor`, next to the learn state machine that drives behaviour.
   *Fix:* split `EditorState` into the learn state (behaviour, tested) and a `ManageView` (what the window remembers). Effort S.
 - [ ] **CD-20 Binary-only crate.** The pure core cannot be a dependency of a test or tool without building eframe, midir and rodio, and there is no `tests/` folder or `cargo doc` for it.
+- [ ] **CD-26 Rest of CD-7.** (b) a layer is an `Option<String>` everywhere: a `LayerId` newtype or an index into `Preset.layers`. (c) `Src::Bend(u8)` carries a MIDI channel while the others use `Binding.channel`: one `Control { src, channel }`. (d) `Learned` repeats `Binding`'s `src` and `channel` (a data clump): `Binding { control, reading, action, layer }` with `Learned` as the control and reading. Effort M.
   *Fix:* a workspace with a `roll-model-core` library (pure modules) and the application crate on top; the layering in the developer guide already says where the line is. Effort L, mechanical.
 
 #### Suggestions

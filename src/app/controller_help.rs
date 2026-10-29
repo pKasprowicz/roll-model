@@ -105,7 +105,7 @@ impl ControllerHelp {
                 widgets::hint(ui, "This preset binds no controls yet. Teach it some under Assignments on the Controller page.");
                 egui::Grid::new("controller_help_list").num_columns(2).striped(true).show(ui, |ui| {
                     for b in self.preset.binds.iter().filter(|b| b.layer.is_none() || b.layer == layer) {
-                        ui.label(format!("{}{}", b.src.text(), if b.relative { " (turn)" } else { "" }));
+                        ui.label(format!("{}{}", b.src.text(), if b.reading.is_relative() { " (turn)" } else { "" }));
                         ui.label(b.action.title());
                         ui.end_row();
                     }

@@ -245,7 +245,7 @@ pub fn generated(preset: &Preset) -> Option<Layout> {
         let bind = preset.binds.iter().find(|b| b.src == src);
         match (src, bind) {
             (Src::Bend(_), _) => ControlKind::Fader,
-            (Src::Cc(_), Some(b)) if b.relative => ControlKind::Encoder,
+            (Src::Cc(_), Some(b)) if b.reading.is_relative() => ControlKind::Encoder,
             (Src::Cc(_), Some(b)) if b.action.is_level() => match b.action {
                 Action::Gain(_) | Action::MusicVolume => ControlKind::Fader,
                 _ => ControlKind::Encoder,

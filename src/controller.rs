@@ -160,6 +160,29 @@ impl Encoding {
 }
 
 
+/// How a control reports itself: by its position (a knob, a fader) or by how far it was turned
+/// (an endless encoder, which counts in one of the `Encoding`s).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum Reading {
+    #[default]
+    Absolute,
+    Relative(Encoding),
+}
+
+impl Reading {
+    pub fn is_relative(self) -> bool {
+        matches!(self, Reading::Relative(_))
+    }
+
+    /// How an endless encoder counts; Mackie's for a control that is not one (it is not used then).
+    pub fn encoding(self) -> Encoding {
+        match self {
+            Reading::Relative(e) => e,
+            Reading::Absolute => Encoding::Mackie,
+        }
+    }
+}
+
 /// Where a control's message comes from: the identity a binding is looked up by.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Src {
@@ -563,10 +586,8 @@ pub struct Binding {
     pub src: Src,
     /// Only messages on this MIDI channel (1-based); `None`: on any channel.
     pub channel: Option<u8>,
-    /// An endless encoder (relative CC) rather than an absolute control.
-    pub relative: bool,
-    /// How a relative encoder counts (`Mackie` unless the line says otherwise).
-    pub encoding: Encoding,
+    /// Absolute, or an endless encoder and how it counts (`Mackie` unless the line says otherwise).
+    pub reading: Reading,
     pub action: Action,
 }
 
@@ -739,7 +760,8 @@ impl Preset {
         if let (Src::Bend(c), Some(_)) = (src, channel) {
             return Err(format!("a fader's channel is in \"bend {c}\", not in \"ch\""));
         }
-        self.binds.push(Binding { layer, src, channel, relative, encoding, action });
+        let reading = if relative { Reading::Relative(encoding) } else { Reading::Absolute };
+        self.binds.push(Binding { layer, src, channel, reading, action });
         Ok(())
     }
 
@@ -822,12 +844,10 @@ impl Preset {
                 left.push_str(&format!(" ch {ch}"));
             }
             if matches!(b.src, Src::Cc(_)) {
-                if !b.relative {
-                    left.push_str(" abs");
-                } else if b.encoding == Encoding::Mackie {
-                    left.push_str(" rel");
-                } else {
-                    left.push_str(&format!(" rel {}", b.encoding.word()));
+                match b.reading {
+                    Reading::Absolute => left.push_str(" abs"),
+                    Reading::Relative(Encoding::Mackie) => left.push_str(" rel"),
+                    Reading::Relative(e) => left.push_str(&format!(" rel {}", e.word())),
                 }
             }
             s.push_str(&format!("bind = {left} -> {}\n", b.action.text()));
@@ -878,7 +898,7 @@ impl Preset {
             !same
         });
         self.binds.retain(|b| !(b.layer == layer && b.action == action && kind(b.src) == kind(found.src)));
-        self.binds.push(Binding { layer, src: found.src, channel: found.channel, relative: found.relative, encoding: found.encoding, action });
+        self.binds.push(Binding { layer, src: found.src, channel: found.channel, reading: found.reading, action });
         taken_from
     }
 
@@ -888,10 +908,9 @@ impl Preset {
     }
 
     /// Changes how the cc controls of `action` on `layer` are read: as positions, or as an endless encoder.
-    pub fn set_kind(&mut self, layer: Option<&str>, action: Action, relative: bool, encoding: Encoding) {
+    pub fn set_reading(&mut self, layer: Option<&str>, action: Action, reading: Reading) {
         for b in self.binds.iter_mut().filter(|b| b.layer.as_deref() == layer && b.action == action && matches!(b.src, Src::Cc(_))) {
-            b.relative = relative;
-            b.encoding = encoding;
+            b.reading = reading;
         }
     }
 
@@ -970,28 +989,27 @@ pub fn load_preset(name: &str, dir: Option<&Path>) -> Result<Preset, String> {
 pub struct Learned {
     pub src: Src,
     pub channel: Option<u8>,
-    pub relative: bool,
-    pub encoding: Encoding,
+    pub reading: Reading,
 }
 
 /// What a message from the controller says about the control that sent it, when `action` is
 /// waiting for one. A button needs a press (not the release), a value a cc or a fader, and the
-/// lists (`Score`, `Rudiment`) an endless encoder. `relative` and `encoding` are the choice for
+/// lists (`Score`, `Rudiment`) an endless encoder. `reading` is the choice for
 /// a cc that sets a value; `remember_channel` limits the binding to the channel the message came on.
 /// `None`: not a control this action can use (a note off, a note for a knob's value, ...).
-pub fn learn(msg: Msg, action: Action, relative: bool, encoding: Encoding, remember_channel: bool) -> Option<Learned> {
+pub fn learn(msg: Msg, action: Action, reading: Reading, remember_channel: bool) -> Option<Learned> {
     let channel = |src: Src| (remember_channel && !matches!(src, Src::Bend(_))).then(|| msg.channel());
     let value_like = action.is_level() || action.is_browse();
+    let found = |src: Src, channel: Option<u8>, reading: Reading| Some(Learned { src, channel, reading });
     match msg {
-        Msg::NoteOn { note, vel, .. } if vel > 0 && !value_like => {
-            Some(Learned { src: Src::Note(note), channel: channel(Src::Note(note)), relative: false, encoding: Encoding::Mackie })
-        }
+        Msg::NoteOn { note, vel, .. } if vel > 0 && !value_like => found(Src::Note(note), channel(Src::Note(note)), Reading::Absolute),
         Msg::Cc { cc, .. } if value_like => {
-            let relative = relative || action.is_browse();
-            Some(Learned { src: Src::Cc(cc), channel: channel(Src::Cc(cc)), relative, encoding: if relative { encoding } else { Encoding::Mackie } })
+            // The lists are only turned.
+            let reading = if action.is_browse() { Reading::Relative(reading.encoding()) } else { reading };
+            found(Src::Cc(cc), channel(Src::Cc(cc)), reading)
         }
-        Msg::Cc { cc, val, .. } if val > 0 => Some(Learned { src: Src::Cc(cc), channel: channel(Src::Cc(cc)), relative: false, encoding: Encoding::Mackie }),
-        Msg::Bend { ch, .. } if action.is_level() => Some(Learned { src: Src::Bend(ch), channel: None, relative: false, encoding: Encoding::Mackie }),
+        Msg::Cc { cc, val, .. } if val > 0 => found(Src::Cc(cc), channel(Src::Cc(cc)), Reading::Absolute),
+        Msg::Bend { ch, .. } if action.is_level() => found(Src::Bend(ch), None, Reading::Absolute),
         _ => None,
     }
 }
@@ -1123,7 +1141,7 @@ impl Mapper {
             return Vec::new();
         }
         let Some(i) = self.find(src, msg.channel()) else { return Vec::new() };
-        let (action, relative, encoding) = (self.preset.binds[i].action, self.preset.binds[i].relative, self.preset.binds[i].encoding);
+        let (action, reading) = (self.preset.binds[i].action, self.preset.binds[i].reading);
         match action {
             Action::Shift => {
                 if down == Some(true) {
@@ -1133,7 +1151,7 @@ impl Mapper {
                 Vec::new()
             }
             a if a.is_level() || a.is_browse() => match msg {
-                Msg::Cc { val, .. } if relative => match encoding.decode(val) {
+                Msg::Cc { val, .. } if reading.is_relative() => match reading.encoding().decode(val) {
                     0 => Vec::new(),
                     n => vec![Command::Turn(a, if self.shift && !a.is_browse() { n * SHIFT_FACTOR } else { n })],
                 },
@@ -1565,33 +1583,33 @@ mod tests {
     #[test]
     fn a_pressed_control_is_learned_the_way_its_action_needs() {
         let on = |ch: u8, n: u8, vel: u8| Msg::NoteOn { ch, note: n, vel };
-        let (m, t) = (Encoding::Mackie, Encoding::Twos);
+        let t = Encoding::Twos;
         // A button wants a press: a note on, or a cc that is not zero (a button that sends cc).
-        assert_eq!(learn(on(1, 36, 100), Action::Record, false, m, false).map(|l| l.src), Some(Src::Note(36)));
-        assert_eq!(learn(on(1, 36, 0), Action::Record, false, m, false), None, "the release");
-        assert_eq!(learn(Msg::NoteOff { ch: 1, note: 36 }, Action::Record, false, m, false), None);
-        assert_eq!(learn(cc(7, 127), Action::Record, false, m, false).map(|l| l.src), Some(Src::Cc(7)));
-        assert_eq!(learn(cc(7, 0), Action::Record, false, m, false), None);
-        assert_eq!(learn(Msg::Bend { ch: 1, value: 5 }, Action::Record, false, m, false), None, "a fader is no button");
+        assert_eq!(learn(on(1, 36, 100), Action::Record, Reading::Absolute, false).map(|l| l.src), Some(Src::Note(36)));
+        assert_eq!(learn(on(1, 36, 0), Action::Record, Reading::Absolute, false), None, "the release");
+        assert_eq!(learn(Msg::NoteOff { ch: 1, note: 36 }, Action::Record, Reading::Absolute, false), None);
+        assert_eq!(learn(cc(7, 127), Action::Record, Reading::Absolute, false).map(|l| l.src), Some(Src::Cc(7)));
+        assert_eq!(learn(cc(7, 0), Action::Record, Reading::Absolute, false), None);
+        assert_eq!(learn(Msg::Bend { ch: 1, value: 5 }, Action::Record, Reading::Absolute, false), None, "a fader is no button");
         // A value takes a cc (any value) or a fader, but not a note.
-        assert_eq!(learn(on(1, 36, 100), Action::Tempo, false, m, false), None);
-        let knob = learn(cc(13, 0), Action::Tempo, false, m, false).unwrap();
-        assert_eq!((knob.src, knob.relative), (Src::Cc(13), false));
-        let endless = learn(cc(14, 65), Action::Tempo, true, t, false).unwrap();
-        assert_eq!((endless.relative, endless.encoding), (true, t));
-        assert_eq!(learn(Msg::Bend { ch: 3, value: 5 }, Action::Tempo, false, m, true).map(|l| (l.src, l.channel)), Some((Src::Bend(3), None)));
+        assert_eq!(learn(on(1, 36, 100), Action::Tempo, Reading::Absolute, false), None);
+        let knob = learn(cc(13, 0), Action::Tempo, Reading::Absolute, false).unwrap();
+        assert_eq!((knob.src, knob.reading), (Src::Cc(13), Reading::Absolute));
+        let endless = learn(cc(14, 65), Action::Tempo, Reading::Relative(t), false).unwrap();
+        assert_eq!(endless.reading, Reading::Relative(t));
+        assert_eq!(learn(Msg::Bend { ch: 3, value: 5 }, Action::Tempo, Reading::Absolute, true).map(|l| (l.src, l.channel)), Some((Src::Bend(3), None)));
         // The lists are only turned, so they are always relative.
-        assert!(learn(cc(15, 1), Action::Score, false, m, false).unwrap().relative);
-        assert_eq!(learn(Msg::Bend { ch: 1, value: 5 }, Action::Score, false, m, false), None);
+        assert!(learn(cc(15, 1), Action::Score, Reading::Absolute, false).unwrap().reading.is_relative());
+        assert_eq!(learn(Msg::Bend { ch: 1, value: 5 }, Action::Score, Reading::Absolute, false), None);
         // The channel is remembered only when asked for.
-        assert_eq!(learn(on(10, 36, 100), Action::Record, false, m, true).and_then(|l| l.channel), Some(10));
-        assert_eq!(learn(on(10, 36, 100), Action::Record, false, m, false).and_then(|l| l.channel), None);
+        assert_eq!(learn(on(10, 36, 100), Action::Record, Reading::Absolute, true).and_then(|l| l.channel), Some(10));
+        assert_eq!(learn(on(10, 36, 100), Action::Record, Reading::Absolute, false).and_then(|l| l.channel), None);
     }
 
     #[test]
     fn assigning_replaces_the_old_control_of_the_same_kind_and_takes_a_used_one() {
         let mut p = Preset::parse("bind = note 1 -> record\nbind = note 2 -> listen\nbind = cc 5 abs -> tempo\nbind = bend 1 -> tempo\n");
-        let found = |src| Learned { src, channel: None, relative: false, encoding: Encoding::Mackie };
+        let found = |src| Learned { src, channel: None, reading: Reading::Absolute };
         // Record moves to note 3: the old note goes.
         assert_eq!(p.assign(None, Action::Record, found(Src::Note(3))), None);
         assert_eq!(p.bindings_of(None, Action::Record).len(), 1);
@@ -1610,10 +1628,10 @@ mod tests {
         q.clear(Some("B"), Action::Mute(0));
         assert!(q.bindings_of(Some("B"), Action::Mute(0)).is_empty() && q.bindings_of(Some("A"), Action::Stop).len() == 1);
         // The kind of a cc can be changed afterwards.
-        p.set_kind(None, Action::Tempo, true, Encoding::Offset);
+        p.set_reading(None, Action::Tempo, Reading::Relative(Encoding::Offset));
         let cc_bind = p.binds.iter().find(|b| b.src == Src::Cc(6)).unwrap();
-        assert_eq!((cc_bind.relative, cc_bind.encoding), (true, Encoding::Offset));
-        assert!(!p.binds.iter().find(|b| b.src == Src::Bend(1)).unwrap().relative, "a fader is not touched");
+        assert_eq!(cc_bind.reading, Reading::Relative(Encoding::Offset));
+        assert!(!p.binds.iter().find(|b| b.src == Src::Bend(1)).unwrap().reading.is_relative(), "a fader is not touched");
     }
 
     #[test]
@@ -1624,7 +1642,7 @@ mod tests {
         m.handle(note(9), &s);
         assert_eq!(m.layer_name(), Some("B"));
         let mut edited = p;
-        edited.assign(Some("B"), Action::Listen, Learned { src: Src::Note(1), channel: None, relative: false, encoding: Encoding::Mackie });
+        edited.assign(Some("B"), Action::Listen, Learned { src: Src::Note(1), channel: None, reading: Reading::Absolute });
         m.replace_preset(edited);
         assert_eq!(m.layer_name(), Some("B"), "still on layer B");
         assert_eq!(m.handle(note(1), &s), [Command::Press(Action::Listen)]);

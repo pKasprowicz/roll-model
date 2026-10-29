@@ -11,7 +11,7 @@ use std::path::PathBuf;
 use egui::{RichText, ViewportBuilder, ViewportClass, ViewportId};
 
 use super::*;
-use crate::controller::{Binding, Encoding, Preset};
+use crate::controller::{Binding, Encoding, Preset, Reading};
 use crate::widgets;
 
 /// What the editor remembers between frames.
@@ -25,7 +25,7 @@ pub(super) struct EditorState {
     /// Limit a learned control to the MIDI channel it sent on.
     pub(super) remember_channel: bool,
     /// How a value's cc is read, chosen before it is learned (by the action's name).
-    pub(super) kinds: BTreeMap<String, (bool, Encoding)>,
+    pub(super) kinds: BTreeMap<String, Reading>,
     pub(super) notice: String,
     /// The new name typed for the chosen preset, and the preset it was typed for.
     pub(super) rename_to: String,
@@ -56,12 +56,12 @@ impl EditorState {
 
     /// How a value's cc is read for `action` when nothing is bound yet: the choice made in the
     /// table, or (absolute, except for the lists, which are only turned).
-    pub(super) fn chosen_kind(&self, action: Action) -> (bool, Encoding) {
-        self.kinds.get(&action.text()).copied().unwrap_or((action.is_browse(), Encoding::Mackie))
+    pub(super) fn chosen_kind(&self, action: Action) -> Reading {
+        self.kinds.get(&action.text()).copied().unwrap_or(if action.is_browse() { Reading::Relative(Encoding::Mackie) } else { Reading::Absolute })
     }
 
-    pub(super) fn choose_kind(&mut self, action: Action, relative: bool, encoding: Encoding) {
-        self.kinds.insert(action.text(), (relative, encoding));
+    pub(super) fn choose_kind(&mut self, action: Action, reading: Reading) {
+        self.kinds.insert(action.text(), reading);
     }
 
     /// What the editor was doing belongs to the preset that was chosen: drop it when another is.
@@ -84,7 +84,7 @@ enum Op {
     Learn(Action),
     Cancel,
     Clear(Action),
-    Kind(Action, bool, Encoding),
+    Kind(Action, Reading),
     NewPreset,
     CopyToEdit,
     Rename,
@@ -92,19 +92,18 @@ enum Op {
     Delete,
 }
 
-const KINDS: [(bool, Encoding); 5] = [
-    (false, Encoding::Mackie),
-    (true, Encoding::Mackie),
-    (true, Encoding::Twos),
-    (true, Encoding::Offset),
-    (true, Encoding::SignBit2),
+const KINDS: [Reading; 5] = [
+    Reading::Absolute,
+    Reading::Relative(Encoding::Mackie),
+    Reading::Relative(Encoding::Twos),
+    Reading::Relative(Encoding::Offset),
+    Reading::Relative(Encoding::SignBit2),
 ];
 
-fn kind_text(relative: bool, encoding: Encoding) -> String {
-    if relative {
-        format!("relative, {}", encoding.word())
-    } else {
-        "absolute".to_string()
+fn kind_text(reading: Reading) -> String {
+    match reading {
+        Reading::Relative(encoding) => format!("relative, {}", encoding.word()),
+        Reading::Absolute => "absolute".to_string(),
     }
 }
 
@@ -180,11 +179,11 @@ impl DrumApp {
             return false;
         };
         let layer = self.editor_layer(&preset);
-        let existing = preset.bindings_of(layer.as_deref(), action).into_iter().find(|b| matches!(b.src, controller::Src::Cc(_))).map(|b| (b.relative, b.encoding));
-        let (relative, encoding) = existing.unwrap_or_else(|| self.controller.editor.chosen_kind(action));
-        let Some(found) = controller::learn(msg, action, relative, encoding, self.controller.editor.remember_channel) else { return true };
+        let existing = preset.bindings_of(layer.as_deref(), action).into_iter().find(|b| matches!(b.src, controller::Src::Cc(_))).map(|b| b.reading);
+        let reading = existing.unwrap_or_else(|| self.controller.editor.chosen_kind(action));
+        let Some(found) = controller::learn(msg, action, reading, self.controller.editor.remember_channel) else { return true };
         let taken_from = self.edit_preset(|p| p.assign(layer.as_deref(), action, found)).flatten();
-        let mut notice = format!("{}: {}", action.title(), control_text(&Binding { layer: None, src: found.src, channel: found.channel, relative: found.relative, encoding: found.encoding, action }));
+        let mut notice = format!("{}: {}", action.title(), control_text(&Binding { layer: None, src: found.src, channel: found.channel, reading: found.reading, action }));
         if let Some(other) = taken_from {
             notice.push_str(&format!(" (it was {})", other.title()));
         }
@@ -482,15 +481,15 @@ impl DrumApp {
                             let current = bound
                                 .iter()
                                 .find(|b| matches!(b.src, controller::Src::Cc(_)))
-                                .map(|b| (b.relative, b.encoding))
+                                .map(|b| b.reading)
                                 .unwrap_or_else(|| self.controller.editor.chosen_kind(action));
-                            egui::ComboBox::from_id_salt(("controller_kind", action.text())).selected_text(kind_text(current.0, current.1)).width(150.0).show_ui(ui, |ui| {
-                                for (relative, encoding) in KINDS {
-                                    if action.is_browse() && !relative {
+                            egui::ComboBox::from_id_salt(("controller_kind", action.text())).selected_text(kind_text(current)).width(150.0).show_ui(ui, |ui| {
+                                for reading in KINDS {
+                                    if action.is_browse() && !reading.is_relative() {
                                         continue;
                                     }
-                                    if ui.selectable_label(current == (relative, encoding), kind_text(relative, encoding)).clicked() {
-                                        op = Some(Op::Kind(action, relative, encoding));
+                                    if ui.selectable_label(current == reading, kind_text(reading)).clicked() {
+                                        op = Some(Op::Kind(action, reading));
                                     }
                                 }
                             });
@@ -534,11 +533,11 @@ impl DrumApp {
                     self.edit_preset(|p| p.clear(layer.as_deref(), action));
                 }
             }
-            Op::Kind(action, relative, encoding) => {
-                self.controller.editor.choose_kind(action, relative, encoding);
+            Op::Kind(action, reading) => {
+                self.controller.editor.choose_kind(action, reading);
                 if let Some(preset) = self.preset_being_edited() {
                     let layer = self.editor_layer(&preset);
-                    self.edit_preset(|p| p.set_kind(layer.as_deref(), action, relative, encoding));
+                    self.edit_preset(|p| p.set_reading(layer.as_deref(), action, reading));
                 }
             }
             Op::NewPreset => self.new_learned_preset(),
@@ -614,9 +613,9 @@ mod tests {
 
     #[test]
     fn kinds_are_named_and_the_lists_have_no_absolute_kind() {
-        assert_eq!(kind_text(false, Encoding::Mackie), "absolute");
-        assert_eq!(kind_text(true, Encoding::Twos), "relative, twos");
-        assert_eq!(KINDS.iter().filter(|(relative, _)| !relative).count(), 1);
+        assert_eq!(kind_text(Reading::Absolute), "absolute");
+        assert_eq!(kind_text(Reading::Relative(Encoding::Twos)), "relative, twos");
+        assert_eq!(KINDS.iter().filter(|r| !r.is_relative()).count(), 1);
     }
 
     #[test]
@@ -670,14 +669,14 @@ mod tests {
         assert!(app.learn_message(controller::Msg::Cc { ch: 2, cc: 13, val: 40 }));
         assert_eq!(app.controller.editor.learning, None);
         let tempo = saved().binds.iter().find(|b| b.action == Action::Tempo).cloned().unwrap();
-        assert_eq!((tempo.src, tempo.channel, tempo.relative), (controller::Src::Cc(13), None, false));
+        assert_eq!((tempo.src, tempo.channel, tempo.reading), (controller::Src::Cc(13), None, Reading::Absolute));
         // The channel is remembered when asked for, and a relative choice is kept for the knob.
         app.controller.editor.remember_channel = true;
-        app.controller.editor.kinds.insert(Action::RangeFrom.text(), (true, Encoding::Twos));
+        app.controller.editor.kinds.insert(Action::RangeFrom.text(), Reading::Relative(Encoding::Twos));
         app.controller.editor.learning = Some(Action::RangeFrom);
         assert!(app.learn_message(controller::Msg::Cc { ch: 2, cc: 14, val: 1 }));
         let from = saved().binds.iter().find(|b| b.action == Action::RangeFrom).cloned().unwrap();
-        assert_eq!((from.channel, from.relative, from.encoding), (Some(2), true, Encoding::Twos));
+        assert_eq!((from.channel, from.reading), (Some(2), Reading::Relative(Encoding::Twos)));
         // The file is a normal preset: it parses without complaint and says what was learned.
         assert!(saved().warnings.is_empty(), "{:?}", saved().warnings);
         assert_eq!(saved().port, "PADS");
