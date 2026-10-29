@@ -7,7 +7,7 @@ use egui::{Align, Color32, Pos2, Rect, RichText, Sense, Stroke, Vec2};
 use super::DrumApp;
 use crate::config::Config;
 use crate::controller::{self, Preset};
-use crate::controller_layout::{self as layout, Control, Kind, Layout, Mapping, Meaning, Printed};
+use crate::controller_layout::{self as layout, Control, ControlKind, Layout, Mapping, Meaning, Printed};
 use crate::render;
 
 const BODY: Color32 = Color32::from_rgb(0x2a, 0x2c, 0x31);
@@ -161,7 +161,7 @@ fn draw(ui: &mut egui::Ui, preset: &Preset, layout: &Layout, layer: Option<&str>
         None => layout.name.to_string(),
     };
     paint.text(Rect::from_min_size(at(36.0, layout.size.1 - 44.0), paint.vec(520.0, 30.0)), &title, 15.0, DIM_TEXT, Align::Min);
-    let layers: Vec<&Control> = layout.controls.iter().filter(|c| c.kind == Kind::Layer).collect();
+    let layers: Vec<&Control> = layout.controls.iter().filter(|c| c.kind == ControlKind::Layer).collect();
     if let [a, b] = layers[..] {
         let middle = ((a.center.0 + b.center.0) / 2.0, (a.center.1 + b.center.1) / 2.0);
         paint.text(Rect::from_center_size(at(middle.0, middle.1), paint.vec(64.0, 16.0)), "LAYER", 10.0, DIM_TEXT, Align::Center);
@@ -177,12 +177,12 @@ fn draw(ui: &mut egui::Ui, preset: &Preset, layout: &Layout, layer: Option<&str>
     for (i, control) in layout.controls.iter().enumerate() {
         let rect = Rect::from_center_size(at(control.center.0, control.center.1), paint.vec(control.size.0, control.size.1));
         let mapping = layout::mapping(preset, layer, control);
-        let sense = if control.kind == Kind::Layer { Sense::click() } else { Sense::hover() };
+        let sense = if control.kind == ControlKind::Layer { Sense::click() } else { Sense::hover() };
         let response = ui.interact(rect, ui.id().with(("controller_control", i)), sense);
         let outline = if response.hovered() { Stroke::new(2.0 * scale.max(0.7), render::ACCENT) } else { Stroke::NONE };
         match control.kind {
-            Kind::Button => paint.button(rect, preset, layer, &mapping, outline),
-            Kind::Layer => {
+            ControlKind::Button => paint.button(rect, preset, layer, &mapping, outline),
+            ControlKind::Layer => {
                 let this = preset.layers.iter().position(|(_, src)| Some(*src) == control.press);
                 let selected = this == Some(shown);
                 let (fill, text) = if selected { (render::ACCENT, Color32::WHITE) } else { (Color32::from_rgb(0x5a, 0x5d, 0x66), LIGHT_TEXT) };
@@ -193,9 +193,9 @@ fn draw(ui: &mut egui::Ui, preset: &Preset, layout: &Layout, layer: Option<&str>
                     chosen = this;
                 }
             }
-            Kind::Encoder => paint.encoder(rect, preset, layer, &mapping, outline),
-            Kind::Fader => paint.fader(rect, &mapping, outline),
-            Kind::Indicator => paint.indicator(rect, &control.name),
+            ControlKind::Encoder => paint.encoder(rect, preset, layer, &mapping, outline),
+            ControlKind::Fader => paint.fader(rect, &mapping, outline),
+            ControlKind::Indicator => paint.indicator(rect, &control.name),
         }
         response.on_hover_ui_at_pointer(|ui| tooltip(ui, control, &mapping));
     }
@@ -360,11 +360,11 @@ fn tooltip(ui: &mut egui::Ui, control: &Control, mapping: &Mapping) {
     ui.set_max_width(320.0);
     ui.label(RichText::new(&control.name).strong());
     let (press_word, turn_word) = match control.kind {
-        Kind::Encoder => ("Push", "Turn"),
-        Kind::Fader => ("Press", "Move"),
+        ControlKind::Encoder => ("Push", "Turn"),
+        ControlKind::Fader => ("Press", "Move"),
         _ => ("Press", "Turn"),
     };
-    if control.kind == Kind::Indicator {
+    if control.kind == ControlKind::Indicator {
         ui.label("Lit when the controller is in Mackie Control mode, the mode this program needs. The controller's manual says how to switch to it.");
         return;
     }

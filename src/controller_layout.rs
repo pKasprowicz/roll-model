@@ -3,14 +3,14 @@
 //! control does on a layer, for the help screen. Pure geometry and lookups; the drawing is
 //! in `app/controller_help.rs`.
 //!
-//! Layouts: the Behringer X-Touch Mini and the X-Touch Compact. Both are drawn from memory of the
-//! devices: both are drawn from photographs of their fronts (positions measured on the photo, the
-//! height of the Mini stretched to make room for labels).
+//! Layouts: the Behringer X-Touch Mini and the X-Touch Compact, both drawn from photographs of
+//! their fronts (positions measured on the photo, the height of the Mini stretched to make room
+//! for labels), and one made from any preset (`generated`).
 
 use crate::controller::{Action, Binding, Preset, Src};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Kind {
+pub enum ControlKind {
     Button,
     /// An endless rotary encoder with a push switch and an LED ring.
     Encoder,
@@ -23,7 +23,7 @@ pub enum Kind {
 
 #[derive(Clone, Debug)]
 pub struct Control {
-    pub kind: Kind,
+    pub kind: ControlKind,
     /// Where it is on the device: "Encoder 3", "Top row, button 2".
     pub name: String,
     /// In layout units, from the top left corner of the device.
@@ -33,6 +33,37 @@ pub struct Control {
     pub press: Option<Src>,
     /// What it sends when turned or moved (an encoder, the fader).
     pub turn: Option<Src>,
+}
+
+impl Control {
+    /// A control with a place and a size and no messages yet.
+    fn new(kind: ControlKind, name: impl Into<String>, center: (f32, f32), size: (f32, f32)) -> Control {
+        Control { kind, name: name.into(), center, size, press: None, turn: None }
+    }
+
+    fn button(name: impl Into<String>, center: (f32, f32), size: (f32, f32)) -> Control {
+        Control::new(ControlKind::Button, name, center, size)
+    }
+
+    fn encoder(name: impl Into<String>, center: (f32, f32), size: (f32, f32)) -> Control {
+        Control::new(ControlKind::Encoder, name, center, size)
+    }
+
+    fn fader(name: impl Into<String>, center: (f32, f32), size: (f32, f32)) -> Control {
+        Control::new(ControlKind::Fader, name, center, size)
+    }
+
+    /// What it sends when pressed.
+    fn pressing(mut self, src: Src) -> Control {
+        self.press = Some(src);
+        self
+    }
+
+    /// What it sends when turned or moved.
+    fn turning(mut self, src: Src) -> Control {
+        self.turn = Some(src);
+        self
+    }
 }
 
 /// What is printed beside a button.
@@ -100,49 +131,36 @@ const ENCODER_CC: u8 = 16;
 const ENCODER_PUSH: u8 = 32;
 const LAYER_NOTES: [u8; 2] = [84, 85];
 
-/// Behringer X-Touch Mini: a row of eight encoders, two rows of eight buttons below them, the
+/// The eight encoders of a Mackie surface's top row, in the order of their numbers, at `y`.
+fn encoder_row(x: impl Fn(usize) -> f32, y: f32, size: f32) -> Vec<Control> {
+    (0..COLUMNS)
+        .map(|i| Control::encoder(format!("Encoder {}", i + 1), (x(i), y), (size, size)).pressing(Src::Note(ENCODER_PUSH + i as u8)).turning(Src::Cc(ENCODER_CC + i as u8)))
+        .collect()
+}
+
+/// Behringer X-Touch Mini: a row of eight encoders, two rows of buttons below them, the
 /// two LAYER buttons and the fader on the right.
 pub fn x_touch_mini() -> Layout {
-    let mut controls = Vec::new();
+    const ENCODER_Y: f32 = 95.0;
+    const ROWS_Y: [f32; 2] = [200.0, 273.0];
+    const BUTTON: (f32, f32) = (62.0, 48.0);
+    const RIGHT_X: f32 = 897.0;
     let x = |i: usize| COLUMN_X + i as f32 * COLUMN_PITCH;
-    for i in 0..COLUMNS {
-        controls.push(Control {
-            kind: Kind::Encoder,
-            name: format!("Encoder {}", i + 1),
-            center: (x(i), 95.0),
-            size: (62.0, 62.0),
-            press: Some(Src::Note(ENCODER_PUSH + i as u8)),
-            turn: Some(Src::Cc(ENCODER_CC + i as u8)),
-        });
-    }
-    for (row, notes, y) in [("Top row", &TOP_ROW, 200.0), ("Bottom row", &BOTTOM_ROW, 273.0)] {
+    let mut controls = encoder_row(x, ENCODER_Y, 62.0);
+    for (row, (notes, y)) in [("Top row", (&TOP_ROW, ROWS_Y[0])), ("Bottom row", (&BOTTOM_ROW, ROWS_Y[1]))] {
         for (i, note) in notes.iter().enumerate() {
-            controls.push(Control {
-                kind: Kind::Button,
-                name: format!("{row}, button {}", i + 1),
-                center: (x(i), y),
-                size: (62.0, 48.0),
-                press: Some(Src::Note(*note)),
-                turn: None,
-            });
+            controls.push(Control::button(format!("{row}, button {}", i + 1), (x(i), y), BUTTON).pressing(Src::Note(*note)));
         }
     }
     // The LAYER buttons sit in line with the two rows of buttons.
     for (i, note) in LAYER_NOTES.iter().enumerate() {
-        controls.push(Control {
-            kind: Kind::Layer,
-            name: format!("Layer {}", ["A", "B"][i]),
-            center: (897.0, 200.0 + i as f32 * 73.0),
-            size: (62.0, 48.0),
-            press: Some(Src::Note(*note)),
-            turn: None,
-        });
+        controls.push(Control::new(ControlKind::Layer, format!("Layer {}", ["A", "B"][i]), (RIGHT_X, ROWS_Y[i]), BUTTON).pressing(Src::Note(*note)));
     }
-    controls.push(Control { kind: Kind::Indicator, name: "MC MODE".into(), center: (897.0, 133.0), size: (74.0, 44.0), press: None, turn: None });
-    controls.push(Control { kind: Kind::Fader, name: "Fader".into(), center: (817.0, 182.0), size: (44.0, 238.0), press: None, turn: Some(Src::Bend(1)) });
+    controls.push(Control::new(ControlKind::Indicator, "MC MODE", (RIGHT_X, 133.0), (74.0, 44.0)));
+    controls.push(Control::fader("Fader", (817.0, 182.0), (44.0, 238.0)).turning(Src::Bend(1)));
     // What is printed beside the buttons of the bottom row.
     let printed = [Some(Printed::Text("MC")), None, Some(Printed::Rewind), Some(Printed::FastForward), Some(Printed::Text("LOOP")), Some(Printed::Stop), Some(Printed::Play), Some(Printed::Record)];
-    let marks = printed.into_iter().enumerate().filter_map(|(i, what)| Some(Mark { at: (x(i) + 47.0, 273.0), what: what? })).collect();
+    let marks = printed.into_iter().enumerate().filter_map(|(i, what)| Some(Mark { at: (x(i) + 47.0, ROWS_Y[1]), what: what? })).collect();
     Layout { name: "Behringer X-Touch Mini".into(), size: (952.0, 371.0), controls, marks, generated: false }
 }
 
@@ -152,68 +170,63 @@ pub fn x_touch_mini() -> Layout {
 /// buttons at the bottom right. The messages are those of the Mackie Control table; the ones this
 /// picture does not know (the right-hand encoders, the LAYER buttons) are left out.
 pub fn x_touch_compact() -> Layout {
+    const STRIP_BUTTON: (f32, f32) = (72.0, 38.0);
+    const FADER: (f32, f32) = (40.0, 340.0);
+    const FADER_Y: f32 = 595.0;
+    const SELECT_Y: f32 = 840.0;
+    const MAIN_X: f32 = 885.0;
+    const SIDE_X: f32 = 993.0;
     let x = |i: usize| 105.0 + i as f32 * 96.0;
-    let mut controls = Vec::new();
     // The encoders of the top row come first: the LED ring of encoder n is addressed as cc 48 + n.
-    for i in 0..COLUMNS {
-        controls.push(Control {
-            kind: Kind::Encoder,
-            name: format!("Encoder {}", i + 1),
-            center: (x(i), 120.0),
-            size: (66.0, 66.0),
-            press: Some(Src::Note(ENCODER_PUSH + i as u8)),
-            turn: Some(Src::Cc(ENCODER_CC + i as u8)),
-        });
-    }
+    let mut controls = encoder_row(x, 120.0, 66.0);
     // The strip buttons: REC, SOLO, MUTE above the faders, SELECT below them.
-    for (word, first, y) in [("REC", 0u8, 222.0), ("SOLO", 8, 277.0), ("MUTE", 16, 332.0), ("SELECT", 24, 840.0)] {
+    for (word, first, y) in [("REC", 0u8, 222.0), ("SOLO", 8, 277.0), ("MUTE", 16, 332.0), ("SELECT", 24, SELECT_Y)] {
         for i in 0..COLUMNS {
-            controls.push(Control {
-                kind: Kind::Button,
-                name: format!("Strip {} · {word}", i + 1),
-                center: (x(i), y),
-                size: (72.0, 38.0),
-                press: Some(Src::Note(first + i as u8)),
-                turn: None,
-            });
+            controls.push(Control::button(format!("Strip {} · {word}", i + 1), (x(i), y), STRIP_BUTTON).pressing(Src::Note(first + i as u8)));
         }
     }
     for i in 0..COLUMNS {
-        controls.push(Control { kind: Kind::Fader, name: format!("Fader {}", i + 1), center: (x(i), 595.0), size: (40.0, 340.0), press: None, turn: Some(Src::Bend(i as u8 + 1)) });
+        controls.push(Control::fader(format!("Fader {}", i + 1), (x(i), FADER_Y), FADER).turning(Src::Bend(i as u8 + 1)));
     }
-    controls.push(Control { kind: Kind::Fader, name: "Fader 9 (main)".into(), center: (885.0, 595.0), size: (40.0, 340.0), press: None, turn: Some(Src::Bend(9)) });
-    controls.push(Control { kind: Kind::Button, name: "Button under fader 9".into(), center: (885.0, 840.0), size: (72.0, 38.0), press: None, turn: None });
+    controls.push(Control::fader("Fader 9 (main)", (MAIN_X, FADER_Y), FADER).turning(Src::Bend(9)));
+    controls.push(Control::button("Button under fader 9", (MAIN_X, SELECT_Y), STRIP_BUTTON));
     // The eight encoders on the right, in two columns, read row by row. What they send is not known.
     for i in 0..8 {
-        controls.push(Control {
-            kind: Kind::Encoder,
-            name: format!("Side encoder {}", i + 1),
-            center: (993.0 + (i % 2) as f32 * 97.0, 120.0 + (i / 2) as f32 * 109.0),
-            size: (66.0, 66.0),
-            press: None,
-            turn: None,
-        });
+        controls.push(Control::encoder(format!("Side encoder {}", i + 1), (SIDE_X + (i % 2) as f32 * 97.0, 120.0 + (i / 2) as f32 * 109.0), (66.0, 66.0)));
     }
     // The six transport buttons (their order is a guess), then the LAYER buttons.
     let transport: [(&str, u8); 6] = [("Rewind", 91), ("Fast forward", 92), ("Stop", 93), ("Play", 94), ("Record", 95), ("Cycle", 86)];
     for (i, (name, note)) in transport.into_iter().enumerate() {
-        controls.push(Control {
-            kind: Kind::Button,
-            name: name.into(),
-            center: (993.0 + (i % 2) as f32 * 95.0, 587.0 + (i / 2) as f32 * 78.0),
-            size: (72.0, 40.0),
-            press: Some(Src::Note(note)),
-            turn: None,
-        });
+        controls.push(Control::button(name, (SIDE_X + (i % 2) as f32 * 95.0, 587.0 + (i / 2) as f32 * 78.0), (72.0, 40.0)).pressing(Src::Note(note)));
     }
     for (i, name) in ["Layer A button", "Layer B button"].into_iter().enumerate() {
-        controls.push(Control { kind: Kind::Button, name: name.into(), center: (993.0 + i as f32 * 95.0, 840.0), size: (72.0, 38.0), press: None, turn: None });
+        controls.push(Control::button(name, (SIDE_X + i as f32 * 95.0, SELECT_Y), STRIP_BUTTON));
     }
     Layout { name: "Behringer X-Touch Compact".into(), size: (1200.0, 910.0), controls, marks: Vec::new(), generated: false }
 }
 
 /// Controls to a row of a generated picture: eight strips and a master fader fit one row.
 const PER_ROW: usize = 9;
+
+/// The rows of a generated picture, from the top. Each group reserves room for the labels above
+/// its controls and a gap under them.
+mod rows {
+    pub const KNOB: f32 = 62.0;
+    /// From the top of the group to the middle of its first row of knobs (room for their labels).
+    pub const KNOB_FIRST: f32 = 90.0;
+    pub const KNOB_PITCH: f32 = 130.0;
+    pub const KNOB_GAP: f32 = 60.0;
+    pub const FADER_LABEL: f32 = 50.0;
+    pub const FADER: (f32, f32) = (44.0, 190.0);
+    pub const FADER_PITCH: f32 = 280.0;
+    pub const FADER_GAP: f32 = 30.0;
+    pub const BUTTON: (f32, f32) = (62.0, 48.0);
+    pub const BUTTON_FIRST: f32 = 30.0;
+    pub const BUTTON_PITCH: f32 = 62.0;
+    pub const BUTTON_GAP: f32 = 30.0;
+    /// Under the last group: room for the device's name.
+    pub const BOTTOM: f32 = 70.0;
+}
 
 /// A picture of a controller made from its preset alone, for the controllers that have no drawn
 /// layout (a learned preset, the generic built-in ones): the encoders and knobs in rows at the top,
@@ -228,76 +241,52 @@ pub fn generated(preset: &Preset) -> Option<Layout> {
     if srcs.is_empty() && layer_srcs.is_empty() {
         return None;
     }
-    let kind_of = |src: Src| -> Kind {
+    let kind_of = |src: Src| -> ControlKind {
         let bind = preset.binds.iter().find(|b| b.src == src);
         match (src, bind) {
-            (Src::Bend(_), _) => Kind::Fader,
-            (Src::Cc(_), Some(b)) if b.relative => Kind::Encoder,
+            (Src::Bend(_), _) => ControlKind::Fader,
+            (Src::Cc(_), Some(b)) if b.relative => ControlKind::Encoder,
             (Src::Cc(_), Some(b)) if b.action.is_level() => match b.action {
-                Action::Gain(_) | Action::MusicVolume => Kind::Fader,
-                _ => Kind::Encoder,
+                Action::Gain(_) | Action::MusicVolume => ControlKind::Fader,
+                _ => ControlKind::Encoder,
             },
-            _ => Kind::Button,
+            _ => ControlKind::Button,
         }
     };
-    let group = |kind: Kind| -> Vec<Src> { srcs.iter().copied().filter(|s| kind_of(*s) == kind).collect() };
+    let group = |kind: ControlKind| -> Vec<Src> { srcs.iter().copied().filter(|s| kind_of(*s) == kind).collect() };
     let x = |i: usize| COLUMN_X + (i % PER_ROW) as f32 * COLUMN_PITCH;
-    let word = |kind: Kind| match kind {
-        Kind::Encoder => "Knob",
-        Kind::Fader => "Fader",
-        _ => "Button",
-    };
+    let row = |i: usize| (i / PER_ROW) as f32;
+    let name = |word: &str, src: Src| format!("{word} ({})", src.text());
     let mut controls = Vec::new();
     let mut y = 0.0_f32;
 
-    let knobs = group(Kind::Encoder);
+    let knobs = group(ControlKind::Encoder);
     for (i, src) in knobs.iter().enumerate() {
-        controls.push(Control {
-            kind: Kind::Encoder,
-            name: format!("{} ({})", word(Kind::Encoder), src.text()),
-            center: (x(i), y + 90.0 + (i / PER_ROW) as f32 * 130.0),
-            size: (62.0, 62.0),
-            press: None,
-            turn: Some(*src),
-        });
+        controls.push(Control::encoder(name("Knob", *src), (x(i), y + rows::KNOB_FIRST + row(i) * rows::KNOB_PITCH), (rows::KNOB, rows::KNOB)).turning(*src));
     }
     if !knobs.is_empty() {
-        y += 90.0 + ((knobs.len() - 1) / PER_ROW) as f32 * 130.0 + 60.0;
+        y += rows::KNOB_FIRST + row(knobs.len() - 1) * rows::KNOB_PITCH + rows::KNOB_GAP;
     }
 
-    let faders = group(Kind::Fader);
+    let faders = group(ControlKind::Fader);
     for (i, src) in faders.iter().enumerate() {
-        controls.push(Control {
-            kind: Kind::Fader,
-            name: format!("{} ({})", word(Kind::Fader), src.text()),
-            center: (x(i), y + 50.0 + 95.0 + (i / PER_ROW) as f32 * 280.0),
-            size: (44.0, 190.0),
-            press: None,
-            turn: Some(*src),
-        });
+        controls.push(Control::fader(name("Fader", *src), (x(i), y + rows::FADER_LABEL + rows::FADER.1 / 2.0 + row(i) * rows::FADER_PITCH), rows::FADER).turning(*src));
     }
     if !faders.is_empty() {
-        y += 50.0 + 190.0 + ((faders.len() - 1) / PER_ROW) as f32 * 280.0 + 30.0;
+        y += rows::FADER_LABEL + rows::FADER.1 + row(faders.len() - 1) * rows::FADER_PITCH + rows::FADER_GAP;
     }
 
-    let mut buttons: Vec<(Kind, String, Src)> = group(Kind::Button).into_iter().map(|s| (Kind::Button, format!("{} ({})", word(Kind::Button), s.text()), s)).collect();
-    buttons.extend(layer_srcs.iter().map(|(name, s)| (Kind::Layer, format!("Layer {name} button ({})", s.text()), *s)));
-    for (i, (kind, name, src)) in buttons.iter().enumerate() {
-        controls.push(Control {
-            kind: *kind,
-            name: name.clone(),
-            center: (x(i), y + 30.0 + (i / PER_ROW) as f32 * 62.0),
-            size: (62.0, 48.0),
-            press: Some(*src),
-            turn: None,
-        });
+    let mut buttons: Vec<(ControlKind, String, Src)> = group(ControlKind::Button).into_iter().map(|s| (ControlKind::Button, name("Button", s), s)).collect();
+    buttons.extend(layer_srcs.iter().map(|(layer, s)| (ControlKind::Layer, format!("Layer {layer} button ({})", s.text()), *s)));
+    for (i, (kind, label, src)) in buttons.iter().enumerate() {
+        controls.push(Control::new(*kind, label.clone(), (x(i), y + rows::BUTTON_FIRST + row(i) * rows::BUTTON_PITCH), rows::BUTTON).pressing(*src));
     }
     if !buttons.is_empty() {
-        y += 30.0 + ((buttons.len() - 1) / PER_ROW) as f32 * 62.0 + 30.0;
+        y += rows::BUTTON_FIRST + row(buttons.len() - 1) * rows::BUTTON_PITCH + rows::BUTTON_GAP;
     }
 
-    let name = if preset.name.is_empty() { "Controller".to_string() } else { preset.name.clone() };
-    Some(Layout { name, size: (COLUMN_X * 2.0 + COLUMN_PITCH * (PER_ROW - 1) as f32, y + 70.0), controls, marks: Vec::new(), generated: true })
+    let title = if preset.name.is_empty() { "Controller".to_string() } else { preset.name.clone() };
+    Some(Layout { name: title, size: (COLUMN_X * 2.0 + COLUMN_PITCH * (PER_ROW - 1) as f32, y + rows::BOTTOM), controls, marks: Vec::new(), generated: true })
 }
 
 /// What a message of a control means on a layer.
@@ -367,7 +356,7 @@ mod tests {
     fn the_mini_has_every_control_of_the_device_once() {
         let (_, layout) = mini();
         let count = |kind| layout.controls.iter().filter(|c| c.kind == kind).count();
-        assert_eq!((count(Kind::Encoder), count(Kind::Button), count(Kind::Layer), count(Kind::Fader), count(Kind::Indicator)), (8, 16, 2, 1, 1));
+        assert_eq!((count(ControlKind::Encoder), count(ControlKind::Button), count(ControlKind::Layer), count(ControlKind::Fader), count(ControlKind::Indicator)), (8, 16, 2, 1, 1));
         let y = |name: &str| find(&layout, name).center.1;
         assert_eq!((y("Layer A"), y("Layer B")), (y("Top row, button 1"), y("Bottom row, button 1")), "the LAYER buttons are in line with the rows");
     }
@@ -378,7 +367,7 @@ mod tests {
         let bottom = find(&layout, "Bottom row, button 1").center.1;
         let kinds: Vec<Printed> = layout.marks.iter().map(|m| m.what).collect();
         assert_eq!(kinds, [Printed::Text("MC"), Printed::Rewind, Printed::FastForward, Printed::Text("LOOP"), Printed::Stop, Printed::Play, Printed::Record]);
-        let bottom_row: Vec<&Control> = layout.controls.iter().filter(|c| c.kind == Kind::Button && c.center.1 == bottom).collect();
+        let bottom_row: Vec<&Control> = layout.controls.iter().filter(|c| c.kind == ControlKind::Button && c.center.1 == bottom).collect();
         // The button a mark is printed beside: the nearest to its left.
         let beside = |mark: &Mark| bottom_row.iter().copied().filter(|c| c.center.0 < mark.at.0).max_by(|a, b| a.center.0.total_cmp(&b.center.0)).unwrap();
         for mark in &layout.marks {
@@ -410,10 +399,10 @@ mod tests {
     fn the_compact_has_what_the_photograph_shows() {
         let (_, layout) = device(COMPACT);
         let count = |kind| layout.controls.iter().filter(|c| c.kind == kind).count();
-        assert_eq!((count(Kind::Encoder), count(Kind::Fader), count(Kind::Layer)), (16, 9, 0));
+        assert_eq!((count(ControlKind::Encoder), count(ControlKind::Fader), count(ControlKind::Layer)), (16, 9, 0));
         // REC, SOLO, MUTE and SELECT of eight strips, the one under the ninth fader, six transport and two LAYER buttons.
-        assert_eq!(count(Kind::Button), 4 * 8 + 1 + 6 + 2);
-        assert!(layout.controls[..8].iter().all(|c| c.kind == Kind::Encoder && c.turn.is_some()), "the encoders of the top row come first");
+        assert_eq!(count(ControlKind::Button), 4 * 8 + 1 + 6 + 2);
+        assert!(layout.controls[..8].iter().all(|c| c.kind == ControlKind::Encoder && c.turn.is_some()), "the encoders of the top row come first");
     }
 
     #[test]
@@ -479,12 +468,12 @@ mod tests {
                     // A ring is addressed by the number of its encoder, cc 48 + n.
                     let Out::Cc(cc) = light.out else { panic!("a ring is set with a cc") };
                     let encoder = &layout.controls[(cc - 48) as usize];
-                    assert_eq!(encoder.kind, Kind::Encoder);
+                    assert_eq!(encoder.kind, ControlKind::Encoder);
                     assert_eq!(mapping(&preset, layer, encoder).turn, Some(Meaning::Action(light.action)), "{name}: ring of {}", encoder.name);
                 } else {
                     let Out::Note(note) = light.out else { panic!("a light is set with a note") };
                     let button = layout.controls.iter().find(|c| c.press == Some(Src::Note(note))).expect("a button with that note");
-                    assert_eq!(button.kind, Kind::Button);
+                    assert_eq!(button.kind, ControlKind::Button);
                     assert_eq!(mapping(&preset, layer, button).press, Some(Meaning::Action(light.action)), "{name}: light of {}", button.name);
                 }
             }
@@ -529,23 +518,23 @@ mod tests {
         let preset = Preset::parse(&crate::controller::builtin_text("Korg nanoKONTROL2").unwrap());
         let layout = generated(&preset).unwrap();
         let kind = |name: &str| layout.controls.iter().find(|c| c.name.contains(name)).unwrap_or_else(|| panic!("{name}")).kind;
-        assert_eq!(kind("cc 16"), Kind::Encoder, "a knob that sets tempo");
-        assert_eq!(kind("cc 0)"), Kind::Fader, "the volume of a group is a fader");
-        assert_eq!(kind("cc 32"), Kind::Button, "solo");
+        assert_eq!(kind("cc 16"), ControlKind::Encoder, "a knob that sets tempo");
+        assert_eq!(kind("cc 0)"), ControlKind::Fader, "the volume of a group is a fader");
+        assert_eq!(kind("cc 32"), ControlKind::Button, "solo");
         // Knobs above faders above buttons, each group in order of message number.
-        let top = |k: Kind| layout.controls.iter().filter(|c| c.kind == k).map(|c| c.center.1).fold(f32::MAX, f32::min);
-        assert!(top(Kind::Encoder) < top(Kind::Fader) && top(Kind::Fader) < top(Kind::Button));
-        let knob_numbers: Vec<Src> = layout.controls.iter().filter(|c| c.kind == Kind::Encoder).filter_map(|c| c.turn).collect();
+        let top = |k: ControlKind| layout.controls.iter().filter(|c| c.kind == k).map(|c| c.center.1).fold(f32::MAX, f32::min);
+        assert!(top(ControlKind::Encoder) < top(ControlKind::Fader) && top(ControlKind::Fader) < top(ControlKind::Button));
+        let knob_numbers: Vec<Src> = layout.controls.iter().filter(|c| c.kind == ControlKind::Encoder).filter_map(|c| c.turn).collect();
         let mut sorted = knob_numbers.clone();
         sorted.sort();
         assert_eq!(knob_numbers, sorted);
         // A relative cc is an encoder, a fader (bend) is a fader, and the layer buttons of a preset are on it.
         let p = Preset::parse("layer = A note 1\nlayer = B note 2\nbind = A cc 5 rel twos -> tempo\nbind = B bend 1 -> music_volume\nbind = A note 9 -> record\n");
         let layout = generated(&p).unwrap();
-        let count = |k: Kind| layout.controls.iter().filter(|c| c.kind == k).count();
-        assert_eq!((count(Kind::Encoder), count(Kind::Fader), count(Kind::Button), count(Kind::Layer)), (1, 1, 1, 2));
+        let count = |k: ControlKind| layout.controls.iter().filter(|c| c.kind == k).count();
+        assert_eq!((count(ControlKind::Encoder), count(ControlKind::Fader), count(ControlKind::Button), count(ControlKind::Layer)), (1, 1, 1, 2));
         // What a control does on each layer is found as for a drawn picture.
-        let encoder = layout.controls.iter().find(|c| c.kind == Kind::Encoder).unwrap();
+        let encoder = layout.controls.iter().find(|c| c.kind == ControlKind::Encoder).unwrap();
         assert_eq!(mapping(&p, Some("A"), encoder).turn, Some(Meaning::Action(Action::Tempo)));
         assert_eq!(mapping(&p, Some("B"), encoder).turn, None);
         // Many controls wrap into rows and the picture grows with them.
