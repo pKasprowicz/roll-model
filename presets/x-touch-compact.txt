@@ -9,15 +9,22 @@
 # Eight faders: the volume of the eight instrument groups (Kick, Snare, Hi-hat, Tom 1,
 # Tom 2, Tom 3/4, Crash, Ride). The ninth (main) fader: the music volume. The faders are
 # not moved by the application; a fader takes over once it reaches the value shown.
-# REC plays the group, SOLO and MUTE do what they say.
-# The encoders under the faders: tempo, first bar, last bar, click volume, count-in,
+# The three rows of buttons above the faders: REC plays the group, SOLO and MUTE do what they say.
+# The row of eight encoders on top: tempo, first bar, last bar, click volume, count-in,
 # bars per row, (unused), recent scores. The push of an encoder: encoder 1 = 100 % tempo,
-# encoder 8 = open the score. The jog wheel is the tempo as well.
+# encoder 8 = open the score.
+# The six buttons on the right: rewind / fast forward = range back / forward, stop, play = listen,
+# record, cycle = loop.
+# The SELECT row under the faders (the Compact has no other free buttons whose message is known)
+# holds the rest, left to right: Shift, Click, Notes, Metronome, Tap tempo, Loop worst bar,
+# Discard take, Next tab. The eight encoders on the right and the LAYER A / B buttons are not used:
+# what they send in MC mode is not known (find out with the monitor).
 # While the Rudiments tab's practice is in use, "first bar" = repeats, "last bar" = which hand
 # leads and the recent-scores encoder = the rudiment; the tempo is in BPM.
 
 name = Behringer X-Touch Compact
 port = X-TOUCH COMPACT
+kind = mackie
 
 # Faders
 bind = bend 1 -> gain 1
@@ -66,33 +73,34 @@ bind = cc 21 rel -> bars_per_row
 bind = cc 23 rel -> score
 bind = note 32 -> tempo_reset
 bind = note 39 -> open_score
-bind = cc 60 rel -> tempo
 
-# Transport and function buttons
+# Transport buttons (right)
 bind = note 94 -> listen
 bind = note 95 -> record
 bind = note 93 -> stop
 bind = note 91 -> range_back
 bind = note 92 -> range_forward
 bind = note 86 -> loop
-bind = note 89 -> click
-bind = note 85 -> notes
-bind = note 84 -> loop_worst_bar
-bind = note 87 -> tap_tempo
-bind = note 88 -> discard_take
-bind = note 54 -> metronome
-bind = note 47 -> next_tab
-bind = note 70 -> shift
+
+# SELECT row (under the faders): notes 24-31
+bind = note 24 -> shift
+bind = note 25 -> click
+bind = note 26 -> notes
+bind = note 27 -> metronome
+bind = note 28 -> tap_tempo
+bind = note 29 -> loop_worst_bar
+bind = note 30 -> discard_take
+bind = note 31 -> next_tab
 
 # Lights
 led = record -> note 95
 led = listen -> note 94
 led = stop -> note 93
 led = loop -> note 86
-led = click -> note 89
-led = notes -> note 85
-led = metronome -> note 54
-led = shift -> note 70
+led = shift -> note 24
+led = click -> note 25
+led = notes -> note 26
+led = metronome -> note 27
 
 led = mute 1 -> note 16
 led = mute 2 -> note 17

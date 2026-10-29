@@ -72,10 +72,16 @@ pub struct Config {
     /// The tempo (BPM) last used with each rudiment, and the fastest clean take of each.
     pub rudiment_bpm: BTreeMap<u8, f32>,
     pub rudiment_best: BTreeMap<u8, f32>,
+    /// The start trigger: two hits in a row (these instruments, in this order) start a recording.
+    pub trigger_enabled: bool,
+    pub trigger_first: Lane,
+    pub trigger_second: Lane,
 }
 
 /// How many scores the welcome panel remembers.
 pub const MAX_RECENT: usize = 10;
+/// The controller preset used until another is chosen (or "none": an empty name).
+pub const DEFAULT_CONTROLLER: &str = "Behringer X-Touch Mini";
 /// Loudest instrument gain the mixer allows.
 pub const MAX_LANE_GAIN: f32 = 1.5;
 
@@ -112,7 +118,7 @@ impl Default for Config {
             metro_beats: 4,
             metro_sub: 0,
             metro_preview: true,
-            controller_preset: String::new(),
+            controller_preset: DEFAULT_CONTROLLER.to_string(),
             controller_port: String::new(),
             rudiment: 1,
             rudiment_repeats: DEFAULT_REPEATS,
@@ -120,6 +126,9 @@ impl Default for Config {
             rudiment_ladder: false,
             rudiment_bpm: BTreeMap::new(),
             rudiment_best: BTreeMap::new(),
+            trigger_enabled: false,
+            trigger_first: Lane::Crash1,
+            trigger_second: Lane::Tom1,
         }
     }
 }
@@ -265,6 +274,9 @@ impl Config {
         kv("metro_preview", self.metro_preview.to_string());
         kv("controller_preset", self.controller_preset.clone());
         kv("controller_port", self.controller_port.clone());
+        kv("trigger_enabled", self.trigger_enabled.to_string());
+        kv("trigger_first", self.trigger_first.name().to_string());
+        kv("trigger_second", self.trigger_second.name().to_string());
         kv("rudiment", self.rudiment.to_string());
         kv("rudiment_repeats", self.rudiment_repeats.to_string());
         kv("rudiment_nard_only", self.rudiment_nard_only.to_string());
@@ -343,6 +355,9 @@ impl Config {
                 "metro_preview" => c.metro_preview = b(c.metro_preview),
                 "controller_preset" => c.controller_preset = v.to_string(),
                 "controller_port" => c.controller_port = v.to_string(),
+                "trigger_enabled" => c.trigger_enabled = b(c.trigger_enabled),
+                "trigger_first" => c.trigger_first = Lane::from_name(v).filter(|l| *l != Lane::Other).unwrap_or(c.trigger_first),
+                "trigger_second" => c.trigger_second = Lane::from_name(v).filter(|l| *l != Lane::Other).unwrap_or(c.trigger_second),
                 "rudiment" => c.rudiment = v.parse().ok().filter(|n| rudiments::by_number(*n).is_some()).unwrap_or(c.rudiment),
                 "rudiment_repeats" => c.rudiment_repeats = v.parse().unwrap_or(c.rudiment_repeats).clamp(1, MAX_REPEATS),
                 "rudiment_nard_only" => c.rudiment_nard_only = b(c.rudiment_nard_only),
@@ -438,6 +453,9 @@ mod tests {
         c.lane_gain.insert(Lane::Crash1, 0.4);
         c.lane_gain.insert(Lane::Kick, 1.25);
         c.lane_mute.insert(Lane::HiHatClosed);
+        c.trigger_enabled = true;
+        c.trigger_first = Lane::Ride;
+        c.trigger_second = Lane::Snare;
         c.rudiment = 24;
         c.rudiment_repeats = 8;
         c.rudiment_nard_only = true;
@@ -446,6 +464,18 @@ mod tests {
         c.rudiment_best.insert(16, 96.0);
         let back = Config::from_text(&c.to_text());
         assert_eq!(back, c);
+    }
+
+    #[test]
+    fn trigger_settings_default_to_off_and_ignore_unknown_instruments() {
+        let d = Config::default();
+        assert_eq!((d.trigger_enabled, d.trigger_first, d.trigger_second), (false, Lane::Crash1, Lane::Tom1));
+        let c = Config::from_text("trigger_enabled = true\ntrigger_first = Splash\ntrigger_second = Nope\n");
+        assert!(c.trigger_enabled);
+        assert_eq!((c.trigger_first, c.trigger_second), (Lane::Splash, Lane::Tom1), "an unknown name keeps the default");
+        let other = Config::from_text("trigger_first = Other\n");
+        assert_eq!(other.trigger_first, Lane::Crash1, "\"Other\" is not an instrument to hit");
+        assert!(Config::from_text("latency_ms = 5\n").trigger_first == Lane::Crash1, "an old file loads");
     }
 
     #[test]
@@ -500,7 +530,8 @@ mod tests {
         let old = Config::from_text("latency_ms = 5\n");
         assert_eq!((old.bars_per_row, old.layout_align_bar, old.metro_bpm, old.metro_beats), (0, 0, 100.0, 4));
         assert!(old.lane_gain.is_empty() && old.lane_mute.is_empty() && old.audio_output.is_empty());
-        assert!(old.controller_preset.is_empty() && old.controller_port.is_empty(), "no controller unless chosen");
+        assert_eq!((old.controller_preset.as_str(), old.controller_port.as_str()), (DEFAULT_CONTROLLER, ""), "the X-Touch Mini unless another is chosen");
+        assert!(Config::from_text("controller_preset = \n").controller_preset.is_empty(), "\"none\" stays chosen");
         // Defaults are not written out for the mixer.
         assert!(!Config::default().to_text().contains("gain."));
     }

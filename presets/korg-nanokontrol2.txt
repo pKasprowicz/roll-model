@@ -1,0 +1,76 @@
+# Korg nanoKONTROL2 in CC mode (not Mackie Control).
+# (Written with extensive use of AI, from the factory CC table as remembered; NOT verified on the device.
+# A web search confirmed only that the record button sends cc 64 in CC mode.)
+#
+# The nanoKONTROL2 starts in a Mackie-like mode. Switch it to CC mode: hold SET MARKER and CYCLE
+# while plugging in the USB cable. Check every number with the monitor on Settings -> Controller; if one
+# differs, copy this file into the controllers folder, change the number and choose the copy.
+#
+# Strips 1-8:  fader cc 0-7 (volume of the instrument groups), knob cc 16-23, S cc 32-39 (solo),
+#              M cc 48-55 (mute), R cc 64-71 (play the group).
+# Knobs:       tempo, first bar, last bar, count-in, bars per row, click volume, music volume, (unused).
+# Transport:   play = listen, stop, rewind / fast forward = range back / forward, record, cycle = loop.
+# Track < >:   tempo -5 / +5. Marker set / < / >: tap tempo, click, notes.
+# Absolute knobs and faders take over once they reach the current value, so nothing jumps.
+
+name = Korg nanoKONTROL2
+port = nanoKONTROL2
+kind = midi
+
+# Faders
+bind = cc 0 abs -> gain 1
+bind = cc 1 abs -> gain 2
+bind = cc 2 abs -> gain 3
+bind = cc 3 abs -> gain 4
+bind = cc 4 abs -> gain 5
+bind = cc 5 abs -> gain 6
+bind = cc 6 abs -> gain 7
+bind = cc 7 abs -> gain 8
+
+# Knobs
+bind = cc 16 abs -> tempo
+bind = cc 17 abs -> range_from
+bind = cc 18 abs -> range_to
+bind = cc 19 abs -> count_in
+bind = cc 20 abs -> bars_per_row
+bind = cc 21 abs -> click_volume
+bind = cc 22 abs -> music_volume
+
+# S, M, R buttons
+bind = cc 32 -> solo 1
+bind = cc 33 -> solo 2
+bind = cc 34 -> solo 3
+bind = cc 35 -> solo 4
+bind = cc 36 -> solo 5
+bind = cc 37 -> solo 6
+bind = cc 38 -> solo 7
+bind = cc 39 -> solo 8
+bind = cc 48 -> mute 1
+bind = cc 49 -> mute 2
+bind = cc 50 -> mute 3
+bind = cc 51 -> mute 4
+bind = cc 52 -> mute 5
+bind = cc 53 -> mute 6
+bind = cc 54 -> mute 7
+bind = cc 55 -> mute 8
+bind = cc 64 -> audition 1
+bind = cc 65 -> audition 2
+bind = cc 66 -> audition 3
+bind = cc 67 -> audition 4
+bind = cc 68 -> audition 5
+bind = cc 69 -> audition 6
+bind = cc 70 -> audition 7
+bind = cc 71 -> audition 8
+
+# Transport and marker buttons
+bind = cc 41 -> listen
+bind = cc 42 -> stop
+bind = cc 43 -> range_back
+bind = cc 44 -> range_forward
+bind = cc 45 -> record
+bind = cc 46 -> loop
+bind = cc 58 -> tempo_down
+bind = cc 59 -> tempo_up
+bind = cc 60 -> tap_tempo
+bind = cc 61 -> click
+bind = cc 62 -> notes

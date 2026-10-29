@@ -1,9 +1,12 @@
 //! Application state and UI (Score / Metronome / Results / Settings tabs).
 
+mod controller_help;
 mod controls;
 mod metro;
 mod mixer;
 mod rudiment;
+mod startup;
+mod trigger;
 
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use std::path::{Path, PathBuf};
@@ -99,6 +102,10 @@ impl Parked {
     }
 }
 
+/// Height of the line above the score that shows the count-in and the take's figures, with room
+/// above and below the big count-in number.
+const TAKE_LINE_HEIGHT: f32 = 42.0;
+
 /// A take of a rudiment counts as clean from this overall score on.
 const CLEAN_TAKE: f64 = 85.0;
 
@@ -188,6 +195,10 @@ pub struct DrumApp {
     score_gen: u32,
     /// The Rudiments tab's own state (the chosen rudiment itself is in `cfg`).
     rud: rudiment::State,
+    /// The start trigger: two hits in a row start a recording; `trigger_learn` waits for the
+    /// hit that chooses one of its two instruments.
+    trigger: crate::trigger::Detector,
+    trigger_learn: Option<crate::trigger::Slot>,
     score: Option<Score>,
     score_path: Option<PathBuf>,
     status: String,
@@ -241,6 +252,12 @@ pub struct DrumApp {
 
     /// The Mackie Control surface (X-Touch).
     controller: controls::Controller,
+
+    /// The help screen of the controller, opened from its indicator in the top bar.
+    controller_help: Option<controller_help::ControllerHelp>,
+
+    /// The splash: `Some` until the start-up steps are done.
+    startup: Option<startup::Startup>,
 }
 
 const KEYBOARD_PADS: [(egui::Key, Lane, &str); 13] = [
@@ -267,14 +284,9 @@ impl DrumApp {
                 small.size *= 1.5;
             }
         });
-        let mut app = DrumApp::with_config(Config::load());
-        app.refresh_ports();
-        app.connect_midi(None);
-        app.refresh_controllers();
-        app.connect_controller();
-        if let Some(p) = initial_file {
-            app.open_file(&p);
-        }
+        // Everything slow is a step of the splash (`startup.rs`), so that the first frame is not late.
+        let mut app = DrumApp::with_config(Config::default());
+        app.startup = Some(startup::Startup::new(initial_file, startup::scan_sound_outputs(), Config::load));
         app
     }
 
@@ -289,6 +301,8 @@ impl DrumApp {
             parked: Parked::new(),
             score_gen: 0,
             rud: rudiment::State::default(),
+            trigger: crate::trigger::Detector::default(),
+            trigger_learn: None,
             score: None,
             score_path: None,
             status: String::new(),
@@ -325,6 +339,8 @@ impl DrumApp {
             metro_player: None,
             metro_control: Control::new(),
             controller: controls::Controller::new(),
+            controller_help: None,
+            startup: None,
         }
     }
 
@@ -375,6 +391,12 @@ impl DrumApp {
 
         if let Some(cal) = self.calibration.as_mut() {
             cal.hits.push(signed_secs(ev.at, cal.zero));
+        }
+        // A hit that belongs to the start trigger is no note of the take it starts.
+        if let Some(lane) = lane {
+            if self.handle_trigger(lane, ev.at) {
+                return;
+            }
         }
         let latency = self.cfg.latency_ms / 1000.0;
         if let (Some(take), Some(lane)) = (self.take.as_mut(), lane) {
@@ -962,7 +984,11 @@ impl DrumApp {
                     None => ui.label(RichText::new("⏺ no MIDI input").color(render::RED)),
                 };
                 if let Some((text, connected)) = self.controller.label(!self.cfg.controller_preset.is_empty()) {
-                    ui.label(RichText::new(text).color(if connected { render::GREEN } else { render::RED }));
+                    let indicator = egui::Label::new(RichText::new(text).color(if connected { render::GREEN } else { render::RED })).sense(egui::Sense::click());
+                    let response = ui.add(indicator).on_hover_cursor(egui::CursorIcon::PointingHand).on_hover_text("Click to see what the controller's controls do");
+                    if response.clicked() {
+                        self.toggle_controller_help();
+                    }
                 }
                 if let Some((ev, lane)) = self.monitor.front() {
                     if ev.at.elapsed() < Duration::from_millis(1500) {
@@ -1159,10 +1185,12 @@ impl DrumApp {
     /// The take's live figures, the colour legend and the score with the notes played, shared by
     /// the Score and Rudiments tabs.
     fn score_body(&mut self, ui: &mut egui::Ui, running: bool, n_measures: usize) {
-        // Count-in / live stats line
-        if let Some(take) = self.take.as_ref() {
-            let r = &take.report;
-            ui.horizontal(|ui| {
+        // Count-in / live stats line. Its height is reserved (the big count-in number is taller
+        // than the rest), also with no take, so nothing below it moves when a take starts or ends.
+        ui.horizontal(|ui| {
+            ui.set_min_height(TAKE_LINE_HEIGHT);
+            if let Some(take) = self.take.as_ref() {
+                let r = &take.report;
                 if take.running {
                     let el = signed_secs(Instant::now(), take.zero);
                     if el < 0.0 {
@@ -1189,8 +1217,8 @@ impl DrumApp {
                         r.std_dt_ms
                     ));
                 }
-            });
-        }
+            }
+        });
         ui.horizontal(|ui| {
             let legend = |ui: &mut egui::Ui, c: Color32, t: &str| {
                 ui.label(RichText::new("■").color(c));
@@ -1207,6 +1235,11 @@ impl DrumApp {
                 ui.label(RichText::new(msg).small().color(render::AMBER));
             }
         });
+        // On a line of its own: it grows while the trigger waits for the second hit.
+        if let Some((text, armed)) = self.trigger_hint() {
+            let (color, text) = if armed { (render::GREEN, format!("{text}: waiting for the second hit")) } else { (ui.visuals().weak_text_color(), text) };
+            ui.label(RichText::new(text.trim_start_matches("· ")).small().color(color));
+        }
         ui.separator();
 
         let played = self.played_notes();
@@ -1491,6 +1524,9 @@ impl DrumApp {
         ui.label(RichText::new("The hi-hat counts as closed when the pedal is at least three quarters of the way to this value, otherwise open, so hits on the closed or open hi-hat note follow the pedal. Lower it if your pedal never reports up to 127: close the pedal, hit the hi-hat and read the pedal value in the monitor. Hits before any pedal message keep the note's own open/closed meaning.").small().weak());
 
         ui.add_space(10.0);
+        self.settings_trigger(ui);
+
+        ui.add_space(10.0);
         ui.heading("Pad-to-instrument mapping");
         ui.label(RichText::new("Defaults follow Roland V-Drums factory note numbers. Click Learn and hit the pad/zone to assign it.").small().weak());
         egui::Grid::new("mapping").num_columns(3).striped(true).show(ui, |ui| {
@@ -1769,6 +1805,18 @@ fn histogram(ui: &mut egui::Ui, dts: &[f64], window_ms: f64) {
 
 impl eframe::App for DrumApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        // The splash window (`startup.rs`); the main window stays empty while the steps run.
+        let mut key_taken = false;
+        if self.startup.is_some() {
+            match self.run_startup(ctx) {
+                startup::Flow::Starting => {
+                    egui::CentralPanel::default().show(ctx, |_| {});
+                    return;
+                }
+                startup::Flow::KeyTaken => key_taken = true,
+                startup::Flow::Go => {}
+            }
+        }
         // Files dropped onto the window
         let dropped: Vec<PathBuf> = ctx.input(|i| i.raw.dropped_files.iter().filter_map(|f| f.path.clone()).collect());
         if let Some(p) = dropped.first() {
@@ -1778,7 +1826,9 @@ impl eframe::App for DrumApp {
         self.sync_source();
         self.drain_midi();
         self.update_controller();
-        self.keyboard_pads(ctx);
+        if !key_taken {
+            self.keyboard_pads(ctx);
+        }
         self.sync_control();
         self.update_take();
         self.update_listen();
@@ -1787,7 +1837,7 @@ impl eframe::App for DrumApp {
         self.update_calibration();
         self.show_sound_errors();
 
-        if !ctx.wants_keyboard_input() {
+        if !ctx.wants_keyboard_input() && !key_taken {
             let (rec, listen, metro, click, esc) = ctx.input(|i| {
                 (
                     i.key_pressed(egui::Key::R),
@@ -1845,6 +1895,9 @@ impl eframe::App for DrumApp {
             Tab::Results => self.results_tab(ui),
             Tab::Settings => self.settings_tab(ui),
         });
+
+        self.controller_help_window(ctx);
+        self.controller_editor_window(ctx);
 
         if self.cfg != self.saved_cfg {
             if let Err(e) = self.cfg.save() {

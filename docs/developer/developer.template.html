@@ -23,15 +23,16 @@
     <li><a href="#realtime">Threads and real time</a>
       <ol><li><a href="#midi-in">MIDI input</a></li><li><a href="#timing">The timing threads</a></li><li><a href="#control">Shared live settings</a></li><li><a href="#sink">The Sink seam</a></li></ol></li>
     <li><a href="#ui">The user interface</a>
-      <ol><li><a href="#frame">One frame</a></li><li><a href="#sources">Practice sources</a></li><li><a href="#render">The score renderer</a></li><li><a href="#widgets">Widgets and style</a></li></ol></li>
-    <li><a href="#controller">The controller subsystem</a></li>
+      <ol><li><a href="#frame">One frame</a></li><li><a href="#sources">Practice sources</a></li><li><a href="#render">The score renderer</a></li><li><a href="#widgets">Widgets and style</a></li><li><a href="#startup">Start-up</a></li><li><a href="#windows">Windows</a></li></ol></li>
+    <li><a href="#controller">The controller subsystem</a>
+      <ol><li><a href="#ctl-overview">Overview</a></li><li><a href="#ctl-presets">Presets</a></li><li><a href="#ctl-mapper">The mapper</a></li><li><a href="#ctl-app">The impure half</a></li><li><a href="#ctl-editing">Editing presets: Learn</a></li><li><a href="#ctl-pictures">Pictures</a></li><li><a href="#ctl-tests">Testing</a></li></ol></li>
     <li><a href="#rudiments">The rudiment subsystem</a></li>
     <li><a href="#config">Settings and persistence</a></li>
     <li><a href="#rust">Rust constructs that carry the design</a></li>
     <li><a href="#testing">Testing</a></li>
     <li><a href="#extend">Extension points</a></li>
     <li><a href="#tutorials">Tutorials</a>
-      <ol><li><a href="#t-rudiment">1. Add a rudiment</a></li><li><a href="#t-setting">2. Add a setting</a></li><li><a href="#t-metric">3. Add a metric to the report</a></li><li><a href="#t-action">4. Add a controller action</a></li><li><a href="#t-tab">5. Add a tab</a></li><li><a href="#t-lane">6. Add an instrument</a></li><li><a href="#t-sink">7. Test sound without a sound card</a></li></ol></li>
+      <ol><li><a href="#t-rudiment">1. Add a rudiment</a></li><li><a href="#t-setting">2. Add a setting</a></li><li><a href="#t-metric">3. Add a metric to the report</a></li><li><a href="#t-action">4. Add a controller action</a></li><li><a href="#t-tab">5. Add a tab</a></li><li><a href="#t-lane">6. Add an instrument</a></li><li><a href="#t-sink">7. Test sound without a sound card</a></li><li><a href="#t-controller">8. Support another controller</a></li><li><a href="#t-startup">9. Add a start-up step</a></li></ol></li>
     <li><a href="#release">Releases and CI</a></li>
     <li><a href="#gaps">Known gaps and roadmap</a></li>
     <li><a href="#invariants">Invariants checklist</a></li>
@@ -47,13 +48,13 @@
 
 <section id="intro">
 <h2>1. Introduction</h2>
-<p>Roll Model is a desktop application for drummers, written in Rust with the <code>egui</code> immediate-mode GUI. It loads MusicXML drum scores (or generates one of the 40 PAS drum rudiments), plays them, captures a Roland V31 drum module over MIDI, draws the played notes under the written ones and grades the performance. A Mackie Control surface can drive it.</p>
+<p>Roll Model is a desktop application for drummers, written in Rust with the <code>egui</code> immediate-mode GUI. It loads MusicXML drum scores (or generates one of the 40 PAS drum rudiments), plays them, captures a Roland V31 drum module over MIDI, draws the played notes under the written ones and grades the performance. A control surface (Mackie Control or plain MIDI) can drive it, and you can teach the program a new one by pressing its controls.</p>
 <p>This guide is for someone who wants to <em>change</em> the program: fix a bug, add a feature, port it, or learn how a real-time desktop application can be structured in Rust. It explains the ideas first, then the code, then walks through concrete changes step by step.</p>
 <div class="cards">
   <div class="card"><h4>Architecture</h4><p>Layers, modules, threads and the data that flows between them.</p></div>
   <div class="card"><h4>Concepts</h4><p>Time in quarter notes, the score model, takes, matching and grading.</p></div>
   <div class="card"><h4>Rust constructs</h4><p>The language features the design leans on, with the real code.</p></div>
-  <div class="card"><h4>Tutorials</h4><p>Seven worked changes, each with the files to touch and the tests to write.</p></div>
+  <div class="card"><h4>Tutorials</h4><p>Nine worked changes, each with the files to touch and the tests to write.</p></div>
 </div>
 <p>{{STATS}}</p>
 <h3>Licence</h3>
@@ -66,6 +67,7 @@
 <tr><td><code>CHANGELOG.md</code></td><td>User-visible changes per release (Keep a Changelog)</td></tr>
 <tr><td><code>CLAUDE.md</code></td><td>Short instructions for AI coding assistants working on the repository</td></tr>
 <tr><td><code>docs/rudiments.md</code></td><td>The rudiment catalogue and where it comes from</td></tr>
+<tr><td><code>docs/generic-midi-controller-concept.md</code></td><td>The plan for generic MIDI controller support (phases 1 to 3 are built; see <a href="#controller">chapter 7</a>)</td></tr>
 <tr><td>User manual</td><td>Built from <code>docs/manual</code>; this guide is built from <code>docs/developer</code></td></tr>
 </tbody></table>
 </section>
@@ -96,7 +98,7 @@ python3 tools/build_notices.py      # target/notices/THIRD_PARTY_NOTICES.txt</co
 <li><strong>Branches.</strong> <code>main</code> holds releases, <code>develop</code> the work in progress, <code>feature/&lt;name&gt;</code> branches are merged into <code>develop</code> with a merge commit. Moving the tag <code>preview</code> onto a commit of <code>develop</code> and pushing it builds a pre-release.</li>
 <li><strong>Versioning</strong> is SemVer. The version lives in <code>Cargo.toml</code> (bump <code>Cargo.lock</code> with it), release tags are <code>vX.Y.Z</code>. Every user-visible change goes under <code>[Unreleased]</code> in <code>CHANGELOG.md</code>.</li>
 <li><strong>Commit messages</strong> are <code>feat:</code>, <code>fix:</code>, <code>docs:</code>, <code>chore:</code>, <code>test:</code>, <code>ci:</code> followed by a sentence.</li>
-<li><strong>Keep the pure modules pure.</strong> <code>analysis.rs</code>, <code>musicxml.rs</code>, <code>score.rs</code>, <code>drums.rs</code>, <code>xml.rs</code> and <code>rudiments.rs</code> must not depend on the GUI or on MIDI. That is what makes them testable without devices, and it is the first thing to check in a review.</li>
+<li><strong>Keep the pure modules pure.</strong> <code>analysis.rs</code>, <code>musicxml.rs</code>, <code>score.rs</code>, <code>drums.rs</code>, <code>xml.rs</code>, <code>rudiments.rs</code>, <code>trigger.rs</code>, <code>controller.rs</code> and <code>controller_layout.rs</code> must not depend on the GUI or on MIDI. That is what makes them testable without devices, and it is the first thing to check in a review.</li>
 <li><strong>Time is quarter notes.</strong> Score positions are quarter notes (<code>q</code>); convert to seconds only through <code>TempoMap</code>.</li>
 <li><strong>Style.</strong> Write code that reads like the code around it: same comment density, naming, idiom. Doc comments say <em>why</em> and what the caller can rely on; a test name is a sentence describing behaviour.</li>
 <li><strong>Update the docs with the code.</strong> <code>HANDOFF.md</code> (status, architecture list, conventions), the README, the manual template and, if behaviour is user visible, the changelog. This guide's code excerpts update themselves; its prose does not.</li>
@@ -108,6 +110,8 @@ python3 tools/build_notices.py      # target/notices/THIRD_PARTY_NOTICES.txt</co
 <li><strong>No kit?</strong> Tick <em>Settings &rarr; General &rarr; Computer keyboard plays pads</em>. The keys call the same <code>handle_event</code> as a real MIDI hit (time-stamped at frame time).</li>
 <li><strong>Monitors.</strong> <em>Settings &rarr; MIDI input</em> shows every drum hit; <em>Settings &rarr; Controller</em> shows every controller message and what it is bound to.</li>
 <li><strong>Seeing a screen without clicking.</strong> There is no UI test harness, so to look at a tab temporarily set <code>app.tab</code> (and any state) at the end of <code>DrumApp::new</code>, build, start the program with <code>APPDATA</code> pointing at a scratch folder (so your settings are not touched) and screenshot its window. Remove the patch afterwards. Headless <code>egui::Context::run</code> tests cover that a screen draws without panicking.</li>
+<li><strong>A scratch settings folder.</strong> The settings and the controller presets live in <code>%APPDATA%\RollModel</code> (and equivalents). To try a preset or a setup without touching yours, start the program with <code>APPDATA</code> pointing at a scratch folder that holds a <code>config.txt</code> and a <code>controllers</code> folder. The tests never write to the real folder: the editor takes its folder from <code>EditorState.dir</code>, which tests set to a temporary one.</li>
+<li><strong>Several windows.</strong> The splash and the Manage window are windows of their own, so a screenshot must pick the right one: capture each OS window by its title (on Windows <code>PrintWindow</code> on its handle), and give a click or key a moment to arrive (the program handles input once per frame).</li>
 <li><strong>Logging.</strong> There is no logging framework; use <code>dbg!</code>/<code>eprintln!</code> from a debug build (the Windows release build hides the console).</li>
 <li><strong>Sound.</strong> Nothing in the test suite hears anything. On Windows the per-application peak meter of the output device is the way to see that the program is silent or sounding (see <code>HANDOFF.md</code> &rarr; Testing).</li>
 </ul>
@@ -119,36 +123,42 @@ python3 tools/build_notices.py      # target/notices/THIRD_PARTY_NOTICES.txt</co
 <h3 id="layers">Layers</h3>
 <p>The program has three layers. Dependencies point downwards only: the UI knows the devices and the core; the devices know the core; the core knows nothing about either.</p>
 <figure>
-<svg viewBox="0 0 760 360" role="img" aria-label="Layers of the architecture" xmlns="http://www.w3.org/2000/svg" font-family="system-ui, sans-serif" font-size="13">
-  <rect x="10" y="10" width="740" height="110" rx="8" fill="currentColor" opacity=".08"/>
+<svg viewBox="0 0 760 410" role="img" aria-label="Layers of the architecture" xmlns="http://www.w3.org/2000/svg" font-family="system-ui, sans-serif" font-size="13">
+  <rect x="10" y="10" width="740" height="150" rx="8" fill="currentColor" opacity=".08"/>
   <text x="24" y="32" font-weight="700">User interface &mdash; egui, one thread, immediate mode</text>
-  <rect x="24" y="44" width="150" height="30" rx="5" fill="none" stroke="currentColor"/><text x="34" y="64">app.rs (DrumApp)</text>
-  <rect x="184" y="44" width="150" height="30" rx="5" fill="none" stroke="currentColor"/><text x="194" y="64">app/rudiment.rs</text>
-  <rect x="344" y="44" width="150" height="30" rx="5" fill="none" stroke="currentColor"/><text x="354" y="64">app/controls.rs</text>
-  <rect x="504" y="44" width="110" height="30" rx="5" fill="none" stroke="currentColor"/><text x="514" y="64">app/metro.rs</text>
-  <rect x="624" y="44" width="116" height="30" rx="5" fill="none" stroke="currentColor"/><text x="634" y="64">app/mixer.rs</text>
-  <rect x="24" y="82" width="150" height="28" rx="5" fill="none" stroke="currentColor"/><text x="34" y="101">render.rs</text>
-  <rect x="184" y="82" width="150" height="28" rx="5" fill="none" stroke="currentColor"/><text x="194" y="101">widgets.rs</text>
-  <rect x="344" y="82" width="150" height="28" rx="5" fill="none" stroke="currentColor"/><text x="354" y="101">config.rs</text>
-  <rect x="10" y="130" width="740" height="100" rx="8" fill="currentColor" opacity=".14"/>
-  <text x="24" y="152" font-weight="700">Devices &mdash; threads and I/O</text>
-  <rect x="24" y="164" width="130" height="30" rx="5" fill="none" stroke="currentColor"/><text x="34" y="184">midi.rs</text>
-  <rect x="164" y="164" width="130" height="30" rx="5" fill="none" stroke="currentColor"/><text x="174" y="184">metronome.rs</text>
-  <rect x="304" y="164" width="130" height="30" rx="5" fill="none" stroke="currentColor"/><text x="314" y="184">playback.rs</text>
-  <rect x="444" y="164" width="130" height="30" rx="5" fill="none" stroke="currentColor"/><text x="454" y="184">control.rs</text>
-  <rect x="584" y="164" width="156" height="30" rx="5" fill="none" stroke="currentColor"/><text x="594" y="184">synth.rs, loader.rs</text>
-  <rect x="10" y="240" width="740" height="110" rx="8" fill="currentColor" opacity=".22"/>
-  <text x="24" y="262" font-weight="700">Pure core &mdash; no GUI, no MIDI, no audio; fully unit-tested</text>
-  <rect x="24" y="274" width="110" height="30" rx="5" fill="none" stroke="currentColor"/><text x="34" y="294">score.rs</text>
-  <rect x="144" y="274" width="110" height="30" rx="5" fill="none" stroke="currentColor"/><text x="154" y="294">drums.rs</text>
-  <rect x="264" y="274" width="110" height="30" rx="5" fill="none" stroke="currentColor"/><text x="274" y="294">analysis.rs</text>
-  <rect x="384" y="274" width="110" height="30" rx="5" fill="none" stroke="currentColor"/><text x="394" y="294">musicxml.rs</text>
-  <rect x="504" y="274" width="110" height="30" rx="5" fill="none" stroke="currentColor"/><text x="514" y="294">xml.rs</text>
-  <rect x="624" y="274" width="116" height="30" rx="5" fill="none" stroke="currentColor"/><text x="634" y="294">rudiments.rs</text>
-  <rect x="24" y="312" width="150" height="28" rx="5" fill="none" stroke="currentColor"/><text x="34" y="331">controller.rs</text>
-  <text x="190" y="331" opacity=".8">(controller.rs is pure too: bytes in, commands and light messages out)</text>
+  <rect x="24" y="44" width="140" height="30" rx="5" fill="none" stroke="currentColor"/><text x="34" y="64">app.rs (DrumApp)</text>
+  <rect x="174" y="44" width="140" height="30" rx="5" fill="none" stroke="currentColor"/><text x="184" y="64">app/rudiment.rs</text>
+  <rect x="324" y="44" width="140" height="30" rx="5" fill="none" stroke="currentColor"/><text x="334" y="64">app/controls.rs</text>
+  <rect x="474" y="44" width="130" height="30" rx="5" fill="none" stroke="currentColor"/><text x="484" y="64">app/metro.rs</text>
+  <rect x="614" y="44" width="126" height="30" rx="5" fill="none" stroke="currentColor"/><text x="624" y="64">app/mixer.rs</text>
+  <rect x="24" y="82" width="140" height="28" rx="5" fill="none" stroke="currentColor"/><text x="34" y="101">app/startup.rs</text>
+  <rect x="174" y="82" width="170" height="28" rx="5" fill="none" stroke="currentColor"/><text x="184" y="101">app/controller_help.rs</text>
+  <rect x="354" y="82" width="190" height="28" rx="5" fill="none" stroke="currentColor"/><text x="364" y="101">app/controls/editor.rs</text>
+  <rect x="554" y="82" width="186" height="28" rx="5" fill="none" stroke="currentColor"/><text x="564" y="101">app/trigger.rs</text>
+  <rect x="24" y="120" width="140" height="28" rx="5" fill="none" stroke="currentColor"/><text x="34" y="139">render.rs</text>
+  <rect x="174" y="120" width="140" height="28" rx="5" fill="none" stroke="currentColor"/><text x="184" y="139">widgets.rs</text>
+  <rect x="324" y="120" width="140" height="28" rx="5" fill="none" stroke="currentColor"/><text x="334" y="139">config.rs</text>
+  <rect x="10" y="170" width="740" height="100" rx="8" fill="currentColor" opacity=".14"/>
+  <text x="24" y="192" font-weight="700">Devices &mdash; threads and I/O</text>
+  <rect x="24" y="204" width="130" height="30" rx="5" fill="none" stroke="currentColor"/><text x="34" y="224">midi.rs</text>
+  <rect x="164" y="204" width="130" height="30" rx="5" fill="none" stroke="currentColor"/><text x="174" y="224">metronome.rs</text>
+  <rect x="304" y="204" width="130" height="30" rx="5" fill="none" stroke="currentColor"/><text x="314" y="224">playback.rs</text>
+  <rect x="444" y="204" width="130" height="30" rx="5" fill="none" stroke="currentColor"/><text x="454" y="224">control.rs</text>
+  <rect x="584" y="204" width="156" height="30" rx="5" fill="none" stroke="currentColor"/><text x="594" y="224">synth.rs, loader.rs</text>
+  <rect x="10" y="280" width="740" height="120" rx="8" fill="currentColor" opacity=".22"/>
+  <text x="24" y="302" font-weight="700">Pure core &mdash; no GUI, no MIDI, no audio; fully unit-tested</text>
+  <rect x="24" y="314" width="110" height="30" rx="5" fill="none" stroke="currentColor"/><text x="34" y="334">score.rs</text>
+  <rect x="144" y="314" width="110" height="30" rx="5" fill="none" stroke="currentColor"/><text x="154" y="334">drums.rs</text>
+  <rect x="264" y="314" width="110" height="30" rx="5" fill="none" stroke="currentColor"/><text x="274" y="334">analysis.rs</text>
+  <rect x="384" y="314" width="110" height="30" rx="5" fill="none" stroke="currentColor"/><text x="394" y="334">musicxml.rs</text>
+  <rect x="504" y="314" width="110" height="30" rx="5" fill="none" stroke="currentColor"/><text x="514" y="334">xml.rs</text>
+  <rect x="624" y="314" width="116" height="30" rx="5" fill="none" stroke="currentColor"/><text x="634" y="334">rudiments.rs</text>
+  <rect x="24" y="354" width="140" height="30" rx="5" fill="none" stroke="currentColor"/><text x="34" y="374">controller.rs</text>
+  <rect x="174" y="354" width="170" height="30" rx="5" fill="none" stroke="currentColor"/><text x="184" y="374">controller_layout.rs</text>
+  <rect x="354" y="354" width="110" height="30" rx="5" fill="none" stroke="currentColor"/><text x="364" y="374">trigger.rs</text>
+  <text x="476" y="374" opacity=".8">(bytes in, commands out; presets; pictures; hits in, yes/no out)</text>
 </svg>
-<figcaption>Dependencies point downwards. A pure module never imports from the layers above it.</figcaption>
+<figcaption>Dependencies point downwards. A pure module never imports from the layers above it. <code>controller.rs</code> and <code>controller_layout.rs</code> are pure although they are about hardware: they only see bytes, text and numbers.</figcaption>
 </figure>
 <p>The payoff is visible in the tests: matching and grading, the rudiment builder, the MusicXML importer, the controller mapping and the playback scheduler are all tested with no MIDI port, sound card or window.</p>
 
@@ -183,6 +193,7 @@ python3 tools/build_notices.py      # target/notices/THIRD_PARTY_NOTICES.txt</co
 </svg>
 <figcaption>Devices put messages in queues; the UI thread drains them once per frame. The UI starts the sound threads and steers them through atomics.</figcaption>
 </figure>
+<p>Besides the queues, two paths are worth knowing. <strong>Start-up</strong> is not a data path but a sequence: the program builds itself in small steps over the first frames, one device at a time, so the window can show what it is doing (<a href="#startup">Start-up</a>). <strong>Editing a controller preset</strong> writes a text file and swaps the running mapper's preset; nothing is reconnected (<a href="#ctl-editing">Editing presets</a>).</p>
 <p>Two rules keep this simple. <strong>Callback threads only append to a <code>Mutex&lt;Vec&gt;</code></strong>; they never touch application state. <strong>The sound threads never block on the UI</strong>: they read atomics and plain data they were given at start. The UI thread alone owns <code>DrumApp</code>.</p>
 </section>
 
@@ -286,16 +297,53 @@ python3 tools/build_notices.py      # target/notices/THIRD_PARTY_NOTICES.txt</co
 <h3 id="frame">One frame</h3>
 <p><code>egui</code> is <em>immediate mode</em>: there is no widget tree to keep in sync. Each frame the program runs <code>update</code>, which reads state, draws widgets and writes state back in the same calls. The order inside <code>update</code> matters:</p>
 <ol class="steps">
+<li><strong>Start-up first:</strong> while <code>startup</code> is set, <code>run_startup</code> runs the next step and draws the splash; it answers with a <code>Flow</code> (see <a href="#startup">Start-up</a>). Until the steps are done the main window is an empty panel and the frame ends here.</li>
 <li>Handle dropped files.</li>
 <li><code>sync_source</code>: put the right practice source in place for the visible tab.</li>
 <li><code>drain_midi</code>, <code>update_controller</code>, <code>keyboard_pads</code>: input becomes state.</li>
 <li><code>sync_control</code>, <code>update_take</code>, <code>update_listen</code>, <code>update_metro</code>, <code>update_audition</code>, <code>update_calibration</code>, <code>show_sound_errors</code>: state advances, threads are steered and errors surface.</li>
-<li>Keyboard shortcuts (ignored while a widget has the focus).</li>
+<li>Keyboard shortcuts (ignored while a widget has the focus, and in the frame in which a key closed the splash).</li>
 <li>Draw the panels; <code>sync_source</code> again after the top bar, because a tab clicked now needs its source before it is drawn.</li>
+<li>Draw the windows that float above: the controller help screen and the Manage window (<a href="#windows">Windows</a>).</li>
 <li>If <code>cfg != saved_cfg</code>, save the settings (so settings are persisted by <em>diffing</em>, not by event).</li>
 <li>Ask for a repaint: continuously while recording, listening or calibrating; otherwise every 50 ms so the MIDI monitor stays live.</li>
 </ol>
-<p><code>DrumApp</code> is a single large struct. Subsystems that grew large were moved to files under <code>src/app/</code> as additional <code>impl DrumApp</code> blocks with <code>pub(super)</code> methods: the Metronome tab, the mixer, the controller, the Rudiments tab. That keeps one owner of the state while keeping files readable.</p>
+<p><code>DrumApp</code> is a single large struct. Subsystems that grew large were moved to files under <code>src/app/</code> as additional <code>impl DrumApp</code> blocks with <code>pub(super)</code> methods: the Metronome tab, the mixer, the controller, the Rudiments tab, the start trigger, the splash and the controller help screen. The controller's own editor is one level deeper, <code>src/app/controls/editor.rs</code>, as a <em>child</em> module of <code>controls.rs</code>, so that it can read the private fields of <code>Controller</code> without making them public. That keeps one owner of the state while keeping files readable.</p>
+<p>Visibility says who may call what: <code>pub(super)</code> inside <code>app/</code> files means "the <code>app</code> module", <code>pub(super)</code> inside <code>controls/editor.rs</code> means "<code>controls.rs</code> only", and the one method <code>app.rs</code> must call from there, <code>controller_editor_window</code>, is <code>pub(in crate::app)</code>.</p>
+
+<h3 id="startup">Start-up</h3>
+<p>The first version of the program did all its device work in <code>DrumApp::new</code>: read the settings, list the MIDI ports and the sound outputs, open the drum module, open the controller. That is the wrong place for it. eframe creates the window <em>hidden</em> and shows it only after the first frame has been drawn, and it calls the app's constructor before that frame. Everything slow in <code>new</code> therefore delays the first visible window. Measured on the development machine (release build, no V31 and no controller attached), asking the sound system for its outputs took 260 to 400 ms of a start-up of 430 to 620 ms; opening a vendor's MIDI driver can take much longer and was not measured.</p>
+<p>So <code>new</code> only sets up, and the slow work is a list of <em>steps</em> in <code>app/startup.rs</code> that run one per frame, with a splash window that names the step before it runs:</p>
+<ol class="steps">
+<li>Frame <em>n</em>: draw the splash with step <em>k</em> in progress and set <code>drawn</code>.</li>
+<li>Frame <em>n</em>+1: <code>due()</code> returns step <em>k</em> because the splash that names it is already on screen; run it (it may block), record a <code>Line</code> (what it found, and whether that is as hoped), draw the splash with step <em>k</em>+1 in progress.</li>
+</ol>
+{{code:src/app/startup.rs::fn due(&self)}}
+<p>The steps are <code>Settings</code>, <code>MidiPorts</code>, <code>DrumInput</code>, <code>ControllerPresets</code>, <code>Controller</code>, <code>SoundOutputs</code> and, only if a file was given on the command line, <code>Score</code>. <code>Settings</code> is first because the others need the configuration. The sound system is asked on a thread started in <code>new</code> (<code>scan_sound_outputs</code>), so the answer is usually ready when its step comes; if not, the step returns <code>None</code> and the frame repeats without blocking, and the spinner keeps turning. Steps that fail are not errors: the drum module not being there is the normal state of a development machine, and the line says so in amber.</p>
+<p>The splash outlives the start-up. When the last step is done <code>Startup</code> records <code>finished_at</code> and the main window starts working (<code>Flow::Go</code>), but the splash stays until a key or a mouse button is pressed in either window. Two rules make that safe:</p>
+<ul>
+<li><strong>A grace period</strong> (<code>GRACE</code>, 0.6 s): input that arrives earlier is ignored, because clicks made while the program was busy arrive in a heap the moment it is free, and nobody has read the splash yet.</li>
+<li><strong>The closing key is not a shortcut.</strong> If a key closes the splash, <code>run_startup</code> answers <code>Flow::KeyTaken</code> and <code>update</code> skips the keyboard shortcuts for that frame, so pressing <kbd>R</kbd> does not also start a recording. A mouse click is passed on as usual.</li>
+</ul>
+{{code:src/app/startup.rs::pub(super) enum Flow}}
+<p>Tests drive the whole sequence headlessly with <code>egui::Context::run</code>: the first frame runs nothing, the steps take exactly one frame each, a slow sound system does not block, input before the grace period is ignored, a key closes the splash and is reported as taken. To keep them away from the real settings, <code>Startup</code> receives the function that loads the settings (<code>Config::load</code> in the program, a default in tests) and the receiver of the sound scan.</p>
+
+<h3 id="windows">Windows</h3>
+<p>The program has one main window and three more that float above it, and they are not all the same kind of thing:</p>
+<table>
+<thead><tr><th>Window</th><th>Kind</th><th>Why</th></tr></thead>
+<tbody>
+<tr><td>Splash (<code>startup.rs</code>)</td><td>OS window (egui <em>immediate viewport</em>), borderless, centred over the main window</td><td>It must exist before the main window has anything to show, and stay after.</td></tr>
+<tr><td>Manage presets (<code>controls/editor.rs</code>)</td><td>OS window (immediate viewport), 960&times;780, resizable</td><td>A working area of its own: a list of presets and a long table of actions.</td></tr>
+<tr><td>Controller help (<code>controller_help.rs</code>)</td><td><code>egui::Window</code> inside the main window</td><td>Looked at for a moment and closed; it follows the main window.</td></tr>
+</tbody></table>
+<p>An immediate viewport is drawn <em>inside</em> the parent's <code>update</code>: <code>ctx.show_viewport_immediate(id, builder, |ctx, class| …)</code> runs the closure at once, with the context of the child window, and the closure may borrow <code>self</code> mutably. Whatever it returns (here: was the window closed, or was it used) comes back to the caller. When the caller stops showing the viewport the window disappears, which is how the splash and the Manage window are closed. If the platform cannot open a second window, egui calls the closure with <code>ViewportClass::Embedded</code> and the same content is drawn as an <code>egui::Window</code> inside the main one; the tests run in this mode, because a headless context has no second window.</p>
+<p>Three details came from the real thing, not from the documentation:</p>
+<ul>
+<li>The main window is shown after the first frame and comes up <em>in front of</em> the splash. The splash therefore asks for the focus on its second frame and again when the steps are done (<code>ViewportCommand::Focus</code>).</li>
+<li>A borderless window has no frame of its own and blends into what is behind it. The splash paints a 3 px border in the accent colour on the foreground layer, at the window's edge, because a frame stroke is half cut off by the window boundary.</li>
+<li>Input events of an immediate viewport are those of that window: <code>ctx.input</code> inside the closure sees the splash's clicks, outside it the main window's. <code>run_startup</code> checks both.</li>
+</ul>
 
 <h3 id="sources">Practice sources</h3>
 <p>The Score tab and the Rudiments tab must each keep their own score, range, tempo, take and history, yet almost every method (<code>plan_run</code>, <code>start_take</code>, Listen, Results, the controller) works on "the" score. Instead of threading a session object through everything, <code>DrumApp</code> keeps <em>one</em> set of practice fields and parks the other source's in a struct; showing the other tab swaps them.</p>
@@ -336,26 +384,136 @@ python3 tools/build_notices.py      # target/notices/THIRD_PARTY_NOTICES.txt</co
 
 <section id="controller">
 <h2>7. The controller subsystem</h2>
-<p><code>controller.rs</code> is a pure state machine: MIDI bytes in, application commands and light messages out. A <em>preset</em> is a text file that says which message means which action, so supporting another Mackie-style surface is writing a text file, not code.</p>
-<pre><code>layer = A note 84                     # this message switches to layer A
-bind  = A note 89 -&gt; record           # a button
-bind  = A cc 16 rel -&gt; tempo          # an endless encoder
-bind  = bend 1 -&gt; tempo               # a fader
-led   = A record -&gt; note 89           # a button light that follows the state
-ring  = A tempo -&gt; cc 48              # an LED ring that shows a value</code></pre>
-{{code:src/controller.rs::pub enum Command}}
-<p>The pieces:</p>
+<p>A control surface is a set of controls that each send a MIDI message: a note, a controller number (cc) with a value, or a pitch-bend value. The subsystem turns those messages into actions of the program and the program's state into lights, and it can be taught a new device without writing code. It has an impure half that owns the MIDI port and a pure half that decides what everything means. The pure half is large (<code>controller.rs</code>, <code>controller_layout.rs</code>) and fully tested without a device.</p>
+
+<h3 id="ctl-overview">Overview</h3>
+<figure>
+<svg viewBox="0 0 760 320" role="img" aria-label="The controller pipeline" xmlns="http://www.w3.org/2000/svg" font-family="system-ui, sans-serif" font-size="12">
+  <defs><marker id="ar2" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="currentColor"/></marker></defs>
+  <g fill="none" stroke="currentColor">
+    <rect x="10" y="30" width="130" height="46" rx="6"/><rect x="160" y="30" width="130" height="46" rx="6"/><rect x="310" y="30" width="130" height="46" rx="6" stroke-width="2"/><rect x="460" y="30" width="130" height="46" rx="6"/><rect x="610" y="30" width="130" height="46" rx="6"/>
+    <rect x="10" y="130" width="130" height="46" rx="6"/><rect x="160" y="130" width="130" height="46" rx="6"/><rect x="310" y="130" width="130" height="46" rx="6" stroke-width="2"/><rect x="460" y="130" width="130" height="46" rx="6"/><rect x="610" y="130" width="130" height="46" rx="6"/>
+    <rect x="10" y="240" width="130" height="46" rx="6"/><rect x="160" y="240" width="130" height="46" rx="6"/><rect x="310" y="240" width="130" height="46" rx="6"/><rect x="460" y="240" width="130" height="46" rx="6"/><rect x="610" y="240" width="130" height="46" rx="6"/>
+    <path d="M140 53 L160 53 M290 53 L310 53 M440 53 L460 53 M590 53 L610 53" marker-end="url(#ar2)"/>
+    <path d="M140 153 L160 153 M290 153 L310 153 M440 153 L460 153 M590 153 L610 153" marker-end="url(#ar2)"/>
+    <path d="M140 263 L160 263 M290 263 L310 263 M440 263 L460 263 M590 263 L610 263" marker-end="url(#ar2)"/>
+    <path d="M375 130 L375 76" marker-end="url(#ar2)"/><path d="M675 240 L440 170" marker-end="url(#ar2)"/>
+  </g>
+  <text x="18" y="50">Device</text><text x="18" y="66" opacity=".7">bytes from midir</text>
+  <text x="168" y="50">controller::parse</text><text x="168" y="66" opacity=".7">Msg</text>
+  <text x="318" y="50" font-weight="700">Mapper::handle</text><text x="318" y="66" opacity=".7">layer, shift, pickup</text>
+  <text x="468" y="50">Command</text><text x="468" y="66" opacity=".7">Press, Turn, Set</text>
+  <text x="618" y="50">apply_command</text><text x="618" y="66" opacity=".7">DrumApp methods</text>
+  <text x="18" y="150">Preset file</text><text x="18" y="166" opacity=".7">built in or yours</text>
+  <text x="168" y="150">Preset::parse</text><text x="168" y="166" opacity=".7">binds, lights, kind</text>
+  <text x="318" y="150" font-weight="700">Mapper</text><text x="318" y="166" opacity=".7">owns the Preset</text>
+  <text x="468" y="150">Mapper::lights</text><text x="468" y="166" opacity=".7">only what changed</text>
+  <text x="618" y="150">Device</text><text x="618" y="166" opacity=".7">lights and rings</text>
+  <text x="18" y="260">Msg while learning</text><text x="18" y="276" opacity=".7">learn_message</text>
+  <text x="168" y="260">learn()</text><text x="168" y="276" opacity=".7">Learned</text>
+  <text x="318" y="260">Preset::assign</text><text x="318" y="276" opacity=".7">takes, replaces</text>
+  <text x="468" y="260">to_text, write</text><text x="468" y="276" opacity=".7">the file is the truth</text>
+  <text x="618" y="260">replace_preset</text><text x="618" y="276" opacity=".7">live, no reconnect</text>
+  <text x="18" y="108" opacity=".8">running</text><text x="18" y="210" opacity=".8">loading and lights</text><text x="18" y="312" opacity=".8">teaching</text>
+</svg>
+<figcaption>Top: a message becomes a command. Middle: a preset file becomes the mapper's rules, and the program's state becomes light messages. Bottom: a control pressed while an action waits for it is bound, saved and put in place.</figcaption>
+</figure>
+<p>Four modules and one folder share the work:</p>
 <dl class="api">
-<dt>parse(bytes) -&gt; Option&lt;Msg&gt;</dt><dd>Note on/off, control change and 14-bit pitch bend (the faders).</dd>
-<dt>Preset::parse(text)</dt><dd>Reads the lines; a bad line becomes a warning and the rest still works. Unknown layers are dropped, repeated controls reported.</dd>
-<dt>Mapper::handle(msg, &amp;State) -&gt; Vec&lt;Command&gt;</dt><dd>Applies layer switching, Shift (held: encoder turns five times as far, except browsing), relative-encoder decoding, and <em>fader pickup</em>: a fader that does not move by itself must reach the value it controls before it takes over, or the value would jump.</dd>
-<dt>Mapper::lights(&amp;State) -&gt; Vec&lt;[u8; 3]&gt;</dt><dd>The messages that bring lights and rings up to date: only what changed, and lights of another layer are put out.</dd>
+<dt><code>controller.rs</code> (pure)</dt><dd>Messages, actions, presets, the <code>Mapper</code>, relative encodings, and the editing operations on a preset (<code>assign</code>, <code>clear</code>, <code>to_text</code>, <code>learn</code>). Also the title and the explanation of every action.</dd>
+<dt><code>controller_layout.rs</code> (pure)</dt><dd>What a controller <em>looks like</em>: where its controls are and which message each sends, as plain numbers; plus what each control does on a layer, looked up in a preset.</dd>
+<dt><code>app/controls.rs</code></dt><dd>The impure half: the MIDI port, the plug-and-play watch, building the <code>State</code>, turning <code>Command</code>s into method calls, the Controller page of Settings.</dd>
+<dt><code>app/controls/editor.rs</code></dt><dd>The Manage window: the list of presets, creating, copying, renaming, deleting, and the table of assignments with <em>Learn</em>.</dd>
+<dt><code>app/controller_help.rs</code></dt><dd>The help screen that draws a controller from its layout.</dd>
+<dt><code>presets/*.txt</code></dt><dd>The built-in presets, compiled in with <code>include_str!</code> (<code>BUILTIN</code>).</dd>
 </dl>
-<p><code>app/controls.rs</code> is the impure half: it owns the MIDI port (<code>midi::connect_controller</code>), watches for the device being plugged in or pulled out every two seconds, builds the <code>State</code> from <code>DrumApp</code> every message, and turns <code>Command</code>s into method calls. Because <code>Command</code> has only three shapes, <code>apply_command</code> is a short dispatcher:</p>
+
+<h3 id="ctl-presets">Presets</h3>
+<p>A <em>preset</em> is a text file that says which message means which action. Supporting another surface is writing a text file, not code. The format is line based, <code>#</code> starts a comment, and a line that cannot be used becomes a warning while the rest still works:</p>
+<pre><code>name  = Behringer X-Touch Mini
+port  = X-TOUCH MINI                  # part of the MIDI port's name
+kind  = mackie                        # or midi
+layer = A note 84                     # this message switches to layer A
+bind  = A note 89 -&gt; record           # a button, on layer A only
+bind  = A cc 16 rel -&gt; tempo          # an endless encoder (Mackie relative values)
+bind  = cc 14 ch 2 rel twos -&gt; tempo  # only on MIDI channel 2, two's complement
+bind  = cc 13 abs -&gt; tempo            # a knob that sends its position
+bind  = bend 1 -&gt; tempo               # a fader (pitch bend, channel 1)
+led   = A record -&gt; note 89           # a button light (on=127 off=0 unless the line says)
+led   = record -&gt; note 36 ch 10 on=21 off=0   # another channel and values (a pad's colour)
+ring  = A tempo -&gt; cc 48              # an LED ring (Mackie ring values)
+ring  = tempo -&gt; cc 20 scale=127      # a plain value 0..scale instead</code></pre>
+{{code:src/controller.rs::pub struct Binding}}
+<ul>
+<li><strong>Kinds.</strong> A preset is <code>mackie</code> or <code>midi</code> (<code>PresetKind</code>). The kind decides how a ring is sent when the line has no <code>scale=</code>: Mackie's ring encoding (<code>0x20 | position</code>) for <code>mackie</code>, a plain 0 to 127 for <code>midi</code>. A file without a <code>kind</code> line is read as Mackie if it has layers or lights and as MIDI otherwise, which keeps files written before the line existed working: the kind only changes what a ring sends, and a preset without lights has none.</li>
+<li><strong>Layers.</strong> A line without a layer name applies to all layers; a line for the current layer wins over one for all layers. Lines that name an undeclared layer are dropped with a warning, and a control bound twice in the same place is reported (the first one is used).</li>
+<li><strong>Channels.</strong> <code>ch N</code> limits a binding to one MIDI channel. <code>Preset::position</code> looks a message up in four steps, most specific first: this layer and this channel, this layer, all layers and this channel, all layers. Called with no channel it means "any binding", which the pictures need because they cannot tell channels apart.</li>
+{{code:src/controller.rs::pub fn position(}}
+<li><strong>Where presets come from.</strong> <code>BUILTIN</code> holds the shipped ones; <code>custom_presets(dir)</code> lists the <code>.txt</code> files of the <code>controllers</code> folder next to the settings file, named after their file; <code>load_preset(name, dir)</code> returns a built-in one first and a file otherwise. A built-in name always wins over a file of the same name, which is why the editor must never write to a file whose name is a built-in one.</li>
+<li><strong>Round trip.</strong> <code>Preset::to_text</code> writes a preset so that <code>Preset::parse</code> reads back the same value (comments are lost); a test checks it for every built-in preset. That property is what lets the editor use the file as its only storage.</li>
+</ul>
+
+<h3 id="ctl-mapper">The mapper</h3>
+<dl class="api">
+<dt>parse(bytes) -&gt; Option&lt;Msg&gt;</dt><dd>Note on/off, control change and 14-bit pitch bend (the faders). Every <code>Msg</code> knows its MIDI channel.</dd>
+<dt>Mapper::handle(msg, &amp;State) -&gt; Vec&lt;Command&gt;</dt><dd>Applies layer switching, Shift (held: encoder turns count five times, except browsing a list), relative-encoder decoding and <em>fader pickup</em>: an absolute control that does not move by itself must come within 3 % of the value it controls, or cross it, before it takes over, or the value would jump; it lets go again when the value drifts 25 % away.</dd>
+<dt>Mapper::lights(&amp;State) -&gt; Vec&lt;[u8; 3]&gt;</dt><dd>The messages that bring lights and rings up to date: only what changed, the status byte carries the light's channel, and a light that is no longer wanted (another layer) is put out with <em>its own</em> off value.</dd>
+<dt>Mapper::replace_preset(preset)</dt><dd>Puts an edited preset in place while the program runs. The layer and Shift stay; faders must catch up again and every light is sent again.</dd>
+</dl>
+{{code:src/controller.rs::pub enum Encoding}}
+<p>The four relative encodings differ only in how a cc value 0 to 127 maps to a signed step count: <code>mackie</code> (a sign bit and a 6-bit count, 65 to 127 is counter-clockwise), <code>twos</code> (127 is one step back), <code>offset</code> (64 is no turn) and <code>signbit2</code> (Mackie's sign bit the other way round). <code>Encoding::decode</code> is a pure function with a test per encoding; <code>Mapper::handle</code> multiplies by the Shift factor afterwards, so Shift works with every encoding.</p>
+{{code:src/controller.rs::pub fn replace_preset}}
+
+<h3 id="ctl-app">The impure half</h3>
+<p><code>app/controls.rs</code> owns the MIDI port (<code>midi::connect_controller</code>), watches for the device being plugged in or pulled out every two seconds, builds the <code>State</code> from <code>DrumApp</code> for every message, and turns <code>Command</code>s into method calls. Because <code>Command</code> has only three shapes, <code>apply_command</code> is a short dispatcher:</p>
+{{code:src/controller.rs::pub enum Command}}
 {{code:src/app/controls.rs::pub(super) fn apply_command}}
+<p>Each frame <code>update_controller</code> drains the message queue the MIDI thread filled. A message first goes to the editor's <code>learn_message</code>, which uses it up if an action is waiting for a control; otherwise it is parsed, shown in the monitor with what it is bound to, and handed to the mapper. Then the lights are brought up to date. The <code>Controller</code> struct keeps the connection (<code>Link</code>: the port handle and the mapper), the preset list with each preset's kind, the monitor and the editor's state.</p>
+<h4>The start trigger</h4>
+<p>A second way of driving the program without the mouse is the drum kit itself: two hits in a row start a recording. <code>trigger.rs</code> is a tiny pure detector, tested with synthetic <code>Instant</code>s:</p>
+{{code:src/trigger.rs::pub fn feed}}
+<p><code>app/trigger.rs</code> calls it from <code>handle_event</code> for every mapped hit and decides whether it may fire (<code>trigger_allowed</code>: enabled, Score or Rudiments tab, something to play, no take recording). A hit the trigger uses up returns early, so it never becomes a note of the take it starts. The same hook implements <em>Learn</em> for the two instruments: while <code>trigger_learn</code> is set, the next hit chooses the instrument.</p>
 <h4>Context-dependent controls</h4>
 <p>The Mini has no spare controls, so while a rudiment is the active practice source the same physical controls mean something else (repeats, lead, rudiment). One small function rewrites the action; the presets stay untouched:</p>
 {{code:src/app/controls.rs::fn in_context}}
+
+<h3 id="ctl-editing">Editing presets: Learn</h3>
+<p>The Manage window edits presets without a text editor, and it is built on one decision: <strong>the preset file is the only storage</strong>. There is no copy of the preset in the editor's state. Every change does the same four things in <code>edit_preset</code>: read the chosen preset's file, apply the change to the <code>Preset</code> value, write the file, and give the result to the running mapper (<code>replace_preset</code>). The consequences are pleasant: nothing can get out of step with the file, a crash loses nothing, and the same code serves a connected controller and a disconnected one.</p>
+{{code:src/app/controls/editor.rs::fn edit_preset}}
+<p>The pure operations are in <code>controller.rs</code>:</p>
+{{code:src/controller.rs::pub fn learn(}}
+{{code:src/controller.rs::pub fn assign(}}
+<ul>
+<li><code>learn(msg, action, relative, encoding, remember_channel)</code> decides what a message says about the control that sent it, <em>for the action that waits</em>: a button needs a press (not the release), a value needs a cc or a fader, a list (<code>Score</code>, <code>Rudiment</code>) needs an endless encoder, a note is no use for a knob. It returns <code>None</code> for what cannot be that control; the caller uses such a message up anyway, so a stray release does not trigger an action while learning.</li>
+<li><code>Preset::assign</code> binds the action to the control. The control is <em>taken</em> from whatever it was bound to on that layer (returned, so the window can say so), and the action's old control of the <em>same kind</em> (note, cc, fader) is replaced, while one of another kind stays: an encoder and a fader may both set the tempo.</li>
+<li><code>clear</code> and <code>set_kind</code> (absolute or relative with an encoding) complete the set; <code>Action::sections()</code> lists every bindable action in the editor's order, a test checks that none is missing or doubled.</li>
+</ul>
+<p>The learn flow in <code>editor.rs</code> is a small state machine in <code>EditorState</code>: <code>learning</code> holds the action that waits; <code>learn_message</code> consumes the next message, saves, and (if <em>go on</em> is ticked) sets <code>learning</code> to the next action in the list. Choosing a preset (<code>select_preset</code>) clears the flow. A click on a preset in the list <em>chooses it as the one in use</em>, not merely shows it: learning needs that preset's connection, and the editor can only edit what the mapper runs.</p>
+<p><code>EditorState</code> has a <code>dir</code> field, the folder of the user's presets, which is <code>None</code> in the program (the settings folder) and a temporary folder in tests. That is the seam that lets tests run a full learn, save, rename, copy and delete cycle without touching a real settings folder.</p>
+<h4>The Manage window</h4>
+<p>The window is one function tree: <code>controller_editor_window</code> shows it as an immediate viewport (or an embedded window), <code>manage_ui</code> splits it into a resizable left <code>SidePanel</code> and a central panel, <code>preset_list</code> draws all presets grouped by kind with Add, Copy and Delete… in a bottom panel (Delete asks a second time through the <code>confirm_delete</code> flag), and the central panel scrolls <code>preset_header</code> (the name and Rename) above <code>assignments_body</code> (the table). Clicks do not act while the panels are being drawn: they set an <code>Op</code>, which <code>run_op</code> applies after the layout is done, so no closure borrows <code>self</code> mutably while another still reads it. Rename checks the name (<code>check_preset_name</code>: no path characters, not a built-in name, not taken), renames the file and rewrites its <code>name =</code> line without touching comments (<code>with_name</code>).</p>
+{{code:src/app/controls/editor.rs::fn manage_ui}}
+
+<h3 id="ctl-pictures">Pictures: layouts and the help screen</h3>
+<p>The help screen draws a picture of the controller with what each control does. The picture comes from a <code>Layout</code>: a device size in abstract units and a list of <code>Control</code>s, each with a kind (<code>Button</code>, <code>Encoder</code>, <code>Fader</code>, <code>Layer</code>, <code>Indicator</code>), a name, a centre and size, and the messages it sends when pressed (<code>press</code>) and when turned or moved (<code>turn</code>). <code>Layout.marks</code> are the symbols printed on the device (rewind, stop, <em>LOOP</em>…), drawn as vectors because the fonts lack them.</p>
+{{code:src/controller_layout.rs::pub struct Layout}}
+<p>There are two sources of layouts, and the help screen takes the first that exists:</p>
+<ul>
+<li><strong>Drawn layouts</strong> (<code>x_touch_mini</code>, <code>x_touch_compact</code>), chosen by the preset's <code>port</code> text (<code>for_preset</code>), so a copy of a built-in preset keeps its picture. They were measured on photographs of the devices; the Mini's height is stretched against its width to leave room for the labels above the encoders.</li>
+<li><strong>Generated layouts</strong> (<code>generated(preset)</code>) for every other preset, including learned ones: knobs and encoders on top, then faders, then buttons, each group in order of message number, nine to a row. A control's kind is guessed from its binding: pitch bend and the volume actions on a cc are faders, other values and every relative cc are knobs, the rest are buttons; layer buttons are added. The picture says what the preset binds, not where the controls are on the device.</li>
+</ul>
+{{code:src/controller_layout.rs::pub fn generated}}
+<p><code>mapping(preset, layer, control)</code> answers what a control does on a layer by looking its messages up in the preset (<code>Preset::position</code> with no channel), and <code>is_lit</code> says whether a light or ring follows the program. Because a layout holds only numbers, its tests are plain: every control lies on the device and no two overlap; no message is sent by two controls; every binding of a built-in preset, every layer and every light is on some control; the ring of encoder <em>n</em> is addressed as cc 48+<em>n</em>; <code>Layout::unplaced</code> lists the bindings a picture cannot show (empty for both built-in Mackie presets, and a test fails when that changes).</p>
+<p><code>app/controller_help.rs</code> draws it. The scale is the smaller of "fits the window's width" and "fits the screen's height" and never below 0.6 (below that the texts are unreadable and the window scrolls instead). Each control is drawn with the painter, then given an interaction rectangle for its tooltip (name, action, the explanation from <code>Action::help</code>, the message); the drawn LAYER buttons are clickable and switch the layer shown. Two things are easy to get wrong: centred text in egui is laid out around the x of the position it is placed at, not inside the box, so <code>text_box</code> places the galley at the box's centre; and the window closes itself when the chosen preset changes, because its picture would be of the wrong controller. <code>Action::title</code> and <code>Action::help</code> are exhaustive <code>match</code>es, so a new action cannot be added without its label and its sentence.</p>
+
+<h3 id="ctl-tests">Testing the subsystem</h3>
+<ul>
+<li>The mapper is tested with plain messages and states: layers, Shift, pickup, every encoding, channels, light values, ring scales.</li>
+<li>The built-in presets are parsed in a loop: no warnings, the right kind, a round trip through <code>to_text</code>, and a picture whose controls cover every binding.</li>
+<li>Pictures are tested as geometry (see above), never by looking at pixels. Looking is done by hand, in the running program, once per layout change.</li>
+<li>The editor is tested through its methods with a temporary folder: a learn cycle, steal and replace, channel and encoding choices, new, copy, rename and delete, refusal of bad names, and that a built-in preset is neither renamed nor deleted.</li>
+<li>Nothing here has been tried on a real non-Mackie device: a mistake in a preset number is found with the monitor, and the preset is then fixed by learning the control again.</li>
+</ul>
 </section>
 
 <section id="rudiments">
@@ -387,6 +545,7 @@ ring  = A tempo -&gt; cc 48              # an LED ring that shows a value</code>
 <li><strong>Persistence by diffing</strong>: <code>Config</code> derives <code>PartialEq</code>, and <code>update()</code> saves when it differs from the last saved copy. UI code just mutates <code>self.cfg</code>.</li>
 <li><strong>Maps with prefixes</strong> (<code>gain.Kick</code>, <code>rudiment_bpm.16</code>) are parsed in the fallback arm of the <code>match</code>; <code>BTreeMap</code> keeps the written order deterministic.</li>
 <li><strong>Session-only state</strong> (practice tempo of a score, range, solo, lead override) is deliberately <em>not</em> in <code>Config</code>.</li>
+<li><strong>Controller presets are files too</strong>, but not in <code>config.txt</code>: the built-in ones are compiled in (<code>BUILTIN</code>), yours are <code>.txt</code> files in the <code>controllers</code> folder next to it. <code>config.txt</code> only remembers which one is chosen (<code>controller_preset</code>, <code>controller_port</code>); <code>DEFAULT_CONTROLLER</code> is the Mini, an empty value means "none" and is kept.</li>
 <li>Every new key needs a round-trip test; <code>roundtrip</code> in <code>config.rs</code> compares whole <code>Config</code> values.</li>
 <li><code>Config::migrate</code> copies the settings folder of the old application name once; it is the pattern to follow for a future rename.</li>
 </ul>
@@ -438,6 +597,9 @@ ring  = A tempo -&gt; cc 48              # an LED ring that shows a value</code>
 <tr><td>Real-time core</td><td>A fake <code>Sink</code> records what would sound; times are given as numbers, no sleeping</td><td><code>playback.rs</code></td></tr>
 <tr><td>Controller</td><td>Messages in, commands and light bytes out; presets parsed from strings; the built-in presets are loaded and must have no warnings</td><td><code>controller.rs</code></td></tr>
 <tr><td>App logic</td><td><code>DrumApp::with_config(Config::default())</code> touches no devices; tests call <code>apply_command</code>, <code>sync_source</code>, <code>start_take</code> directly</td><td><code>app/controls.rs</code>, <code>app/rudiment.rs</code></td></tr>
+<tr><td>Presets and the editor</td><td>Presets parsed from strings and round-tripped; the editor runs on a temporary folder (<code>EditorState.dir</code>) with real files</td><td><code>controller.rs</code>, <code>app/controls/editor.rs</code></td></tr>
+<tr><td>Pictures</td><td>Geometry invariants over every layout, drawn and generated; the help screen draws headlessly</td><td><code>controller_layout.rs</code>, <code>app/controller_help.rs</code></td></tr>
+<tr><td>Start-up</td><td>The whole sequence, frame by frame, with a fake settings loader and a channel instead of the sound scan</td><td><code>app/startup.rs</code></td></tr>
 <tr><td>Screens</td><td>Headless <code>egui::Context::run</code> with default input: proves a screen draws without panicking; wheel tests feed <code>Event::MouseWheel</code></td><td><code>widgets.rs</code>, <code>the_tab_draws_for_every_rudiment</code></td></tr>
 <tr><td>Sound</td><td>Spectral guards on the synthesised kit (bounded, decaying, deterministic); the real outputs are <em>not</em> tested</td><td><code>synth.rs</code></td></tr>
 </tbody></table>
@@ -449,6 +611,8 @@ ring  = A tempo -&gt; cc 48              # an LED ring that shows a value</code>
 <li>A bug fix starts with a failing test.</li>
 <li>Do not start real audio in a test: set <code>cfg.click_audio</code> and <code>cfg.click_midi</code> to false before <code>start_take</code>.</li>
 <li>Tests that change shared tables (the catalogue size, the number of lanes) will fail loudly: update the counts in the tests deliberately.</li>
+<li>A test that reads the user's real folders is fragile: it fails on a machine whose owner has made presets of their own. Give the code a folder to use (as <code>EditorState.dir</code> does) or compare only what the test controls.</li>
+<li>To check an <em>older commit</em> (is every commit green?) export it with <code>git archive</code> and <strong>touch the files</strong> before building: files carry the commit's old timestamp and cargo then reuses a newer build.</li>
 <li>Before committing: <code>cargo test</code>, <code>cargo build</code> (no warnings) and <code>cargo check --no-default-features</code>.</li>
 </ul>
 </section>
@@ -463,6 +627,12 @@ ring  = A tempo -&gt; cc 48              # an LED ring that shows a value</code>
 <tr><td>New settings</td><td><span class="pill easy">small</span></td><td><code>config.rs</code>, a Settings page</td><td><a href="#t-setting">Tutorial 2</a>.</td></tr>
 <tr><td>New grading metric</td><td><span class="pill easy">small</span></td><td><code>analysis.rs</code>, Results tab</td><td><a href="#t-metric">Tutorial 3</a>. Candidates: streaks, per-beat bias, rush/drag by position in the bar, hand-specific accent quality.</td></tr>
 <tr><td>New controller action or preset</td><td><span class="pill easy">small</span></td><td><code>controller.rs</code>, <code>app/controls.rs</code>, <code>presets/</code></td><td><a href="#t-action">Tutorial 4</a>. Another Mackie surface is a new preset file.</td></tr>
+<tr><td>A preset for another controller</td><td><span class="pill easy">small</span></td><td><code>presets/</code>, <code>BUILTIN</code></td><td><a href="#t-controller">Tutorial 8</a>; or let the user teach it in the Manage window. A picture is generated.</td></tr>
+<tr><td>A drawn picture of a controller</td><td><span class="pill">medium</span></td><td><code>controller_layout.rs</code>, <code>for_preset</code></td><td>Measure it on a photograph; the geometry tests say what is wrong.</td></tr>
+<tr><td>Creating layers, editing lights and rings in the Manage window</td><td><span class="pill">medium</span></td><td><code>controls/editor.rs</code>, <code>Preset</code></td><td>The model (<code>Preset</code>, <code>to_text</code>) already holds them; the window only edits bindings today.</td></tr>
+<tr><td>Guessing a relative encoding while learning</td><td><span class="pill easy">small</span></td><td><code>controller::learn</code>, <code>editor.rs</code></td><td>Turn a knob a few clicks: the first message after a stop and its sign tell the encoding.</td></tr>
+<tr><td>Connect-time system-exclusive messages for a controller</td><td><span class="pill">medium</span></td><td><code>midi::connect_controller</code>, preset format</td><td>Some controllers need a message to enter a mode; an <code>init</code> line was planned in the concept.</td></tr>
+<tr><td>New step at start-up</td><td><span class="pill easy">small</span></td><td><code>app/startup.rs</code></td><td><a href="#t-startup">Tutorial 9</a>.</td></tr>
 <tr><td>New tab</td><td><span class="pill">medium</span></td><td><code>app.rs</code>, <code>app/&lt;tab&gt;.rs</code></td><td><a href="#t-tab">Tutorial 5</a>.</td></tr>
 <tr><td>New instrument</td><td><span class="pill">medium</span></td><td><code>drums.rs</code> and every <code>match</code> on <code>Lane</code></td><td><a href="#t-lane">Tutorial 6</a>; the compiler lists the places.</td></tr>
 <tr><td>Required flams/drags with a spacing check</td><td><span class="pill">medium</span></td><td><code>analysis.rs</code> (<code>GRACE_SPACING</code>, optional graces)</td><td>Make grace <code>Expected</code> notes non-optional for rudiments and report the interval between grace and main stroke.</td></tr>
@@ -542,7 +712,7 @@ r.best_streak = best;</code></pre></li>
 <h3 id="t-action">Tutorial 4: add a controller action</h3>
 <p><span class="pill easy">small</span> Goal: a button that toggles <em>follow</em> (the score scrolling with the playhead).</p>
 <ol class="steps">
-<li><strong>Name it.</strong> In <code>controller.rs</code> add <code>Follow</code> to <code>enum Action</code> (under the buttons) and <code>("follow", Action::Follow)</code> to <code>SIMPLE</code>. A test, <code>actions_round_trip_through_their_names</code>, checks the table. If the button should light, add it to <code>has_light</code>, a <code>follow: bool</code> to <code>State</code> and an arm to <code>State::lit</code>.</li>
+<li><strong>Name it.</strong> In <code>controller.rs</code> add <code>Follow</code> to <code>enum Action</code> (under the buttons) and <code>("follow", Action::Follow)</code> to <code>SIMPLE</code>. A test, <code>actions_round_trip_through_their_names</code>, checks the table. Give it a label and a sentence in <code>Action::title</code> and <code>Action::help</code> (the compiler insists; they are what the controller help screen shows). If the button should light, add it to <code>has_light</code>, a <code>follow: bool</code> to <code>State</code> and an arm to <code>State::lit</code>.</li>
 <li><strong>Do it.</strong> In <code>app/controls.rs</code>, <code>press()</code>:
 <pre class="code"><code>Action::Follow =&gt; self.follow = !self.follow,</code></pre>
 and, if you added a light, fill <code>follow: self.follow</code> in <code>controller_state()</code>.</li>
@@ -607,6 +777,26 @@ impl DrumApp {
 <li><strong>Time-dependent behaviour</strong> (looping, stopping, late cues) goes through <code>run_with</code>, which takes the zero instant, the cues, a stop flag and the sink, with a short <code>tail</code>, so a test can run a real pass in a few milliseconds. Look at <code>looping_repeats_until_switched_off_and_finishes_the_pass</code>.</li>
 </ol>
 <div class="callout"><strong class="label">What cannot be tested</strong>That a real device makes the right sound at the right moment. Check it by ear and, on Windows, with the per-application peak meter, and record the result in <code>HANDOFF.md</code>.</div>
+<h3 id="t-controller">Tutorial 8: support another controller</h3>
+<p>Goal: a preset for a pad controller, then (optionally) a drawn picture.</p>
+<ol class="steps">
+<li><strong>Find the numbers.</strong> Select the controller in <em>Settings &rarr; Controller</em>, press every control and read the monitor: it shows <code>note 36</code>, <code>cc 13 = 77</code> or <code>bend 1</code> and the channel.</li>
+<li><strong>Write the file.</strong> <code>presets/my-pads.txt</code> with <code>name</code>, <code>port</code> (part of the MIDI port's name), <code>kind = midi</code> and one <code>bind</code> per control. Knobs and faders are <code>abs</code>; endless encoders are <code>rel</code> with the encoding the monitor suggests (<code>twos</code>, <code>offset</code>, <code>signbit2</code>, or Mackie's). Use <code>ch N</code> when pads and knobs share numbers on different channels. State in the header what you verified.</li>
+<li><strong>Register it.</strong> One line in <code>BUILTIN</code> in <code>controller.rs</code>: <code>("My pads", include_str!("../presets/my-pads.txt"))</code>. The tests that loop over <code>BUILTIN</code> now check that it has no warnings, round-trips through <code>to_text</code> and gets a generated picture; the preset list test in <code>app/controls.rs</code> names the built-in presets and needs the new name; add the preset to <code>the_generic_midi_presets_use_absolute_knobs_and_plain_buttons</code> with a button and a knob.</li>
+<li><strong>Look at it.</strong> Open the help screen: the generated picture shows what is bound. If a drawn one is wanted, add a function to <code>controller_layout.rs</code> (positions from a photograph), choose it in <code>for_preset</code> by the port text, and add its name to the loops over layouts in the geometry tests; fix what they report.</li>
+<li><strong>Document it.</strong> The README controller section, the manual's chapter on controllers, the changelog and <code>HANDOFF.md</code> (as untested until it is tried).</li>
+</ol>
+<div class="callout tip"><strong class="label">Or let the user do it</strong>The same file can be made in the Manage window: Add, then Learn for each action. A learned preset can be copied into <code>presets/</code> and shipped.</div>
+
+<h3 id="t-startup">Tutorial 9: add a step to the start-up</h3>
+<p>Goal: something slow that the program does at launch, shown on the splash.</p>
+<ol class="steps">
+<li><strong>Name it.</strong> Add a variant to <code>enum Step</code> in <code>app/startup.rs</code> and put it in the list in <code>Startup::new</code> at the place where its inputs exist (after <code>Settings</code> if it needs the configuration).</li>
+<li><strong>Say what it is doing.</strong> An arm in <code>label()</code>: "Reading the thing…" (while it runs the user sees this text).</li>
+<li><strong>Do the work.</strong> An arm in <code>run_step</code> that returns a <code>Line</code>: what it found, and <code>ok: false</code> if that is not as hoped (it shows in amber). If the work can be long and does not need the UI thread, start it on a thread in <code>new</code> as the sound scan does and return <code>None</code> until the answer is there.</li>
+<li><strong>Test it.</strong> The frame-counting tests in <code>startup.rs</code> assert the number of steps; update them on purpose.</li>
+<li><strong>Do not</strong> add the work to <code>DrumApp::new</code>: the window is hidden until its first frame.</li>
+</ol>
 </section>
 
 <section id="release">
@@ -630,7 +820,9 @@ impl DrumApp {
 <section id="gaps">
 <h2>15. Known gaps and roadmap</h2>
 <ul>
-<li><strong>V31 and controllers are untested on hardware.</strong> The note map is the common Roland V-Drums factory map; the hi-hat pedal polarity (127 = closed) is the Roland convention; the controller presets are from the Mackie Control table.</li>
+<li><strong>V31 and controllers are untested on hardware.</strong> The note map is the common Roland V-Drums factory map; the hi-hat pedal polarity (127 = closed) is the Roland convention; the Mackie presets are from the Mackie Control table and the four generic presets are from memory (a web search confirmed only a few of their numbers). Learning against a real device has not been tried.</li>
+<li><strong>The preset editor</strong> binds actions only: it cannot create layers or edit lights and rings, and editing rewrites the file without its comments. The generated help picture does not show where the controls are on the device.</li>
+<li><strong>Large files.</strong> <code>app.rs</code> and <code>controller.rs</code> are each about two thousand lines; <code>HANDOFF.md</code> lists the review of them against clean-design rules.</li>
 <li><strong>Nobody has listened to the synthesised kit</strong> (only spectral guards test it). The built-in sounds are intentionally simple.</li>
 <li><strong>Notation</strong>: proportional spacing, noteheads and stems only.</li>
 <li><strong>MusicXML</strong>: D.S./D.C./coda are not followed, <code>score-timewise</code> is rejected, only the first drum-looking part is used.</li>
@@ -658,7 +850,12 @@ impl DrumApp {
 <li>Practice fields are swapped only by <code>activate</code>; <code>open_file</code> activates the Score source.</li>
 <li>Rudiment scores are written at <code>BASE_BPM</code>, so the practice tempo in percent is the BPM.</li>
 <li>Listen and takes share <code>plan_run</code>; changing it changes both.</li>
-<li>Shortcuts are ignored while a widget has the keyboard focus.</li>
+<li>Shortcuts are ignored while a widget has the keyboard focus, and in the frame in which a key closed the splash.</li>
+<li><code>DrumApp::new</code> does no device or file work; it becomes a step in <code>app/startup.rs</code>.</li>
+<li>A controller preset file is the only storage of its assignments: the editor reads it, changes it, writes it and puts the result in the mapper. <code>to_text</code> and <code>parse</code> round-trip.</li>
+<li>A built-in preset is never written to; an editable preset is one whose name is not a built-in name and whose file is in the user's folder.</li>
+<li>A layout holds numbers only; every binding of a built-in preset is on a control of its picture; every action has a title and an explanation.</li>
+<li>Windows: the splash and the Manage window are immediate viewports with an embedded fallback; the help screen is an <code>egui::Window</code>.</li>
 <li>New glyphs are checked in the running app; new user-visible behaviour is in the changelog, the manual and <code>HANDOFF.md</code>.</li>
 </ul>
 <p style="margin-top:3rem;color:var(--muted)">Created with extensive use of AI. Roll Model {{VERSION}} developer guide, built {{DATE}}. Licensed under the PolyForm Noncommercial License 1.0.0.</p>

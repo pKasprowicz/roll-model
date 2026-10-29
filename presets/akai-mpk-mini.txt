@@ -1,0 +1,44 @@
+# Akai MPK Mini (pads and knobs), factory program 1 (not Mackie Control).
+# (Written with extensive use of AI; NOT verified on the device. Sources disagree on the knob numbers
+# and none gave the pad notes, so BOTH likely knob ranges are bound and the pad notes are a guess.)
+#
+# Knobs K1-K8: cc 17-24 (the first MPK Mini, a web source gave K1 = cc 17 and K2 = cc 18) and cc 70-77
+#   (the MkII, from memory). Both sets are bound; only the one your model sends does anything.
+# Pads, bank A: notes 36-43, a guess. Press a pad with the monitor on Settings -> Controller open.
+# If a number differs, copy this file into the controllers folder, change the number and choose the copy.
+#
+# Knobs 1-8: tempo, first bar, last bar, count-in, bars per row, click volume, music volume, (unused).
+# Pads 1-8: record, listen, stop, loop, click, notes, metronome, tap tempo.
+# The keys, the joystick and the pad banks B/C are not used.
+
+name = Akai MPK Mini
+port = MPK mini
+kind = midi
+
+# Knobs, first model
+bind = cc 17 abs -> tempo
+bind = cc 18 abs -> range_from
+bind = cc 19 abs -> range_to
+bind = cc 20 abs -> count_in
+bind = cc 21 abs -> bars_per_row
+bind = cc 22 abs -> click_volume
+bind = cc 23 abs -> music_volume
+
+# Knobs, MkII
+bind = cc 70 abs -> tempo
+bind = cc 71 abs -> range_from
+bind = cc 72 abs -> range_to
+bind = cc 73 abs -> count_in
+bind = cc 74 abs -> bars_per_row
+bind = cc 75 abs -> click_volume
+bind = cc 76 abs -> music_volume
+
+# Pads, bank A
+bind = note 36 -> record
+bind = note 37 -> listen
+bind = note 38 -> stop
+bind = note 39 -> loop
+bind = note 40 -> click
+bind = note 41 -> notes
+bind = note 42 -> metronome
+bind = note 43 -> tap_tempo

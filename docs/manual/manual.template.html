@@ -17,7 +17,8 @@
       <ol><li><a href="#what">What it does</a></li><li><a href="#quickstart">Quick start</a></li><li><a href="#install">Installing</a></li></ol></li>
     <li><a href="#connect">Connecting your kit</a>
       <ol><li><a href="#v31">The Roland V31</a></li><li><a href="#hihat">Hi-hat pedal</a></li><li><a href="#nokit">No kit at hand</a></li></ol></li>
-    <li><a href="#tour">A tour of the window</a></li>
+    <li><a href="#tour">A tour of the window</a>
+      <ol><li><a href="#start-up">Starting the program</a></li></ol></li>
     <li><a href="#home">Home</a></li>
     <li><a href="#score">The Score tab</a>
       <ol><li><a href="#score-load">Loading a score</a></li><li><a href="#score-range">Range and tempo</a></li><li><a href="#score-listen">Listen</a></li><li><a href="#score-record">Record</a></li><li><a href="#score-colours">Reading the colours</a></li><li><a href="#score-layout">Layout and zoom</a></li></ol></li>
@@ -27,8 +28,8 @@
     <li><a href="#results">The Results tab</a></li>
     <li><a href="#settings">Settings</a>
       <ol><li><a href="#set-midi">MIDI input</a></li><li><a href="#set-controller">Controller</a></li><li><a href="#set-timing">Timing</a></li><li><a href="#set-sound">Sound</a></li><li><a href="#set-general">General</a></li></ol></li>
-    <li><a href="#controller">Hardware controller</a>
-      <ol><li><a href="#ctl-mini">X-Touch Mini</a></li><li><a href="#ctl-compact">X-Touch Compact</a></li><li><a href="#ctl-custom">Your own preset</a></li></ol></li>
+    <li><a href="#controller">Hardware controllers</a>
+      <ol><li><a href="#ctl-choose">Choosing a controller</a></li><li><a href="#ctl-help">The help screen</a></li><li><a href="#ctl-manage">Managing presets and teaching controls</a></li><li><a href="#ctl-mini">X-Touch Mini</a></li><li><a href="#ctl-compact">X-Touch Compact</a></li><li><a href="#ctl-midi">Generic MIDI controllers</a></li><li><a href="#ctl-custom">The preset file</a></li></ol></li>
     <li><a href="#grading">How grading works</a></li>
     <li><a href="#latency">Latency and calibration</a></li>
     <li><a href="#sound">Sound and instrument mixer</a></li>
@@ -62,7 +63,7 @@
 
 <h3 id="quickstart">Quick start</h3>
 <ol class="steps">
-  <li><strong>Connect the kit.</strong> Plug the V31 into the computer by USB and start Roll Model. The program connects to the first MIDI input whose name contains <code>V31</code>; the top right corner shows a green dot and the port name when it worked (see <a href="#connect">Connecting your kit</a>).</li>
+  <li><strong>Connect the kit.</strong> Plug the V31 into the computer by USB and start Roll Model. The program connects to the first MIDI input whose name contains <code>V31</code>; the top right corner shows a green dot and the port name when it worked (see <a href="#connect">Connecting your kit</a>). A small splash window says what the program is doing while it starts (<a href="#start-up">Starting the program</a>).</li>
   <li><strong>Open a score or a rudiment.</strong> Click <em>Open MusicXML&hellip;</em> or drop a file on the window, or press <em>Practise the 40 rudiments</em> on the Home tab.</li>
   <li><strong>Listen first.</strong> Press <kbd>L</kbd> to hear what you are about to play, with the count-in and click.</li>
   <li><strong>Record.</strong> Press <kbd>R</kbd>. After the count-in, play. Your hits appear under the notes as you play and the take stops by itself at the end.</li>
@@ -148,11 +149,14 @@ cargo build --release --no-default-features          # without the sound card (d
 </svg>
 <figcaption>The window while a score or rudiment is open.</figcaption>
 </figure>
+<h3 id="start-up">Starting the program</h3>
+<p>The window opens at once with a small <strong>splash window</strong> of its own in front of it: the name, the version and the copyright, and a list of what the program is doing while it starts: reading the settings, looking for MIDI ports, connecting the drum module, connecting the controller, listing the sound outputs and, if you gave a file on the command line, opening it. Each finished step stays on the list with what it found; something that is not there (the drum module, the controller, a sound output) shows in amber, so you can see at a glance why the top bar shows red dots.</p>
+<p>When everything is done the splash stays, so you can read it, and says <em>Ready</em>. It closes when you press any key or click the mouse in the program (the key or click that closes it is not used for anything else, and nothing closes it in the first moments after the start). The main window is empty until the steps are done; on a slow start (a MIDI driver that takes seconds to open) the list shows which step it is waiting for.</p>
 <h3>Top bar</h3>
 <ul>
 <li><strong>Open MusicXML&hellip;</strong> loads a score; <strong>Reload</strong> reads the same file again (after editing it in your notation program).</li>
 <li><strong>Tabs:</strong> Home, Score, Rudiments, Metronome, Results, Settings. <em>Score</em> is greyed until a score is loaded.</li>
-<li><strong>Right side:</strong> the controller (if one is chosen) with its layer, the last drum hit (instrument, note, velocity) and a dot for the MIDI input: green with the port name when connected, red with <em>no MIDI input</em> when not.</li>
+<li><strong>Right side:</strong> the controller (if one is chosen) with its layer, the last drum hit (instrument, note, velocity) and a dot for the MIDI input: green with the port name when connected, red with <em>no MIDI input</em> when not. A click on the controller opens its <a href="#ctl-help">help screen</a>.</li>
 </ul>
 <h3>Status line</h3>
 <p>The bottom line shows the latest message: what was loaded, the result of a take, a controller change. Problems appear there in red with a <em>Dismiss</em> button.</p>
@@ -195,6 +199,7 @@ cargo build --release --no-default-features          # without the sound card (d
 <li>Play. Each hit is drawn on the &ldquo;You&rdquo; staff as it happens and coloured as soon as it is matched to a note. The line above the score shows the running grade.</li>
 <li>The take ends by itself one second after the last note, or press <kbd>Esc</kbd>. Notes after the point where you stopped are left ungraded.</li>
 </ol>
+<p><strong>Starting without the mouse.</strong> With the <a href="#set-midi">start trigger</a> switched on, two hits in a row (by default a crash, then a tom, within half a second) start the recording as <kbd>R</kbd> does, so you can begin with the sticks in your hands. It works on the Score and Rudiments tabs.</p>
 <p>Range, tempo and score are locked while a take records. Every finished take is added to the session history on the <a href="#results">Results</a> tab.</p>
 
 <h3 id="score-colours">Reading the colours</h3>
@@ -318,11 +323,22 @@ cargo build --release --no-default-features          # without the sound card (d
 <li><em>Input port</em>, <em>Refresh ports</em>, <em>Disconnect</em>.</li>
 <li>The <em>monitor</em> of incoming notes (latest first): channel, note, velocity, hi-hat pedal value and the instrument it maps to or <em>unmapped</em>.</li>
 <li><em>Hi-hat pedal value when closed</em> (see <a href="#hihat">Hi-hat pedal</a>).</li>
+<li>The <strong>start trigger</strong> (below).</li>
 <li>The <em>pad-to-instrument mapping</em> with <em>Learn</em> and <em>Reset to Roland V31 defaults</em>.</li>
+</ul>
+<h4>Start trigger</h4>
+<p>Starts a recording from the kit, so you do not have to let go of the sticks. Tick <em>Start recording with the two hits</em> and choose the <em>first hit</em> and the <em>second hit</em> instruments from the lists, or press <em>Learn</em> next to one and hit the pad. Then, on the Score or the Rudiments tab, hit the first instrument and, within <strong>half a second</strong>, the second one, with nothing else played in between: the recording starts with its count-in, exactly as if you had pressed <kbd>R</kbd>.</p>
+<ul>
+<li>The two hits are not graded; they are no part of the take.</li>
+<li>It does nothing on other tabs, and while a take is recording (so a crash and a tom in the music cannot restart it).</li>
+<li>A wrong order, a late second hit, or a hit of another instrument in between starts the wait over. Hitting the first instrument again restarts the half second.</li>
+<li>Under the score a grey line names the pair; it turns green while the program waits for the second hit.</li>
+<li>Choose instruments you do not play right before you start, for example a crash followed by a tom. The same instrument twice is allowed too.</li>
+<li>It is off until you switch it on. A closed (buzz) roll in the Rudiments tab cannot be recorded, so the trigger says so instead.</li>
 </ul>
 
 <h3 id="set-controller">Controller</h3>
-<p>Choose the control surface, its port and see what each control is bound to; details in <a href="#controller">Hardware controller</a>.</p>
+<p>Choose the control surface (grouped as Mackie Control and Generic MIDI), its port and see what each control is bound to. <em>Manage</em>, next to the preset selector, opens the window for creating, copying, renaming and deleting presets and for teaching controls; details in <a href="#controller">Hardware controllers</a>.</p>
 
 <h3 id="set-timing">Timing</h3>
 <table>
@@ -353,15 +369,42 @@ cargo build --release --no-default-features          # without the sound card (d
 </section>
 
 <section id="controller">
-<h2>10. Hardware controller (Mackie Control)</h2>
-<p>A control surface that speaks the Mackie Control protocol runs the program from the stool, with sticks in your hands. Built-in presets: <strong>Behringer X-Touch Mini</strong> (set it to <em>MC mode</em>) and <strong>X-Touch Compact</strong>.</p>
+<h2>10. Hardware controllers (Mackie Control and MIDI)</h2>
+<p>A control surface runs the program from the stool, with sticks in your hands: record, listen, stop, the tempo, the measures, the click and the instrument mixer. Two kinds of controller are supported, and every <em>preset</em> says which it is:</p>
+<ul>
+<li><strong>Mackie Control:</strong> the Behringer <strong>X-Touch Mini</strong> (set it to <em>MC mode</em>) and <strong>X-Touch Compact</strong>. Layers, endless encoders, button lights and LED rings follow the Mackie Control protocol.</li>
+<li><strong>Generic MIDI:</strong> any controller that sends plain notes, controller numbers (cc) and pitch bend: knobs and faders that send their position, buttons that send a note or a cc. Built in for the <strong>Novation Launch Control XL</strong>, <strong>Korg nanoKONTROL2</strong> (CC mode), <strong>Akai MPK Mini</strong> and <strong>Arturia BeatStep</strong>; for anything else you teach the program by pressing the controls (<a href="#ctl-manage">Managing presets and teaching controls</a>).</li>
+</ul>
+<div class="callout warn"><strong class="label">Not tried on a device</strong>The presets are written from the controllers' tables as remembered, and have not been tried on real controllers. A web search confirmed only a few of the generic numbers. If a number is wrong, the monitor shows the real one: copy the preset and fix the number or learn the control again.</div>
+
+<h3 id="ctl-choose">Choosing a controller</h3>
 <ol class="steps">
-<li>Open <em>Settings &rarr; Controller</em> and choose the preset. The program finds the controller's MIDI port by name; you can pick the port by hand too. The choice is remembered.</li>
-<li>The controller has its own MIDI port, separate from the drum module, so its buttons never count as hits. If you pick the drum module's port by mistake, the page says so.</li>
+<li>Open <em>Settings &rarr; Controller</em> and choose the preset from the list. The X-Touch Mini is chosen until you choose another, or <em>&mdash; none &mdash;</em>. The page shows the type (Mackie Control or Generic MIDI) under the connection message.</li>
+<li>The program finds the controller's MIDI port by the name in the preset; you can pick the port by hand too. The choice is remembered.</li>
+<li>The controller has its own MIDI port, separate from the drum module, so its buttons never count as hits. If you pick the drum module's port by mistake, the page says so. Close other programs that use the controller's port: on Windows a port can be opened by one program only.</li>
 <li>Plug the controller in after the start, or pull it out: it connects or lets go by itself (the port list is looked at every two seconds).</li>
 </ol>
 <p>The Controller page has a <em>monitor</em> showing every message the controller sends and what it is bound to. The top bar shows the controller and, on the Mini, the layer in use.</p>
-<div class="callout warn"><strong class="label">Not tried on a device</strong>The presets are written from the Mackie Control table and have not been tried on a real controller. If a number is wrong, the monitor shows the real one; copy the preset and fix the number (see <a href="#ctl-custom">Your own preset</a>).</div>
+
+<h3 id="ctl-help">The help screen</h3>
+<p>Click the controller at the top right of the window (<em>&#9210; X-TOUCH MINI</em>, or <em>&#9210; no controller</em> in red) to open a picture of it, also when it is not connected. Every control is labelled with what it does on the layer shown; choose the layer with <em>A</em> and <em>B</em> (clicking the drawn LAYER buttons works too). Hover a control to read what it does and which MIDI message it sends. A green dot on a button means its light follows the program; amber dots around an encoder mean its LED ring shows the value.</p>
+<p>The X-Touch Mini and the X-Touch Compact have pictures drawn after the devices. Any other controller, including one you taught yourself, gets a picture made from its preset: knobs and encoders on top, then faders, then buttons, in order of their message numbers. That picture does not show where the controls are on the device; it shows what the preset binds.</p>
+
+<h3 id="ctl-manage">Managing presets and teaching controls</h3>
+<p>The <em>Manage</em> button next to the preset selector opens a window of its own. On the left are all presets, grouped as Mackie Control and Generic MIDI; built-in ones are marked. A click chooses a preset (it becomes the one in use, because teaching a control needs its connection) and shows its assignments on the right. Under the list:</p>
+<ul>
+<li><strong>Add</strong> makes a new, empty preset (<em>My controller</em>) for the controller's port. It is a Generic MIDI preset.</li>
+<li><strong>Copy</strong> makes a copy of the chosen preset, built in or not, and chooses it. The built-in presets cannot be changed, renamed or deleted; a copy can.</li>
+<li><strong>Delete&hellip;</strong> removes one of your own presets after asking once more.</li>
+</ul>
+<p>On the right, the preset's name (type <em>Rename</em> and click the button) and a table of the program's actions: transport and practice, the values (knobs, encoders, faders) and the mixer. Each row shows the control bound to it, and:</p>
+<ul>
+<li><strong>Learn:</strong> click it, then press or turn the control on the device. The program binds the next message it receives. By default it then waits for the control of the next action in the list; untick <em>After learning a control, go on to the next action</em> to learn one at a time. Learning needs the controller to be connected, and while a control is being learned nothing else happens when you touch the device.</li>
+<li><strong>Clear</strong> takes the control away. A control that already belonged to another action is taken from it, and the window says so.</li>
+<li><strong>Kind</strong> (for values): <em>absolute</em> for a knob or fader that sends its position, or <em>relative</em> for an endless encoder with the way it counts: <em>mackie</em> (1 to 63 clockwise, 65 to 127 counter-clockwise), <em>twos</em> (two's complement), <em>offset</em> (64 is no turn) or <em>signbit2</em> (the opposite sign bit to Mackie). If a turn goes the wrong way or does nothing, try another; the monitor shows the numbers. The recent scores and the rudiments are only turned, so they are always relative.</li>
+<li><strong>Limit a learned control to the MIDI channel it sends on</strong> (a tick box) is for controllers whose pads and knobs share numbers on different channels.</li>
+</ul>
+<p>Every change is written to the preset file at once and takes effect without reconnecting. Editing writes the file afresh, so the comments of a copied preset are lost. A preset with layers has a layer selector at the top of the table. Not available in the window yet: creating layers, and editing button lights and LED rings (change the file by hand, see <a href="#ctl-custom">The preset file</a>).</p>
 
 <h3 id="ctl-mini">X-Touch Mini</h3>
 <p>The LAYER A / LAYER B buttons switch between two sets of controls (the program does the switching itself).</p>
@@ -369,8 +412,8 @@ cargo build --release --no-default-features          # without the sound card (d
 <table>
 <thead><tr><th>Control</th><th>Function</th></tr></thead>
 <tbody>
-<tr><td>Top row</td><td>Record &middot; Listen &middot; Stop &middot; Click &middot; Loop &middot; Notes &middot; Metronome tab &middot; Next tab</td></tr>
-<tr><td>Bottom row</td><td>Loop the worst bar of the last take &middot; Range back &middot; Range forward (by the length of the range) &middot; Tap tempo &middot; Tempo &minus;5 % &middot; Tempo +5 % &middot; Discard take &middot; <strong>Shift</strong> (hold: encoders turn five times as far)</td></tr>
+<tr><td>Top row</td><td><strong>Shift</strong> (hold: encoders turn five times as far) &middot; Tempo &minus;5 % &middot; Tempo +5 % &middot; Click &middot; Tap tempo &middot; Notes &middot; Metronome tab &middot; Next tab</td></tr>
+<tr><td>Bottom row</td><td>Loop the worst bar of the last take &middot; Discard take &middot; then what is printed beside the buttons: &#9664;&#9664; Range back &middot; &#9654;&#9654; Range forward (by the length of the range) &middot; LOOP &middot; &#9632; Stop &middot; &#9654; Listen &middot; &#9679; Record</td></tr>
 <tr><td>Encoders 1&ndash;8</td><td>Tempo (push: 100 %) &middot; First measure &middot; Last measure &middot; Click volume &middot; Music volume &middot; Count-in bars &middot; Bars per row &middot; Recent scores (push: open)</td></tr>
 <tr><td>Fader</td><td>Tempo. It takes over only once it reaches the current value, so nothing jumps.</td></tr>
 </tbody></table>
@@ -398,19 +441,36 @@ cargo build --release --no-default-features          # without the sound card (d
 <p>The rings of encoders 2 and 3 show the repeats and the lead.</p>
 
 <h3 id="ctl-compact">X-Touch Compact</h3>
-<p>The faders set the volume of the eight instrument groups, the ninth (main) fader the music volume. Faders are not moved by the program; a fader takes over once it reaches the value shown. REC plays the group, SOLO and MUTE do what they say. The encoders under the faders are tempo, first bar, last bar, click volume, count-in, bars per row, (unused) and recent scores; the push of encoder 1 resets the tempo, of encoder 8 opens the score. The jog wheel is the tempo as well.</p>
+<p>The faders set the volume of the eight instrument groups, the ninth (main) fader the music volume. Faders are not moved by the program; a fader takes over once it reaches the value shown. Of the three rows of buttons above the faders, REC plays the instrument, SOLO and MUTE do what they say. The row of eight encoders on top is tempo, first bar, last bar, click volume, count-in, bars per row, (unused) and recent scores; the push of encoder 1 resets the tempo, of encoder 8 opens the score. The six buttons on the right are rewind and fast forward (range back and forward), stop, play (listen), record and cycle (loop). The row of buttons under the faders holds the rest, left to right: <strong>Shift</strong>, Click, Notes, Metronome, Tap tempo, Loop worst bar, Discard take and Next tab. The eight encoders on the right and the LAYER A / B buttons are not used yet: what they send in MC mode is not known. The Compact has no layers.</p>
 
-<h3 id="ctl-custom">Your own preset</h3>
-<p>A preset is a text file ending in <code>.txt</code> in the <code>controllers</code> folder next to the settings file (the Controller page shows the path); it then appears in the list. The page can copy a built-in preset there as a starting point. Each line is <code>key = value</code>; <code>#</code> starts a comment:</p>
+<h3 id="ctl-midi">Generic MIDI controllers</h3>
+<p>These presets use absolute knobs and faders (they take over only once they reach the current value, so nothing jumps) and plain buttons. They have no layers, button lights or LED rings. Their numbers are the factory ones as remembered and may differ with the model or firmware; the MPK Mini preset therefore binds two likely ranges of knob numbers.</p>
+<table>
+<thead><tr><th>Preset</th><th>Set it up</th><th>What is bound</th></tr></thead>
+<tbody>
+<tr><td>Korg nanoKONTROL2</td><td>Switch to <em>CC mode</em>: hold SET MARKER and CYCLE while plugging in the USB cable</td><td>Faders 1&ndash;8: volume of the instrument groups. Knobs: tempo, first measure, last measure, count-in, bars per row, click volume, music volume. S, M, R: solo, mute, play the group. Play, stop, rewind, fast forward, record, cycle: listen, stop, range back, range forward, record, loop. Track &lt; &gt;: tempo &minus;5 / +5. Marker set, &lt;, &gt;: tap tempo, click, notes</td></tr>
+<tr><td>Novation Launch Control XL</td><td>Choose a factory template</td><td>Top knob row: tempo, first measure, last measure, count-in, bars per row, click volume, music volume. Faders: volume of the groups. Focus buttons: solo. Control buttons: mute. The eight buttons on the right: tempo +5 / &minus;5, range back, range forward, record, listen, stop, loop</td></tr>
+<tr><td>Akai MPK Mini</td><td>Program 1</td><td>Knobs: tempo, first measure, last measure, count-in, bars per row, click volume, music volume. Pads of bank A: record, listen, stop, loop, click, notes, metronome, tap tempo</td></tr>
+<tr><td>Arturia BeatStep</td><td>Control mode (the first BeatStep, not the Pro)</td><td>Top knob row: tempo, first measure, last measure, count-in, bars per row, click volume. Bottom row: volume of the groups. Big knob: music volume. Pads 1&ndash;8: record, listen, stop, loop, click, notes, metronome, tap tempo. Pads 9&ndash;16: mute</td></tr>
+</tbody></table>
+<p>Copy one in the Manage window to change it, or press <em>Learn</em> and bind what your own controller sends.</p>
+
+<h3 id="ctl-custom">The preset file</h3>
+<p>A preset is a text file ending in <code>.txt</code> in the <code>controllers</code> folder next to the settings file (the Manage window shows the path); it then appears in the list. The window writes these files for you; you can also write or change one by hand with any text editor, for what the window cannot do (layers, lights, rings). Each line is <code>key = value</code>; <code>#</code> starts a comment:</p>
 <pre><code>name  = My surface
 port  = X-TOUCH MINI                  # part of the MIDI port's name
+kind  = mackie                        # or midi: plain notes and cc, rings show plain values
 layer = A note 84                     # this message switches to layer A (optional)
 layer = B note 85
 bind  = A note 89 -&gt; record           # a button; without "A" it works on every layer
 bind  = A cc 16 rel -&gt; tempo          # an endless encoder (Mackie relative values)
 bind  = bend 1 -&gt; tempo               # a fader (pitch bend on MIDI channel 1)
 led   = A record -&gt; note 89           # a button light that follows the state
-ring  = A tempo -&gt; cc 48              # an LED ring that shows a value</code></pre>
+ring  = A tempo -&gt; cc 48              # an LED ring that shows a value
+bind  = cc 14 ch 2 rel twos -&gt; tempo    # only on MIDI channel 2; rel mackie | twos | offset | signbit2
+bind  = cc 13 abs -&gt; tempo            # a knob that sends its position
+led   = record -&gt; note 36 ch 10 on=21 off=0   # another channel and values (a pad's colour)
+ring  = tempo -&gt; cc 20 scale=127      # a plain value 0 to 127 instead of Mackie ring values</code></pre>
 <table>
 <thead><tr><th>Kind</th><th>Names</th></tr></thead>
 <tbody>
@@ -421,7 +481,8 @@ ring  = A tempo -&gt; cc 48              # an LED ring that shows a value</code>
 <tr><td>Rings</td><td>any of the values, including <code>repeats</code> and <code>lead</code></td></tr>
 </tbody></table>
 <p>A line that cannot be used is reported on the Controller page and the rest still works. Messages are written <code>note N</code>, <code>cc N</code> or <code>bend CHANNEL</code>. A line for the current layer wins over one for all layers.</p>
-<p>Not supported: motor faders, scribble strip or time display, a second (XT) unit, blinking lights, MIDI-learn for presets.</p>
+<p>Without a <code>kind</code> line a file counts as Mackie Control if it has layers or lights, and as Generic MIDI otherwise. The relative encodings are <code>mackie</code> (the default), <code>twos</code>, <code>offset</code> and <code>signbit2</code>; <code>ch N</code> limits a line to one MIDI channel (a line for the channel wins over one for any channel); <code>on=</code> and <code>off=</code> are the values that light and darken a button, <code>scale=</code> the largest value of a ring.</p>
+<p>Not supported: motor faders, scribble strip or time display, a second (XT) unit, blinking lights, system-exclusive set-up messages.</p>
 </section>
 
 <section id="grading">
@@ -491,7 +552,7 @@ ring  = A tempo -&gt; cc 48              # an LED ring that shows a value</code>
 <table>
 <thead><tr><th>Key</th><th>Action</th></tr></thead>
 <tbody>
-<tr><td><kbd>R</kbd></td><td>Record a take (needs a score or a gradable rudiment)</td></tr>
+<tr><td><kbd>R</kbd></td><td>Record a take (needs a score or a gradable rudiment); the start trigger does the same from the kit</td></tr>
 <tr><td><kbd>L</kbd></td><td>Listen / stop listening</td></tr>
 <tr><td><kbd>K</kbd></td><td>Click on or off</td></tr>
 <tr><td><kbd>M</kbd></td><td>Metronome start or stop</td></tr>
@@ -523,6 +584,7 @@ ring  = A tempo -&gt; cc 48              # an LED ring that shows a value</code>
 <tr><td><code>playback_audio</code>, <code>playback_volume</code>, <code>playback_midi</code>, <code>playback_channel</code></td><td>Listen</td></tr>
 <tr><td><code>audio_output</code></td><td>Sound device name (empty: system default)</td></tr>
 <tr><td><code>hihat_cc_max</code></td><td>Hi-hat pedal value when closed</td></tr>
+<tr><td><code>trigger_enabled</code>, <code>trigger_first</code>, <code>trigger_second</code></td><td>Start trigger: on or off, and the two instruments (names as in <code>map.Name</code>)</td></tr>
 <tr><td><code>keyboard_input</code>, <code>zoom</code>, <code>expand_repeats</code></td><td>General</td></tr>
 <tr><td><code>bars_per_row</code>, <code>layout_align_bar</code></td><td>Score layout</td></tr>
 <tr><td><code>recent</code> (repeated)</td><td>Recent scores, newest first</td></tr>
@@ -550,6 +612,9 @@ ring  = A tempo -&gt; cc 48              # an LED ring that shows a value</code>
 <tr><td>A score loads but looks wrong</td><td>See <a href="#musicxml">MusicXML scores</a>. Check instrument names and General MIDI numbers in the source program, and export only the drum part.</td></tr>
 <tr><td>Bars are numbered strangely</td><td>With repeats expanded, printed bar numbers repeat. The sliders and the Layout menu use the position in the score as shown; untick <em>Expand repeats</em> to see the file as written.</td></tr>
 <tr><td>The controller does nothing</td><td>Is it in Mackie Control (MC) mode? Is the right preset chosen? Watch the monitor on the Controller page: <em>(not bound)</em> means the number differs from the preset.</td></tr>
+<tr><td>Learn does nothing, or the window says the controller is not connected</td><td>Learning goes through the connected controller: check the connection message and the port on the Controller page, then try again. The preset chosen must be one of your own (copy a built-in one first).</td></tr>
+<tr><td>A turn of an encoder goes the wrong way or is ignored</td><td>The preset reads it with another encoding. In the Manage window change <em>absolute</em> or <em>relative</em> and the encoding for that action, and watch the monitor.</td></tr>
+<tr><td>The splash stays for a long time while starting</td><td>It lists the step it is waiting for, usually opening a MIDI port or listing the sound outputs. A device that is plugged in but not responding can hold it up; unplug it, or close the program that has its port.</td></tr>
 <tr><td>The score scrolls and I cannot scroll back during a take</td><td>Untick <em>follow</em>.</td></tr>
 <tr><td>Shortcuts do not work</td><td>A widget has the keyboard focus. Press <kbd>Esc</kbd> or click an empty area.</td></tr>
 </tbody></table>
@@ -566,6 +631,7 @@ ring  = A tempo -&gt; cc 48              # an LED ring that shows a value</code>
 <section id="glossary">
 <h2>19. Glossary</h2>
 <dl>
+<dt>Absolute / relative</dt><dd>How a knob reports itself: its position (absolute), or how far it was turned (relative, an endless encoder).</dd>
 <dt>Accent</dt><dd>A stroke played louder than its neighbours.</dd>
 <dt>BPM</dt><dd>Beats per minute; here always quarter notes.</dd>
 <dt>Count-in</dt><dd>Clicks before the music starts, so you can join in on time.</dd>
@@ -574,10 +640,13 @@ ring  = A tempo -&gt; cc 48              # an LED ring that shows a value</code>
 <dt>Flam</dt><dd>A soft grace note an instant before a main stroke, played with the other hand.</dd>
 <dt>Ghost note</dt><dd>A very soft note, shown in parentheses.</dd>
 <dt>Hit window</dt><dd>How far from a note's time a hit may be to count for that note.</dd>
+<dt>Layer</dt><dd>One of the sets of controls a controller switches between (the X-Touch Mini has A and B).</dd>
 <dt>Lead</dt><dd>The hand that starts a pattern.</dd>
+<dt>Learn</dt><dd>Teaching a controller by pressing its controls: the next message it sends is bound to the chosen action.</dd>
 <dt>Mackie Control</dt><dd>A protocol for control surfaces, used by the X-Touch devices in MC mode.</dd>
 <dt>NARD</dt><dd>National Association of Rudimental Drummers, source of the Standard 26 American Drum Rudiments.</dd>
 <dt>PAS</dt><dd>Percussive Arts Society, which published the 40 International Drum Rudiments.</dd>
+<dt>Preset</dt><dd>A text file that says which control of a controller does what; Mackie Control or Generic MIDI.</dd>
 <dt>Rudiment</dt><dd>A basic sticking pattern from which drum technique is built.</dd>
 <dt>Sticking</dt><dd>Which hand plays which stroke, written R and L.</dd>
 <dt>Take</dt><dd>One recorded attempt over a range of bars, or over a rudiment.</dd>

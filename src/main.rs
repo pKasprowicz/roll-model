@@ -6,6 +6,7 @@ mod app;
 mod config;
 mod control;
 mod controller;
+mod controller_layout;
 mod drums;
 mod loader;
 mod metronome;
@@ -16,6 +17,7 @@ mod render;
 mod rudiments;
 mod score;
 mod synth;
+mod trigger;
 mod widgets;
 mod xml;
 
