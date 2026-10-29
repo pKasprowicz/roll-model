@@ -422,7 +422,7 @@ python3 tools/build_notices.py      # target/notices/THIRD_PARTY_NOTICES.txt</co
 <dl class="api">
 <dt><code>controller/</code> (pure)</dt><dd>One folder, six files: <code>message.rs</code> (messages, relative encodings), <code>action.rs</code> (<code>Src</code>, <code>Action</code> with its title and explanation, <code>State</code>), <code>preset.rs</code> (the format: parse, write, the editing operations <code>assign</code>, <code>clear</code>, <code>to_text</code>, the built-in presets), <code>mapper.rs</code> (<code>Mapper</code>, pickup, lights, <code>learn</code>), <code>error.rs</code> and <code>tests.rs</code>.</dd>
 <dt><code>controller_layout.rs</code> (pure)</dt><dd>What a controller <em>looks like</em>: where its controls are and which message each sends, as plain numbers; plus what each control does on a layer, looked up in a preset.</dd>
-<dt><code>app/controls.rs</code></dt><dd>The impure half: the MIDI port, the plug-and-play watch, building the <code>State</code>, turning <code>Command</code>s into method calls, the Controller page of Settings.</dd>
+<dt><code>app/controls.rs</code></dt><dd>The impure half: the MIDI port, the plug-and-play watch and the choice of preset. Its children: <code>controls/apply.rs</code> (building the <code>State</code>, turning <code>Command</code>s into method calls), <code>controls/page.rs</code> (the Controller page of Settings), <code>controls/tests.rs</code>.</dd>
 <dt><code>app/controls/editor.rs</code></dt><dd>The Manage window: the list of presets, creating, copying, renaming, deleting, and the table of assignments with <em>Learn</em>.</dd>
 <dt><code>app/home.rs</code>, <code>score_tab.rs</code>, <code>results.rs</code>, <code>settings.rs</code></dt><dd>One tab each (the Settings pages except the controller page): their <code>impl DrumApp</code> blocks, which read the same fields as <code>app.rs</code> because a child module sees its parent's private items.</dd>
 <dt><code>app/session.rs</code></dt><dd>The lifecycles of a take, Listen, an audition and the latency calibration: starting, following every frame, stopping.</dd>
@@ -469,7 +469,7 @@ ring  = tempo -&gt; cc 20 scale=127      # a plain value 0..scale instead</code>
 <h3 id="ctl-app">The impure half</h3>
 <p><code>app/controls.rs</code> owns the MIDI port (<code>midi::connect_controller</code>), watches for the device being plugged in or pulled out every two seconds, builds the <code>State</code> from <code>DrumApp</code> for every message, and turns <code>Command</code>s into method calls. Because <code>Command</code> has only three shapes, <code>apply_command</code> is a short dispatcher:</p>
 {{code:core/src/controller/mapper.rs::pub enum Command}}
-{{code:src/app/controls.rs::pub(super) fn apply_command}}
+{{code:src/app/controls/apply.rs::pub(super) fn apply_command}}
 <p>Each frame <code>update_controller</code> drains the message queue the MIDI thread filled. A message first goes to the editor's <code>learn_message</code>, which uses it up if an action is waiting for a control; otherwise it is parsed, shown in the monitor with what it is bound to, and handed to the mapper. Then the lights are brought up to date. The <code>Controller</code> struct keeps the connection (<code>Link</code>: the port handle and the mapper), the preset list with each preset's kind, the monitor and the editor's state.</p>
 <h4>The start trigger</h4>
 <p>A second way of driving the program without the mouse is the drum kit itself: two hits in a row start a recording. <code>trigger.rs</code> is a tiny pure detector, tested with synthetic <code>Instant</code>s:</p>
@@ -477,7 +477,7 @@ ring  = tempo -&gt; cc 20 scale=127      # a plain value 0..scale instead</code>
 <p><code>app/trigger.rs</code> calls it from <code>handle_event</code> for every mapped hit and decides whether it may fire (<code>trigger_allowed</code>: enabled, Score or Rudiments tab, something to play, no take recording). A hit the trigger uses up returns early, so it never becomes a note of the take it starts. The same hook implements <em>Learn</em> for the two instruments: while <code>trigger_learn</code> is set, the next hit chooses the instrument.</p>
 <h4>Context-dependent controls</h4>
 <p>The Mini has no spare controls, so while a rudiment is the active practice source the same physical controls mean something else (repeats, lead, rudiment). One small function rewrites the action; the presets stay untouched:</p>
-{{code:src/app/controls.rs::fn in_context}}
+{{code:src/app/controls/apply.rs::fn in_context}}
 
 <h3 id="ctl-editing">Editing presets: Learn</h3>
 <p>The Manage window edits presets without a text editor, and it is built on one decision: <strong>the preset file is the only storage</strong>. There is no copy of the preset in the editor's state. Every change does the same four things in <code>edit_preset</code>: read the chosen preset's file, apply the change to the <code>Preset</code> value, write the file, and give the result to the running mapper (<code>replace_preset</code>). The consequences are pleasant: nothing can get out of step with the file, a crash loses nothing, and the same code serves a connected controller and a disconnected one.</p>
@@ -628,7 +628,7 @@ ring  = tempo -&gt; cc 20 scale=127      # a plain value 0..scale instead</code>
 <tr><td>More rudiments, hybrid rudiments</td><td><span class="pill easy">small</span></td><td><code>rudiments.rs</code></td><td>One line each (<a href="#t-rudiment">tutorial 1</a>). A user-file loader (text files in a <code>rudiments</code> folder, like controller presets) would remove the fixed array.</td></tr>
 <tr><td>New settings</td><td><span class="pill easy">small</span></td><td><code>config.rs</code>, a Settings page</td><td><a href="#t-setting">Tutorial 2</a>.</td></tr>
 <tr><td>New grading metric</td><td><span class="pill easy">small</span></td><td><code>analysis.rs</code>, Results tab</td><td><a href="#t-metric">Tutorial 3</a>. Candidates: streaks, per-beat bias, rush/drag by position in the bar, hand-specific accent quality.</td></tr>
-<tr><td>New controller action or preset</td><td><span class="pill easy">small</span></td><td><code>controller/</code>, <code>app/controls.rs</code>, <code>presets/</code></td><td><a href="#t-action">Tutorial 4</a>. Another Mackie surface is a new preset file.</td></tr>
+<tr><td>New controller action or preset</td><td><span class="pill easy">small</span></td><td><code>controller/</code>, <code>app/controls/apply.rs</code>, <code>presets/</code></td><td><a href="#t-action">Tutorial 4</a>. Another Mackie surface is a new preset file.</td></tr>
 <tr><td>A preset for another controller</td><td><span class="pill easy">small</span></td><td><code>presets/</code>, <code>BUILTIN</code></td><td><a href="#t-controller">Tutorial 8</a>; or let the user teach it in the Manage window. A picture is generated.</td></tr>
 <tr><td>A drawn picture of a controller</td><td><span class="pill">medium</span></td><td><code>controller_layout.rs</code>, <code>for_preset</code></td><td>Measure it on a photograph; the geometry tests say what is wrong.</td></tr>
 <tr><td>Creating layers, editing lights and rings in the Manage window</td><td><span class="pill">medium</span></td><td><code>controls/editor.rs</code>, <code>Preset</code></td><td>The model (<code>Preset</code>, <code>to_text</code>) already holds them; the window only edits bindings today.</td></tr>
@@ -714,11 +714,11 @@ r.best_streak = best;</code></pre></li>
 <p><span class="pill easy">small</span> Goal: a button that toggles <em>follow</em> (the score scrolling with the playhead).</p>
 <ol class="steps">
 <li><strong>Name it.</strong> In <code>controller/action.rs</code> add <code>Follow</code> to <code>enum Action</code> (under the buttons) and one row to <code>ACTIONS</code>: the word for preset files (<code>"follow"</code>), the label and the sentence the controller help screen shows, <code>Class::Button</code>, and <code>light: true</code> if the button should light. Names, texts, the editor list and <code>has_light</code> all read that row; the test <code>every_action_has_a_name_a_title_and_an_explanation</code> fails if the row is missing. A light also needs a <code>follow: bool</code> in <code>State</code> and an arm in <code>State::lit</code>.</li>
-<li><strong>Do it.</strong> In <code>app/controls.rs</code>, <code>press()</code>:
+<li><strong>Do it.</strong> In <code>app/controls/apply.rs</code>, <code>press()</code>:
 <pre class="code"><code>Action::Follow =&gt; self.follow = !self.follow,</code></pre>
 and, if you added a light, fill <code>follow: self.follow</code> in <code>controller_state()</code>.</li>
 <li><strong>Bind it.</strong> In a preset, for example a copy of the Mini preset in your <code>controllers</code> folder: <code>bind = A note 94 -&gt; follow</code> (replace the "discard take" button) and <code>led = A follow -&gt; note 94</code>.</li>
-<li><strong>Test</strong> in <code>controls.rs</code> like <code>switches_and_tabs</code>:
+<li><strong>Test</strong> in <code>controls/tests.rs</code> like <code>switches_and_tabs</code>:
 <pre class="code"><code>let mut app = app_with_score();
 assert!(app.follow);
 app.apply_command(Command::Press(Action::Follow));
@@ -751,7 +751,7 @@ impl DrumApp {
     }
 }</code></pre></li>
 <li><strong>Which session?</strong> The history is per practice source (it is swapped with the source). Decide whether the new tab shows the active one (as here) or reads <code>self.parked.history</code> too. Tabs other than Score and Rudiments leave the source as it is.</li>
-<li><strong>Keyboard tab cycling.</strong> Add <code>Tab::Stats</code> to the list in <code>next_tab</code> (<code>app/controls.rs</code>) and fix the expected order in <code>switches_and_tabs</code>.</li>
+<li><strong>Keyboard tab cycling.</strong> Add <code>Tab::Stats</code> to the list in <code>next_tab</code> (<code>app/controls/apply.rs</code>) and fix the expected order in <code>switches_and_tabs</code>.</li>
 <li><strong>Test</strong> that it draws: copy <code>the_tab_draws_for_every_rudiment</code> (a headless <code>Context::run</code> calling <code>app.stats_tab(ui)</code>) and add a take to the history first.</li>
 <li><strong>Docs.</strong> A section in the manual, a line in the changelog, the module list in <code>HANDOFF.md</code>.</li>
 </ol>

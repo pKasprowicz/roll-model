@@ -10,6 +10,7 @@ use std::path::PathBuf;
 
 use egui::{RichText, ViewportBuilder, ViewportClass, ViewportId};
 
+use super::page::copy_preset;
 use super::*;
 use crate::controller::{Binding, Encoding, Preset, Reading};
 use crate::widgets;
@@ -580,7 +581,7 @@ fn unused_path(dir: &std::path::Path, name: &str) -> std::io::Result<PathBuf> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::config::Paths;
+    use crate::config::{Config, Paths};
 
     #[test]
     fn new_presets_never_overwrite() {
