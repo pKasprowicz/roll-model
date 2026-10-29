@@ -178,11 +178,11 @@ impl DrumApp {
             ui.heading(format!("{}. {}", r.number, r.name));
             ui.label(RichText::new(part).weak());
         });
-        ui.label(RichText::new(r.about).small().weak());
+        widgets::hint(ui, r.about);
         ui.horizontal_wrapped(|ui| {
-            ui.label(RichText::new("Sticking").small().weak());
+            widgets::hint(ui, "Sticking");
             ui.label(RichText::new(r.sticking()).monospace().strong());
-            ui.label(RichText::new("(right lead; flams and drags: the small letter is the grace note)").small().weak());
+            widgets::hint(ui, "(right lead; flams and drags: the small letter is the grace note)");
             if let Some(best) = self.cfg.rudiment_best.get(&r.number) {
                 ui.label(RichText::new(format!("· best clean tempo {best:.0} BPM")).color(render::GREEN));
             }
@@ -255,7 +255,7 @@ impl DrumApp {
             ui.add(egui::TextEdit::singleline(&mut self.rud.filter).desired_width(180.0));
         });
         ui.checkbox(&mut self.cfg.rudiment_nard_only, "Only the original 26 (NARD)");
-        ui.label(RichText::new("* = one of the original NARD Standard 26").small().weak());
+        widgets::hint(ui, "* = one of the original NARD Standard 26");
         let current = self.cfg.rudiment;
         egui::ScrollArea::vertical().max_height(380.0).show(ui, |ui| {
             for family in Family::ALL {

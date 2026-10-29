@@ -3,7 +3,12 @@
 use std::ops::RangeInclusive;
 
 use egui::emath::Numeric;
-use egui::{vec2, Response, Ui, Vec2};
+use egui::{vec2, Response, RichText, Ui, Vec2};
+
+/// A line of grey helper text (the "small" style): how every page explains itself.
+pub fn hint(ui: &mut Ui, text: impl Into<String>) -> Response {
+    ui.label(RichText::new(text).small().weak())
+}
 
 /// A slider with its `caption` in front of it. The control also follows the
 /// mouse wheel while the pointer is over the caption, the slider or the value

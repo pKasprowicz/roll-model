@@ -1018,7 +1018,7 @@ impl DrumApp {
                 self.open_dialog();
             }
             ui.add_space(6.0);
-            ui.label(RichText::new("or drop a file onto the window — .musicxml, .xml or .mxl, exported from MuseScore, Guitar Pro, Sibelius, Dorico…").small().weak());
+            widgets::hint(ui, "or drop a file onto the window — .musicxml, .xml or .mxl, exported from MuseScore, Guitar Pro, Sibelius, Dorico…");
             ui.add_space(14.0);
             let rudiments = egui::Button::new(RichText::new("Practise the 40 rudiments").size(16.0)).min_size(egui::vec2(260.0, 38.0));
             if ui.add(rudiments).on_hover_text("Singles, rolls, paradiddles, flams and drags: pick one, repeat it and play it along with the click").clicked() {
@@ -1161,9 +1161,9 @@ impl DrumApp {
                     .and_then(|s| s.measures.get(self.cfg.layout_align_bar.wrapping_sub(1)))
                     .map(|m| m.number.clone());
                 if let Some(number) = printed {
-                    ui.label(RichText::new(format!("Bar {} of the score as shown, printed as bar {number} in the file.", self.cfg.layout_align_bar)).small().weak());
+                    widgets::hint(ui, format!("Bar {} of the score as shown, printed as bar {number} in the file.", self.cfg.layout_align_bar));
                 }
-                ui.label(RichText::new("With a fixed number of bars per row every bar has the same width and the zoom no longer matters.").small().weak());
+                widgets::hint(ui, "With a fixed number of bars per row every bar has the same width and the zoom no longer matters.");
             });
         });
     }
@@ -1229,7 +1229,7 @@ impl DrumApp {
             legend(ui, render::AMBER, "ok");
             legend(ui, render::ORANGE, "wrong pad");
             legend(ui, render::RED, "missed / extra");
-            ui.label(RichText::new("· click a measure to start there, shift+click to set the end · mouse wheel over a slider fine-tunes it").small().weak());
+            widgets::hint(ui, "· click a measure to start there, shift+click to set the end · mouse wheel over a slider fine-tunes it");
             if let Some(fit) = self.fit_bars {
                 let msg = format!("· {} bars per row do not fit at this width: showing {fit}", self.cfg.bars_per_row);
                 ui.label(RichText::new(msg).small().color(render::AMBER));
@@ -1501,7 +1501,7 @@ impl DrumApp {
                 self.midi_in = None;
             }
         });
-        ui.label(RichText::new("Connect the V31 by USB (or a MIDI interface on MIDI OUT). Close other apps that use the port — on Windows a MIDI port can only be opened by one program.").small().weak());
+        widgets::hint(ui, "Connect the V31 by USB (or a MIDI interface on MIDI OUT). Close other apps that use the port — on Windows a MIDI port can only be opened by one program.");
 
         ui.add_space(6.0);
         ui.label(RichText::new("Monitor (latest first)").strong());
@@ -1521,14 +1521,14 @@ impl DrumApp {
             ui.label("Hi-hat pedal (CC#4) value when closed");
             widgets::slider(ui, "", &mut self.cfg.hihat_cc_max, 1..=127, "", 1.0);
         });
-        ui.label(RichText::new("The hi-hat counts as closed when the pedal is at least three quarters of the way to this value, otherwise open, so hits on the closed or open hi-hat note follow the pedal. Lower it if your pedal never reports up to 127: close the pedal, hit the hi-hat and read the pedal value in the monitor. Hits before any pedal message keep the note's own open/closed meaning.").small().weak());
+        widgets::hint(ui, "The hi-hat counts as closed when the pedal is at least three quarters of the way to this value, otherwise open, so hits on the closed or open hi-hat note follow the pedal. Lower it if your pedal never reports up to 127: close the pedal, hit the hi-hat and read the pedal value in the monitor. Hits before any pedal message keep the note's own open/closed meaning.");
 
         ui.add_space(10.0);
         self.settings_trigger(ui);
 
         ui.add_space(10.0);
         ui.heading("Pad-to-instrument mapping");
-        ui.label(RichText::new("Defaults follow Roland V-Drums factory note numbers. Click Learn and hit the pad/zone to assign it.").small().weak());
+        widgets::hint(ui, "Defaults follow Roland V-Drums factory note numbers. Click Learn and hit the pad/zone to assign it.");
         egui::Grid::new("mapping").num_columns(3).striped(true).show(ui, |ui| {
             for lane in Lane::ALL {
                 if lane == Lane::Other {
@@ -1578,7 +1578,7 @@ impl DrumApp {
             widgets::slider(ui, "", &mut self.cfg.tol.window_ms, 40.0..=250.0, " ms", 5.0);
             ui.end_row();
         });
-        ui.label(RichText::new("Calibrate: play any pad exactly with 16 metronome clicks; the median offset becomes the latency compensation. Hover a slider and turn the mouse wheel to fine-tune it.").small().weak());
+        widgets::hint(ui, "Calibrate: play any pad exactly with 16 metronome clicks; the median offset becomes the latency compensation. Hover a slider and turn the mouse wheel to fine-tune it.");
         self.cfg.tol.good_ms = self.cfg.tol.good_ms.max(self.cfg.tol.perfect_ms);
         self.cfg.tol.window_ms = self.cfg.tol.window_ms.max(self.cfg.tol.good_ms);
     }
@@ -1629,7 +1629,7 @@ impl DrumApp {
                 self.refresh_ports();
             }
         });
-        ui.label(RichText::new("Where the metronome click and the notes of Listen go when they are sent over MIDI: the V31, or for example Windows' built-in \"Microsoft GS Wavetable Synth\".").small().weak());
+        widgets::hint(ui, "Where the metronome click and the notes of Listen go when they are sent over MIDI: the V31, or for example Windows' built-in \"Microsoft GS Wavetable Synth\".");
 
         ui.add_space(10.0);
         ui.heading("Metronome");
@@ -1644,11 +1644,11 @@ impl DrumApp {
             widgets::slider(ui, "click note", &mut self.cfg.click_note, 0..=127, "", 1.0);
             widgets::slider(ui, "channel", &mut self.cfg.click_channel, 1..=16, "", 1.0);
         });
-        ui.label(RichText::new("Sending the click to the V31 (channel 10, an unmapped note such as 76 = wood block) puts it in your headphones with no extra audio latency.").small().weak());
+        widgets::hint(ui, "Sending the click to the V31 (channel 10, an unmapped note such as 76 = wood block) puts it in your headphones with no extra audio latency.");
 
         ui.add_space(10.0);
         ui.heading("Listening");
-        ui.label(RichText::new("The Listen button on the Score tab plays the selected measures at the chosen tempo, with the count-in and click of a take.").small().weak());
+        widgets::hint(ui, "The Listen button on the Score tab plays the selected measures at the chosen tempo, with the count-in and click of a take.");
         ui.add_enabled_ui(HAS_AUDIO, |ui| {
             ui.horizontal(|ui| {
                 ui.checkbox(&mut self.cfg.playback_audio, "Play through the computer's sound output (built-in drum sounds)");
@@ -1659,7 +1659,7 @@ impl DrumApp {
             ui.checkbox(&mut self.cfg.playback_midi, "Send the notes to the MIDI output (the module's own sounds)");
             widgets::slider(ui, "channel", &mut self.cfg.playback_channel, 1..=16, "", 1.0);
         });
-        ui.label(RichText::new("Each instrument is sent as its standard General MIDI / Roland note, or the note mapped to it on the MIDI input page, so the V31 plays its own kit.").small().weak());
+        widgets::hint(ui, "Each instrument is sent as its standard General MIDI / Roland note, or the note mapped to it on the MIDI input page, so the V31 plays its own kit.");
 
         ui.add_space(10.0);
         self.instrument_mixer(ui);
@@ -1693,7 +1693,7 @@ impl DrumApp {
 
         ui.add_space(10.0);
         if let Some(p) = Config::path() {
-            ui.label(RichText::new(format!("Settings are saved automatically to {}", p.display())).small().weak());
+            widgets::hint(ui, format!("Settings are saved automatically to {}", p.display()));
         }
     }
 }

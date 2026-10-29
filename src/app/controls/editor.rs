@@ -12,6 +12,7 @@ use egui::{RichText, ViewportBuilder, ViewportClass, ViewportId};
 
 use super::*;
 use crate::controller::{Binding, Encoding, Preset};
+use crate::widgets;
 
 /// What the editor remembers between frames.
 pub(super) struct EditorState {
@@ -367,7 +368,7 @@ impl DrumApp {
         ui.horizontal(|ui| {
             ui.heading(chosen.as_str());
             if let Some(kind) = self.controller.kind_of(&chosen) {
-                ui.label(RichText::new(format!("{}{}", kind.label(), if custom { "" } else { ", built in" })).small().weak());
+                widgets::hint(ui, format!("{}{}", kind.label(), if custom { "" } else { ", built in" }));
             }
         });
         if custom {
@@ -379,9 +380,9 @@ impl DrumApp {
                 }
             });
         } else {
-            ui.label(RichText::new("A built-in preset cannot be renamed, deleted or changed. Copy it to make one of your own.").small().weak());
+            widgets::hint(ui, "A built-in preset cannot be renamed, deleted or changed. Copy it to make one of your own.");
             if let Some(dir) = self.preset_dir() {
-                ui.label(RichText::new(format!("Your presets are text files in {} (any name ending in .txt).", dir.display())).small().weak());
+                widgets::hint(ui, format!("Your presets are text files in {} (any name ending in .txt).", dir.display()));
             }
         }
         if !custom && !self.controller.editor.notice.is_empty() {
@@ -440,13 +441,13 @@ impl DrumApp {
         let mut op: Option<Op> = None;
         let Some(path) = self.editable_path() else {
             ui.separator();
-            ui.label(RichText::new("Nothing to edit: a built-in preset cannot be changed. Copy it above, or start a new preset, then teach it your controls by pressing them.").small().weak());
+            widgets::hint(ui, "Nothing to edit: a built-in preset cannot be changed. Copy it above, or start a new preset, then teach it your controls by pressing them.");
             return;
         };
         let Some(preset) = self.preset_being_edited() else { return };
         ui.separator();
         let connected = self.controller.is_connected();
-        ui.label(RichText::new(format!("Editing {}. Every change is saved at once.", path.display())).small().weak());
+        widgets::hint(ui, format!("Editing {}. Every change is saved at once.", path.display()));
         ui.checkbox(&mut self.controller.editor.keep_going, "After learning a control, go on to the next action");
         ui.checkbox(&mut self.controller.editor.remember_channel, "Limit a learned control to the MIDI channel it sends on");
         if preset.layers.len() > 1 {

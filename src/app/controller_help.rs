@@ -9,6 +9,7 @@ use crate::config::Config;
 use crate::controller::{self, Preset};
 use crate::controller_layout::{self as layout, Control, ControlKind, Layout, Mapping, Meaning, Printed};
 use crate::render;
+use crate::widgets;
 
 const BODY: Color32 = Color32::from_rgb(0x2a, 0x2c, 0x31);
 const KEY: Color32 = Color32::from_rgb(0xe6, 0xe6, 0xea);
@@ -90,7 +91,7 @@ impl ControllerHelp {
                 (true, None) => "The controller is connected.".to_string(),
                 (false, _) => "The controller is not connected.".to_string(),
             };
-            ui.label(RichText::new(format!("{}. {state}", self.preset.kind.label())).small().weak());
+            widgets::hint(ui, format!("{}. {state}", self.preset.kind.label()));
         });
         let layer = self.preset.layers.get(self.layer).map(|l| l.0.clone());
         match &self.layout {
@@ -101,7 +102,7 @@ impl ControllerHelp {
                 notes(ui, &self.preset, layout, layer.as_deref());
             }
             None => {
-                ui.label(RichText::new("This preset binds no controls yet. Teach it some under Assignments on the Controller page.").small().weak());
+                widgets::hint(ui, "This preset binds no controls yet. Teach it some under Assignments on the Controller page.");
                 egui::Grid::new("controller_help_list").num_columns(2).striped(true).show(ui, |ui| {
                     for b in self.preset.binds.iter().filter(|b| b.layer.is_none() || b.layer == layer) {
                         ui.label(format!("{}{}", b.src.text(), if b.relative { " (turn)" } else { "" }));
@@ -118,7 +119,7 @@ impl ControllerHelp {
 fn notes(ui: &mut egui::Ui, preset: &Preset, layout: &Layout, layer: Option<&str>) {
     ui.add_space(4.0);
     let small = |ui: &mut egui::Ui, text: String| {
-        ui.label(RichText::new(text).small().weak());
+        widgets::hint(ui, text);
     };
     if layout.generated {
         small(ui, "This picture is made from the preset: knobs, faders and buttons in order of their message numbers. It does not show where they are on the device.".into());
@@ -388,7 +389,7 @@ fn tooltip(ui: &mut egui::Ui, control: &Control, mapping: &Mapping) {
                 ui.label(RichText::new(format!("{word}: nothing on this layer")).weak());
             }
         }
-        ui.label(RichText::new(src.text()).small().weak());
+        widgets::hint(ui, src.text());
     }
 }
 

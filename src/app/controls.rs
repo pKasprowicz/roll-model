@@ -20,6 +20,7 @@ use crate::midi::{self, ControllerHandle, MessageQueue};
 use crate::render;
 use crate::rudiments::{Lead, MAX_REPEATS};
 use crate::score::Score;
+use crate::widgets;
 
 const MONITOR_LINES: usize = 14;
 /// How often the list of MIDI ports is looked at to notice a controller being plugged in or pulled out.
@@ -716,7 +717,7 @@ impl DrumApp {
                     if of_kind.is_empty() {
                         continue;
                     }
-                    ui.label(RichText::new(kind.label()).small().weak());
+                    widgets::hint(ui, kind.label());
                     for name in of_kind {
                         let builtin = controller::builtin_text(name).is_some();
                         let label = if builtin { format!("{name} (built in)") } else { name.clone() };
@@ -771,7 +772,7 @@ impl DrumApp {
             ui.label(RichText::new(text).color(colour));
         }
         if let Some(kind) = self.controller.kinds.get(&self.cfg.controller_preset) {
-            ui.label(RichText::new(format!("Type: {}", kind.label())).small().weak());
+            widgets::hint(ui, format!("Type: {}", kind.label()));
         }
 
         if let Some(link) = self.controller.link.as_ref() {

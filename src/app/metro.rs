@@ -190,7 +190,7 @@ impl DrumApp {
         ui.horizontal(|ui| {
             ui.checkbox(&mut self.cfg.metro_preview, "Show the notes");
             if self.cfg.metro_preview {
-                ui.label(RichText::new(description).small().weak());
+                widgets::hint(ui, description);
                 if has_score {
                     match_score = ui
                         .button("Match score tempo and bar")

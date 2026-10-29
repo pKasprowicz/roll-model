@@ -17,6 +17,7 @@ use crate::config::Config;
 use crate::metronome::{self, HAS_AUDIO};
 use crate::midi;
 use crate::render;
+use crate::widgets;
 
 const COPYRIGHT: &str = "Copyright © 2026 Piotr Kasprowicz";
 const LICENCE: &str = "Licensed under the PolyForm Noncommercial License 1.0.0";
@@ -329,7 +330,7 @@ fn contents(ui: &mut egui::Ui, st: &Startup) {
         }
         ui.add_space((ui.available_height() - 48.0).max(8.0));
         ui.label(RichText::new(COPYRIGHT).weak());
-        ui.label(RichText::new(LICENCE).small().weak());
+        widgets::hint(ui, LICENCE);
     });
 }
 

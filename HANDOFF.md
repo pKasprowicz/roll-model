@@ -235,7 +235,7 @@ Severity: **High** = a structural problem that makes changes costly or risky; **
 
 #### Suggestions
 
-- **CD-21** `RichText::new(..).small().weak()` appears 39 times and `ui.add_space(n)` 45: a `hint(ui, text)` helper in `widgets.rs` and named spacing constants. The 271 `format!` calls are literal UI strings; a string table is the prerequisite of any translation (known gap).
+- ~~**CD-21**~~ (hint helper done: `widgets::hint`, 30 single-line uses replaced; the nine multi-line forms, the named spacing constants and the string table are left) `RichText::new(..).small().weak()` appears 39 times and `ui.add_space(n)` 45: a `hint(ui, text)` helper in `widgets.rs` and named spacing constants. The 271 `format!` calls are literal UI strings; a string table is the prerequisite of any translation (known gap).
 - **CD-22** The two `#[allow(clippy::let_unit_value)]` (`metronome.rs:202`, `playback.rs:438`) come from the `cfg(feature = "audio")` stub returning `()`; restructure the stub so the allow can go. Run `cargo clippy` with a few pedantic lints once and decide which to adopt.
 - **CD-23** Inline test modules make some files twice as long (`controller.rs` 598 test lines, `analysis.rs` 471, `playback.rs` 321). After CD-2 and CD-1, put each tested part's tests in a sibling `tests.rs` (`#[cfg(test)] mod tests;`) so the code files stay short.
 - **CD-24** Visibility conventions are `pub(super)` (the `app` module), `pub(super)` inside `app/controls/` (only `controls.rs`) and one `pub(in crate::app)`; document it once (the developer guide does) and keep to it.
