@@ -226,73 +226,6 @@ fn y_of(step: i32, staff_bottom: f32) -> f32 {
     staff_bottom - step as f32 * STEP
 }
 
-fn draw_head(p: &Painter, c: Pos2, head: NoteHead, color: Color32, scale: f32) {
-    let rx = 5.0 * scale;
-    let ry = 3.6 * scale;
-    let stroke = Stroke::new(1.6 * scale.max(0.8), color);
-    match head {
-        NoteHead::Normal => {
-            let (s, co) = (-0.35f32).sin_cos();
-            let pts: Vec<Pos2> = (0..16)
-                .map(|k| {
-                    let a = k as f32 / 16.0 * std::f32::consts::TAU;
-                    let (x, y) = (rx * a.cos(), ry * a.sin());
-                    pos2(c.x + x * co - y * s, c.y + x * s + y * co)
-                })
-                .collect();
-            p.add(Shape::convex_polygon(pts, color, Stroke::NONE));
-        }
-        NoteHead::X => {
-            p.line_segment([c + vec2(-rx * 0.8, -ry), c + vec2(rx * 0.8, ry)], stroke);
-            p.line_segment([c + vec2(-rx * 0.8, ry), c + vec2(rx * 0.8, -ry)], stroke);
-        }
-        NoteHead::CircleX => {
-            p.circle_stroke(c, rx * 0.95, Stroke::new(1.2 * scale.max(0.8), color));
-            let d = rx * 0.6;
-            p.line_segment([c + vec2(-d, -d), c + vec2(d, d)], stroke);
-            p.line_segment([c + vec2(-d, d), c + vec2(d, -d)], stroke);
-        }
-        NoteHead::Diamond => {
-            let pts = vec![c + vec2(0.0, -ry * 1.3), c + vec2(rx, 0.0), c + vec2(0.0, ry * 1.3), c + vec2(-rx, 0.0)];
-            p.add(Shape::convex_polygon(pts, color, Stroke::NONE));
-        }
-        NoteHead::Triangle => {
-            let pts = vec![c + vec2(0.0, -ry * 1.3), c + vec2(rx, ry), c + vec2(-rx, ry)];
-            p.add(Shape::convex_polygon(pts, color, Stroke::NONE));
-        }
-    }
-}
-
-fn draw_ledgers(p: &Painter, x: f32, step: i32, staff_bottom: f32, color: Color32) {
-    let stroke = Stroke::new(1.0_f32, color);
-    let mut s = 10;
-    while s <= step {
-        let y = y_of(s, staff_bottom);
-        p.line_segment([pos2(x - 8.0, y), pos2(x + 8.0, y)], stroke);
-        s += 2;
-    }
-    let mut s = -2;
-    while s >= step {
-        let y = y_of(s, staff_bottom);
-        p.line_segment([pos2(x - 8.0, y), pos2(x + 8.0, y)], stroke);
-        s -= 2;
-    }
-}
-
-fn draw_staff(p: &Painter, x0: f32, x1: f32, top: f32, color: Color32) {
-    for k in 0..5 {
-        let y = top + k as f32 * LS;
-        p.line_segment([pos2(x0, y), pos2(x1, y)], Stroke::new(1.0_f32, color));
-    }
-}
-
-fn draw_clef(p: &Painter, x: f32, top: f32, color: Color32) {
-    let r1 = Rect::from_min_max(pos2(x, top + LS), pos2(x + 3.0, top + 3.0 * LS));
-    let r2 = Rect::from_min_max(pos2(x + 6.0, top + LS), pos2(x + 9.0, top + 3.0 * LS));
-    p.rect_filled(r1, 0.0, color);
-    p.rect_filled(r2, 0.0, color);
-}
-
 /// How far left of its main note a grace note is drawn.
 fn grace_dx(n: &ScoreNote) -> f32 {
     if n.grace {
@@ -300,19 +233,6 @@ fn grace_dx(n: &ScoreNote) -> f32 {
     } else {
         0.0
     }
-}
-
-/// The letter of the hand that plays a note, under it (the grace notes' ones are small): right
-/// in the text colour, left in the accent colour.
-fn draw_hand(p: &Painter, x: f32, y: f32, n: &ScoreNote, text: Color32) {
-    let Some(hand) = n.hand else { return };
-    let (size, color) = match (n.grace, hand) {
-        (true, _) => (8.0, text.gamma_multiply(0.6)),
-        (false, Hand::Right) => (11.0, text),
-        (false, Hand::Left) => (11.0, ACCENT),
-    };
-    let letter = if n.grace { hand.letter().to_lowercase() } else { hand.letter().to_string() };
-    p.text(pos2(x, y), Align2::CENTER_CENTER, letter, FontId::proportional(size), color);
 }
 
 /// A single staff that scrolls past a fixed "now" line, for playing along
@@ -363,10 +283,12 @@ pub fn rolling(ui: &mut Ui, view: &RollingView) {
     let top = rect.top() + EXP_TOP;
     let bot = rect.top() + EXP_BOT;
 
-    draw_staff(&painter, rect.left() + 4.0, rect.right(), top, line_col);
-    draw_clef(&painter, rect.left() + 8.0, top, text);
+    let canvas = Canvas { painter: &painter, text, weak, line: line_col, grid: grid_col };
+    canvas.staff(rect.left() + 4.0, rect.right(), top);
+    canvas.clef(rect.left() + 8.0, top, text);
     // Notes are only drawn right of the clef.
     let clipped = painter.with_clip_rect(Rect::from_min_max(pos2(x_min, rect.top()), pos2(x_max, rect.bottom())));
+    let notes = Canvas { painter: &clipped, text, weak, line: line_col, grid: grid_col };
 
     for k in loop_repeats(start, end, left_q, right_q) {
         let shift = k as f64 * len;
@@ -388,27 +310,8 @@ pub fn rolling(ui: &mut Ui, view: &RollingView) {
             if x < x_min - 12.0 || x > x_max + 12.0 {
                 continue;
             }
-            let y = y_of(n.staff_step, bot);
             let col = if x < now_x - 4.0 { weak } else { text };
-            let scale = if n.grace { 0.65 } else { 1.0 };
-            draw_ledgers(&clipped, x, n.staff_step, bot, line_col);
-            draw_head(&clipped, pos2(x, y), n.head, col, scale);
-            draw_hand(&clipped, x, bot + 16.0, n, col);
-            let up = n.stem_up.unwrap_or(!n.lane.is_foot());
-            let rx = 5.0 * scale;
-            let sx = if up { x + rx - 0.5 } else { x - rx + 0.5 };
-            let sy = if up { y - STEM * scale } else { y + STEM * scale };
-            clipped.line_segment([pos2(sx, y), pos2(sx, sy)], Stroke::new(1.0_f32, col));
-            if n.ghost {
-                clipped.text(pos2(x - 8.0, y), Align2::CENTER_CENTER, "(", FontId::proportional(11.0), col);
-                clipped.text(pos2(x + 8.0, y), Align2::CENTER_CENTER, ")", FontId::proportional(11.0), col);
-            }
-            if n.accent {
-                let ay = if up { rect.top() + 28.0 } else { bot + STEM + 10.0 };
-                let s = Stroke::new(1.4_f32, col);
-                clipped.line_segment([pos2(x - 4.0, ay - 3.0), pos2(x + 4.0, ay)], s);
-                clipped.line_segment([pos2(x + 4.0, ay), pos2(x - 4.0, ay + 3.0)], s);
-            }
+            notes.written_note(n, x, bot, rect.top() + 28.0, Ink { note: col, hand: col, hand_dy: 16.0 });
         }
     }
     painter.line_segment([pos2(now_x, rect.top() + 12.0), pos2(now_x, bot + STEM + 4.0)], Stroke::new(2.0_f32, ACCENT));
@@ -421,6 +324,127 @@ struct Canvas<'a> {
     weak: Color32,
     line: Color32,
     grid: Color32,
+}
+
+/// What colours a written note is drawn in, and how far under the staff its hand letter goes.
+struct Ink {
+    note: Color32,
+    hand: Color32,
+    hand_dy: f32,
+}
+
+impl Canvas<'_> {
+    fn head(&self, c: Pos2, head: NoteHead, color: Color32, scale: f32) {
+        let p = self.painter;
+        let rx = 5.0 * scale;
+        let ry = 3.6 * scale;
+        let stroke = Stroke::new(1.6 * scale.max(0.8), color);
+        match head {
+            NoteHead::Normal => {
+                let (s, co) = (-0.35f32).sin_cos();
+                let pts: Vec<Pos2> = (0..16)
+                    .map(|k| {
+                        let a = k as f32 / 16.0 * std::f32::consts::TAU;
+                        let (x, y) = (rx * a.cos(), ry * a.sin());
+                        pos2(c.x + x * co - y * s, c.y + x * s + y * co)
+                    })
+                    .collect();
+                p.add(Shape::convex_polygon(pts, color, Stroke::NONE));
+            }
+            NoteHead::X => {
+                p.line_segment([c + vec2(-rx * 0.8, -ry), c + vec2(rx * 0.8, ry)], stroke);
+                p.line_segment([c + vec2(-rx * 0.8, ry), c + vec2(rx * 0.8, -ry)], stroke);
+            }
+            NoteHead::CircleX => {
+                p.circle_stroke(c, rx * 0.95, Stroke::new(1.2 * scale.max(0.8), color));
+                let d = rx * 0.6;
+                p.line_segment([c + vec2(-d, -d), c + vec2(d, d)], stroke);
+                p.line_segment([c + vec2(-d, d), c + vec2(d, -d)], stroke);
+            }
+            NoteHead::Diamond => {
+                let pts = vec![c + vec2(0.0, -ry * 1.3), c + vec2(rx, 0.0), c + vec2(0.0, ry * 1.3), c + vec2(-rx, 0.0)];
+                p.add(Shape::convex_polygon(pts, color, Stroke::NONE));
+            }
+            NoteHead::Triangle => {
+                let pts = vec![c + vec2(0.0, -ry * 1.3), c + vec2(rx, ry), c + vec2(-rx, ry)];
+                p.add(Shape::convex_polygon(pts, color, Stroke::NONE));
+            }
+        }
+    }
+
+    /// Ledger lines for a head at `step` of the staff that ends at `staff_bottom`.
+    fn ledgers(&self, x: f32, step: i32, staff_bottom: f32) {
+        let p = self.painter;
+        let stroke = Stroke::new(1.0_f32, self.line);
+        let mut s = 10;
+        while s <= step {
+            let y = y_of(s, staff_bottom);
+            p.line_segment([pos2(x - 8.0, y), pos2(x + 8.0, y)], stroke);
+            s += 2;
+        }
+        let mut s = -2;
+        while s >= step {
+            let y = y_of(s, staff_bottom);
+            p.line_segment([pos2(x - 8.0, y), pos2(x + 8.0, y)], stroke);
+            s -= 2;
+        }
+    }
+
+    fn staff(&self, x0: f32, x1: f32, top: f32) {
+        let (p, color) = (self.painter, self.line);
+        for k in 0..5 {
+            let y = top + k as f32 * LS;
+            p.line_segment([pos2(x0, y), pos2(x1, y)], Stroke::new(1.0_f32, color));
+        }
+    }
+
+    fn clef(&self, x: f32, top: f32, color: Color32) {
+        let p = self.painter;
+        let r1 = Rect::from_min_max(pos2(x, top + LS), pos2(x + 3.0, top + 3.0 * LS));
+        let r2 = Rect::from_min_max(pos2(x + 6.0, top + LS), pos2(x + 9.0, top + 3.0 * LS));
+        p.rect_filled(r1, 0.0, color);
+        p.rect_filled(r2, 0.0, color);
+    }
+
+    /// The letter of the hand that plays a note, under it (the grace notes' ones are small): right
+    /// in the text colour, left in the accent colour.
+    fn hand(&self, x: f32, y: f32, n: &ScoreNote, text: Color32) {
+        let p = self.painter;
+        let Some(hand) = n.hand else { return };
+        let (size, color) = match (n.grace, hand) {
+            (true, _) => (8.0, text.gamma_multiply(0.6)),
+            (false, Hand::Right) => (11.0, text),
+            (false, Hand::Left) => (11.0, ACCENT),
+        };
+        let letter = if n.grace { hand.letter().to_lowercase() } else { hand.letter().to_string() };
+        p.text(pos2(x, y), Align2::CENTER_CENTER, letter, FontId::proportional(size), color);
+    }
+
+    /// A written note: head, ledger lines, hand letter, stem, ghost brackets and accent. `x` already
+    /// includes the grace offset; `accent_up_y` is where the accent goes above a stem that points up.
+    fn written_note(&self, n: &ScoreNote, x: f32, staff_bottom: f32, accent_up_y: f32, ink: Ink) {
+        let p = self.painter;
+        let (col, scale) = (ink.note, if n.grace { 0.65 } else { 1.0 });
+        let y = y_of(n.staff_step, staff_bottom);
+        self.ledgers(x, n.staff_step, staff_bottom);
+        self.head(pos2(x, y), n.head, col, scale);
+        self.hand(x, staff_bottom + ink.hand_dy, n, ink.hand);
+        let up = n.stem_up.unwrap_or(!n.lane.is_foot());
+        let rx = 5.0 * scale;
+        let sx = if up { x + rx - 0.5 } else { x - rx + 0.5 };
+        let sy = if up { y - STEM * scale } else { y + STEM * scale };
+        p.line_segment([pos2(sx, y), pos2(sx, sy)], Stroke::new(1.0_f32, col));
+        if n.ghost {
+            p.text(pos2(x - 8.0, y), Align2::CENTER_CENTER, "(", FontId::proportional(11.0), col);
+            p.text(pos2(x + 8.0, y), Align2::CENTER_CENTER, ")", FontId::proportional(11.0), col);
+        }
+        if n.accent {
+            let ay = if up { accent_up_y } else { staff_bottom + STEM + 10.0 };
+            let s = Stroke::new(1.4_f32, col);
+            p.line_segment([pos2(x - 4.0, ay - 3.0), pos2(x + 4.0, ay)], s);
+            p.line_segment([pos2(x + 4.0, ay), pos2(x - 4.0, ay + 3.0)], s);
+        }
+    }
 }
 
 /// What the drawing of the systems needs to know about the score being shown.
@@ -579,10 +603,10 @@ fn draw_system(f: &Frame, rows: &Rows, bars: (usize, usize), hover_text: &mut Op
         }
     }
 
-    draw_staff(painter, f.origin.x + LEFT - 22.0, x_end, rows.exp_top, cv.line);
-    draw_staff(painter, f.origin.x + LEFT - 22.0, x_end, rows.play_top, cv.line);
-    draw_clef(painter, f.origin.x + LEFT - 18.0, rows.exp_top, cv.text);
-    draw_clef(painter, f.origin.x + LEFT - 18.0, rows.play_top, cv.weak);
+    cv.staff(f.origin.x + LEFT - 22.0, x_end, rows.exp_top);
+    cv.staff(f.origin.x + LEFT - 22.0, x_end, rows.play_top);
+    cv.clef(f.origin.x + LEFT - 18.0, rows.exp_top, cv.text);
+    cv.clef(f.origin.x + LEFT - 18.0, rows.play_top, cv.weak);
     painter.text(pos2(f.origin.x + 2.0, rows.exp_top + 2.0 * LS), Align2::LEFT_CENTER, "Score", FontId::proportional(11.0), cv.weak);
     painter.text(pos2(f.origin.x + 2.0, rows.play_top + 2.0 * LS), Align2::LEFT_CENTER, "You", FontId::proportional(11.0), ACCENT);
     painter.text(pos2(f.origin.x + 2.0, rows.vel_base - 6.0), Align2::LEFT_CENTER, "vel", FontId::proportional(9.0), cv.weak);
@@ -640,32 +664,10 @@ fn draw_measure_marks(f: &Frame, rows: &Rows, mi: usize) {
 /// ghost brackets and accent, in the colour of its grade.
 fn draw_score_note(f: &Frame, rows: &Rows, mi: usize, ni: usize) {
     let (cv, view) = (&f.cv, f.view);
-    let painter = cv.painter;
     let n = &view.score.notes[ni];
     let x = f.x_of(mi, n.q) + grace_dx(n);
-    let y = y_of(n.staff_step, rows.exp_bot);
     let col = view.grades.get(ni).copied().flatten().map(|g| grade_color(g, cv.text)).unwrap_or(cv.text);
-    let scale = if n.grace { 0.65 } else { 1.0 };
-    draw_ledgers(painter, x, n.staff_step, rows.exp_bot, cv.line);
-    draw_head(painter, pos2(x, y), n.head, col, scale);
-    draw_hand(painter, x, rows.exp_bot + 18.0, n, cv.text);
-    let up = n.stem_up.unwrap_or(!n.lane.is_foot());
-    let rx = 5.0 * scale;
-    if up {
-        painter.line_segment([pos2(x + rx - 0.5, y), pos2(x + rx - 0.5, y - STEM * scale)], Stroke::new(1.0_f32, col));
-    } else {
-        painter.line_segment([pos2(x - rx + 0.5, y), pos2(x - rx + 0.5, y + STEM * scale)], Stroke::new(1.0_f32, col));
-    }
-    if n.ghost {
-        painter.text(pos2(x - 8.0, y), Align2::CENTER_CENTER, "(", FontId::proportional(11.0), col);
-        painter.text(pos2(x + 8.0, y), Align2::CENTER_CENTER, ")", FontId::proportional(11.0), col);
-    }
-    if n.accent {
-        let ay = if up { rows.y0 + 28.0 } else { rows.exp_bot + STEM + 10.0 };
-        let s = Stroke::new(1.4_f32, col);
-        painter.line_segment([pos2(x - 4.0, ay - 3.0), pos2(x + 4.0, ay)], s);
-        painter.line_segment([pos2(x + 4.0, ay), pos2(x - 4.0, ay + 3.0)], s);
-    }
+    cv.written_note(n, x, rows.exp_bot, rows.y0 + 28.0, Ink { note: col, hand: cv.text, hand_dy: 18.0 });
 }
 
 /// A played note (`view.played[pi]` of measure `mi`) on the lower staff, with its velocity bar;
@@ -682,8 +684,8 @@ fn draw_played_note(f: &Frame, rows: &Rows, mi: usize, pi: usize, hover_text: &m
     let (step, head) = f.lane_staff[lane];
     let y = y_of(step, rows.play_bot);
     let col = status_color(pn.status, ACCENT);
-    draw_ledgers(painter, x, step, rows.play_bot, cv.line);
-    draw_head(painter, pos2(x, y), head, col, 1.0);
+    cv.ledgers(x, step, rows.play_bot);
+    cv.head(pos2(x, y), head, col, 1.0);
     let h = 16.0 * pn.velocity as f32 / 127.0;
     painter.rect_filled(Rect::from_min_max(pos2(x - 1.5, rows.vel_base - h), pos2(x + 1.5, rows.vel_base)), 0.0, col);
     if let Some(hp) = f.hover {
