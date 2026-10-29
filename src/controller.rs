@@ -682,89 +682,101 @@ impl Preset {
             "name" => self.name = value.to_string(),
             "port" => self.port = value.to_string(),
             "kind" => self.kind = PresetKind::parse(value).ok_or_else(|| format!("unknown kind \"{value}\": expected mackie or midi"))?,
-            "layer" => {
-                let mut w: Vec<&str> = value.split_whitespace().collect();
-                if w.len() < 2 {
-                    return Err("expected \"layer = NAME note N\"".into());
-                }
-                let name = w.remove(0).to_uppercase();
-                self.layers.push((name, Src::parse(&w)?));
-            }
-            "bind" => {
-                let (left, right) = value.split_once("->").ok_or("expected \"->\"")?;
-                let action = Action::parse(right).ok_or_else(|| format!("unknown action \"{}\"", right.trim()))?;
-                let mut w: Vec<&str> = left.split_whitespace().collect();
-                let layer = split_layer(&mut w, &["note", "cc", "bend"]);
-                let channel = take_channel(&mut w)?;
-                let mut encoding = Encoding::Mackie;
-                if let Some(e) = w.last().and_then(|l| Encoding::parse(l)) {
-                    w.pop();
-                    if !w.last().is_some_and(|x| x.eq_ignore_ascii_case("rel")) {
-                        return Err(format!("\"{}\" needs \"rel\" before it", e.word()));
-                    }
-                    encoding = e;
-                }
-                let mut relative = false;
-                if let Some(last) = w.last() {
-                    if last.eq_ignore_ascii_case("rel") {
-                        relative = true;
-                        w.pop();
-                    } else if last.eq_ignore_ascii_case("abs") {
-                        w.pop();
-                    }
-                }
-                let src = Src::parse(&w)?;
-                if relative && !matches!(src, Src::Cc(_)) {
-                    return Err("only a cc can be relative".into());
-                }
-                if matches!(src, Src::Bend(_)) && !action.is_level() {
-                    return Err("a fader can only set a value".into());
-                }
-                if action.is_browse() && !relative {
-                    return Err(format!("\"{}\" is only turned: add \"rel\"", action.text()));
-                }
-                if let (Src::Bend(c), Some(_)) = (src, channel) {
-                    return Err(format!("a fader's channel is in \"bend {c}\", not in \"ch\""));
-                }
-                self.binds.push(Binding { layer, src, channel, relative, encoding, action });
-            }
-            "led" | "ring" => {
-                let (left, right) = value.split_once("->").ok_or("expected \"->\"")?;
-                let mut w: Vec<&str> = left.split_whitespace().collect();
-                let layer = split_layer(&mut w, &SIMPLE.iter().map(|(n, _)| *n).chain(["mute", "solo", "gain", "audition"]).collect::<Vec<_>>());
-                let action = Action::parse(&w.join(" ")).ok_or_else(|| format!("unknown action \"{}\"", w.join(" ")))?;
-                let ring = key == "ring";
-                if ring && !action.is_level() || !ring && !action.has_light() {
-                    return Err(format!("\"{}\" cannot be shown by a {}", action.text(), if ring { "ring" } else { "light" }));
-                }
-                let mut r: Vec<&str> = right.split_whitespace().collect();
-                let channel = take_channel(&mut r)?.unwrap_or(1);
-                let (mut on, mut off, mut scale) = (127u8, 0u8, None);
-                let mut words = Vec::new();
-                for word in r {
-                    let Some((name, number)) = word.split_once('=') else {
-                        words.push(word);
-                        continue;
-                    };
-                    let n: u8 = number.parse().ok().filter(|n| *n <= 127).ok_or_else(|| format!("\"{word}\": expected a number from 0 to 127"))?;
-                    match (name.to_ascii_lowercase().as_str(), ring) {
-                        ("on", false) => on = n,
-                        ("off", false) => off = n,
-                        ("scale", true) => scale = Some(n),
-                        ("on" | "off", true) => return Err(format!("\"{name}=\" is for a light; a ring takes \"scale=\"")),
-                        ("scale", false) => return Err("\"scale=\" is for a ring; a light takes \"on=\" and \"off=\"".into()),
-                        _ => return Err(format!("unknown setting \"{word}\"")),
-                    }
-                }
-                let out = match Src::parse(&words)? {
-                    Src::Note(n) => Out::Note(n),
-                    Src::Cc(n) => Out::Cc(n),
-                    Src::Bend(_) => return Err("lights are set with a note or a cc".into()),
-                };
-                self.lights.push(Light { layer, action, out, ring, channel, on, off, scale });
-            }
+            "layer" => self.parse_layer(value)?,
+            "bind" => self.parse_bind(value)?,
+            "led" => self.parse_light(false, value)?,
+            "ring" => self.parse_light(true, value)?,
             other => return Err(format!("unknown key \"{other}\"")),
         }
+        Ok(())
+    }
+
+    /// `layer = NAME note N`
+    fn parse_layer(&mut self, value: &str) -> Result<(), String> {
+        let mut w: Vec<&str> = value.split_whitespace().collect();
+        if w.len() < 2 {
+            return Err("expected \"layer = NAME note N\"".into());
+        }
+        let name = w.remove(0).to_uppercase();
+        self.layers.push((name, Src::parse(&w)?));
+        Ok(())
+    }
+
+    /// `bind = [LAYER] note|cc|bend N [ch C] [abs | rel [ENCODING]] -> action`
+    fn parse_bind(&mut self, value: &str) -> Result<(), String> {
+        let (left, right) = value.split_once("->").ok_or("expected \"->\"")?;
+        let action = Action::parse(right).ok_or_else(|| format!("unknown action \"{}\"", right.trim()))?;
+        let mut w: Vec<&str> = left.split_whitespace().collect();
+        let layer = split_layer(&mut w, &["note", "cc", "bend"]);
+        let channel = take_channel(&mut w)?;
+        let mut encoding = Encoding::Mackie;
+        if let Some(e) = w.last().and_then(|l| Encoding::parse(l)) {
+            w.pop();
+            if !w.last().is_some_and(|x| x.eq_ignore_ascii_case("rel")) {
+                return Err(format!("\"{}\" needs \"rel\" before it", e.word()));
+            }
+            encoding = e;
+        }
+        let mut relative = false;
+        if let Some(last) = w.last() {
+            if last.eq_ignore_ascii_case("rel") {
+                relative = true;
+                w.pop();
+            } else if last.eq_ignore_ascii_case("abs") {
+                w.pop();
+            }
+        }
+        let src = Src::parse(&w)?;
+        if relative && !matches!(src, Src::Cc(_)) {
+            return Err("only a cc can be relative".into());
+        }
+        if matches!(src, Src::Bend(_)) && !action.is_level() {
+            return Err("a fader can only set a value".into());
+        }
+        if action.is_browse() && !relative {
+            return Err(format!("\"{}\" is only turned: add \"rel\"", action.text()));
+        }
+        if let (Src::Bend(c), Some(_)) = (src, channel) {
+            return Err(format!("a fader's channel is in \"bend {c}\", not in \"ch\""));
+        }
+        self.binds.push(Binding { layer, src, channel, relative, encoding, action });
+        Ok(())
+    }
+
+    /// `led = [LAYER] action -> note|cc N [ch C] [on=V] [off=V]` and `ring = ... [scale=V]`
+    fn parse_light(&mut self, ring: bool, value: &str) -> Result<(), String> {
+        let (left, right) = value.split_once("->").ok_or("expected \"->\"")?;
+        let mut w: Vec<&str> = left.split_whitespace().collect();
+        let layer = split_layer(&mut w, &SIMPLE.iter().map(|(n, _)| *n).chain(["mute", "solo", "gain", "audition"]).collect::<Vec<_>>());
+        let action = Action::parse(&w.join(" ")).ok_or_else(|| format!("unknown action \"{}\"", w.join(" ")))?;
+        if ring && !action.is_level() || !ring && !action.has_light() {
+            return Err(format!("\"{}\" cannot be shown by a {}", action.text(), if ring { "ring" } else { "light" }));
+        }
+        let mut r: Vec<&str> = right.split_whitespace().collect();
+        let channel = take_channel(&mut r)?.unwrap_or(1);
+        let (mut on, mut off, mut scale) = (127u8, 0u8, None);
+        let mut words = Vec::new();
+        for word in r {
+            let Some((name, number)) = word.split_once('=') else {
+                words.push(word);
+                continue;
+            };
+            let n: u8 = number.parse().ok().filter(|n| *n <= 127).ok_or_else(|| format!("\"{word}\": expected a number from 0 to 127"))?;
+            match (name.to_ascii_lowercase().as_str(), ring) {
+                ("on", false) => on = n,
+                ("off", false) => off = n,
+                ("scale", true) => scale = Some(n),
+                ("on" | "off", true) => return Err(format!("\"{name}=\" is for a light; a ring takes \"scale=\"")),
+                ("scale", false) => return Err("\"scale=\" is for a ring; a light takes \"on=\" and \"off=\"".into()),
+                _ => return Err(format!("unknown setting \"{word}\"")),
+            }
+        }
+        let out = match Src::parse(&words)? {
+            Src::Note(n) => Out::Note(n),
+            Src::Cc(n) => Out::Cc(n),
+            Src::Bend(_) => return Err("lights are set with a note or a cc".into()),
+        };
+        self.lights.push(Light { layer, action, out, ring, channel, on, off, scale });
         Ok(())
     }
 
@@ -773,14 +785,24 @@ impl Preset {
     /// controller needs). The line for the layer wins over one for all layers, and a line for the
     /// channel over one for any channel.
     pub fn position(&self, layer: Option<&str>, src: Src, channel: Option<u8>) -> Option<usize> {
-        let fits = |b: &Binding| b.src == src && channel.map_or(true, |c| b.channel.map_or(true, |bc| bc == c));
-        let pick = |on_layer: &dyn Fn(&Binding) -> bool| {
-            let exact = self.binds.iter().position(|b| fits(b) && on_layer(b) && b.channel.is_some() && b.channel == channel);
-            exact.or_else(|| self.binds.iter().position(|b| fits(b) && on_layer(b)))
-        };
-        layer
-            .and_then(|l| pick(&|b: &Binding| b.layer.as_deref() == Some(l)))
-            .or_else(|| pick(&|b: &Binding| b.layer.is_none()))
+        self.binds
+            .iter()
+            .enumerate()
+            .filter(|(_, b)| b.src == src && channel.map_or(true, |c| b.channel.map_or(true, |bc| bc == c)))
+            .filter_map(|(i, b)| {
+                let layer_rank = if layer.is_some() && b.layer.as_deref() == layer {
+                    2
+                } else if b.layer.is_none() {
+                    1
+                } else {
+                    return None;
+                };
+                let exact_channel = b.channel.is_some() && b.channel == channel;
+                // The best rank wins; among equals the first line of the file.
+                Some(((layer_rank, exact_channel), std::cmp::Reverse(i)))
+            })
+            .max()
+            .map(|(_, std::cmp::Reverse(i))| i)
     }
 
     /// The preset as a file: what `Preset::parse` reads back as the same preset (comments are lost).
