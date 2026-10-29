@@ -111,15 +111,7 @@ def extract_lines(rel: str, first: int, last: int) -> str:
 
 
 def module_files() -> list[Path]:
-    src, core = ROOT / "src", ROOT / "core"
-    files = (
-        list(src.glob("*.rs"))
-        + list((src / "app").glob("*.rs"))
-        + list((src / "app").glob("*/*.rs"))
-        + list((core / "src").glob("*.rs"))
-        + list((core / "src" / "controller").glob("*.rs"))
-        + list((core / "tests").glob("*.rs"))
-    )
+    files = [p for root in ("src", "core/src", "core/tests") for p in (ROOT / root).rglob("*.rs")]
     return sorted(files, key=lambda p: (p.relative_to(ROOT).parts[0] != "src", p.parent.as_posix(), p.name))
 
 
