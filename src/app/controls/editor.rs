@@ -150,7 +150,7 @@ impl DrumApp {
         let mut preset = match controller::load_preset(&self.cfg.controller_preset, Some(&dir)) {
             Ok(p) => p,
             Err(e) => {
-                self.error = Some(e);
+                self.error = Some(e.to_string());
                 return None;
             }
         };

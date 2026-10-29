@@ -241,7 +241,7 @@ impl DrumApp {
         let preset = match controller::load_preset(&self.cfg.controller_preset, dir.as_deref()) {
             Ok(p) => p,
             Err(e) => {
-                c.message = e;
+                c.message = e.to_string();
                 return;
             }
         };

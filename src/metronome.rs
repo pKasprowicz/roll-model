@@ -209,7 +209,7 @@ fn run(
     if let Some(port) = opts.midi_port.as_deref() {
         match crate::midi::connect_output(port) {
             Ok(conn) => midi = Some(conn),
-            Err(e) => errors.push(e),
+            Err(e) => errors.push(e.to_string()),
         }
     }
     let ch = opts.midi_channel.clamp(1, 16) - 1;

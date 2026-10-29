@@ -133,6 +133,24 @@ impl Default for Config {
     }
 }
 
+/// Why the settings cannot be saved.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum ConfigError {
+    NoDirectory,
+    Write(String),
+}
+
+impl std::fmt::Display for ConfigError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ConfigError::NoDirectory => write!(f, "no config directory"),
+            ConfigError::Write(e) => write!(f, "{e}"),
+        }
+    }
+}
+
+impl std::error::Error for ConfigError {}
+
 impl Config {
     /// Volume of one instrument in Listen (1.0 unless changed).
     pub fn gain_of(&self, lane: Lane) -> f32 {
@@ -229,12 +247,12 @@ impl Config {
             .unwrap_or_default()
     }
 
-    pub fn save(&self) -> Result<PathBuf, String> {
-        let p = Config::path().ok_or("no config directory")?;
+    pub fn save(&self) -> Result<PathBuf, ConfigError> {
+        let p = Config::path().ok_or(ConfigError::NoDirectory)?;
         if let Some(dir) = p.parent() {
-            std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
+            std::fs::create_dir_all(dir).map_err(|e| ConfigError::Write(e.to_string()))?;
         }
-        std::fs::write(&p, self.to_text()).map_err(|e| e.to_string())?;
+        std::fs::write(&p, self.to_text()).map_err(|e| ConfigError::Write(e.to_string()))?;
         Ok(p)
     }
 

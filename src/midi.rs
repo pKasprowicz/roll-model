@@ -27,13 +27,38 @@ pub struct InputHandle {
     pub port_name: String,
 }
 
-pub fn list_inputs() -> Result<Vec<String>, String> {
-    let mi = MidiInput::new("roll-model-list").map_err(|e| e.to_string())?;
+/// Why a MIDI port cannot be listed or opened.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum MidiError {
+    /// The MIDI system itself would not start.
+    Backend(String),
+    InputNotFound(String),
+    OutputNotFound(String),
+    OpenInput { port: String, reason: String },
+    OpenOutput(String),
+}
+
+impl std::fmt::Display for MidiError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            MidiError::Backend(e) => write!(f, "{e}"),
+            MidiError::InputNotFound(wanted) => write!(f, "MIDI input matching \"{wanted}\" not found"),
+            MidiError::OutputNotFound(wanted) => write!(f, "MIDI output matching \"{wanted}\" not found"),
+            MidiError::OpenInput { port, reason } => write!(f, "could not open \"{port}\": {reason}"),
+            MidiError::OpenOutput(reason) => write!(f, "could not open MIDI output: {reason}"),
+        }
+    }
+}
+
+impl std::error::Error for MidiError {}
+
+pub fn list_inputs() -> Result<Vec<String>, MidiError> {
+    let mi = MidiInput::new("roll-model-list").map_err(|e| MidiError::Backend(e.to_string()))?;
     Ok(mi.ports().iter().filter_map(|p| mi.port_name(p).ok()).collect())
 }
 
-pub fn list_outputs() -> Result<Vec<String>, String> {
-    let mo = MidiOutput::new("roll-model-list").map_err(|e| e.to_string())?;
+pub fn list_outputs() -> Result<Vec<String>, MidiError> {
+    let mo = MidiOutput::new("roll-model-list").map_err(|e| MidiError::Backend(e.to_string()))?;
     Ok(mo.ports().iter().filter_map(|p| mo.port_name(p).ok()).collect())
 }
 
@@ -55,14 +80,14 @@ fn pick<'a>(names: impl Iterator<Item = (usize, &'a str)> + Clone, wanted: &str)
         .map(|(i, _)| i)
 }
 
-pub fn connect_input(wanted: &str, queue: EventQueue) -> Result<InputHandle, String> {
-    let mut mi = MidiInput::new("roll-model").map_err(|e| e.to_string())?;
+pub fn connect_input(wanted: &str, queue: EventQueue) -> Result<InputHandle, MidiError> {
+    let mut mi = MidiInput::new("roll-model").map_err(|e| MidiError::Backend(e.to_string()))?;
     // Drop SysEx, clock and active-sensing traffic.
     mi.ignore(Ignore::All);
     let ports = mi.ports();
     let names: Vec<String> = ports.iter().map(|p| mi.port_name(p).unwrap_or_default()).collect();
     let idx = pick(names.iter().map(|s| s.as_str()).enumerate(), wanted)
-        .ok_or_else(|| format!("MIDI input matching \"{wanted}\" not found"))?;
+        .ok_or_else(|| MidiError::InputNotFound(wanted.to_string()))?;
     let port = ports[idx].clone();
     let port_name = names[idx].clone();
     let mut pedal: Option<u8> = None;
@@ -85,7 +110,7 @@ pub fn connect_input(wanted: &str, queue: EventQueue) -> Result<InputHandle, Str
             },
             (),
         )
-        .map_err(|e| format!("could not open \"{port_name}\": {e}"))?;
+        .map_err(|e| MidiError::OpenInput { port: port_name.clone(), reason: e.to_string() })?;
     Ok(InputHandle { _conn: conn, port_name })
 }
 
@@ -117,13 +142,13 @@ const MAX_QUEUED: usize = 2000;
 
 /// Opens the input port whose name matches `wanted` and, if there is one with
 /// the same name, its output port too (for the lights).
-pub fn connect_controller(wanted: &str, queue: MessageQueue) -> Result<ControllerHandle, String> {
-    let mut mi = MidiInput::new("roll-model-controller").map_err(|e| e.to_string())?;
+pub fn connect_controller(wanted: &str, queue: MessageQueue) -> Result<ControllerHandle, MidiError> {
+    let mut mi = MidiInput::new("roll-model-controller").map_err(|e| MidiError::Backend(e.to_string()))?;
     mi.ignore(Ignore::All);
     let ports = mi.ports();
     let names: Vec<String> = ports.iter().map(|p| mi.port_name(p).unwrap_or_default()).collect();
     let idx = pick(names.iter().map(|s| s.as_str()).enumerate(), wanted)
-        .ok_or_else(|| format!("MIDI input matching \"{wanted}\" not found"))?;
+        .ok_or_else(|| MidiError::InputNotFound(wanted.to_string()))?;
     let port_name = names[idx].clone();
     let conn = mi
         .connect(
@@ -138,7 +163,7 @@ pub fn connect_controller(wanted: &str, queue: MessageQueue) -> Result<Controlle
             },
             (),
         )
-        .map_err(|e| format!("could not open \"{port_name}\": {e}"))?;
+        .map_err(|e| MidiError::OpenInput { port: port_name.clone(), reason: e.to_string() })?;
     let out = MidiOutput::new("roll-model-controller").ok().and_then(|mo| {
         let ports = mo.ports();
         let names: Vec<String> = ports.iter().map(|p| mo.port_name(p).unwrap_or_default()).collect();
@@ -148,15 +173,15 @@ pub fn connect_controller(wanted: &str, queue: MessageQueue) -> Result<Controlle
     Ok(ControllerHandle { _conn: conn, out, port_name })
 }
 
-pub fn connect_output(wanted: &str) -> Result<MidiOutputConnection, String> {
-    let mo = MidiOutput::new("roll-model").map_err(|e| e.to_string())?;
+pub fn connect_output(wanted: &str) -> Result<MidiOutputConnection, MidiError> {
+    let mo = MidiOutput::new("roll-model").map_err(|e| MidiError::Backend(e.to_string()))?;
     let ports = mo.ports();
     let names: Vec<String> = ports.iter().map(|p| mo.port_name(p).unwrap_or_default()).collect();
     let idx = pick(names.iter().map(|s| s.as_str()).enumerate(), wanted)
-        .ok_or_else(|| format!("MIDI output matching \"{wanted}\" not found"))?;
+        .ok_or_else(|| MidiError::OutputNotFound(wanted.to_string()))?;
     let port = ports[idx].clone();
     mo.connect(&port, "roll-model-out")
-        .map_err(|e| format!("could not open MIDI output: {e}"))
+        .map_err(|e| MidiError::OpenOutput(e.to_string()))
 }
 
 /// Standard note name, e.g. 36 -> "C2" (Roland/Yamaha convention, C4 = 60).

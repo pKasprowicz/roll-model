@@ -183,6 +183,84 @@ impl Reading {
     }
 }
 
+/// Why a line of a preset file cannot be used. `Display` is the text the Controller page shows
+/// (with the line number in front).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum PresetError {
+    ExpectedKeyValue,
+    UnknownKey(String),
+    UnknownKind(String),
+    ExpectedLayer,
+    ExpectedArrow,
+    UnknownAction(String),
+    /// A message that is not "note N", "cc N" or "bend CHANNEL"; the words found.
+    ExpectedMessage(String),
+    NotANumber(String),
+    OutOfRange(u8),
+    UnknownMessageType(String),
+    BadChannel,
+    EncodingNeedsRel(&'static str),
+    OnlyCcRelative,
+    FaderOnlyValue,
+    OnlyTurned(String),
+    FaderChannel(u8),
+    CannotBeShown { action: String, ring: bool },
+    BadLightNumber(String),
+    RingTakesScale(String),
+    LightTakesOnOff,
+    UnknownSetting(String),
+    LightNeedsNoteOrCc,
+}
+
+impl std::fmt::Display for PresetError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            PresetError::ExpectedKeyValue => write!(f, "expected \"key = value\""),
+            PresetError::UnknownKey(key) => write!(f, "unknown key \"{key}\""),
+            PresetError::UnknownKind(value) => write!(f, "unknown kind \"{value}\": expected mackie or midi"),
+            PresetError::ExpectedLayer => write!(f, "expected \"layer = NAME note N\""),
+            PresetError::ExpectedArrow => write!(f, "expected \"->\""),
+            PresetError::UnknownAction(action) => write!(f, "unknown action \"{action}\""),
+            PresetError::ExpectedMessage(found) => write!(f, "expected \"note N\", \"cc N\" or \"bend CHANNEL\", found \"{found}\""),
+            PresetError::NotANumber(word) => write!(f, "\"{word}\" is not a number"),
+            PresetError::OutOfRange(n) => write!(f, "{n} is out of range"),
+            PresetError::UnknownMessageType(kind) => write!(f, "unknown message type \"{kind}\""),
+            PresetError::BadChannel => write!(f, "expected \"ch\" and a channel from 1 to 16"),
+            PresetError::EncodingNeedsRel(word) => write!(f, "\"{word}\" needs \"rel\" before it"),
+            PresetError::OnlyCcRelative => write!(f, "only a cc can be relative"),
+            PresetError::FaderOnlyValue => write!(f, "a fader can only set a value"),
+            PresetError::OnlyTurned(action) => write!(f, "\"{action}\" is only turned: add \"rel\""),
+            PresetError::FaderChannel(c) => write!(f, "a fader's channel is in \"bend {c}\", not in \"ch\""),
+            PresetError::CannotBeShown { action, ring } => write!(f, "\"{action}\" cannot be shown by a {}", if *ring { "ring" } else { "light" }),
+            PresetError::BadLightNumber(word) => write!(f, "\"{word}\": expected a number from 0 to 127"),
+            PresetError::RingTakesScale(name) => write!(f, "\"{name}=\" is for a light; a ring takes \"scale=\""),
+            PresetError::LightTakesOnOff => write!(f, "\"scale=\" is for a ring; a light takes \"on=\" and \"off=\""),
+            PresetError::UnknownSetting(word) => write!(f, "unknown setting \"{word}\""),
+            PresetError::LightNeedsNoteOrCc => write!(f, "lights are set with a note or a cc"),
+        }
+    }
+}
+
+impl std::error::Error for PresetError {}
+
+/// Why a preset cannot be loaded.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum LoadPresetError {
+    NotFound(String),
+    Unreadable { path: PathBuf, reason: String },
+}
+
+impl std::fmt::Display for LoadPresetError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            LoadPresetError::NotFound(name) => write!(f, "controller preset \"{name}\" not found"),
+            LoadPresetError::Unreadable { path, reason } => write!(f, "could not read {}: {reason}", path.display()),
+        }
+    }
+}
+
+impl std::error::Error for LoadPresetError {}
+
 /// Where a control's message comes from: the identity a binding is looked up by.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Src {
@@ -201,17 +279,17 @@ impl Src {
         }
     }
 
-    fn parse(words: &[&str]) -> Result<Src, String> {
+    fn parse(words: &[&str]) -> Result<Src, PresetError> {
         let [kind, n] = words else {
-            return Err(format!("expected \"note N\", \"cc N\" or \"bend CHANNEL\", found \"{}\"", words.join(" ")));
+            return Err(PresetError::ExpectedMessage(words.join(" ")));
         };
-        let n: u8 = n.parse().map_err(|_| format!("\"{n}\" is not a number"))?;
+        let n: u8 = n.parse().map_err(|_| PresetError::NotANumber(n.to_string()))?;
         match kind.to_ascii_lowercase().as_str() {
             "note" if n <= 127 => Ok(Src::Note(n)),
             "cc" if n <= 127 => Ok(Src::Cc(n)),
             "bend" if (1..=16).contains(&n) => Ok(Src::Bend(n)),
-            "note" | "cc" | "bend" => Err(format!("{n} is out of range")),
-            other => Err(format!("unknown message type \"{other}\"")),
+            "note" | "cc" | "bend" => Err(PresetError::OutOfRange(n)),
+            other => Err(PresetError::UnknownMessageType(other.to_string())),
         }
     }
 
@@ -658,9 +736,9 @@ pub struct Preset {
 }
 
 /// Takes "ch N" (a MIDI channel from 1 to 16) out of the words of a line.
-fn take_channel(words: &mut Vec<&str>) -> Result<Option<u8>, String> {
+fn take_channel(words: &mut Vec<&str>) -> Result<Option<u8>, PresetError> {
     let Some(i) = words.iter().position(|w| w.eq_ignore_ascii_case("ch")) else { return Ok(None) };
-    let n: u8 = words.get(i + 1).and_then(|w| w.parse().ok()).filter(|n| (1..=16).contains(n)).ok_or("expected \"ch\" and a channel from 1 to 16")?;
+    let n: u8 = words.get(i + 1).and_then(|w| w.parse().ok()).filter(|n| (1..=16).contains(n)).ok_or(PresetError::BadChannel)?;
     words.drain(i..=i + 1);
     Ok(Some(n))
 }
@@ -683,7 +761,7 @@ impl Preset {
                 continue;
             }
             let result = match line.split_once('=') {
-                None => Err("expected \"key = value\"".to_string()),
+                None => Err(PresetError::ExpectedKeyValue),
                 Some((k, v)) => p.line(k.trim(), v.trim()),
             };
             if let Err(e) = result {
@@ -698,25 +776,25 @@ impl Preset {
         p
     }
 
-    fn line(&mut self, key: &str, value: &str) -> Result<(), String> {
+    fn line(&mut self, key: &str, value: &str) -> Result<(), PresetError> {
         match key {
             "name" => self.name = value.to_string(),
             "port" => self.port = value.to_string(),
-            "kind" => self.kind = PresetKind::parse(value).ok_or_else(|| format!("unknown kind \"{value}\": expected mackie or midi"))?,
+            "kind" => self.kind = PresetKind::parse(value).ok_or_else(|| PresetError::UnknownKind(value.to_string()))?,
             "layer" => self.parse_layer(value)?,
             "bind" => self.parse_bind(value)?,
             "led" => self.parse_light(false, value)?,
             "ring" => self.parse_light(true, value)?,
-            other => return Err(format!("unknown key \"{other}\"")),
+            other => return Err(PresetError::UnknownKey(other.to_string())),
         }
         Ok(())
     }
 
     /// `layer = NAME note N`
-    fn parse_layer(&mut self, value: &str) -> Result<(), String> {
+    fn parse_layer(&mut self, value: &str) -> Result<(), PresetError> {
         let mut w: Vec<&str> = value.split_whitespace().collect();
         if w.len() < 2 {
-            return Err("expected \"layer = NAME note N\"".into());
+            return Err(PresetError::ExpectedLayer);
         }
         let name = w.remove(0).to_uppercase();
         self.layers.push((name, Src::parse(&w)?));
@@ -724,9 +802,9 @@ impl Preset {
     }
 
     /// `bind = [LAYER] note|cc|bend N [ch C] [abs | rel [ENCODING]] -> action`
-    fn parse_bind(&mut self, value: &str) -> Result<(), String> {
-        let (left, right) = value.split_once("->").ok_or("expected \"->\"")?;
-        let action = Action::parse(right).ok_or_else(|| format!("unknown action \"{}\"", right.trim()))?;
+    fn parse_bind(&mut self, value: &str) -> Result<(), PresetError> {
+        let (left, right) = value.split_once("->").ok_or(PresetError::ExpectedArrow)?;
+        let action = Action::parse(right).ok_or_else(|| PresetError::UnknownAction(right.trim().to_string()))?;
         let mut w: Vec<&str> = left.split_whitespace().collect();
         let layer = split_layer(&mut w, &["note", "cc", "bend"]);
         let channel = take_channel(&mut w)?;
@@ -734,7 +812,7 @@ impl Preset {
         if let Some(e) = w.last().and_then(|l| Encoding::parse(l)) {
             w.pop();
             if !w.last().is_some_and(|x| x.eq_ignore_ascii_case("rel")) {
-                return Err(format!("\"{}\" needs \"rel\" before it", e.word()));
+                return Err(PresetError::EncodingNeedsRel(e.word()));
             }
             encoding = e;
         }
@@ -749,16 +827,16 @@ impl Preset {
         }
         let src = Src::parse(&w)?;
         if relative && !matches!(src, Src::Cc(_)) {
-            return Err("only a cc can be relative".into());
+            return Err(PresetError::OnlyCcRelative);
         }
         if matches!(src, Src::Bend(_)) && !action.is_level() {
-            return Err("a fader can only set a value".into());
+            return Err(PresetError::FaderOnlyValue);
         }
         if action.is_browse() && !relative {
-            return Err(format!("\"{}\" is only turned: add \"rel\"", action.text()));
+            return Err(PresetError::OnlyTurned(action.text()));
         }
         if let (Src::Bend(c), Some(_)) = (src, channel) {
-            return Err(format!("a fader's channel is in \"bend {c}\", not in \"ch\""));
+            return Err(PresetError::FaderChannel(c));
         }
         let reading = if relative { Reading::Relative(encoding) } else { Reading::Absolute };
         self.binds.push(Binding { layer, src, channel, reading, action });
@@ -766,13 +844,13 @@ impl Preset {
     }
 
     /// `led = [LAYER] action -> note|cc N [ch C] [on=V] [off=V]` and `ring = ... [scale=V]`
-    fn parse_light(&mut self, ring: bool, value: &str) -> Result<(), String> {
-        let (left, right) = value.split_once("->").ok_or("expected \"->\"")?;
+    fn parse_light(&mut self, ring: bool, value: &str) -> Result<(), PresetError> {
+        let (left, right) = value.split_once("->").ok_or(PresetError::ExpectedArrow)?;
         let mut w: Vec<&str> = left.split_whitespace().collect();
         let layer = split_layer(&mut w, &SIMPLE.iter().map(|(n, _)| *n).chain(["mute", "solo", "gain", "audition"]).collect::<Vec<_>>());
-        let action = Action::parse(&w.join(" ")).ok_or_else(|| format!("unknown action \"{}\"", w.join(" ")))?;
+        let action = Action::parse(&w.join(" ")).ok_or_else(|| PresetError::UnknownAction(w.join(" ")))?;
         if ring && !action.is_level() || !ring && !action.has_light() {
-            return Err(format!("\"{}\" cannot be shown by a {}", action.text(), if ring { "ring" } else { "light" }));
+            return Err(PresetError::CannotBeShown { action: action.text(), ring });
         }
         let mut r: Vec<&str> = right.split_whitespace().collect();
         let channel = take_channel(&mut r)?.unwrap_or(1);
@@ -783,20 +861,20 @@ impl Preset {
                 words.push(word);
                 continue;
             };
-            let n: u8 = number.parse().ok().filter(|n| *n <= 127).ok_or_else(|| format!("\"{word}\": expected a number from 0 to 127"))?;
+            let n: u8 = number.parse().ok().filter(|n| *n <= 127).ok_or_else(|| PresetError::BadLightNumber(word.to_string()))?;
             match (name.to_ascii_lowercase().as_str(), ring) {
                 ("on", false) => on = n,
                 ("off", false) => off = n,
                 ("scale", true) => scale = Some(n),
-                ("on" | "off", true) => return Err(format!("\"{name}=\" is for a light; a ring takes \"scale=\"")),
-                ("scale", false) => return Err("\"scale=\" is for a ring; a light takes \"on=\" and \"off=\"".into()),
-                _ => return Err(format!("unknown setting \"{word}\"")),
+                ("on" | "off", true) => return Err(PresetError::RingTakesScale(name.to_string())),
+                ("scale", false) => return Err(PresetError::LightTakesOnOff),
+                _ => return Err(PresetError::UnknownSetting(word.to_string())),
             }
         }
         let out = match Src::parse(&words)? {
             Src::Note(n) => Out::Note(n),
             Src::Cc(n) => Out::Cc(n),
-            Src::Bend(_) => return Err("lights are set with a note or a cc".into()),
+            Src::Bend(_) => return Err(PresetError::LightNeedsNoteOrCc),
         };
         self.lights.push(Light { layer, action, out, ring, channel, on, off, scale });
         Ok(())
@@ -985,12 +1063,12 @@ pub fn preset_source(name: &str, dir: Option<&Path>) -> Option<PresetSource> {
 
 /// The preset called `name`. Its `name` is always the name it is known by: for a file, the `name`
 /// line is ignored (a renamed file is the same preset under its new name).
-pub fn load_preset(name: &str, dir: Option<&Path>) -> Result<Preset, String> {
-    let source = preset_source(name, dir).ok_or_else(|| format!("controller preset \"{name}\" not found"))?;
+pub fn load_preset(name: &str, dir: Option<&Path>) -> Result<Preset, LoadPresetError> {
+    let source = preset_source(name, dir).ok_or_else(|| LoadPresetError::NotFound(name.to_string()))?;
     let mut preset = match &source {
         PresetSource::BuiltIn(text) => Preset::parse(text),
         PresetSource::File(path) => {
-            let text = std::fs::read_to_string(path).map_err(|e| format!("could not read {}: {e}", path.display()))?;
+            let text = std::fs::read_to_string(path).map_err(|e| LoadPresetError::Unreadable { path: path.clone(), reason: e.to_string() })?;
             Preset::parse(&text)
         }
     };

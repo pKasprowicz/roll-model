@@ -3,11 +3,40 @@
 use std::io::{Cursor, Read};
 use std::path::Path;
 
-use crate::musicxml::{parse_musicxml, ParseOptions};
+use crate::musicxml::{parse_musicxml, ParseOptions, ScoreError};
 use crate::score::Score;
 
-pub fn load_score(path: &Path, opts: &ParseOptions) -> Result<Score, String> {
-    let bytes = std::fs::read(path).map_err(|e| e.to_string())?;
+/// Why a score file cannot be loaded.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum LoadError {
+    Read(String),
+    BadArchive(String),
+    NoDocument,
+    Entry(String),
+    Score(ScoreError),
+}
+
+impl std::fmt::Display for LoadError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            LoadError::Read(e) | LoadError::Entry(e) => write!(f, "{e}"),
+            LoadError::BadArchive(e) => write!(f, "bad .mxl archive: {e}"),
+            LoadError::NoDocument => write!(f, "no MusicXML document inside the .mxl archive"),
+            LoadError::Score(e) => write!(f, "{e}"),
+        }
+    }
+}
+
+impl std::error::Error for LoadError {}
+
+impl From<ScoreError> for LoadError {
+    fn from(e: ScoreError) -> Self {
+        LoadError::Score(e)
+    }
+}
+
+pub fn load_score(path: &Path, opts: &ParseOptions) -> Result<Score, LoadError> {
+    let bytes = std::fs::read(path).map_err(|e| LoadError::Read(e.to_string()))?;
     let text = if bytes.starts_with(b"PK") { read_mxl(&bytes)? } else { decode_text(&bytes) };
     let mut score = parse_musicxml(&text, opts)?;
     if score.title == "Untitled" {
@@ -18,8 +47,8 @@ pub fn load_score(path: &Path, opts: &ParseOptions) -> Result<Score, String> {
     Ok(score)
 }
 
-fn read_mxl(bytes: &[u8]) -> Result<String, String> {
-    let mut zip = zip::ZipArchive::new(Cursor::new(bytes)).map_err(|e| format!("bad .mxl archive: {e}"))?;
+fn read_mxl(bytes: &[u8]) -> Result<String, LoadError> {
+    let mut zip = zip::ZipArchive::new(Cursor::new(bytes)).map_err(|e| LoadError::BadArchive(e.to_string()))?;
     let names: Vec<String> = zip.file_names().map(String::from).collect();
 
     let mut root: Option<String> = None;
@@ -40,13 +69,13 @@ fn read_mxl(bytes: &[u8]) -> Result<String, String> {
                 .find(|n| !n.starts_with("META-INF") && (n.ends_with(".xml") || n.ends_with(".musicxml")))
                 .cloned()
         })
-        .ok_or("no MusicXML document inside the .mxl archive")?;
+        .ok_or(LoadError::NoDocument)?;
 
     let mut buf = Vec::new();
     zip.by_name(&root)
-        .map_err(|e| e.to_string())?
+        .map_err(|e| LoadError::Entry(e.to_string()))?
         .read_to_end(&mut buf)
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| LoadError::Entry(e.to_string()))?;
     Ok(decode_text(&buf))
 }
 

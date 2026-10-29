@@ -41,14 +41,38 @@ impl Default for ParseOptions {
     }
 }
 
-pub fn parse_musicxml(text: &str, opts: &ParseOptions) -> Result<Score, String> {
-    let root = xml::parse(text).map_err(|e| format!("XML error: {e}"))?;
+/// Why a file is not a drum score this app can read.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum ScoreError {
+    Xml(xml::XmlError),
+    Timewise,
+    NotMusicXml(String),
+    NoParts,
+    NoMeasures,
+}
+
+impl std::fmt::Display for ScoreError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ScoreError::Xml(e) => write!(f, "XML error: {e}"),
+            ScoreError::Timewise => write!(f, "score-timewise MusicXML is not supported; export as partwise (the default in MuseScore, Sibelius, Dorico, Finale, Guitar Pro)"),
+            ScoreError::NotMusicXml(root) => write!(f, "not a MusicXML score (root element <{root}>)"),
+            ScoreError::NoParts => write!(f, "the file contains no parts"),
+            ScoreError::NoMeasures => write!(f, "the drum part has no measures"),
+        }
+    }
+}
+
+impl std::error::Error for ScoreError {}
+
+pub fn parse_musicxml(text: &str, opts: &ParseOptions) -> Result<Score, ScoreError> {
+    let root = xml::parse(text).map_err(ScoreError::Xml)?;
     match root.name.as_str() {
         "score-partwise" => {}
         "score-timewise" => {
-            return Err("score-timewise MusicXML is not supported; export as partwise (the default in MuseScore, Sibelius, Dorico, Finale, Guitar Pro)".into())
+            return Err(ScoreError::Timewise)
         }
-        other => return Err(format!("not a MusicXML score (root element <{other}>)")),
+        other => return Err(ScoreError::NotMusicXml(other.to_string())),
     }
 
     let mut warnings = Vec::new();
@@ -104,7 +128,7 @@ pub fn parse_musicxml(text: &str, opts: &ParseOptions) -> Result<Score, String> 
 
     let parts: Vec<&Element> = root.children_named("part").collect();
     if parts.is_empty() {
-        return Err("the file contains no parts".into());
+        return Err(ScoreError::NoParts);
     }
     let part = parts
         .iter()
@@ -132,7 +156,7 @@ pub fn parse_musicxml(text: &str, opts: &ParseOptions) -> Result<Score, String> 
 
     let raw = parse_measures(part, &instruments, &mut warnings);
     if raw.is_empty() {
-        return Err("the drum part has no measures".into());
+        return Err(ScoreError::NoMeasures);
     }
     let order = playback_order(&raw, opts.expand_repeats);
 

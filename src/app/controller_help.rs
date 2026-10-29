@@ -44,7 +44,7 @@ impl DrumApp {
             None => match controller::load_preset(&self.cfg.controller_preset, Config::controllers_dir().as_deref()) {
                 Ok(preset) => (preset, None),
                 Err(e) => {
-                    self.error = Some(e);
+                    self.error = Some(e.to_string());
                     return;
                 }
             },
