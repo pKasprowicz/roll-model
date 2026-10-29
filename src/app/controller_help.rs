@@ -49,7 +49,7 @@ impl DrumApp {
             },
         };
         let layer = layer.and_then(|l| preset.layers.iter().position(|(name, _)| *name == l)).unwrap_or(0);
-        self.controller_help = Some(ControllerHelp { chosen: self.cfg.controller_preset.clone(), layout: layout::for_preset(&preset), preset, layer });
+        self.controller_help = Some(ControllerHelp { chosen: self.cfg.controller_preset.clone(), layout: layout::for_preset(&preset).or_else(|| layout::generated(&preset)), preset, layer });
     }
 
     pub(super) fn controller_help_window(&mut self, ctx: &egui::Context) {
@@ -101,7 +101,7 @@ impl ControllerHelp {
                 notes(ui, &self.preset, layout, layer.as_deref());
             }
             None => {
-                ui.label(RichText::new("There is no picture of this controller yet (only the Behringer X-Touch Mini and Compact have one). Its controls on this layer:").small().weak());
+                ui.label(RichText::new("This preset binds no controls yet. Teach it some under Assignments on the Controller page.").small().weak());
                 egui::Grid::new("controller_help_list").num_columns(2).striped(true).show(ui, |ui| {
                     for b in self.preset.binds.iter().filter(|b| b.layer.is_none() || b.layer == layer) {
                         ui.label(format!("{}{}", b.src.text(), if b.relative { " (turn)" } else { "" }));
@@ -120,6 +120,9 @@ fn notes(ui: &mut egui::Ui, preset: &Preset, layout: &Layout, layer: Option<&str
     let small = |ui: &mut egui::Ui, text: String| {
         ui.label(RichText::new(text).small().weak());
     };
+    if layout.generated {
+        small(ui, "This picture is made from the preset: knobs, faders and buttons in order of their message numbers. It does not show where they are on the device.".into());
+    }
     small(ui, "Hover a control to see what it does. A green dot on a button: its light follows the program. Amber dots around an encoder: its LED ring shows the value.".into());
     let shift = layout.controls.iter().find(|c| matches!(layout::mapping(preset, layer, c).press, Some(Meaning::Action(controller::Action::Shift))));
     if let Some(shift) = shift {
@@ -421,6 +424,19 @@ mod tests {
         app.cfg.controller_preset = "Behringer X-Touch Mini".into();
         frame(&mut app, &ctx);
         assert!(app.controller_help.is_none(), "the picture would be of the wrong controller");
+    }
+
+    #[test]
+    fn a_preset_without_a_drawn_layout_gets_a_generated_picture() {
+        let ctx = egui::Context::default();
+        let mut app = DrumApp::with_config(Config { controller_preset: "Korg nanoKONTROL2".into(), ..Config::default() });
+        app.refresh_controllers();
+        app.toggle_controller_help();
+        let help = app.controller_help.as_ref().expect("opened");
+        assert!(help.layout.as_ref().is_some_and(|l| l.generated), "made from the preset");
+        frame(&mut app, &ctx);
+        frame(&mut app, &ctx);
+        assert!(app.controller_help.is_some());
     }
 
     #[test]

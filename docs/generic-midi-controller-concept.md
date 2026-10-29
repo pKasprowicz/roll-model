@@ -1,6 +1,6 @@
 # Concept: support for generic MIDI controllers (beyond Mackie Control)
 
-Status: proposal; phases 1 (preset format and Mapper) and 2 (learn UI: assignments table, Learn, new and copied presets, saved at once) implemented 2026-10-29; the generated help picture, layers and extras are not. Relative encodings are named `mackie`, `twos`, `offset` and `signbit2`.
+Status: proposal; phases 1 (preset format and Mapper) 2 (learn UI: assignments table, Learn, new and copied presets, saved at once) and 3 (generated help picture) implemented 2026-10-29; layers and the extras are not. Relative encodings are named `mackie`, `twos`, `offset` and `signbit2`.
 
 ## Where we are
 

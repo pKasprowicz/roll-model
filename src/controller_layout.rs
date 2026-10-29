@@ -55,7 +55,9 @@ pub struct Mark {
 
 #[derive(Clone, Debug)]
 pub struct Layout {
-    pub name: &'static str,
+    pub name: String,
+    /// Made from the preset (`generated`), not drawn after the device.
+    pub generated: bool,
     /// The device's size in layout units.
     pub size: (f32, f32),
     pub controls: Vec<Control>,
@@ -141,7 +143,7 @@ pub fn x_touch_mini() -> Layout {
     // What is printed beside the buttons of the bottom row.
     let printed = [Some(Printed::Text("MC")), None, Some(Printed::Rewind), Some(Printed::FastForward), Some(Printed::Text("LOOP")), Some(Printed::Stop), Some(Printed::Play), Some(Printed::Record)];
     let marks = printed.into_iter().enumerate().filter_map(|(i, what)| Some(Mark { at: (x(i) + 47.0, 273.0), what: what? })).collect();
-    Layout { name: "Behringer X-Touch Mini", size: (952.0, 371.0), controls, marks }
+    Layout { name: "Behringer X-Touch Mini".into(), size: (952.0, 371.0), controls, marks, generated: false }
 }
 
 /// Behringer X-Touch Compact, laid out from a photograph of the front: a row of eight encoders over
@@ -207,7 +209,95 @@ pub fn x_touch_compact() -> Layout {
     for (i, name) in ["Layer A button", "Layer B button"].into_iter().enumerate() {
         controls.push(Control { kind: Kind::Button, name: name.into(), center: (993.0 + i as f32 * 95.0, 840.0), size: (72.0, 38.0), press: None, turn: None });
     }
-    Layout { name: "Behringer X-Touch Compact", size: (1200.0, 910.0), controls, marks: Vec::new() }
+    Layout { name: "Behringer X-Touch Compact".into(), size: (1200.0, 910.0), controls, marks: Vec::new(), generated: false }
+}
+
+/// Controls to a row of a generated picture: eight strips and a master fader fit one row.
+const PER_ROW: usize = 9;
+
+/// A picture of a controller made from its preset alone, for the controllers that have no drawn
+/// layout (a learned preset, the generic built-in ones): the encoders and knobs in rows at the top,
+/// then the faders, then the buttons, each group sorted by message number, nine to a row. It
+/// shows what the preset binds, not where the controls are on the device. `None` if the preset
+/// binds nothing and has no layers.
+pub fn generated(preset: &Preset) -> Option<Layout> {
+    let mut srcs: Vec<Src> = preset.binds.iter().map(|b| b.src).collect();
+    srcs.sort();
+    srcs.dedup();
+    let layer_srcs: Vec<(String, Src)> = preset.layers.iter().filter(|(_, s)| !srcs.contains(s)).cloned().collect();
+    if srcs.is_empty() && layer_srcs.is_empty() {
+        return None;
+    }
+    let kind_of = |src: Src| -> Kind {
+        let bind = preset.binds.iter().find(|b| b.src == src);
+        match (src, bind) {
+            (Src::Bend(_), _) => Kind::Fader,
+            (Src::Cc(_), Some(b)) if b.relative => Kind::Encoder,
+            (Src::Cc(_), Some(b)) if b.action.is_level() => match b.action {
+                Action::Gain(_) | Action::MusicVolume => Kind::Fader,
+                _ => Kind::Encoder,
+            },
+            _ => Kind::Button,
+        }
+    };
+    let group = |kind: Kind| -> Vec<Src> { srcs.iter().copied().filter(|s| kind_of(*s) == kind).collect() };
+    let x = |i: usize| COLUMN_X + (i % PER_ROW) as f32 * COLUMN_PITCH;
+    let word = |kind: Kind| match kind {
+        Kind::Encoder => "Knob",
+        Kind::Fader => "Fader",
+        _ => "Button",
+    };
+    let mut controls = Vec::new();
+    let mut y = 0.0_f32;
+
+    let knobs = group(Kind::Encoder);
+    for (i, src) in knobs.iter().enumerate() {
+        controls.push(Control {
+            kind: Kind::Encoder,
+            name: format!("{} ({})", word(Kind::Encoder), src.text()),
+            center: (x(i), y + 90.0 + (i / PER_ROW) as f32 * 130.0),
+            size: (62.0, 62.0),
+            press: None,
+            turn: Some(*src),
+        });
+    }
+    if !knobs.is_empty() {
+        y += 90.0 + ((knobs.len() - 1) / PER_ROW) as f32 * 130.0 + 60.0;
+    }
+
+    let faders = group(Kind::Fader);
+    for (i, src) in faders.iter().enumerate() {
+        controls.push(Control {
+            kind: Kind::Fader,
+            name: format!("{} ({})", word(Kind::Fader), src.text()),
+            center: (x(i), y + 50.0 + 95.0 + (i / PER_ROW) as f32 * 280.0),
+            size: (44.0, 190.0),
+            press: None,
+            turn: Some(*src),
+        });
+    }
+    if !faders.is_empty() {
+        y += 50.0 + 190.0 + ((faders.len() - 1) / PER_ROW) as f32 * 280.0 + 30.0;
+    }
+
+    let mut buttons: Vec<(Kind, String, Src)> = group(Kind::Button).into_iter().map(|s| (Kind::Button, format!("{} ({})", word(Kind::Button), s.text()), s)).collect();
+    buttons.extend(layer_srcs.iter().map(|(name, s)| (Kind::Layer, format!("Layer {name} button ({})", s.text()), *s)));
+    for (i, (kind, name, src)) in buttons.iter().enumerate() {
+        controls.push(Control {
+            kind: *kind,
+            name: name.clone(),
+            center: (x(i), y + 30.0 + (i / PER_ROW) as f32 * 62.0),
+            size: (62.0, 48.0),
+            press: Some(*src),
+            turn: None,
+        });
+    }
+    if !buttons.is_empty() {
+        y += 30.0 + ((buttons.len() - 1) / PER_ROW) as f32 * 62.0 + 30.0;
+    }
+
+    let name = if preset.name.is_empty() { "Controller".to_string() } else { preset.name.clone() };
+    Some(Layout { name, size: (COLUMN_X * 2.0 + COLUMN_PITCH * (PER_ROW - 1) as f32, y + 70.0), controls, marks: Vec::new(), generated: true })
 }
 
 /// What a message of a control means on a layer.
@@ -268,8 +358,8 @@ mod tests {
 
     #[test]
     fn the_mini_and_the_compact_have_a_picture_and_other_controllers_do_not() {
-        assert_eq!(for_preset(&load_preset(MINI, None).unwrap()).map(|l| l.name), Some(MINI));
-        assert_eq!(for_preset(&load_preset(COMPACT, None).unwrap()).map(|l| l.name), Some(COMPACT));
+        assert_eq!(for_preset(&load_preset(MINI, None).unwrap()).map(|l| l.name), Some(MINI.to_string()));
+        assert_eq!(for_preset(&load_preset(COMPACT, None).unwrap()).map(|l| l.name), Some(COMPACT.to_string()));
         assert!(for_preset(&Preset::default()).is_none());
     }
 
@@ -399,6 +489,70 @@ mod tests {
                 }
             }
         }
+    }
+
+    #[test]
+    fn a_picture_is_made_from_any_preset_that_binds_something() {
+        assert!(generated(&Preset::default()).is_none(), "nothing to show");
+        for (name, text) in crate::controller::BUILTIN {
+            let preset = Preset::parse(text);
+            let layout = generated(&preset).unwrap_or_else(|| panic!("{name}"));
+            assert!(layout.generated && layout.name == preset.name, "{name}");
+            // Every control the preset binds, and every layer button, is on the picture, once.
+            let known = sources(&layout);
+            for b in &preset.binds {
+                assert!(known.contains(&b.src), "{name}: {} is not on the picture", b.src.text());
+            }
+            for (layer, src) in &preset.layers {
+                assert!(known.contains(src), "{name}: layer {layer} is not on the picture");
+            }
+            assert!(layout.unplaced(&preset).is_empty(), "{name}");
+            let mut all = known.clone();
+            all.sort();
+            all.dedup();
+            assert_eq!(all.len(), known.len(), "{name}: a message is on two controls");
+            // On the device, not on each other.
+            let rect = |c: &Control| (c.center.0 - c.size.0 / 2.0, c.center.1 - c.size.1 / 2.0, c.center.0 + c.size.0 / 2.0, c.center.1 + c.size.1 / 2.0);
+            for (i, a) in layout.controls.iter().enumerate() {
+                let r = rect(a);
+                assert!(r.0 >= 0.0 && r.1 >= 0.0 && r.2 <= layout.size.0 && r.3 <= layout.size.1, "{name}: {} is off the picture", a.name);
+                for b in &layout.controls[i + 1..] {
+                    let rb = rect(b);
+                    assert!(r.2 <= rb.0 || rb.2 <= r.0 || r.3 <= rb.1 || rb.3 <= r.1, "{name}: {} overlaps {}", a.name, b.name);
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn the_generated_picture_sorts_controls_by_what_they_are() {
+        let preset = Preset::parse(&crate::controller::builtin_text("Korg nanoKONTROL2").unwrap());
+        let layout = generated(&preset).unwrap();
+        let kind = |name: &str| layout.controls.iter().find(|c| c.name.contains(name)).unwrap_or_else(|| panic!("{name}")).kind;
+        assert_eq!(kind("cc 16"), Kind::Encoder, "a knob that sets tempo");
+        assert_eq!(kind("cc 0)"), Kind::Fader, "the volume of a group is a fader");
+        assert_eq!(kind("cc 32"), Kind::Button, "solo");
+        // Knobs above faders above buttons, each group in order of message number.
+        let top = |k: Kind| layout.controls.iter().filter(|c| c.kind == k).map(|c| c.center.1).fold(f32::MAX, f32::min);
+        assert!(top(Kind::Encoder) < top(Kind::Fader) && top(Kind::Fader) < top(Kind::Button));
+        let knob_numbers: Vec<Src> = layout.controls.iter().filter(|c| c.kind == Kind::Encoder).filter_map(|c| c.turn).collect();
+        let mut sorted = knob_numbers.clone();
+        sorted.sort();
+        assert_eq!(knob_numbers, sorted);
+        // A relative cc is an encoder, a fader (bend) is a fader, and the layer buttons of a preset are on it.
+        let p = Preset::parse("layer = A note 1\nlayer = B note 2\nbind = A cc 5 rel twos -> tempo\nbind = B bend 1 -> music_volume\nbind = A note 9 -> record\n");
+        let layout = generated(&p).unwrap();
+        let count = |k: Kind| layout.controls.iter().filter(|c| c.kind == k).count();
+        assert_eq!((count(Kind::Encoder), count(Kind::Fader), count(Kind::Button), count(Kind::Layer)), (1, 1, 1, 2));
+        // What a control does on each layer is found as for a drawn picture.
+        let encoder = layout.controls.iter().find(|c| c.kind == Kind::Encoder).unwrap();
+        assert_eq!(mapping(&p, Some("A"), encoder).turn, Some(Meaning::Action(Action::Tempo)));
+        assert_eq!(mapping(&p, Some("B"), encoder).turn, None);
+        // Many controls wrap into rows and the picture grows with them.
+        let many: String = (0..20).map(|n| format!("bind = note {n} -> record\n")).collect();
+        let tall = generated(&Preset::parse(&many)).unwrap();
+        let short = generated(&Preset::parse("bind = note 1 -> record\n")).unwrap();
+        assert!(tall.size.1 > short.size.1 && tall.size.0 == short.size.0);
     }
 
     #[test]
