@@ -537,8 +537,8 @@ ring  = tempo -&gt; cc 20 scale=127      # a plain value 0..scale instead</code>
 
 <section id="config">
 <h2>9. Settings and persistence</h2>
-<p>Settings are a small hand-written <code>key = value</code> text file (<code>%APPDATA%\RollModel\config.txt</code> and equivalents). There is no serialisation framework: <code>Config::to_text</code> and <code>Config::from_text</code> are explicit, which keeps the file stable, hand-editable and tolerant.</p>
-{{code:src/config.rs::pub fn from_text::28}}
+<p>Settings are a small <code>key = value</code> text file (<code>%APPDATA%\RollModel\config.txt</code> and equivalents). There is no serialisation framework: each one-line setting is a row of the <code>KEYS</code> table (key, field, kind of value) that both <code>Config::to_text</code> and <code>Config::from_text</code> use, which keeps the file stable, hand-editable and tolerant. Lists and maps are written and read by hand.</p>
+{{code:src/config.rs::const KEYS::12}}
 <ul>
 <li><strong>Tolerant loading.</strong> Unknown keys are ignored, an unreadable value keeps the default, numbers are clamped, so a settings file from any earlier version loads.</li>
 <li><strong>Defaults are not written</strong> where that avoids clutter (mixer gains, per-rudiment tempos never changed).</li>
@@ -672,15 +672,14 @@ ring  = tempo -&gt; cc 20 scale=127      # a plain value 0..scale instead</code>
 <h3 id="t-setting">Tutorial 2: add a setting</h3>
 <p><span class="pill easy">small</span> Goal: a <em>Show hand letters</em> checkbox that hides the sticking letters.</p>
 <ol class="steps">
-<li><strong>Config.</strong> In <code>src/config.rs</code> add the field, its default, the writer and the reader:
+<li><strong>Config.</strong> In <code>src/config.rs</code> add the field, its default and one row of <code>KEYS</code>; the row is both the reader and the writer:
 <pre class="code"><code>// struct Config
 pub show_sticking: bool,
 // Default
 show_sticking: true,
-// to_text
-kv("show_sticking", self.show_sticking.to_string());
-// from_text, in the match
-"show_sticking" =&gt; c.show_sticking = b(c.show_sticking),</code></pre></li>
+// KEYS
+key!("show_sticking", c.show_sticking, Flag),</code></pre>
+The kind says how the text is read: <code>Text</code>, <code>Flag</code>, <code>number(lo, hi)</code> (kept in range, a bad value changes nothing), <code>LaneName</code> or <code>RudimentNumber</code>. A list or a map needs code in <code>to_text</code> and <code>from_text</code> instead.</li>
 <li><strong>Test.</strong> Add the field to the <code>roundtrip</code> test (set it to <code>false</code> so it differs from the default) and run <code>cargo test config</code>. A forgotten writer or reader fails there.</li>
 <li><strong>UI.</strong> A setting goes on the page it belongs to. In <code>settings_general</code> (<code>app.rs</code>) add:
 <pre class="code"><code>ui.checkbox(&amp;mut self.cfg.show_sticking, "Show hand letters under the notes");</code></pre>

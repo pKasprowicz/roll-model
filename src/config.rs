@@ -151,6 +151,160 @@ impl std::fmt::Display for ConfigError {
 
 impl std::error::Error for ConfigError {}
 
+/// How one kind of setting is read from its text and written back. Anything that does not read
+/// (a bad number, an unknown name) leaves the value as it was.
+trait Setting<T> {
+    fn read(&self, slot: &mut T, text: &str);
+    fn write(&self, value: &T) -> String;
+}
+
+struct Text;
+struct Flag;
+/// A number kept between `lo` and `hi` (and finite, for a float).
+struct Number<T> {
+    lo: T,
+    hi: T,
+}
+/// An instrument by name; `Lane::Other` is not one the user can choose.
+struct LaneName;
+/// A rudiment by its PAS number.
+struct RudimentNumber;
+
+fn number<T>(lo: T, hi: T) -> Number<T> {
+    Number { lo, hi }
+}
+
+impl Setting<String> for Text {
+    fn read(&self, slot: &mut String, text: &str) {
+        *slot = text.to_string();
+    }
+    fn write(&self, value: &String) -> String {
+        value.clone()
+    }
+}
+
+impl Setting<bool> for Flag {
+    fn read(&self, slot: &mut bool, text: &str) {
+        *slot = text.parse().unwrap_or(*slot);
+    }
+    fn write(&self, value: &bool) -> String {
+        value.to_string()
+    }
+}
+
+/// What `Number` needs of a number type: it can be parsed, compared and written, and a float can be NaN.
+trait Numeric: Copy + PartialOrd + std::str::FromStr + std::fmt::Display {
+    fn is_usable(self) -> bool;
+}
+
+macro_rules! numeric {
+    ($($t:ty => $usable:expr),*) => {
+        $(impl Numeric for $t {
+            fn is_usable(self) -> bool {
+                $usable(self)
+            }
+        })*
+    };
+}
+numeric!(u8 => |_| true, u32 => |_| true, usize => |_| true, f32 => f32::is_finite, f64 => f64::is_finite);
+
+impl<T: Numeric> Setting<T> for Number<T> {
+    fn read(&self, slot: &mut T, text: &str) {
+        if let Some(x) = text.parse::<T>().ok().filter(|x| x.is_usable()) {
+            *slot = if x < self.lo {
+                self.lo
+            } else if x > self.hi {
+                self.hi
+            } else {
+                x
+            };
+        }
+    }
+    fn write(&self, value: &T) -> String {
+        value.to_string()
+    }
+}
+
+impl Setting<Lane> for LaneName {
+    fn read(&self, slot: &mut Lane, text: &str) {
+        *slot = Lane::from_name(text).filter(|l| *l != Lane::Other).unwrap_or(*slot);
+    }
+    fn write(&self, value: &Lane) -> String {
+        value.name().to_string()
+    }
+}
+
+impl Setting<u8> for RudimentNumber {
+    fn read(&self, slot: &mut u8, text: &str) {
+        *slot = text.parse().ok().filter(|n| rudiments::by_number(*n).is_some()).unwrap_or(*slot);
+    }
+    fn write(&self, value: &u8) -> String {
+        value.to_string()
+    }
+}
+
+/// One setting of the file: its key, and how to read and write the field it belongs to.
+struct Key {
+    name: &'static str,
+    read: fn(&mut Config, &str),
+    write: fn(&Config) -> String,
+}
+
+/// `key!("zoom", c.zoom, number(0.3, 4.0))`: the key, the field (`c` stands for the `Config`) and
+/// the kind of setting it is.
+macro_rules! key {
+    ($name:literal, $c:ident . $($field:ident).+, $kind:expr) => {
+        Key {
+            name: $name,
+            read: |$c: &mut Config, text: &str| $kind.read(&mut $c.$($field).+, text),
+            write: |$c: &Config| $kind.write(&$c.$($field).+),
+        }
+    };
+}
+
+/// The settings that are one line each, in the order they are written. A new one is a field, its
+/// default and one line here (and its page). The lists and maps (`recent`, `gain.*`, `mute.*`,
+/// `map.*`, `rudiment_bpm.*`, `rudiment_best.*`) are read and written by hand below.
+const KEYS: &[Key] = &[
+    key!("midi_in_port", c.midi_in_port, Text),
+    key!("midi_out_port", c.midi_out_port, Text),
+    key!("latency_ms", c.latency_ms, number(f64::MIN, f64::MAX)),
+    key!("perfect_ms", c.tol.perfect_ms, number(f64::MIN, f64::MAX)),
+    key!("good_ms", c.tol.good_ms, number(f64::MIN, f64::MAX)),
+    key!("window_ms", c.tol.window_ms, number(f64::MIN, f64::MAX)),
+    key!("metronome_during_take", c.metronome_during_take, Flag),
+    key!("count_in_bars", c.count_in_bars, number(0, 4)),
+    key!("click_audio", c.click_audio, Flag),
+    key!("click_volume", c.click_volume, number(f32::MIN, f32::MAX)),
+    key!("click_midi", c.click_midi, Flag),
+    key!("click_note", c.click_note, number(0, 127)),
+    key!("click_channel", c.click_channel, number(1, 16)),
+    key!("playback_audio", c.playback_audio, Flag),
+    key!("playback_volume", c.playback_volume, number(0.0, 1.0)),
+    key!("playback_midi", c.playback_midi, Flag),
+    key!("playback_channel", c.playback_channel, number(1, 16)),
+    key!("hihat_cc_max", c.hihat_cc_max, number(1, 127)),
+    key!("keyboard_input", c.keyboard_input, Flag),
+    key!("zoom", c.zoom, number(0.3, 4.0)),
+    key!("expand_repeats", c.expand_repeats, Flag),
+    key!("audio_output", c.audio_output, Text),
+    key!("bars_per_row", c.bars_per_row, number(0, 16)),
+    key!("layout_align_bar", c.layout_align_bar, number(0, 9999)),
+    key!("metro_bpm", c.metro_bpm, number(20.0, 300.0)),
+    key!("metro_beats", c.metro_beats, number(1, 12)),
+    key!("metro_sub", c.metro_sub, number(0, 3)),
+    key!("metro_preview", c.metro_preview, Flag),
+    key!("controller_preset", c.controller_preset, Text),
+    key!("controller_port", c.controller_port, Text),
+    key!("trigger_enabled", c.trigger_enabled, Flag),
+    key!("trigger_first", c.trigger_first, LaneName),
+    key!("trigger_second", c.trigger_second, LaneName),
+    key!("rudiment", c.rudiment, RudimentNumber),
+    key!("rudiment_repeats", c.rudiment_repeats, number(1, MAX_REPEATS)),
+    key!("rudiment_nard_only", c.rudiment_nard_only, Flag),
+    key!("rudiment_ladder", c.rudiment_ladder, Flag),
+];
+
 impl Config {
     /// Volume of one instrument in Listen (1.0 unless changed).
     pub fn gain_of(&self, lane: Lane) -> f32 {
@@ -259,46 +413,12 @@ impl Config {
     pub fn to_text(&self) -> String {
         let mut s = String::from("# Roll Model settings\n");
         let mut kv = |k: &str, v: String| s.push_str(&format!("{k} = {v}\n"));
-        kv("midi_in_port", self.midi_in_port.clone());
-        kv("midi_out_port", self.midi_out_port.clone());
-        kv("latency_ms", self.latency_ms.to_string());
-        kv("perfect_ms", self.tol.perfect_ms.to_string());
-        kv("good_ms", self.tol.good_ms.to_string());
-        kv("window_ms", self.tol.window_ms.to_string());
-        kv("metronome_during_take", self.metronome_during_take.to_string());
-        kv("count_in_bars", self.count_in_bars.to_string());
-        kv("click_audio", self.click_audio.to_string());
-        kv("click_volume", self.click_volume.to_string());
-        kv("click_midi", self.click_midi.to_string());
-        kv("click_note", self.click_note.to_string());
-        kv("click_channel", self.click_channel.to_string());
-        kv("playback_audio", self.playback_audio.to_string());
-        kv("playback_volume", self.playback_volume.to_string());
-        kv("playback_midi", self.playback_midi.to_string());
-        kv("playback_channel", self.playback_channel.to_string());
-        kv("hihat_cc_max", self.hihat_cc_max.to_string());
-        kv("keyboard_input", self.keyboard_input.to_string());
-        kv("zoom", self.zoom.to_string());
-        kv("expand_repeats", self.expand_repeats.to_string());
+        for key in KEYS {
+            kv(key.name, (key.write)(self));
+        }
         for path in &self.recent_files {
             kv("recent", path.clone());
         }
-        kv("audio_output", self.audio_output.clone());
-        kv("bars_per_row", self.bars_per_row.to_string());
-        kv("layout_align_bar", self.layout_align_bar.to_string());
-        kv("metro_bpm", self.metro_bpm.to_string());
-        kv("metro_beats", self.metro_beats.to_string());
-        kv("metro_sub", self.metro_sub.to_string());
-        kv("metro_preview", self.metro_preview.to_string());
-        kv("controller_preset", self.controller_preset.clone());
-        kv("controller_port", self.controller_port.clone());
-        kv("trigger_enabled", self.trigger_enabled.to_string());
-        kv("trigger_first", self.trigger_first.name().to_string());
-        kv("trigger_second", self.trigger_second.name().to_string());
-        kv("rudiment", self.rudiment.to_string());
-        kv("rudiment_repeats", self.rudiment_repeats.to_string());
-        kv("rudiment_nard_only", self.rudiment_nard_only.to_string());
-        kv("rudiment_ladder", self.rudiment_ladder.to_string());
         for (n, bpm) in &self.rudiment_bpm {
             kv(&format!("rudiment_bpm.{n}"), bpm.to_string());
         }
@@ -330,57 +450,17 @@ impl Config {
             }
             let Some((k, v)) = line.split_once('=') else { continue };
             let (k, v) = (k.trim(), v.trim());
-            let f = |d: f64| v.parse::<f64>().unwrap_or(d);
             let b = |d: bool| v.parse::<bool>().unwrap_or(d);
+            if let Some(key) = KEYS.iter().find(|key| key.name == k) {
+                (key.read)(&mut c, v);
+                continue;
+            }
             match k {
-                "midi_in_port" => c.midi_in_port = v.to_string(),
-                "midi_out_port" => c.midi_out_port = v.to_string(),
-                "latency_ms" => c.latency_ms = f(c.latency_ms),
-                "perfect_ms" => c.tol.perfect_ms = f(c.tol.perfect_ms),
-                "good_ms" => c.tol.good_ms = f(c.tol.good_ms),
-                "window_ms" => c.tol.window_ms = f(c.tol.window_ms),
-                "metronome_during_take" => c.metronome_during_take = b(c.metronome_during_take),
-                "count_in_bars" => c.count_in_bars = v.parse().unwrap_or(c.count_in_bars).min(4),
-                "click_audio" => c.click_audio = b(c.click_audio),
-                "click_volume" => c.click_volume = v.parse().unwrap_or(c.click_volume),
-                "click_midi" => c.click_midi = b(c.click_midi),
-                "click_note" => c.click_note = v.parse().unwrap_or(c.click_note).min(127),
-                "click_channel" => c.click_channel = v.parse().unwrap_or(c.click_channel).clamp(1, 16),
-                "playback_audio" => c.playback_audio = b(c.playback_audio),
-                "playback_volume" => {
-                    let x = v.parse::<f32>().ok().filter(|x| x.is_finite());
-                    c.playback_volume = x.unwrap_or(c.playback_volume).clamp(0.0, 1.0)
-                }
-                "playback_midi" => c.playback_midi = b(c.playback_midi),
-                "playback_channel" => c.playback_channel = v.parse().unwrap_or(c.playback_channel).clamp(1, 16),
-                "hihat_cc_max" => c.hihat_cc_max = v.parse().unwrap_or(c.hihat_cc_max).clamp(1, 127),
-                "keyboard_input" => c.keyboard_input = b(c.keyboard_input),
-                "zoom" => c.zoom = v.parse::<f32>().unwrap_or(c.zoom).clamp(0.3, 4.0),
-                "expand_repeats" => c.expand_repeats = b(c.expand_repeats),
                 "recent" => {
                     if !v.is_empty() && c.recent_files.len() < MAX_RECENT && !c.recent_files.iter().any(|p| p == v) {
                         c.recent_files.push(v.to_string());
                     }
                 }
-                "audio_output" => c.audio_output = v.to_string(),
-                "bars_per_row" => c.bars_per_row = v.parse().unwrap_or(c.bars_per_row).min(16),
-                "layout_align_bar" => c.layout_align_bar = v.parse().unwrap_or(c.layout_align_bar).min(9999),
-                "metro_bpm" => {
-                    let x = v.parse::<f32>().ok().filter(|x| x.is_finite());
-                    c.metro_bpm = x.unwrap_or(c.metro_bpm).clamp(20.0, 300.0)
-                }
-                "metro_beats" => c.metro_beats = v.parse().unwrap_or(c.metro_beats).clamp(1, 12),
-                "metro_preview" => c.metro_preview = b(c.metro_preview),
-                "controller_preset" => c.controller_preset = v.to_string(),
-                "controller_port" => c.controller_port = v.to_string(),
-                "trigger_enabled" => c.trigger_enabled = b(c.trigger_enabled),
-                "trigger_first" => c.trigger_first = Lane::from_name(v).filter(|l| *l != Lane::Other).unwrap_or(c.trigger_first),
-                "trigger_second" => c.trigger_second = Lane::from_name(v).filter(|l| *l != Lane::Other).unwrap_or(c.trigger_second),
-                "rudiment" => c.rudiment = v.parse().ok().filter(|n| rudiments::by_number(*n).is_some()).unwrap_or(c.rudiment),
-                "rudiment_repeats" => c.rudiment_repeats = v.parse().unwrap_or(c.rudiment_repeats).clamp(1, MAX_REPEATS),
-                "rudiment_nard_only" => c.rudiment_nard_only = b(c.rudiment_nard_only),
-                "rudiment_ladder" => c.rudiment_ladder = b(c.rudiment_ladder),
-                "metro_sub" => c.metro_sub = v.parse().unwrap_or(c.metro_sub).min(3),
                 _ => {
                     if let Some(lane) = k.strip_prefix("map.").and_then(Lane::from_name) {
                         map_seen = true;
@@ -442,6 +522,20 @@ mod tests {
         Config::migrate(&base.join("missing"), &base.join("other")).unwrap();
         assert!(!base.join("other").exists());
         let _ = std::fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn every_key_is_written_once_and_read_back() {
+        let text = Config::default().to_text();
+        for key in KEYS {
+            assert_eq!(KEYS.iter().filter(|k| k.name == key.name).count(), 1, "{} twice", key.name);
+            assert!(text.lines().any(|l| l.starts_with(&format!("{} = ", key.name))), "{} is not written", key.name);
+        }
+        let mut c = Config::default();
+        (KEYS.iter().find(|k| k.name == "zoom").unwrap().read)(&mut c, "9");
+        assert_eq!(c.zoom, 4.0, "a number is kept in its range");
+        (KEYS.iter().find(|k| k.name == "zoom").unwrap().read)(&mut c, "nan");
+        assert_eq!(c.zoom, 4.0, "and a bad one changes nothing");
     }
 
     #[test]
