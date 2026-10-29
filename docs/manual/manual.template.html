@@ -424,7 +424,11 @@ bind  = A note 89 -&gt; record           # a button; without "A" it works on eve
 bind  = A cc 16 rel -&gt; tempo          # an endless encoder (Mackie relative values)
 bind  = bend 1 -&gt; tempo               # a fader (pitch bend on MIDI channel 1)
 led   = A record -&gt; note 89           # a button light that follows the state
-ring  = A tempo -&gt; cc 48              # an LED ring that shows a value</code></pre>
+ring  = A tempo -&gt; cc 48              # an LED ring that shows a value
+bind  = cc 14 ch 2 rel twos -&gt; tempo    # only on MIDI channel 2; rel mackie | twos | offset | signbit2
+bind  = cc 13 abs -&gt; tempo            # a knob that sends its position
+led   = record -&gt; note 36 ch 10 on=21 off=0   # another channel and values (a pad's colour)
+ring  = tempo -&gt; cc 20 scale=127      # a plain value 0 to 127 instead of Mackie ring values</code></pre>
 <table>
 <thead><tr><th>Kind</th><th>Names</th></tr></thead>
 <tbody>

@@ -230,7 +230,7 @@ pub fn mapping(preset: &Preset, layer: Option<&str>, control: &Control) -> Mappi
         if let Some((name, _)) = preset.layers.iter().find(|(_, s)| *s == src) {
             return Some(Meaning::Layer(name.clone()));
         }
-        preset.position(layer, src).map(|i| Meaning::Action(preset.binds[i].action))
+        preset.position(layer, src, None).map(|i| Meaning::Action(preset.binds[i].action))
     };
     Mapping { press: control.press.and_then(meaning), turn: control.turn.and_then(meaning) }
 }

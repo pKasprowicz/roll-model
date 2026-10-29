@@ -139,6 +139,10 @@ bind  = A cc 16 rel -> tempo          # an endless encoder (Mackie relative valu
 bind  = bend 1 -> tempo               # a fader (pitch bend on MIDI channel 1)
 led   = A record -> note 89           # a button light that follows the state
 ring  = A tempo -> cc 48              # an LED ring that shows a value
+bind  = cc 14 ch 2 rel twos -> tempo    # only on MIDI channel 2; rel mackie | twos | offset | signbit2
+bind  = cc 13 abs -> tempo            # a knob that sends its position
+led   = record -> note 36 ch 10 on=21 off=0   # another channel and values (a pad's colour)
+ring  = tempo -> cc 20 scale=127      # a plain value 0 to 127 instead of Mackie ring values
 ```
 
 *Buttons:* `record listen stop click loop notes metronome next_tab loop_worst_bar range_back range_forward tap_tempo tempo_down tempo_up discard_take tempo_reset open_score prev_rudiment next_rudiment shift`, and `mute N`, `solo N`, `audition N` for the mixer strips 1–8. *Values* (an encoder with `rel`, or a fader): `tempo range_from range_to click_volume music_volume count_in bars_per_row repeats lead`, `gain N`; `score` (recent scores) and `rudiment` (the rudiments) are only turned. *Lights:* `record listen stop click loop notes metronome shift`, `mute N`, `solo N`; *rings* take any of the values (`repeats` and `lead` too). A line that cannot be used is reported on the Controller page and the rest still works.

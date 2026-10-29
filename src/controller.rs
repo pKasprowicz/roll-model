@@ -10,10 +10,14 @@
 //! port  = X-TOUCH MINI                  # part of the MIDI port's name
 //! layer = A note 84                     # this message selects layer A
 //! bind  = A note 89 -> record           # a button, on layer A only
-//! bind  = cc 16 rel -> tempo            # an endless encoder, on every layer
+//! bind  = cc 16 rel -> tempo            # an endless encoder (Mackie relative values), on every layer
+//! bind  = cc 14 ch 2 rel twos -> tempo  # only on MIDI channel 2; rel mackie | twos | offset | signbit2
+//! bind  = cc 13 abs -> tempo            # a knob that sends its position
 //! bind  = bend 1 -> tempo               # a fader (pitch bend, channel 1)
-//! led   = A record -> note 89           # light of a button
-//! ring  = A tempo -> cc 48              # LED ring around an encoder
+//! led   = A record -> note 89           # light of a button (on=127 off=0 by default)
+//! led   = record -> note 36 ch 10 on=21 off=0   # another channel, other values (a pad's colour)
+//! ring  = A tempo -> cc 48              # LED ring around an encoder (Mackie ring values)
+//! ring  = tempo -> cc 20 scale=127      # a plain value 0..scale instead
 //! ```
 //!
 //! A line without a layer name applies to all layers; a line for the current
@@ -71,6 +75,13 @@ pub fn parse(bytes: &[u8]) -> Option<Msg> {
 }
 
 impl Msg {
+    /// The MIDI channel (1-based).
+    pub fn channel(self) -> u8 {
+        match self {
+            Msg::NoteOn { ch, .. } | Msg::NoteOff { ch, .. } | Msg::Cc { ch, .. } | Msg::Bend { ch, .. } => ch,
+        }
+    }
+
     pub fn text(self) -> String {
         match self {
             Msg::NoteOn { ch, note, vel } => format!("ch {ch} · note {note} on, velocity {vel}"),
@@ -81,16 +92,72 @@ impl Msg {
     }
 }
 
-/// The turn of an endless encoder as Mackie Control sends it: 1..=63 clockwise
-/// steps, 65..=127 counter-clockwise steps (value minus 64).
-pub fn decode_relative(val: u8) -> i32 {
-    let n = (val & 0x3F) as i32;
-    if val & 0x40 != 0 {
-        -n
-    } else {
-        n
+/// How an endless encoder says how far it was turned, in a cc value of 0..=127.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum Encoding {
+    /// Mackie Control ("signed bit"): 1..=63 clockwise steps, 65..=127 counter-clockwise (value minus 64).
+    #[default]
+    Mackie,
+    /// Two's complement: 1..=63 clockwise, 127 down to 65 counter-clockwise (127 = one step back).
+    Twos,
+    /// Binary offset: 64 is no turn, above it clockwise, below it counter-clockwise.
+    Offset,
+    /// "Signed bit 2": the opposite sign bit to Mackie, 65..=127 clockwise, 1..=63 counter-clockwise.
+    SignBit2,
+}
+
+impl Encoding {
+    pub fn parse(word: &str) -> Option<Encoding> {
+        match word.to_ascii_lowercase().as_str() {
+            "mackie" => Some(Encoding::Mackie),
+            "twos" => Some(Encoding::Twos),
+            "offset" => Some(Encoding::Offset),
+            "signbit2" => Some(Encoding::SignBit2),
+            _ => None,
+        }
+    }
+
+    pub fn word(self) -> &'static str {
+        match self {
+            Encoding::Mackie => "mackie",
+            Encoding::Twos => "twos",
+            Encoding::Offset => "offset",
+            Encoding::SignBit2 => "signbit2",
+        }
+    }
+
+    /// The signed number of steps a cc value means.
+    pub fn decode(self, val: u8) -> i32 {
+        let val = val & 0x7F;
+        match self {
+            Encoding::Mackie => {
+                let n = (val & 0x3F) as i32;
+                if val & 0x40 != 0 {
+                    -n
+                } else {
+                    n
+                }
+            }
+            Encoding::Twos => {
+                if val < 64 {
+                    val as i32
+                } else {
+                    val as i32 - 128
+                }
+            }
+            Encoding::Offset => val as i32 - 64,
+            Encoding::SignBit2 => {
+                let n = (val & 0x3F) as i32;
+                if val & 0x40 != 0 {
+                    n
+                } else {
+                    -n
+                }
+            }
+        }
     }
 }
+
 
 /// Where a control's message comes from: the identity a binding is looked up by.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
@@ -443,8 +510,12 @@ pub struct Binding {
     /// `None`: on every layer.
     pub layer: Option<String>,
     pub src: Src,
-    /// An endless encoder (Mackie relative CC) rather than an absolute control.
+    /// Only messages on this MIDI channel (1-based); `None`: on any channel.
+    pub channel: Option<u8>,
+    /// An endless encoder (relative CC) rather than an absolute control.
     pub relative: bool,
+    /// How a relative encoder counts (`Mackie` unless the line says otherwise).
+    pub encoding: Encoding,
     pub action: Action,
 }
 
@@ -455,6 +526,13 @@ pub struct Light {
     pub out: Out,
     /// A ring around an encoder showing a level, rather than a button light.
     pub ring: bool,
+    /// The MIDI channel the light is set on (1-based).
+    pub channel: u8,
+    /// Values sent to light and to darken a button (127 and 0 unless the line says otherwise).
+    pub on: u8,
+    pub off: u8,
+    /// A ring shows its level as a plain value 0..=scale; `None`: Mackie ring values.
+    pub scale: Option<u8>,
 }
 
 #[derive(Clone, Debug, Default, PartialEq)]
@@ -468,6 +546,14 @@ pub struct Preset {
     pub lights: Vec<Light>,
     /// Lines that could not be used, with their line numbers.
     pub warnings: Vec<String>,
+}
+
+/// Takes "ch N" (a MIDI channel from 1 to 16) out of the words of a line.
+fn take_channel(words: &mut Vec<&str>) -> Result<Option<u8>, String> {
+    let Some(i) = words.iter().position(|w| w.eq_ignore_ascii_case("ch")) else { return Ok(None) };
+    let n: u8 = words.get(i + 1).and_then(|w| w.parse().ok()).filter(|n| (1..=16).contains(n)).ok_or("expected \"ch\" and a channel from 1 to 16")?;
+    words.drain(i..=i + 1);
+    Ok(Some(n))
 }
 
 fn split_layer<'a>(words: &mut Vec<&'a str>, first_is_not: &[&str]) -> Option<String> {
@@ -515,6 +601,15 @@ impl Preset {
                 let action = Action::parse(right).ok_or_else(|| format!("unknown action \"{}\"", right.trim()))?;
                 let mut w: Vec<&str> = left.split_whitespace().collect();
                 let layer = split_layer(&mut w, &["note", "cc", "bend"]);
+                let channel = take_channel(&mut w)?;
+                let mut encoding = Encoding::Mackie;
+                if let Some(e) = w.last().and_then(|l| Encoding::parse(l)) {
+                    w.pop();
+                    if !w.last().is_some_and(|x| x.eq_ignore_ascii_case("rel")) {
+                        return Err(format!("\"{}\" needs \"rel\" before it", e.word()));
+                    }
+                    encoding = e;
+                }
                 let mut relative = false;
                 if let Some(last) = w.last() {
                     if last.eq_ignore_ascii_case("rel") {
@@ -534,7 +629,10 @@ impl Preset {
                 if action.is_browse() && !relative {
                     return Err(format!("\"{}\" is only turned: add \"rel\"", action.text()));
                 }
-                self.binds.push(Binding { layer, src, relative, action });
+                if let (Src::Bend(c), Some(_)) = (src, channel) {
+                    return Err(format!("a fader's channel is in \"bend {c}\", not in \"ch\""));
+                }
+                self.binds.push(Binding { layer, src, channel, relative, encoding, action });
             }
             "led" | "ring" => {
                 let (left, right) = value.split_once("->").ok_or("expected \"->\"")?;
@@ -545,24 +643,50 @@ impl Preset {
                 if ring && !action.is_level() || !ring && !action.has_light() {
                     return Err(format!("\"{}\" cannot be shown by a {}", action.text(), if ring { "ring" } else { "light" }));
                 }
-                let out = match Src::parse(&right.split_whitespace().collect::<Vec<_>>())? {
+                let mut r: Vec<&str> = right.split_whitespace().collect();
+                let channel = take_channel(&mut r)?.unwrap_or(1);
+                let (mut on, mut off, mut scale) = (127u8, 0u8, None);
+                let mut words = Vec::new();
+                for word in r {
+                    let Some((name, number)) = word.split_once('=') else {
+                        words.push(word);
+                        continue;
+                    };
+                    let n: u8 = number.parse().ok().filter(|n| *n <= 127).ok_or_else(|| format!("\"{word}\": expected a number from 0 to 127"))?;
+                    match (name.to_ascii_lowercase().as_str(), ring) {
+                        ("on", false) => on = n,
+                        ("off", false) => off = n,
+                        ("scale", true) => scale = Some(n),
+                        ("on" | "off", true) => return Err(format!("\"{name}=\" is for a light; a ring takes \"scale=\"")),
+                        ("scale", false) => return Err("\"scale=\" is for a ring; a light takes \"on=\" and \"off=\"".into()),
+                        _ => return Err(format!("unknown setting \"{word}\"")),
+                    }
+                }
+                let out = match Src::parse(&words)? {
                     Src::Note(n) => Out::Note(n),
                     Src::Cc(n) => Out::Cc(n),
                     Src::Bend(_) => return Err("lights are set with a note or a cc".into()),
                 };
-                self.lights.push(Light { layer, action, out, ring });
+                self.lights.push(Light { layer, action, out, ring, channel, on, off, scale });
             }
             other => return Err(format!("unknown key \"{other}\"")),
         }
         Ok(())
     }
 
-    /// The binding of `src` on `layer` (`None`: only the lines for every layer): the line for
-    /// the layer wins over one for all layers.
-    pub fn position(&self, layer: Option<&str>, src: Src) -> Option<usize> {
+    /// The binding of `src` on `layer` (`None`: only the lines for every layer) for a message on
+    /// MIDI channel `channel` (`None`: any binding, whatever its channel, as a picture of the
+    /// controller needs). The line for the layer wins over one for all layers, and a line for the
+    /// channel over one for any channel.
+    pub fn position(&self, layer: Option<&str>, src: Src, channel: Option<u8>) -> Option<usize> {
+        let fits = |b: &Binding| b.src == src && channel.map_or(true, |c| b.channel.map_or(true, |bc| bc == c));
+        let pick = |on_layer: &dyn Fn(&Binding) -> bool| {
+            let exact = self.binds.iter().position(|b| fits(b) && on_layer(b) && b.channel.is_some() && b.channel == channel);
+            exact.or_else(|| self.binds.iter().position(|b| fits(b) && on_layer(b)))
+        };
         layer
-            .and_then(|l| self.binds.iter().position(|b| b.src == src && b.layer.as_deref() == Some(l)))
-            .or_else(|| self.binds.iter().position(|b| b.src == src && b.layer.is_none()))
+            .and_then(|l| pick(&|b: &Binding| b.layer.as_deref() == Some(l)))
+            .or_else(|| pick(&|b: &Binding| b.layer.is_none()))
     }
 
     /// Drops lines that name a layer the preset does not declare, and reports repeated controls.
@@ -575,10 +699,10 @@ impl Preset {
         if before != (self.binds.len(), self.lights.len()) {
             self.warnings.push("some lines name a layer that no \"layer =\" line declares; they were ignored".into());
         }
-        let mut seen: BTreeMap<(Option<String>, Src), Action> = BTreeMap::new();
+        let mut seen: BTreeMap<(Option<String>, Src, Option<u8>), Action> = BTreeMap::new();
         let mut repeated = Vec::new();
         for b in &self.binds {
-            if let Some(first) = seen.insert((b.layer.clone(), b.src), b.action) {
+            if let Some(first) = seen.insert((b.layer.clone(), b.src, b.channel), b.action) {
                 repeated.push(format!("{} is bound to both \"{}\" and \"{}\"", b.src.text(), first.text(), b.action.text()));
             }
         }
@@ -672,6 +796,9 @@ impl Pickup {
     }
 }
 
+/// What a light is told apart by: where it is set, whether it is a ring, and the MIDI channel.
+type LightKey = (Out, bool, u8);
+
 pub struct Mapper {
     preset: Preset,
     layer: usize,
@@ -679,8 +806,8 @@ pub struct Mapper {
     /// The control that holds Shift down.
     shift_src: Option<Src>,
     pickups: Vec<Pickup>,
-    /// What was last sent to each light, so that only changes are sent.
-    sent: BTreeMap<(Out, bool), u8>,
+    /// What was last sent to each light (the value and the value that darkens it), so that only changes are sent.
+    sent: BTreeMap<LightKey, (u8, u8)>,
 }
 
 /// How much one click of an encoder moves a value while Shift is held, relative to normal.
@@ -720,8 +847,8 @@ impl Mapper {
         self.shift
     }
 
-    fn find(&self, src: Src) -> Option<usize> {
-        self.preset.position(self.layer_name(), src)
+    fn find(&self, src: Src, channel: u8) -> Option<usize> {
+        self.preset.position(self.layer_name(), src, Some(channel))
     }
 
     /// What the message is bound to in the current layer, for the monitor.
@@ -730,7 +857,7 @@ impl Mapper {
         if self.preset.layers.iter().any(|l| l.1 == src) {
             return Some("layer switch".into());
         }
-        self.find(src).map(|i| self.preset.binds[i].action.text())
+        self.find(src, msg.channel()).map(|i| self.preset.binds[i].action.text())
     }
 
     pub fn handle(&mut self, msg: Msg, state: &State) -> Vec<Command> {
@@ -749,8 +876,8 @@ impl Mapper {
             self.shift_src = None;
             return Vec::new();
         }
-        let Some(i) = self.find(src) else { return Vec::new() };
-        let (action, relative) = (self.preset.binds[i].action, self.preset.binds[i].relative);
+        let Some(i) = self.find(src, msg.channel()) else { return Vec::new() };
+        let (action, relative, encoding) = (self.preset.binds[i].action, self.preset.binds[i].relative, self.preset.binds[i].encoding);
         match action {
             Action::Shift => {
                 if down == Some(true) {
@@ -760,7 +887,7 @@ impl Mapper {
                 Vec::new()
             }
             a if a.is_level() || a.is_browse() => match msg {
-                Msg::Cc { val, .. } if relative => match decode_relative(val) {
+                Msg::Cc { val, .. } if relative => match encoding.decode(val) {
                     0 => Vec::new(),
                     n => vec![Command::Turn(a, if self.shift && !a.is_browse() { n * SHIFT_FACTOR } else { n })],
                 },
@@ -786,7 +913,7 @@ impl Mapper {
     /// only what changed since the last call, and a light of another layer is put out.
     pub fn lights(&mut self, state: &State) -> Vec<[u8; 3]> {
         let layer = self.layer_name().map(str::to_string);
-        let mut want: BTreeMap<(Out, bool), u8> = BTreeMap::new();
+        let mut want: BTreeMap<LightKey, (u8, u8)> = BTreeMap::new();
         // Lines for every layer first, so a line for this layer overrides them.
         for specific in [false, true] {
             for l in self.preset.lights.iter().filter(|l| l.layer.is_some() == specific) {
@@ -794,32 +921,38 @@ impl Mapper {
                     continue;
                 }
                 let value = if l.ring {
-                    state.level(l.action).map(ring_value)
+                    state.level(l.action).map(|x| match l.scale {
+                        Some(scale) => (x.clamp(0.0, 1.0) * scale as f32).round() as u8,
+                        None => ring_value(x),
+                    })
                 } else if l.action == Action::Shift {
-                    Some(if self.shift { 127 } else { 0 })
+                    Some(if self.shift { l.on } else { l.off })
                 } else {
-                    state.lit(l.action).map(|on| if on { 127 } else { 0 })
+                    state.lit(l.action).map(|on| if on { l.on } else { l.off })
                 };
                 if let Some(v) = value {
-                    want.insert((l.out, l.ring), v);
+                    want.insert((l.out, l.ring, l.channel), (v, if l.ring { 0 } else { l.off }));
                 }
             }
         }
         let mut out = Vec::new();
-        let message = |o: Out, v: u8| match o {
-            Out::Note(n) => [0x90, n, v],
-            Out::Cc(n) => [0xB0, n, v],
+        let message = |(o, _, ch): LightKey, v: u8| {
+            let ch = ch.clamp(1, 16) - 1;
+            match o {
+                Out::Note(n) => [0x90 | ch, n, v],
+                Out::Cc(n) => [0xB0 | ch, n, v],
+            }
         };
-        for (&key, &v) in &want {
-            if self.sent.get(&key) != Some(&v) {
-                out.push(message(key.0, v));
-                self.sent.insert(key, v);
+        for (&key, &(v, off)) in &want {
+            if self.sent.get(&key).map(|s| s.0) != Some(v) {
+                out.push(message(key, v));
+                self.sent.insert(key, (v, off));
             }
         }
-        let gone: Vec<(Out, bool)> = self.sent.keys().filter(|k| !want.contains_key(k)).copied().collect();
+        let gone: Vec<LightKey> = self.sent.keys().filter(|k| !want.contains_key(k)).copied().collect();
         for key in gone {
-            out.push(message(key.0, 0));
-            self.sent.remove(&key);
+            let off = self.sent.remove(&key).map_or(0, |s| s.1);
+            out.push(message(key, off));
         }
         out
     }
@@ -857,9 +990,9 @@ mod tests {
 
     #[test]
     fn encoder_turns_are_signed() {
-        assert_eq!([1, 3, 63].map(decode_relative), [1, 3, 63]);
-        assert_eq!([65, 67, 127].map(decode_relative), [-1, -3, -63]);
-        assert_eq!(decode_relative(0), 0);
+        assert_eq!([1, 3, 63].map(|v| Encoding::Mackie.decode(v)), [1, 3, 63]);
+        assert_eq!([65, 67, 127].map(|v| Encoding::Mackie.decode(v)), [-1, -3, -63]);
+        assert_eq!(Encoding::Mackie.decode(0), 0);
     }
 
     #[test]
@@ -1037,6 +1170,112 @@ mod tests {
             assert!(p.layers.is_empty() && p.lights.is_empty(), "{name}: no layers and no lights");
             assert!(p.warnings.is_empty(), "{name}: {:?}", p.warnings);
         }
+    }
+
+    #[test]
+    fn every_relative_encoding_counts_its_own_way() {
+        // (encoding, values for one step up, three steps up, one step down, three steps down, no turn)
+        let table = [
+            (Encoding::Mackie, [1, 3, 65, 67, 0]),
+            (Encoding::Twos, [1, 3, 127, 125, 0]),
+            (Encoding::Offset, [65, 67, 63, 61, 64]),
+            (Encoding::SignBit2, [65, 67, 1, 3, 0]),
+        ];
+        for (e, [up1, up3, down1, down3, none]) in table {
+            assert_eq!([up1, up3, down1, down3, none].map(|v| e.decode(v)), [1, 3, -1, -3, 0], "{e:?}");
+        }
+        assert_eq!(Encoding::Offset.decode(64 + 63), 63);
+        assert_eq!(Encoding::Twos.decode(64), -64, "the far end of two's complement");
+        for e in [Encoding::Mackie, Encoding::Twos, Encoding::Offset, Encoding::SignBit2] {
+            assert_eq!(Encoding::parse(e.word()), Some(e), "the word of {e:?} parses back");
+        }
+        assert_eq!(Encoding::parse("TWOS"), Some(Encoding::Twos));
+        assert_eq!(Encoding::parse("binary"), None);
+    }
+
+    #[test]
+    fn an_encoder_line_can_name_its_encoding_and_a_knob_moves_the_value_it_is_bound_to() {
+        let p = Preset::parse("bind = cc 1 rel twos -> tempo\nbind = cc 2 rel offset -> range_from\nbind = cc 3 rel -> range_to\nbind = cc 4 rel signbit2 -> click_volume\n");
+        assert!(p.warnings.is_empty(), "{:?}", p.warnings);
+        let mut m = Mapper::new(p);
+        let s = State::default();
+        assert_eq!(m.handle(cc(1, 127), &s), [Command::Turn(Action::Tempo, -1)], "two's complement");
+        assert_eq!(m.handle(cc(2, 66), &s), [Command::Turn(Action::RangeFrom, 2)], "offset");
+        assert!(m.handle(cc(2, 64), &s).is_empty(), "offset: 64 is no turn");
+        assert_eq!(m.handle(cc(3, 65), &s), [Command::Turn(Action::RangeTo, -1)], "Mackie unless said otherwise");
+        assert_eq!(m.handle(cc(4, 65), &s), [Command::Turn(Action::ClickVolume, 1)], "signed bit 2");
+        // Shift still makes the steps larger, whatever the encoding.
+        let p = Preset::parse("bind = note 9 -> shift\nbind = cc 1 rel twos -> tempo\n");
+        let mut m = Mapper::new(p);
+        m.handle(note(9), &s);
+        assert_eq!(m.handle(cc(1, 127), &s), [Command::Turn(Action::Tempo, -5)]);
+    }
+
+    #[test]
+    fn a_line_can_be_for_one_midi_channel_and_a_channel_line_wins() {
+        let p = Preset::parse("bind = note 36 ch 10 -> record\nbind = note 36 -> stop\nbind = cc 7 ch 2 abs -> tempo\n");
+        assert!(p.warnings.is_empty(), "{:?}", p.warnings);
+        assert_eq!(p.binds[0].channel, Some(10));
+        assert_eq!(p.binds[1].channel, None);
+        let mut m = Mapper::new(p);
+        let s = State { tempo: 0.5, ..Default::default() };
+        let on = |ch: u8, n: u8| Msg::NoteOn { ch, note: n, vel: 100 };
+        assert_eq!(m.handle(on(10, 36), &s), [Command::Press(Action::Record)], "the line for channel 10");
+        assert_eq!(m.handle(on(1, 36), &s), [Command::Press(Action::Stop)], "any other channel");
+        let cc_on = |ch: u8, val: u8| Msg::Cc { ch, cc: 7, val };
+        assert!(m.handle(cc_on(1, 64), &s).is_empty(), "cc 7 on channel 1 is not bound");
+        assert_eq!(m.handle(cc_on(2, 64), &s).len(), 1, "cc 7 on channel 2 is");
+        assert_eq!(m.bound_to(on(10, 36)).as_deref(), Some("record"));
+        assert_eq!(m.bound_to(on(3, 36)).as_deref(), Some("stop"));
+        assert_eq!(m.bound_to(cc_on(1, 1)), None);
+        // The same note on two channels is two controls, not a repeated line.
+        let two = Preset::parse("bind = note 36 ch 1 -> record\nbind = note 36 ch 2 -> stop\n");
+        assert!(two.warnings.is_empty(), "{:?}", two.warnings);
+        let again = Preset::parse("bind = note 36 ch 1 -> record\nbind = note 36 ch 1 -> stop\n");
+        assert_eq!(again.warnings.len(), 1, "{:?}", again.warnings);
+    }
+
+    #[test]
+    fn bad_channel_encoding_and_light_words_are_reported() {
+        for line in [
+            "bind = note 1 ch 0 -> record",
+            "bind = note 1 ch 17 -> record",
+            "bind = note 1 ch -> record",
+            "bind = cc 1 twos -> tempo",
+            "bind = cc 1 abs twos -> tempo",
+            "bind = note 1 rel twos -> record",
+            "bind = bend 1 ch 2 -> tempo",
+            "led = record -> note 1 on=200",
+            "led = record -> note 1 scale=10",
+            "ring = tempo -> cc 1 on=10",
+            "led = record -> note 1 colour=3",
+            "led = record -> note 1 ch 20",
+        ] {
+            let p = Preset::parse(line);
+            assert_eq!(p.warnings.len(), 1, "{line}: {:?}", p.warnings);
+            assert!(p.binds.is_empty() && p.lights.is_empty(), "{line}: the line is not used");
+        }
+    }
+
+    #[test]
+    fn a_light_can_have_other_values_another_channel_and_a_ring_a_plain_scale() {
+        let p = Preset::parse("led = record -> note 36 ch 10 on=21 off=3\nring = tempo -> cc 20 scale=100\nled = listen -> note 5\n");
+        assert!(p.warnings.is_empty(), "{:?}", p.warnings);
+        let mut m = Mapper::new(p);
+        let mut s = State { record: true, tempo: 0.5, ..Default::default() };
+        let first = m.lights(&s);
+        assert!(first.contains(&[0x99, 36, 21]), "record is on, channel 10, value 21: {first:?}");
+        assert!(first.contains(&[0xB0, 20, 50]), "the ring shows 0.5 of 100: {first:?}");
+        assert!(first.contains(&[0x90, 5, 0]), "an ordinary light: channel 1, off = 0: {first:?}");
+        s.record = false;
+        assert_eq!(m.lights(&s), [[0x99, 36, 3]], "off is the line's own off value");
+        // A light that is no longer wanted gets its own off value, not 0.
+        let p = Preset::parse("layer = A note 1\nlayer = B note 2\nled = A record -> note 36 ch 10 on=21 off=3\n");
+        let mut m = Mapper::new(p);
+        let s = State { record: true, ..Default::default() };
+        assert_eq!(m.lights(&s), [[0x99, 36, 21]]);
+        m.handle(note(2), &s);
+        assert_eq!(m.lights(&s), [[0x99, 36, 3]], "put out with the preset's off value");
     }
 
     #[test]

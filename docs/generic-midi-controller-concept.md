@@ -1,6 +1,6 @@
 # Concept: support for generic MIDI controllers (beyond Mackie Control)
 
-Status: proposal, nothing implemented. Written 2026-10-29.
+Status: proposal; phase 1 (preset format and Mapper) implemented 2026-10-29, the UI phases are not. Relative encodings are named `mackie`, `twos`, `offset` and `signbit2`.
 
 ## Where we are
 
@@ -28,7 +28,7 @@ Keep presets and the Mapper as they are, add a second way to *make* a preset: ch
 3. **Learn flow:** click *Learn* on a row (or *Learn next* to walk down the list), the row says "Press a control…", the next message from the chosen port is assigned. A control already used elsewhere asks to move or swap. Escape cancels. The existing monitor shows what arrived.
 4. **Per-control details** (side panel, only the fields that make sense for the kind):
    - behaves as: button, absolute knob or fader, relative knob;
-   - relative encoding: two's complement, offset 64, sign and magnitude, Mackie; the program can *guess* it from the first few turns (a clockwise turn is the first message after a stop) and shows the guess;
+   - relative encoding: two's complement, offset 64, signed bit 2 (the opposite sign bit to Mackie), Mackie; the program can *guess* it from the first few turns (a clockwise turn is the first message after a stop) and shows the guess;
    - MIDI channel: any, or one;
    - range, learned from the lowest and highest value seen (for fader pickup and scaling);
    - light: none, note on with velocity, cc value. Optional "on" and "off" values (colour pads).
@@ -44,7 +44,7 @@ New optional words on existing lines; absent means today's behaviour.
 ```
 bind  = note 41 -> record                 # as now
 bind  = cc 13 ch 1 abs -> tempo           # channel filter (new), absolute
-bind  = cc 14 rel twos -> range_from      # rel encodings: mackie (default), twos, offset, signmag
+bind  = cc 14 rel twos -> range_from      # rel encodings: mackie (default), twos, offset, signbit2
 led   = record -> note 41 on=127 off=0    # light values (new)
 ring  = tempo -> cc 13 scale=127          # ring/value feedback scale (new)
 init  = sysex F0 00 20 29 ... F7          # sent after connecting (new, optional)
