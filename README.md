@@ -127,13 +127,14 @@ A control surface that speaks the Mackie Control protocol runs the program from 
 
 Tempo controls act on the practice tempo, or on the metronome while the Metronome tab is open. Tempo, measures and the score are locked while a take records. The lights show what is on (recording, listening, click, loop, notes, metronome, mute, solo, shift) and the rings around the encoders show their values.
 
-**Teaching a controller.** On Settings → Controller, *New preset by learning* makes an empty preset for the controller's port, and *Copy the chosen preset to edit* makes an editable copy of any preset (the built-in ones cannot be changed). Under *Assignments* every action has a *Learn* button: click it, then press or turn the control on the device. By default the program then waits for the next action in the list; untick that to learn one at a time. A control that was bound to another action is taken from it. A knob or fader sends its position (*absolute*); an endless encoder needs *relative* and the way it counts (*mackie*, *twos*, *offset* or *signbit2*, which the monitor helps to find out). Every change is saved to the preset file at once.
+**Teaching a controller.** Every preset is either *Mackie Control* or *Generic MIDI* (the `kind` line; a file without one counts as Mackie if it has layers or lights, otherwise as MIDI), and the list on Settings → Controller is grouped that way. *Edit assignments…* opens the editor in a window of its own. *New preset by learning* makes an empty preset for the controller's port, and *Copy the chosen preset to edit* makes an editable copy of any preset (the built-in ones cannot be changed). Under *Assignments* every action has a *Learn* button: click it, then press or turn the control on the device. By default the program then waits for the next action in the list; untick that to learn one at a time. A control that was bound to another action is taken from it. A knob or fader sends its position (*absolute*); an endless encoder needs *relative* and the way it counts (*mackie*, *twos*, *offset* or *signbit2*, which the monitor helps to find out). Every change is saved to the preset file at once.
 
 **Your own preset.** A preset is a text file ending in `.txt` in the `controllers` folder next to the settings file (the Controller page shows the path); it then shows up in the list. The page can copy a built-in preset there to start from. Each line is `key = value`, `#` starts a comment:
 
 ```
 name  = My surface
 port  = X-TOUCH MINI                  # part of the MIDI port's name
+kind  = mackie                        # or midi: plain notes and cc, rings show plain values
 layer = A note 84                     # this message switches to layer A (optional)
 layer = B note 85
 bind  = A note 89 -> record           # a button; without "A" it works on every layer

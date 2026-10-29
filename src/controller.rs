@@ -8,6 +8,7 @@
 //! ```text
 //! name  = Behringer X-Touch Mini
 //! port  = X-TOUCH MINI                  # part of the MIDI port's name
+//! kind  = mackie                        # or midi: plain notes, cc and values; mackie when missing
 //! layer = A note 84                     # this message selects layer A
 //! bind  = A note 89 -> record           # a button, on layer A only
 //! bind  = cc 16 rel -> tempo            # an endless encoder (Mackie relative values), on every layer
@@ -585,11 +586,48 @@ pub struct Light {
     pub scale: Option<u8>,
 }
 
+/// What a preset's controller speaks: Mackie Control (layers, ring and light values as the
+/// Mackie table has them) or plain MIDI (notes, cc and pitch bend as the device sends them).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord)]
+pub enum PresetKind {
+    #[default]
+    Mackie,
+    Midi,
+}
+
+impl PresetKind {
+    pub fn parse(word: &str) -> Option<PresetKind> {
+        match word.trim().to_ascii_lowercase().as_str() {
+            "mackie" => Some(PresetKind::Mackie),
+            "midi" => Some(PresetKind::Midi),
+            _ => None,
+        }
+    }
+
+    /// The word used in preset files.
+    pub fn word(self) -> &'static str {
+        match self {
+            PresetKind::Mackie => "mackie",
+            PresetKind::Midi => "midi",
+        }
+    }
+
+    /// For the screen.
+    pub fn label(self) -> &'static str {
+        match self {
+            PresetKind::Mackie => "Mackie Control",
+            PresetKind::Midi => "Generic MIDI",
+        }
+    }
+}
+
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Preset {
     pub name: String,
     /// Part of the MIDI port's name.
     pub port: String,
+    /// Mackie Control or plain MIDI; a ring of a MIDI preset shows a plain value 0 to 127 unless `scale=` says otherwise.
+    pub kind: PresetKind,
     /// Layer names, in the order of their selecting messages.
     pub layers: Vec<(String, Src)>,
     pub binds: Vec<Binding>,
@@ -617,6 +655,7 @@ fn split_layer<'a>(words: &mut Vec<&'a str>, first_is_not: &[&str]) -> Option<St
 impl Preset {
     pub fn parse(text: &str) -> Preset {
         let mut p = Preset::default();
+        let kind_given = text.lines().filter_map(|l| l.split('#').next()?.split_once('=')).any(|(key, _)| key.trim() == "kind");
         for (i, line) in text.lines().enumerate() {
             let line = line.split('#').next().unwrap_or("").trim();
             if line.is_empty() {
@@ -631,6 +670,10 @@ impl Preset {
             }
         }
         p.validate();
+        if !kind_given {
+            // A file from before presets said what they speak: layers and lights are Mackie Control's, plain notes and cc are MIDI.
+            p.kind = if p.layers.is_empty() && p.lights.is_empty() { PresetKind::Midi } else { PresetKind::Mackie };
+        }
         p
     }
 
@@ -638,6 +681,7 @@ impl Preset {
         match key {
             "name" => self.name = value.to_string(),
             "port" => self.port = value.to_string(),
+            "kind" => self.kind = PresetKind::parse(value).ok_or_else(|| format!("unknown kind \"{value}\": expected mackie or midi"))?,
             "layer" => {
                 let mut w: Vec<&str> = value.split_whitespace().collect();
                 if w.len() < 2 {
@@ -742,7 +786,7 @@ impl Preset {
     /// The preset as a file: what `Preset::parse` reads back as the same preset (comments are lost).
     pub fn to_text(&self) -> String {
         let mut s = String::from("# Edited in Roll Model; the lines are explained in the README (\"Your own preset\").\n");
-        s.push_str(&format!("name = {}\nport = {}\n", self.name, self.port));
+        s.push_str(&format!("name = {}\nport = {}\nkind = {}\n", self.name, self.port, self.kind.word()));
         for (name, src) in &self.layers {
             s.push_str(&format!("layer = {name} {}\n", src.text()));
         }
@@ -1100,8 +1144,9 @@ impl Mapper {
                 if specific && l.layer != layer {
                     continue;
                 }
+                let scale = l.scale.or((self.preset.kind == PresetKind::Midi).then_some(127));
                 let value = if l.ring {
-                    state.level(l.action).map(|x| match l.scale {
+                    state.level(l.action).map(|x| match scale {
                         Some(scale) => (x.clamp(0.0, 1.0) * scale as f32).round() as u8,
                         None => ring_value(x),
                     })
@@ -1561,6 +1606,36 @@ mod tests {
         m.replace_preset(edited);
         assert_eq!(m.layer_name(), Some("B"), "still on layer B");
         assert_eq!(m.handle(note(1), &s), [Command::Press(Action::Listen)]);
+    }
+
+    #[test]
+    fn a_preset_says_whether_it_speaks_mackie_or_plain_midi() {
+        // Without a kind line the file is read as Mackie if it has layers or lights, as MIDI otherwise.
+        assert_eq!(Preset::parse("layer = A note 1\nbind = A note 2 -> record\n").kind, PresetKind::Mackie);
+        assert_eq!(Preset::parse("led = record -> note 1\n").kind, PresetKind::Mackie);
+        assert_eq!(Preset::parse("bind = note 2 -> record\n").kind, PresetKind::Midi);
+        assert_eq!(Preset::parse("kind = mackie\nbind = note 2 -> record\n").kind, PresetKind::Mackie, "a kind line wins");
+        assert_eq!(Preset::parse("kind = midi\n").kind, PresetKind::Midi);
+        assert_eq!(Preset::parse("kind = MIDI\n").kind, PresetKind::Midi);
+        let bad = Preset::parse("kind = osc\n");
+        assert_eq!((bad.kind, bad.warnings.len()), (PresetKind::Mackie, 1), "{:?}", bad.warnings);
+        for (name, text) in BUILTIN {
+            let kind = Preset::parse(text).kind;
+            let generic = ["Novation Launch Control XL", "Korg nanoKONTROL2", "Akai MPK Mini", "Arturia BeatStep"].contains(name);
+            assert_eq!(kind, if generic { PresetKind::Midi } else { PresetKind::Mackie }, "{name}");
+        }
+        // The kind survives a trip through a file.
+        let p = Preset::parse("kind = midi\nbind = note 1 -> record\n");
+        assert_eq!(Preset::parse(&p.to_text()).kind, PresetKind::Midi);
+        // A ring of a MIDI preset shows a plain value, unless it says how far.
+        let midi = |extra: &str| {
+            let mut m = Mapper::new(Preset::parse(&format!("kind = midi\nring = tempo -> cc 20{extra}\n")));
+            m.lights(&State { tempo: 0.5, ..Default::default() })
+        };
+        assert_eq!(midi(""), [[0xB0, 20, 64]]);
+        assert_eq!(midi(" scale=100"), [[0xB0, 20, 50]]);
+        let mut mackie = Mapper::new(Preset::parse("ring = tempo -> cc 20\n"));
+        assert_eq!(mackie.lights(&State { tempo: 0.5, ..Default::default() }), [[0xB0, 20, 0x20 | 6]], "Mackie ring values");
     }
 
     #[test]

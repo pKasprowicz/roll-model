@@ -30,6 +30,7 @@
 
 name = Behringer X-Touch Mini
 port = X-TOUCH MINI
+kind = mackie
 
 layer = A note 84
 layer = B note 85

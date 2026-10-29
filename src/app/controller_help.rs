@@ -90,7 +90,7 @@ impl ControllerHelp {
                 (true, None) => "The controller is connected.".to_string(),
                 (false, _) => "The controller is not connected.".to_string(),
             };
-            ui.label(RichText::new(state).small().weak());
+            ui.label(RichText::new(format!("{}. {state}", self.preset.kind.label())).small().weak());
         });
         let layer = self.preset.layers.get(self.layer).map(|l| l.0.clone());
         match &self.layout {

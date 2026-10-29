@@ -5,7 +5,7 @@
 
 mod editor;
 
-use std::collections::VecDeque;
+use std::collections::{BTreeMap, VecDeque};
 use std::path::Path;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
@@ -44,6 +44,8 @@ pub(super) struct Controller {
     message: String,
     /// Built-in presets, then the files in the controllers folder.
     presets: Vec<String>,
+    /// What each of them speaks (Mackie Control or plain MIDI).
+    kinds: BTreeMap<String, controller::PresetKind>,
     monitor: VecDeque<String>,
     /// The recent score the controller is on.
     cursor: usize,
@@ -62,6 +64,7 @@ impl Controller {
             queue: Arc::new(Mutex::new(Vec::new())),
             message: String::new(),
             presets: Vec::new(),
+            kinds: BTreeMap::new(),
             monitor: VecDeque::new(),
             cursor: 0,
             taps: Vec::new(),
@@ -187,6 +190,8 @@ impl DrumApp {
                 names.push(name);
             }
         }
+        let dir = Config::controllers_dir();
+        self.controller.kinds = names.iter().filter_map(|n| controller::load_preset(n, dir.as_deref()).ok().map(|p| (n.clone(), p.kind))).collect();
         self.controller.presets = names;
     }
 
@@ -665,7 +670,7 @@ impl DrumApp {
     pub(super) fn settings_controller(&mut self, ui: &mut egui::Ui) {
         ui.heading("Controller");
         ui.label(
-            RichText::new("A control surface that speaks the Mackie Control protocol, such as the Behringer X-Touch Mini (switch it to MC mode) or X-Touch Compact. It works the transport, tempo, measures, click and mixer from the stool, and its lights follow the application. Close other programs that use its MIDI port.")
+            RichText::new("Control surfaces that run the program from the stool. A preset is either Mackie Control (the Behringer X-Touch Mini and Compact, in MC mode) or Generic MIDI (knobs, faders and buttons that send plain notes and cc, such as the Novation Launch Control XL, Korg nanoKONTROL2, Akai MPK Mini and Arturia BeatStep). Choose a preset, or teach your own: copy one or start a new preset, then press the controls to bind them. Click the controller indicator at the top right of the window for a picture of it. Close other programs that use the controller's MIDI port.")
                 .small()
                 .weak(),
         );
@@ -678,11 +683,18 @@ impl DrumApp {
                 if ui.selectable_label(self.cfg.controller_preset.is_empty(), "— none —").clicked() {
                     preset = Some(String::new());
                 }
-                for name in &self.controller.presets {
-                    let builtin = controller::builtin_text(name).is_some();
-                    let label = if builtin { format!("{name} (built in)") } else { name.clone() };
-                    if ui.selectable_label(&self.cfg.controller_preset == name, label).clicked() {
-                        preset = Some(name.clone());
+                for kind in [controller::PresetKind::Mackie, controller::PresetKind::Midi] {
+                    let of_kind: Vec<&String> = self.controller.presets.iter().filter(|n| self.controller.kinds.get(*n).copied().unwrap_or_default() == kind).collect();
+                    if of_kind.is_empty() {
+                        continue;
+                    }
+                    ui.label(RichText::new(kind.label()).small().weak());
+                    for name in of_kind {
+                        let builtin = controller::builtin_text(name).is_some();
+                        let label = if builtin { format!("{name} (built in)") } else { name.clone() };
+                        if ui.selectable_label(&self.cfg.controller_preset == name, label).clicked() {
+                            preset = Some(name.clone());
+                        }
                     }
                 }
             });
@@ -729,6 +741,9 @@ impl DrumApp {
         if !text.is_empty() {
             ui.label(RichText::new(text).color(colour));
         }
+        if let Some(kind) = self.controller.kinds.get(&self.cfg.controller_preset) {
+            ui.label(RichText::new(format!("Type: {}", kind.label())).small().weak());
+        }
 
         if let Some(link) = self.controller.link.as_ref() {
             let preset = link.mapper.preset();
@@ -751,7 +766,7 @@ impl DrumApp {
             });
         }
 
-        self.controller_editor(ui);
+        self.controller_assignments_section(ui);
 
         ui.add_space(6.0);
         ui.label(RichText::new("Monitor (latest first): press and turn the controls to see what they send and what they are bound to").strong());
@@ -1150,10 +1165,13 @@ mod tests {
     fn the_controller_page_draws_with_and_without_a_controller() {
         let mut app = DrumApp::with_config(Config::default());
         app.refresh_controllers();
+        // The built-in presets come first; the user's own (a folder this test does not control) follow.
         assert_eq!(
-            app.controller.presets,
+            app.controller.presets[..6],
             ["Behringer X-Touch Mini", "Behringer X-Touch Compact", "Novation Launch Control XL", "Korg nanoKONTROL2", "Akai MPK Mini", "Arturia BeatStep"]
         );
+        assert_eq!(app.controller.kinds["Behringer X-Touch Mini"], controller::PresetKind::Mackie);
+        assert_eq!(app.controller.kinds["Korg nanoKONTROL2"], controller::PresetKind::Midi);
         let ctx = egui::Context::default();
         for message in ["", "No controller selected."] {
             app.controller.message = message.into();

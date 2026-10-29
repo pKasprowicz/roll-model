@@ -24,6 +24,7 @@
 
 name = Behringer X-Touch Compact
 port = X-TOUCH COMPACT
+kind = mackie
 
 # Faders
 bind = bend 1 -> gain 1

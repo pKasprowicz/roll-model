@@ -16,6 +16,7 @@
 
 name = Arturia BeatStep
 port = Arturia BeatStep
+kind = midi
 
 # Top row of knobs
 bind = cc 10 abs -> tempo

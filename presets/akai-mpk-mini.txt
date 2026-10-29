@@ -13,6 +13,7 @@
 
 name = Akai MPK Mini
 port = MPK mini
+kind = midi
 
 # Knobs, first model
 bind = cc 17 abs -> tempo

@@ -15,6 +15,7 @@
 
 name = Novation Launch Control XL
 port = Launch Control XL
+kind = midi
 
 # Knobs, top row
 bind = cc 13 abs -> tempo

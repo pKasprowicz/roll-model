@@ -1897,6 +1897,7 @@ impl eframe::App for DrumApp {
         });
 
         self.controller_help_window(ctx);
+        self.controller_editor_window(ctx);
 
         if self.cfg != self.saved_cfg {
             if let Err(e) = self.cfg.save() {

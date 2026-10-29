@@ -15,6 +15,7 @@
 
 name = Korg nanoKONTROL2
 port = nanoKONTROL2
+kind = midi
 
 # Faders
 bind = cc 0 abs -> gain 1

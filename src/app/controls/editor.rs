@@ -7,7 +7,7 @@
 use std::collections::BTreeMap;
 use std::path::PathBuf;
 
-use egui::RichText;
+use egui::{RichText, ViewportBuilder, ViewportClass, ViewportId};
 
 use super::*;
 use crate::controller::{Binding, Encoding, Preset};
@@ -25,13 +25,15 @@ pub(super) struct EditorState {
     /// How a value's cc is read, chosen before it is learned (by the action's name).
     pub(super) kinds: BTreeMap<String, (bool, Encoding)>,
     pub(super) notice: String,
+    /// The editor window is open.
+    pub(super) open: bool,
     /// The folder of the user's presets; `None`: the settings folder (tests use another).
     pub(super) dir: Option<PathBuf>,
 }
 
 impl Default for EditorState {
     fn default() -> EditorState {
-        EditorState { learning: None, layer: 0, keep_going: true, remember_channel: false, kinds: BTreeMap::new(), notice: String::new(), dir: None }
+        EditorState { learning: None, layer: 0, keep_going: true, remember_channel: false, kinds: BTreeMap::new(), notice: String::new(), open: false, dir: None }
     }
 }
 
@@ -208,14 +210,67 @@ impl DrumApp {
         }
         self.status = status.to_string();
         let dir = self.controller.editor.dir.take();
-        self.controller.editor = EditorState { dir, ..EditorState::default() };
+        self.controller.editor = EditorState { dir, open: true, ..EditorState::default() };
         self.connect_controller();
     }
 
-    /// The table of actions and the buttons that start editing.
-    pub(super) fn controller_editor(&mut self, ui: &mut egui::Ui) {
+    /// The Assignments section of the Controller page: what the editor is for, and the buttons
+    /// that open it. The editor itself is a window of its own (`controller_editor_window`).
+    pub(super) fn controller_assignments_section(&mut self, ui: &mut egui::Ui) {
         ui.add_space(10.0);
         ui.heading("Assignments");
+        ui.label(
+            RichText::new("Teach the program which control does what: press Learn, then the control on the device. The editor opens in a window of its own and every change is saved to the preset file at once. The built-in presets are copied first.")
+                .small()
+                .weak(),
+        );
+        let mut op: Option<Op> = None;
+        ui.horizontal(|ui| {
+            if ui.button("Edit assignments…").clicked() {
+                self.controller.editor.open = true;
+            }
+            if ui.add_enabled(!self.cfg.controller_preset.is_empty(), egui::Button::new("Copy the chosen preset to edit")).clicked() {
+                op = Some(Op::CopyToEdit);
+            }
+            if ui.button("New preset by learning").clicked() {
+                op = Some(Op::NewPreset);
+            }
+        });
+        if !self.controller.editor.notice.is_empty() && !self.controller.editor.open {
+            ui.label(RichText::new(self.controller.editor.notice.clone()).small().color(render::AMBER));
+        }
+        self.run_op(op);
+    }
+
+    /// The editor window, while it is open: a window of its own (inside the main window where the
+    /// platform has no second window).
+    pub(in crate::app) fn controller_editor_window(&mut self, ctx: &egui::Context) {
+        if !self.controller.editor.open {
+            return;
+        }
+        let name = if self.cfg.controller_preset.is_empty() { "no preset".to_string() } else { self.cfg.controller_preset.clone() };
+        let title = format!("Controller assignments: {name}");
+        let builder = ViewportBuilder::default().with_title(title.clone()).with_inner_size([660.0, 780.0]).with_min_inner_size([480.0, 320.0]);
+        let closed = ctx.show_viewport_immediate(ViewportId::from_hash_of("controller_editor"), builder, |ctx, class| {
+            if class == ViewportClass::Embedded {
+                let mut open = true;
+                egui::Window::new(title.clone()).id(egui::Id::new("controller_editor_window")).open(&mut open).default_width(620.0).vscroll(true).show(ctx, |ui| self.editor_body(ui));
+                !open
+            } else {
+                egui::CentralPanel::default().show(ctx, |ui| {
+                    egui::ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| self.editor_body(ui));
+                });
+                ctx.input(|i| i.viewport().close_requested())
+            }
+        });
+        if closed {
+            self.controller.editor.open = false;
+            self.controller.editor.learning = None;
+        }
+    }
+
+    /// The table of actions (the contents of the editor window).
+    fn editor_body(&mut self, ui: &mut egui::Ui) {
         let mut op: Option<Op> = None;
         let Some(path) = self.editable_path() else {
             ui.label(RichText::new("The built-in presets cannot be edited. Copy one to change its assignments, or start a new preset and teach it your controls by pressing them.").small().weak());
@@ -486,19 +541,46 @@ mod tests {
     }
 
     #[test]
+    fn the_editor_is_a_window_that_opens_from_the_page_and_closes_again() {
+        let ctx = egui::Context::default();
+        let mut app = DrumApp::with_config(Config::default());
+        let frame = |app: &mut DrumApp| {
+            let _ = ctx.run(egui::RawInput::default(), |ctx| {
+                egui::CentralPanel::default().show(ctx, |ui| app.controller_assignments_section(ui));
+                app.controller_editor_window(ctx);
+            });
+        };
+        frame(&mut app);
+        assert!(!app.controller.editor.open, "closed until asked for");
+        app.controller.editor.open = true;
+        frame(&mut app);
+        frame(&mut app);
+        assert!(app.controller.editor.open, "it stays open");
+        // Making a preset opens the editor on it.
+        let dir = temp_dir("window");
+        app.controller.editor.open = false;
+        app.controller.editor.dir = Some(dir.clone());
+        app.midi_inputs = vec!["Some Pad Controller".into()];
+        app.new_learned_preset();
+        assert!(app.controller.editor.open, "a new preset opens the editor");
+        frame(&mut app);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
     fn the_table_draws_for_a_preset_that_cannot_be_edited() {
         let mut app = DrumApp::with_config(Config::default());
         app.refresh_controllers();
         let ctx = egui::Context::default();
         for _ in 0..2 {
             let _ = ctx.run(egui::RawInput::default(), |ctx| {
-                egui::CentralPanel::default().show(ctx, |ui| app.controller_editor(ui));
+                egui::CentralPanel::default().show(ctx, |ui| app.editor_body(ui));
             });
         }
         assert!(app.editable_path().is_none(), "the Mini is built in");
         app.cfg.controller_preset = String::new();
         let _ = ctx.run(egui::RawInput::default(), |ctx| {
-            egui::CentralPanel::default().show(ctx, |ui| app.controller_editor(ui));
+            egui::CentralPanel::default().show(ctx, |ui| app.editor_body(ui));
         });
         // A message while nothing is being learned is not used up.
         assert!(!app.learn_message(controller::Msg::NoteOn { ch: 1, note: 1, vel: 100 }));
