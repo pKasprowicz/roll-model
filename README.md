@@ -11,7 +11,7 @@ A Rust desktop app (egui) for practising drum parts against a score:
 
 ## User manual
 
-An extensive manual (setup, every tab, the controller, grading, troubleshooting, and a reference of the 40 rudiments) is one HTML file, `roll-model-manual.html`, included in every release archive and attached to the release. It is built from `docs/manual/manual.template.html` and the rudiment data in `src/rudiments.rs`:
+An extensive manual (setup, every tab, the controller, grading, troubleshooting, and a reference of the 40 rudiments) is one HTML file, `roll-model-manual.html`, included in every release archive and attached to the release. It is built from `docs/manual/manual.template.html` and the rudiment data in `core/src/rudiments.rs`:
 
 ```sh
 python3 tools/build_manual.py      # writes target/manual/roll-model-manual.html (standard library only)
@@ -194,7 +194,7 @@ The program is built from open-source libraries and fonts under their own licenc
 
 ## Versioning
 
-The project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html). The version lives in `Cargo.toml`, each release is tagged `vMAJOR.MINOR.PATCH`, and every change that users can see is listed in [CHANGELOG.md](CHANGELOG.md). Moving the tag `preview` onto a commit of `develop` (`git tag -f preview && git push -f origin preview`) builds a *preview* release from it: a GitHub pre-release, replaced each time, that may be unfinished.
+The project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html). The version lives in `Cargo.toml` and `core/Cargo.toml`, each release is tagged `vMAJOR.MINOR.PATCH`, and every change that users can see is listed in [CHANGELOG.md](CHANGELOG.md). Moving the tag `preview` onto a commit of `develop` (`git tag -f preview && git push -f origin preview`) builds a *preview* release from it: a GitHub pre-release, replaced each time, that may be unfinished.
 
 What counts as the public interface: the settings file keys, the CSV export columns, and the MusicXML features listed above. While the major version is 0, a minor bump (`0.x.0`) may break any of them and a patch bump (`0.1.x`) is for fixes only. From 1.0.0, breaking one of them needs a major bump.
 
@@ -202,14 +202,14 @@ What counts as the public interface: the settings file keys, the CSV export colu
 
 | File | Purpose |
 |---|---|
-| `src/xml.rs` | Small dependency-free XML parser |
-| `src/musicxml.rs` | MusicXML → score (measures, notes, tempo map, repeats) |
-| `src/drums.rs` | Drum instruments, General MIDI and Roland note maps, staff positions |
-| `src/score.rs` | Score model and tempo map (beats ↔ seconds) |
-| `src/rudiments.rs` | The 40 PAS rudiments as stroke patterns and the builder that turns one into a score (no GUI or MIDI) |
-| `src/analysis.rs` | Matching hits to notes and all metrics |
+| `core/src/xml.rs` | Small dependency-free XML parser |
+| `core/src/musicxml.rs` | MusicXML → score (measures, notes, tempo map, repeats) |
+| `core/src/drums.rs` | Drum instruments, General MIDI and Roland note maps, staff positions |
+| `core/src/score.rs` | Score model and tempo map (beats ↔ seconds) |
+| `core/src/rudiments.rs` | The 40 PAS rudiments as stroke patterns and the builder that turns one into a score (no GUI or MIDI) |
+| `core/src/analysis.rs` | Matching hits to notes and all metrics |
 | `src/midi.rs` | MIDI input capture and output (midir), and the control surface's port |
-| `src/controller.rs` | Control surfaces: messages, presets, which control does what, lights (no MIDI port, no GUI) |
+| `core/src/controller/` | Control surfaces: messages, presets, which control does what, lights (no MIDI port, no GUI) |
 | `presets/` | The built-in controller presets (text files) |
 | `src/metronome.rs` | Count-in/metronome thread (audio and/or MIDI click) |
 | `src/playback.rs` | "Listen" and the free metronome: plays notes and clicks on one thread (sound card and/or MIDI) |
@@ -222,4 +222,4 @@ What counts as the public interface: the settings file keys, the CSV export colu
 | `docs/developer/`, `tools/build_devguide.py` | The developer guide (HTML template with code excerpts pulled from the source) and its build script |
 | `docs/style.css` | The stylesheet shared by the manual and the developer guide |
 | `docs/manual/`, `tools/build_manual.py` | The user manual (HTML template) and the script that builds it for releases |
-| `src/config.rs` | Settings file (`%APPDATA%\RollModel\config.txt` on Windows) |
+| `core/src/config.rs` | Settings file (`%APPDATA%\RollModel\config.txt` on Windows) |

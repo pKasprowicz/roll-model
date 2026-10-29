@@ -214,8 +214,7 @@ fn windows(expected: &[Expected], tol: &Tolerances, adaptive: bool) -> Vec<f64> 
 /// A grace note is matched with a hit at most this far from its time, seconds.
 const GRACE_WINDOW: f64 = 0.050;
 
-/// `analyze_with` and the fixed hit window, for the tests.
-#[cfg(test)]
+/// `analyze_with` with the fixed hit window: what a score is graded with.
 pub fn analyze(expected: &[Expected], hits: &[Hit], tol: &Tolerances, elapsed: f64) -> Report {
     analyze_with(expected, hits, tol, elapsed, false)
 }

@@ -1,27 +1,19 @@
 // Hide the console window in Windows release builds.
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-mod analysis;
 mod app;
-mod config;
 mod control;
-mod controller;
-mod controller_layout;
-mod drums;
-mod loader;
 mod metronome;
 mod midi;
-mod musicxml;
 mod playback;
 mod render;
-mod rudiments;
-mod score;
 mod synth;
-mod trigger;
 mod widgets;
-mod xml;
 
 use std::path::PathBuf;
+
+// The pure modules live in the core crate; this keeps their `crate::name` paths working here.
+use roll_model_core::{analysis, config, controller, controller_layout, drums, loader, musicxml, rudiments, score, trigger};
 
 fn main() -> eframe::Result<()> {
     // Optional: a MusicXML file to open on start-up.

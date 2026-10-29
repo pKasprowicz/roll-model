@@ -96,9 +96,9 @@ python3 tools/build_notices.py      # target/notices/THIRD_PARTY_NOTICES.txt</co
 <h3 id="workflow">Workflow and conventions</h3>
 <ul>
 <li><strong>Branches.</strong> <code>main</code> holds releases, <code>develop</code> the work in progress, <code>feature/&lt;name&gt;</code> branches are merged into <code>develop</code> with a merge commit. Moving the tag <code>preview</code> onto a commit of <code>develop</code> and pushing it builds a pre-release.</li>
-<li><strong>Versioning</strong> is SemVer. The version lives in <code>Cargo.toml</code> (bump <code>Cargo.lock</code> with it), release tags are <code>vX.Y.Z</code>. Every user-visible change goes under <code>[Unreleased]</code> in <code>CHANGELOG.md</code>.</li>
+<li><strong>Versioning</strong> is SemVer. The version lives in <code>Cargo.toml</code> and <code>core/Cargo.toml</code> (bump <code>Cargo.lock</code> with them), release tags are <code>vX.Y.Z</code>. Every user-visible change goes under <code>[Unreleased]</code> in <code>CHANGELOG.md</code>.</li>
 <li><strong>Commit messages</strong> are <code>feat:</code>, <code>fix:</code>, <code>docs:</code>, <code>chore:</code>, <code>test:</code>, <code>ci:</code> followed by a sentence.</li>
-<li><strong>Keep the pure modules pure.</strong> <code>analysis.rs</code>, <code>musicxml.rs</code>, <code>score.rs</code>, <code>drums.rs</code>, <code>xml.rs</code>, <code>rudiments.rs</code>, <code>trigger.rs</code>, <code>controller/</code> and <code>controller_layout.rs</code> must not depend on the GUI or on MIDI. That is what makes them testable without devices, and it is the first thing to check in a review.</li>
+<li><strong>Keep the core crate pure.</strong> The crate <code>core/</code> (<code>roll-model-core</code>) holds <code>analysis.rs</code>, <code>musicxml.rs</code>, <code>score.rs</code>, <code>drums.rs</code>, <code>xml.rs</code>, <code>rudiments.rs</code>, <code>trigger.rs</code>, <code>controller/</code> and <code>controller_layout.rs</code>, <code>loader.rs</code> and <code>config.rs</code>. It cannot depend on the app crate, and its manifest lists no GUI, MIDI or audio crate, so the compiler enforces what used to be a convention. That is what makes it testable without devices (<code>cargo test -p roll-model-core</code>, with integration tests in <code>core/tests/</code>).</li>
 <li><strong>Time is quarter notes.</strong> Score positions are quarter notes (<code>q</code>); convert to seconds only through <code>TempoMap</code>.</li>
 <li><strong>Style.</strong> Write code that reads like the code around it: same comment density, naming, idiom. Doc comments say <em>why</em> and what the caller can rely on; a test name is a sentence describing behaviour.</li>
 <li><strong>Update the docs with the code.</strong> <code>HANDOFF.md</code> (status, architecture list, conventions), the README, the manual template and, if behaviour is user visible, the changelog. This guide's code excerpts update themselves; its prose does not.</li>
@@ -206,7 +206,7 @@ python3 tools/build_notices.py      # target/notices/THIRD_PARTY_NOTICES.txt</co
 <li><strong>Score time</strong> is in <em>quarter notes</em> from the start of the (unrolled) score: <code>q</code>. A bar of 4/4 is 4.0 long, a 16th note is 0.25, a triplet 16th is 1/6.</li>
 <li><strong>Wall time</strong> is in seconds. It exists only through <code>TempoMap</code>, a piecewise-constant tempo curve, with a <em>scale</em> factor for the practice tempo.</li>
 </ul>
-{{code:src/score.rs::pub struct TempoMap}}
+{{code:core/src/score.rs::pub struct TempoMap}}
 <p><code>q_to_sec(q, scale)</code> and its inverse <code>sec_to_q</code> are the only conversions; <code>sec_to_q</code> extrapolates for negative times, which is how a count-in lands before the first bar. Rudiment scores are written at a fixed 100 BPM and use the scale as the BPM (see <a href="#rudiments">The rudiment subsystem</a>).</p>
 <p><strong>Take time zero</strong> is the start of the first measure of the practice range. <code>Take.t0</code> is that measure's absolute time, so a hit's score position is <code>sec_to_q(hit.t + t0, scale)</code>. In <code>start_take</code> zero is <code>now + 0.5 s lead + count-in</code>: half a second is reserved so the sound device has time to open, so the first score note comes 0.5 s after the count-in alone would suggest. Anything that scripts a take from outside has to add that lead.</p>
 <figure>
@@ -224,8 +224,8 @@ python3 tools/build_notices.py      # target/notices/THIRD_PARTY_NOTICES.txt</co
 
 <h3 id="model">The score model</h3>
 <p>A <code>Score</code> is deliberately flat: a time-ordered list of drum onsets, a list of measures and a tempo map. Nothing in it knows where it came from. A MusicXML file, a rudiment and the metronome's click bar all produce the same type, which is why Listen, takes, grading and the staff work on all of them.</p>
-{{code:src/score.rs::pub struct ScoreNote}}
-{{code:src/score.rs::pub struct Score}}
+{{code:core/src/score.rs::pub struct ScoreNote}}
+{{code:core/src/score.rs::pub struct Score}}
 <ul>
 <li><code>staff_step</code>: step 0 is the bottom staff line (E4), the top line (F5) is step 8; each step is one line or space. Played notes are drawn where the score draws the same lane (<code>Score::staff_for_lane</code>).</li>
 <li><code>grace</code> / <code>grace_order</code>: a flam is one grace note, a drag two; order 1 is nearest the main note. They have the same <code>q</code> as the main note and are placed in front of it in <code>notes</code>.</li>
@@ -235,7 +235,7 @@ python3 tools/build_notices.py      # target/notices/THIRD_PARTY_NOTICES.txt</co
 
 <h3 id="kit">The kit: lanes and note maps</h3>
 <p>A <code>Lane</code> is an instrument as the program sees it (kick, snare, cross-stick, closed/open/pedal hi-hat, four toms, two crashes, ride, bell, china, splash, cowbell, other). Everything that varies per instrument is a <code>match</code> on <code>Lane</code>, so adding one is a compiler-guided change (<a href="#t-lane">tutorial 6</a>).</p>
-{{code:src/drums.rs::pub fn family::12}}
+{{code:core/src/drums.rs::pub fn family::12}}
 <p>A <code>NoteMap</code> maps MIDI notes to lanes; <code>NoteMap::roland_v31()</code> is the factory map and the user can edit it. <code>Lane::by_hihat_pedal</code> turns a hit on the closed or open hi-hat note into one or the other from the pedal position (CC#4) attached to the hit.</p>
 
 <h3 id="take">The life of a take</h3>
@@ -258,8 +258,8 @@ python3 tools/build_notices.py      # target/notices/THIRD_PARTY_NOTICES.txt</co
 <li><strong>Overall</strong> = 55 % accuracy + 25 % timing + 10 % (1 &minus; extra ratio) + 10 % dynamics; without accents/ghosts the dynamics weight is redistributed. The weights are first guesses.</li>
 </ol>
 <p>For fast exercises the fixed window (default &plusmn;100 ms) would reach several strokes. <code>windows()</code> computes a window per expected note that never exceeds 45 % of the distance to its neighbours:</p>
-{{code:src/analysis.rs::fn windows(}}
-{{code:src/analysis.rs::pub fn analyze_with::24}}
+{{code:core/src/analysis.rs::fn windows(}}
+{{code:core/src/analysis.rs::pub fn analyze_with::24}}
 </section>
 
 <section id="realtime">
@@ -445,12 +445,12 @@ led   = A record -&gt; note 89           # a button light (on=127 off=0 unless t
 led   = record -&gt; note 36 ch 10 on=21 off=0   # another channel and values (a pad's colour)
 ring  = A tempo -&gt; cc 48              # an LED ring (Mackie ring values)
 ring  = tempo -&gt; cc 20 scale=127      # a plain value 0..scale instead</code></pre>
-{{code:src/controller/preset.rs::pub struct Binding}}
+{{code:core/src/controller/preset.rs::pub struct Binding}}
 <ul>
 <li><strong>Kinds.</strong> A preset is <code>mackie</code> or <code>midi</code> (<code>PresetKind</code>). The kind decides how a ring is sent when the line has no <code>scale=</code>: Mackie's ring encoding (<code>0x20 | position</code>) for <code>mackie</code>, a plain 0 to 127 for <code>midi</code>. A file without a <code>kind</code> line is read as Mackie if it has layers or lights and as MIDI otherwise, which keeps files written before the line existed working: the kind only changes what a ring sends, and a preset without lights has none.</li>
 <li><strong>Layers.</strong> A line without a layer name applies to all layers; a line for the current layer wins over one for all layers. Lines that name an undeclared layer are dropped with a warning, and a control bound twice in the same place is reported (the first one is used).</li>
 <li><strong>Channels.</strong> <code>ch N</code> limits a binding to one MIDI channel. <code>Preset::position</code> looks a message up in four steps, most specific first: this layer and this channel, this layer, all layers and this channel, all layers. Called with no channel it means "any binding", which the pictures need because they cannot tell channels apart.</li>
-{{code:src/controller/preset.rs::pub fn position(}}
+{{code:core/src/controller/preset.rs::pub fn position(}}
 <li><strong>Where presets come from.</strong> <code>BUILTIN</code> holds the shipped ones; <code>custom_presets(dir)</code> lists the <code>.txt</code> files of the <code>controllers</code> folder next to the settings file, named after their file; <code>preset_source(name, dir)</code> says where the preset called <code>name</code> is (<code>PresetSource::BuiltIn</code> or <code>File</code>) and <code>load_preset</code> reads it. A built-in name always wins over a file of the same name, which is why the editor must never write to a file whose name is a built-in one.</li>
 <li><strong>Round trip.</strong> <code>Preset::to_text</code> writes a preset so that <code>Preset::parse</code> reads back the same value (comments are lost); a test checks it for every built-in preset. That property is what lets the editor use the file as its only storage.</li>
 </ul>
@@ -462,18 +462,18 @@ ring  = tempo -&gt; cc 20 scale=127      # a plain value 0..scale instead</code>
 <dt>Mapper::lights(&amp;State) -&gt; Vec&lt;[u8; 3]&gt;</dt><dd>The messages that bring lights and rings up to date: only what changed, the status byte carries the light's channel, and a light that is no longer wanted (another layer) is put out with <em>its own</em> off value.</dd>
 <dt>Mapper::replace_preset(preset)</dt><dd>Puts an edited preset in place while the program runs. The layer and Shift stay; faders must catch up again and every light is sent again.</dd>
 </dl>
-{{code:src/controller/message.rs::pub enum Encoding}}
+{{code:core/src/controller/message.rs::pub enum Encoding}}
 <p>The four relative encodings differ only in how a cc value 0 to 127 maps to a signed step count: <code>mackie</code> (a sign bit and a 6-bit count, 65 to 127 is counter-clockwise), <code>twos</code> (127 is one step back), <code>offset</code> (64 is no turn) and <code>signbit2</code> (Mackie's sign bit the other way round). <code>Encoding::decode</code> is a pure function with a test per encoding; <code>Mapper::handle</code> multiplies by the Shift factor afterwards, so Shift works with every encoding.</p>
-{{code:src/controller/mapper.rs::pub fn replace_preset}}
+{{code:core/src/controller/mapper.rs::pub fn replace_preset}}
 
 <h3 id="ctl-app">The impure half</h3>
 <p><code>app/controls.rs</code> owns the MIDI port (<code>midi::connect_controller</code>), watches for the device being plugged in or pulled out every two seconds, builds the <code>State</code> from <code>DrumApp</code> for every message, and turns <code>Command</code>s into method calls. Because <code>Command</code> has only three shapes, <code>apply_command</code> is a short dispatcher:</p>
-{{code:src/controller/mapper.rs::pub enum Command}}
+{{code:core/src/controller/mapper.rs::pub enum Command}}
 {{code:src/app/controls.rs::pub(super) fn apply_command}}
 <p>Each frame <code>update_controller</code> drains the message queue the MIDI thread filled. A message first goes to the editor's <code>learn_message</code>, which uses it up if an action is waiting for a control; otherwise it is parsed, shown in the monitor with what it is bound to, and handed to the mapper. Then the lights are brought up to date. The <code>Controller</code> struct keeps the connection (<code>Link</code>: the port handle and the mapper), the preset list with each preset's kind, the monitor and the editor's state.</p>
 <h4>The start trigger</h4>
 <p>A second way of driving the program without the mouse is the drum kit itself: two hits in a row start a recording. <code>trigger.rs</code> is a tiny pure detector, tested with synthetic <code>Instant</code>s:</p>
-{{code:src/trigger.rs::pub fn feed}}
+{{code:core/src/trigger.rs::pub fn feed}}
 <p><code>app/trigger.rs</code> calls it from <code>handle_event</code> for every mapped hit and decides whether it may fire (<code>trigger_allowed</code>: enabled, Score or Rudiments tab, something to play, no take recording). A hit the trigger uses up returns early, so it never becomes a note of the take it starts. The same hook implements <em>Learn</em> for the two instruments: while <code>trigger_learn</code> is set, the next hit chooses the instrument.</p>
 <h4>Context-dependent controls</h4>
 <p>The Mini has no spare controls, so while a rudiment is the active practice source the same physical controls mean something else (repeats, lead, rudiment). One small function rewrites the action; the presets stay untouched:</p>
@@ -483,8 +483,8 @@ ring  = tempo -&gt; cc 20 scale=127      # a plain value 0..scale instead</code>
 <p>The Manage window edits presets without a text editor, and it is built on one decision: <strong>the preset file is the only storage</strong>. There is no copy of the preset in the editor's state. Every change does the same four things in <code>edit_preset</code>: read the chosen preset's file, apply the change to the <code>Preset</code> value, write the file, and give the result to the running mapper (<code>replace_preset</code>). The consequences are pleasant: nothing can get out of step with the file, a crash loses nothing, and the same code serves a connected controller and a disconnected one.</p>
 {{code:src/app/controls/editor.rs::fn edit_preset}}
 <p>The pure operations are in <code>controller/</code>:</p>
-{{code:src/controller/mapper.rs::pub fn learn(}}
-{{code:src/controller/preset.rs::pub fn assign(}}
+{{code:core/src/controller/mapper.rs::pub fn learn(}}
+{{code:core/src/controller/preset.rs::pub fn assign(}}
 <ul>
 <li><code>learn(msg, action, relative, encoding, remember_channel)</code> decides what a message says about the control that sent it, <em>for the action that waits</em>: a button needs a press (not the release), a value needs a cc or a fader, a list (<code>Score</code>, <code>Rudiment</code>) needs an endless encoder, a note is no use for a knob. It returns <code>None</code> for what cannot be that control; the caller uses such a message up anyway, so a stray release does not trigger an action while learning.</li>
 <li><code>Preset::assign</code> binds the action to the control. The control is <em>taken</em> from whatever it was bound to on that layer (returned, so the window can say so), and the action's old control of the <em>same kind</em> (note, cc, fader) is replaced, while one of another kind stays: an encoder and a fader may both set the tempo.</li>
@@ -498,13 +498,13 @@ ring  = tempo -&gt; cc 20 scale=127      # a plain value 0..scale instead</code>
 
 <h3 id="ctl-pictures">Pictures: layouts and the help screen</h3>
 <p>The help screen draws a picture of the controller with what each control does. The picture comes from a <code>Layout</code>: a device size in abstract units and a list of <code>Control</code>s, each with a kind (<code>Button</code>, <code>Encoder</code>, <code>Fader</code>, <code>Layer</code>, <code>Indicator</code>), a name, a centre and size, and the messages it sends when pressed (<code>press</code>) and when turned or moved (<code>turn</code>). <code>Layout.marks</code> are the symbols printed on the device (rewind, stop, <em>LOOP</em>…), drawn as vectors because the fonts lack them.</p>
-{{code:src/controller_layout.rs::pub struct Layout}}
+{{code:core/src/controller_layout.rs::pub struct Layout}}
 <p>There are two sources of layouts, and the help screen takes the first that exists:</p>
 <ul>
 <li><strong>Drawn layouts</strong> (<code>x_touch_mini</code>, <code>x_touch_compact</code>), chosen by the preset's <code>port</code> text (<code>for_preset</code>), so a copy of a built-in preset keeps its picture. They were measured on photographs of the devices; the Mini's height is stretched against its width to leave room for the labels above the encoders.</li>
 <li><strong>Generated layouts</strong> (<code>generated(preset)</code>) for every other preset, including learned ones: knobs and encoders on top, then faders, then buttons, each group in order of message number, nine to a row. A control's kind is guessed from its binding: pitch bend and the volume actions on a cc are faders, other values and every relative cc are knobs, the rest are buttons; layer buttons are added. The picture says what the preset binds, not where the controls are on the device.</li>
 </ul>
-{{code:src/controller_layout.rs::pub fn generated}}
+{{code:core/src/controller_layout.rs::pub fn generated}}
 <p><code>mapping(preset, layer, control)</code> answers what a control does on a layer by looking its messages up in the preset (<code>Preset::position</code> with no channel), and <code>is_lit</code> says whether a light or ring follows the program. Because a layout holds only numbers, its tests are plain: every control lies on the device and no two overlap; no message is sent by two controls; every binding of a built-in preset, every layer and every light is on some control; the ring of encoder <em>n</em> is addressed as cc 48+<em>n</em>; <code>Layout::unplaced</code> lists the bindings a picture cannot show (empty for both built-in Mackie presets, and a test fails when that changes).</p>
 <p><code>app/controller_help.rs</code> draws it. The scale is the smaller of "fits the window's width" and "fits the screen's height" and never below 0.6 (below that the texts are unreadable and the window scrolls instead). Each control is drawn with the painter, then given an interaction rectangle for its tooltip (name, action, the explanation from <code>Action::help</code>, the message); the drawn LAYER buttons are clickable and switch the layer shown. Two things are easy to get wrong: centred text in egui is laid out around the x of the position it is placed at, not inside the box, so <code>text_box</code> places the galley at the box's centre; and the window closes itself when the chosen preset changes, because its picture would be of the wrong controller. <code>Action::title</code> and <code>Action::help</code> are exhaustive <code>match</code>es, so a new action cannot be added without its label and its sentence.</p>
 
@@ -522,11 +522,11 @@ ring  = tempo -&gt; cc 20 scale=127      # a plain value 0..scale instead</code>
 <h2>8. The rudiment subsystem</h2>
 <p><code>rudiments.rs</code> is a pure module with two jobs: hold the 40 PAS rudiments as data, and build a <code>Score</code> from one. The data is written in a tiny pattern language so each rudiment is one readable line that can be checked against the chart:</p>
 {{RUDIMENT_DSL}}
-{{code:src/rudiments.rs::static CATALOGUE::6}}
-{{code:src/rudiments.rs::const fn rud}}
+{{code:core/src/rudiments.rs::static CATALOGUE::6}}
+{{code:core/src/rudiments.rs::const fn rud}}
 <p>The patterns are static strings parsed on demand (<code>Rudiment::cell()</code>), validated by tests rather than at start-up. Parsing and building:</p>
-{{code:src/rudiments.rs::fn parse(}}
-{{code:src/rudiments.rs::pub fn build}}
+{{code:core/src/rudiments.rs::fn parse(}}
+{{code:core/src/rudiments.rs::pub fn build}}
 <p>Design decisions worth knowing:</p>
 <ul>
 <li><strong>One bar per repetition</strong>, each as long as the cell rounded up to whole beats, written at <code>BASE_BPM</code> (100). The practice tempo (percent) is therefore the BPM, which lets the existing tempo slider, Listen restart logic and controller work unchanged.</li>
@@ -540,7 +540,7 @@ ring  = tempo -&gt; cc 20 scale=127      # a plain value 0..scale instead</code>
 <section id="config">
 <h2>9. Settings and persistence</h2>
 <p>Settings are a small <code>key = value</code> text file (<code>%APPDATA%\RollModel\config.txt</code> and equivalents). There is no serialisation framework: each one-line setting is a row of the <code>KEYS</code> table (key, field, kind of value) that both <code>Config::to_text</code> and <code>Config::from_text</code> use, which keeps the file stable, hand-editable and tolerant. Lists and maps are written and read by hand.</p>
-{{code:src/config.rs::const KEYS::12}}
+{{code:core/src/config.rs::const KEYS::12}}
 <ul>
 <li><strong>Tolerant loading.</strong> Unknown keys are ignored, an unreadable value keeps the default, numbers are clamped, so a settings file from any earlier version loads.</li>
 <li><strong>Defaults are not written</strong> where that avoids clutter (mixer gains, per-rudiment tempos never changed).</li>
@@ -559,7 +559,7 @@ ring  = tempo -&gt; cc 20 scale=127      # a plain value 0..scale instead</code>
 
 <h3>Enums with data and exhaustive <code>match</code></h3>
 <p>Closed sets of things are enums, and every <code>match</code> over them is exhaustive, so adding a variant produces compile errors at every place that must care. <code>Lane</code>, <code>Action</code>, <code>Command</code>, <code>Msg</code>, <code>Grade</code>, <code>Tab</code>, <code>Source</code>, <code>Lead</code> all work this way.</p>
-{{code:src/controller/message.rs::pub enum Msg}}
+{{code:core/src/controller/message.rs::pub enum Msg}}
 <h3>Traits as seams for testing</h3>
 <p><code>Sink</code> separates "decide what to play" from "play it" (see <a href="#sink">the Sink seam</a>). The trait is used as <code>&amp;mut dyn Sink</code>: dynamic dispatch costs nothing that matters here, and the scheduler takes one reference instead of being generic.</p>
 <h3>Atomics behind <code>Arc</code> for live settings</h3>
@@ -647,7 +647,7 @@ ring  = tempo -&gt; cc 20 scale=127      # a plain value 0..scale instead</code>
 <tr><td>Beams, rests, tuplet brackets</td><td><span class="pill hard">large</span></td><td><code>render.rs</code></td><td>Needs a rhythm-grouping step on <code>Score</code> before drawing; keep the proportional x positions.</td></tr>
 <tr><td>Following D.S./D.C./coda jumps</td><td><span class="pill">medium</span></td><td><code>musicxml.rs</code> (<code>playback_order</code>)</td><td>The importer already unrolls repeats and voltas.</td></tr>
 <tr><td>Merging the two timing threads</td><td><span class="pill hard">large</span></td><td><code>metronome.rs</code>, <code>playback.rs</code></td><td>Duplicated click and loop logic; touching it risks take timing, which works today.</td></tr>
-<tr><td>Library crate split</td><td><span class="pill">medium</span></td><td><code>Cargo.toml</code>, <code>main.rs</code></td><td>Putting the pure core in its own crate would stop tests of it from building the GUI dependencies; today a workspace or optional dependencies would be needed.</td></tr>
+<tr><td>A command-line tool on the core (grade a MIDI file against a score)</td><td><span class="pill">medium</span></td><td><code>core/</code>, a new member of the workspace</td><td>The core crate has no GUI, MIDI or audio dependency, so a tool can depend on it alone; <code>core/tests/practice_session.rs</code> shows the calls.</td></tr>
 <tr><td>UI language, themes, accessibility</td><td><span class="pill hard">large</span></td><td>all UI strings</td><td>Strings are literals in the UI code; a string table is needed first.</td></tr>
 <tr><td>Hand-aware input hardware</td><td><span class="pill hard">large</span></td><td><code>midi.rs</code>, <code>analysis.rs</code></td><td>Some practice pads or sensors can report the hand; <code>Hand</code> on notes and hits would turn the Hands table from inferred into measured.</td></tr>
 </tbody></table>
@@ -674,7 +674,7 @@ ring  = tempo -&gt; cc 20 scale=127      # a plain value 0..scale instead</code>
 <h3 id="t-setting">Tutorial 2: add a setting</h3>
 <p><span class="pill easy">small</span> Goal: a <em>Show hand letters</em> checkbox that hides the sticking letters.</p>
 <ol class="steps">
-<li><strong>Config.</strong> In <code>src/config.rs</code> add the field, its default and one row of <code>KEYS</code>; the row is both the reader and the writer:
+<li><strong>Config.</strong> In <code>core/src/config.rs</code> add the field, its default and one row of <code>KEYS</code>; the row is both the reader and the writer:
 <pre class="code"><code>// struct Config
 pub show_sticking: bool,
 // Default
@@ -811,7 +811,7 @@ impl DrumApp {
 </ol>
 <h3>Making a release</h3>
 <ol class="steps">
-<li>On <code>develop</code>: move <code>[Unreleased]</code> in the changelog under the new version and date; bump <code>version</code> in <code>Cargo.toml</code> and <code>Cargo.lock</code>; commit <code>chore: release X.Y.Z</code>.</li>
+<li>On <code>develop</code>: move <code>[Unreleased]</code> in the changelog under the new version and date; bump <code>version</code> in <code>Cargo.toml</code>, <code>core/Cargo.toml</code> and <code>Cargo.lock</code>; commit <code>chore: release X.Y.Z</code>.</li>
 <li>Merge to <code>main</code>, tag <code>vX.Y.Z</code> and push the tag. The workflow does the rest.</li>
 <li>A pre-release from <code>develop</code>: <code>git tag -f preview &amp;&amp; git push -f origin preview</code>.</li>
 </ol>

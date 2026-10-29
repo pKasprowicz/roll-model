@@ -538,7 +538,7 @@ mod tests {
         assert_eq!(playback_order(&ms, false), vec![0, 1]);
     }
 
-    pub const SAMPLE: &str = include_str!("../examples/basic_rock_beat.musicxml");
+    pub const SAMPLE: &str = include_str!("../../examples/basic_rock_beat.musicxml");
 
     #[test]
     fn parses_sample() {

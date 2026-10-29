@@ -2976,6 +2976,13 @@ dependencies = [
  "midir",
  "rfd",
  "rodio",
+ "roll-model-core",
+]
+
+[[package]]
+name = "roll-model-core"
+version = "0.7.0"
+dependencies = [
  "zip",
 ]
 

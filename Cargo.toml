@@ -5,6 +5,11 @@ edition = "2021"
 description = "Load MusicXML drum scores, capture MIDI from a Roland V31 and grade the performance"
 license = "PolyForm-Noncommercial-1.0.0"
 
+[workspace]
+members = ["core"]
+# `cargo build` and `cargo test` cover the core crate too.
+default-members = [".", "core"]
+
 [features]
 default = ["audio"]
 # Audible metronome through the default sound output (rodio/cpal).
@@ -13,11 +18,11 @@ default = ["audio"]
 audio = ["dep:rodio"]
 
 [dependencies]
+roll-model-core = { path = "core" }
 eframe = "0.29"
 egui = "0.29"
 midir = "0.10"
 rfd = "0.15"
-zip = { version = "2", default-features = false, features = ["deflate"] }
 # Reads the WAV files that replace built-in instrument sounds.
 hound = "3"
 rodio = { version = "0.19", default-features = false, optional = true }

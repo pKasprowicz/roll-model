@@ -367,13 +367,13 @@ impl Preset {
 
 /// The presets that come with the application: (name, file text).
 pub const BUILTIN: &[(&str, &str)] = &[
-    ("Behringer X-Touch Mini", include_str!("../../presets/x-touch-mini.txt")),
-    ("Behringer X-Touch Compact", include_str!("../../presets/x-touch-compact.txt")),
+    ("Behringer X-Touch Mini", include_str!("../../../presets/x-touch-mini.txt")),
+    ("Behringer X-Touch Compact", include_str!("../../../presets/x-touch-compact.txt")),
     // Generic MIDI controllers (no Mackie Control); written from memory, not verified on the devices.
-    ("Novation Launch Control XL", include_str!("../../presets/novation-launch-control-xl.txt")),
-    ("Korg nanoKONTROL2", include_str!("../../presets/korg-nanokontrol2.txt")),
-    ("Akai MPK Mini", include_str!("../../presets/akai-mpk-mini.txt")),
-    ("Arturia BeatStep", include_str!("../../presets/arturia-beatstep.txt")),
+    ("Novation Launch Control XL", include_str!("../../../presets/novation-launch-control-xl.txt")),
+    ("Korg nanoKONTROL2", include_str!("../../../presets/korg-nanokontrol2.txt")),
+    ("Akai MPK Mini", include_str!("../../../presets/akai-mpk-mini.txt")),
+    ("Arturia BeatStep", include_str!("../../../presets/arturia-beatstep.txt")),
 ];
 
 pub fn builtin_text(name: &str) -> Option<&'static str> {

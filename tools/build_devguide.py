@@ -111,11 +111,16 @@ def extract_lines(rel: str, first: int, last: int) -> str:
 
 
 def module_files() -> list[Path]:
-    src = ROOT / "src"
-    return sorted(
-        [p for p in src.glob("*.rs")] + [p for p in (src / "app").glob("*.rs")] + [p for p in (src / "app").glob("*/*.rs")] + [p for p in (src / "controller").glob("*.rs")],
-        key=lambda p: (p.parent != src, p.parent.as_posix(), p.name),
+    src, core = ROOT / "src", ROOT / "core"
+    files = (
+        list(src.glob("*.rs"))
+        + list((src / "app").glob("*.rs"))
+        + list((src / "app").glob("*/*.rs"))
+        + list((core / "src").glob("*.rs"))
+        + list((core / "src" / "controller").glob("*.rs"))
+        + list((core / "tests").glob("*.rs"))
     )
+    return sorted(files, key=lambda p: (p.relative_to(ROOT).parts[0] != "src", p.parent.as_posix(), p.name))
 
 
 def summary(text: str) -> str:
@@ -164,12 +169,15 @@ PURPOSE = {
 
 def dependencies() -> str:
     rows, in_deps = [], False
-    for line in (ROOT / "Cargo.toml").read_text(encoding="utf-8").splitlines():
+    lines = []
+    for manifest in (ROOT / "Cargo.toml", ROOT / "core" / "Cargo.toml"):
+        lines += manifest.read_text(encoding="utf-8").splitlines() + ["["]
+    for line in lines:
         if line.startswith("["):
             in_deps = line.strip() == "[dependencies]"
             continue
         m = re.match(r'([A-Za-z0-9_-]+)\s*=\s*(.*)', line)
-        if in_deps and m:
+        if in_deps and m and m.group(1) != "roll-model-core":
             name, spec = m.groups()
             v = re.search(r'"([^"]+)"', spec)
             optional = "optional = true" in spec
@@ -186,12 +194,12 @@ def dependencies() -> str:
 
 def rudiment_dsl() -> str:
     lines = []
-    for line in (ROOT / "src" / "rudiments.rs").read_text(encoding="utf-8").splitlines():
+    for line in (ROOT / "core" / "src" / "rudiments.rs").read_text(encoding="utf-8").splitlines():
         if line.startswith("//!"):
             lines.append(line[3:].removeprefix(" "))
         elif lines:
             break
-    return f'<pre class="code"><span class="src">src/rudiments.rs (module documentation)</span><code>{html.escape(chr(10).join(lines))}</code></pre>'
+    return f'<pre class="code"><span class="src">core/src/rudiments.rs (module documentation)</span><code>{html.escape(chr(10).join(lines))}</code></pre>'
 
 
 CODE = re.compile(r"\{\{code:([^:}]+)::([^}]*?)(?:::(\d+))?\}\}")
