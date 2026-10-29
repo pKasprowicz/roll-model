@@ -151,71 +151,55 @@ fn draw(ui: &mut egui::Ui, preset: &Preset, layout: &Layout, layer: Option<&str>
     let width = layout.size.0 * scale;
     let (row, _) = ui.allocate_exact_size(Vec2::new(ui.available_width(), layout.size.1 * scale), Sense::hover());
     let area = Rect::from_center_size(row.center(), Vec2::new(width, layout.size.1 * scale));
-    let painter = ui.painter_at(area);
-    let at = |x: f32, y: f32| area.min + Vec2::new(x, y) * scale;
-    let font = |size: f32| egui::FontId::proportional((size * scale).max(8.0));
+    let paint = Paint { painter: ui.painter_at(area), scale };
+    let at = |x: f32, y: f32| area.min + paint.vec(x, y);
     let mut chosen = None;
 
-    painter.rect_filled(area, 20.0 * scale, BODY);
+    paint.painter.rect_filled(area, paint.px(20.0), BODY);
     let title = match layer {
         Some(l) => format!("{} · layer {l}", layout.name),
         None => layout.name.to_string(),
     };
-    text_box(&painter, Rect::from_min_size(at(36.0, layout.size.1 - 44.0), Vec2::new(520.0, 30.0) * scale), &title, font(15.0), DIM_TEXT, Align::Min);
+    paint.text(Rect::from_min_size(at(36.0, layout.size.1 - 44.0), paint.vec(520.0, 30.0)), &title, 15.0, DIM_TEXT, Align::Min);
     let layers: Vec<&Control> = layout.controls.iter().filter(|c| c.kind == Kind::Layer).collect();
     if let [a, b] = layers[..] {
         let middle = ((a.center.0 + b.center.0) / 2.0, (a.center.1 + b.center.1) / 2.0);
-        text_box(&painter, Rect::from_center_size(at(middle.0, middle.1), Vec2::new(64.0, 16.0) * scale), "LAYER", font(10.0), DIM_TEXT, Align::Center);
+        paint.text(Rect::from_center_size(at(middle.0, middle.1), paint.vec(64.0, 16.0)), "LAYER", 10.0, DIM_TEXT, Align::Center);
         // The arrows printed beside them: up for A, down for B.
         for (control, up) in [(a, true), (b, false)] {
-            triangle(&painter, at(control.center.0 - control.size.0 / 2.0 - 9.0, control.center.1), 5.0 * scale, if up { Dir::Up } else { Dir::Down }, DIM_TEXT);
+            paint.triangle(at(control.center.0 - control.size.0 / 2.0 - 9.0, control.center.1), paint.px(5.0), if up { Dir::Up } else { Dir::Down }, DIM_TEXT);
         }
     }
     for mark in &layout.marks {
-        symbol(&painter, at(mark.at.0, mark.at.1), scale, &font, mark.what);
+        paint.symbol(at(mark.at.0, mark.at.1), mark.what);
     }
 
     for (i, control) in layout.controls.iter().enumerate() {
-        let rect = Rect::from_center_size(at(control.center.0, control.center.1), Vec2::new(control.size.0, control.size.1) * scale);
+        let rect = Rect::from_center_size(at(control.center.0, control.center.1), paint.vec(control.size.0, control.size.1));
         let mapping = layout::mapping(preset, layer, control);
         let sense = if control.kind == Kind::Layer { Sense::click() } else { Sense::hover() };
         let response = ui.interact(rect, ui.id().with(("controller_control", i)), sense);
-        let hovered = response.hovered();
-        let outline = if hovered { Stroke::new(2.0 * scale.max(0.7), render::ACCENT) } else { Stroke::NONE };
+        let outline = if response.hovered() { Stroke::new(2.0 * scale.max(0.7), render::ACCENT) } else { Stroke::NONE };
         match control.kind {
-            Kind::Button => button(&painter, rect, scale, &font, preset, layer, &mapping, outline),
+            Kind::Button => paint.button(rect, preset, layer, &mapping, outline),
             Kind::Layer => {
                 let this = preset.layers.iter().position(|(_, src)| Some(*src) == control.press);
                 let selected = this == Some(shown);
                 let (fill, text) = if selected { (render::ACCENT, Color32::WHITE) } else { (Color32::from_rgb(0x5a, 0x5d, 0x66), LIGHT_TEXT) };
-                painter.rect(rect, 6.0 * scale, fill, outline);
+                paint.painter.rect(rect, paint.px(6.0), fill, outline);
                 let letter = control.name.rsplit(' ').next().unwrap_or("");
-                text_box(&painter, rect, letter, font(17.0), text, Align::Center);
+                paint.text(rect, letter, 17.0, text, Align::Center);
                 if response.clicked() {
                     chosen = this;
                 }
             }
-            Kind::Encoder => encoder(&painter, rect, scale, &font, preset, layer, &mapping, outline),
-            Kind::Fader => fader(&painter, rect, scale, &font, &mapping, outline),
-            Kind::Indicator => indicator(&painter, rect, scale, &font, &control.name),
+            Kind::Encoder => paint.encoder(rect, preset, layer, &mapping, outline),
+            Kind::Fader => paint.fader(rect, &mapping, outline),
+            Kind::Indicator => paint.indicator(rect, &control.name),
         }
         response.on_hover_ui_at_pointer(|ui| tooltip(ui, control, &mapping));
     }
     chosen
-}
-
-/// `text` in `rect`, wrapped, in `align`, with its middle at the middle of `rect`.
-fn text_box(painter: &egui::Painter, rect: Rect, text: &str, font: egui::FontId, color: Color32, align: Align) {
-    if text.is_empty() {
-        return;
-    }
-    let mut job = egui::text::LayoutJob::simple(text.to_string(), font, color, rect.width());
-    job.halign = align;
-    let galley = painter.layout_job(job);
-    // Centred text is laid out around the x of the position it is placed at.
-    let x = if align == Align::Center { rect.center().x } else { rect.left() };
-    let top_left = Pos2::new(x, rect.center().y - galley.size().y / 2.0);
-    painter.galley(top_left, galley, color);
 }
 
 fn title_of(meaning: &Option<Meaning>) -> Option<String> {
@@ -223,51 +207,6 @@ fn title_of(meaning: &Option<Meaning>) -> Option<String> {
         Some(Meaning::Action(a)) => Some(a.title()),
         Some(Meaning::Layer(l)) => Some(format!("Layer {l}")),
         None => None,
-    }
-}
-
-#[allow(clippy::too_many_arguments)]
-fn button(painter: &egui::Painter, rect: Rect, scale: f32, font: &dyn Fn(f32) -> egui::FontId, preset: &Preset, layer: Option<&str>, mapping: &Mapping, outline: Stroke) {
-    let label = title_of(&mapping.press);
-    let (fill, text) = if label.is_some() { (KEY, DARK_TEXT) } else { (KEY_UNUSED, DIM_TEXT) };
-    painter.rect(rect, 7.0 * scale, fill, outline);
-    let lit = matches!(&mapping.press, Some(Meaning::Action(a)) if layout::is_lit(preset, layer, *a, false));
-    // The light sits in the corner; a button with one keeps its text clear of it.
-    // A single long word may use the whole width (it cannot be broken, and the light is small).
-    let one_word = label.as_deref().is_some_and(|l| !l.contains(' '));
-    let inner = rect.shrink2(Vec2::new(if one_word { 2.0 } else if lit { 10.0 } else { 5.0 }, 3.0) * scale);
-    // A long word that cannot be broken is set a little smaller instead of being split.
-    let size = if label.as_deref().is_some_and(|l| !l.contains(' ') && l.chars().count() > 7) { 10.0 } else { 12.0 };
-    text_box(painter, inner, label.as_deref().unwrap_or("—"), font(size), text, Align::Center);
-    if lit {
-        painter.circle_filled(rect.right_top() + Vec2::new(-7.0, 7.0) * scale, 3.5 * scale, render::GREEN);
-    }
-}
-
-#[allow(clippy::too_many_arguments)]
-fn encoder(painter: &egui::Painter, rect: Rect, scale: f32, font: &dyn Fn(f32) -> egui::FontId, preset: &Preset, layer: Option<&str>, mapping: &Mapping, outline: Stroke) {
-    let centre = rect.center();
-    let radius = rect.width() / 2.0;
-    let ring_lit = matches!(&mapping.turn, Some(Meaning::Action(a)) if layout::is_lit(preset, layer, *a, true));
-    // The LED ring: three quarters of a circle, open at the bottom.
-    for i in 0..RING_DOTS {
-        let angle = (135.0 + 270.0 * i as f32 / (RING_DOTS - 1) as f32).to_radians();
-        let at = centre + Vec2::new(angle.cos(), angle.sin()) * (radius + 9.0 * scale);
-        painter.circle_filled(at, 3.0 * scale, if ring_lit { render::AMBER } else { RING_OFF });
-    }
-    painter.circle(centre, radius * 0.86, Color32::from_rgb(0x1b, 0x1c, 0x20), outline);
-    painter.circle_filled(centre, radius * 0.7, Color32::from_rgb(0xd2, 0xd3, 0xd8));
-    painter.line_segment([centre - Vec2::new(0.0, radius * 0.25), centre - Vec2::new(0.0, radius * 0.66)], Stroke::new(3.0 * scale, DARK_TEXT));
-
-    let (above, below) = (title_of(&mapping.turn), title_of(&mapping.press));
-    let box_width = 84.0 * scale;
-    if let Some(text) = above {
-        let r = Rect::from_min_size(Pos2::new(centre.x - box_width / 2.0, centre.y - radius - 54.0 * scale), Vec2::new(box_width, 38.0 * scale));
-        text_box(painter, r, &text, font(12.0), LIGHT_TEXT, Align::Center);
-    }
-    if let Some(text) = below {
-        let r = Rect::from_min_size(Pos2::new(centre.x - box_width / 2.0, centre.y + radius + 16.0 * scale), Vec2::new(box_width, 30.0 * scale));
-        text_box(painter, r, &format!("push: {text}"), font(10.0), DIM_TEXT, Align::Center);
     }
 }
 
@@ -279,63 +218,141 @@ enum Dir {
     Right,
 }
 
-/// A small filled triangle with its middle at `at`, `r` from the middle to each corner.
-fn triangle(painter: &egui::Painter, at: Pos2, r: f32, dir: Dir, color: Color32) {
-    let (dx, dy) = match dir {
-        Dir::Up => (0.0, -1.0),
-        Dir::Down => (0.0, 1.0),
-        Dir::Left => (-1.0, 0.0),
-        Dir::Right => (1.0, 0.0),
-    };
-    let tip = Vec2::new(dx, dy);
-    let side = Vec2::new(-dy, dx);
-    let points = vec![at + tip * r, at - tip * r * 0.8 + side * r * 0.9, at - tip * r * 0.8 - side * r * 0.9];
-    painter.add(egui::Shape::convex_polygon(points, color, Stroke::NONE));
+/// What the drawing functions share: the painter and how many pixels a layout unit is.
+struct Paint {
+    painter: egui::Painter,
+    scale: f32,
 }
 
-/// What is printed beside a button, drawn as vectors (the fonts lack these symbols).
-fn symbol(painter: &egui::Painter, at: Pos2, scale: f32, font: &dyn Fn(f32) -> egui::FontId, what: Printed) {
-    let r = 5.0 * scale;
-    match what {
-        Printed::Text(text) => text_box(painter, Rect::from_center_size(at, Vec2::new(46.0, 16.0) * scale), text, font(10.0), DIM_TEXT, Align::Center),
-        Printed::Rewind => {
-            triangle(painter, at - Vec2::new(r * 0.9, 0.0), r, Dir::Left, DIM_TEXT);
-            triangle(painter, at + Vec2::new(r * 0.9, 0.0), r, Dir::Left, DIM_TEXT);
+impl Paint {
+    /// Pixels for `units` of the layout.
+    fn px(&self, units: f32) -> f32 {
+        units * self.scale
+    }
+
+    fn vec(&self, x: f32, y: f32) -> Vec2 {
+        Vec2::new(x, y) * self.scale
+    }
+
+    /// A font `size` layout units tall, never smaller than 8 px.
+    fn font(&self, size: f32) -> egui::FontId {
+        egui::FontId::proportional((size * self.scale).max(8.0))
+    }
+
+    /// `text` in `rect`, wrapped, in `align`, with its middle at the middle of `rect`.
+    fn text(&self, rect: Rect, text: &str, size: f32, color: Color32, align: Align) {
+        if text.is_empty() {
+            return;
         }
-        Printed::FastForward => {
-            triangle(painter, at - Vec2::new(r * 0.9, 0.0), r, Dir::Right, DIM_TEXT);
-            triangle(painter, at + Vec2::new(r * 0.9, 0.0), r, Dir::Right, DIM_TEXT);
-        }
-        Printed::Stop => {
-            painter.rect_filled(Rect::from_center_size(at, Vec2::splat(r * 1.6)), 1.0, DIM_TEXT);
-        }
-        Printed::Play => triangle(painter, at, r, Dir::Right, DIM_TEXT),
-        Printed::Record => {
-            painter.circle_filled(at, r * 0.85, DIM_TEXT);
+        let mut job = egui::text::LayoutJob::simple(text.to_string(), self.font(size), color, rect.width());
+        job.halign = align;
+        let galley = self.painter.layout_job(job);
+        // Centred text is laid out around the x of the position it is placed at.
+        let x = if align == Align::Center { rect.center().x } else { rect.left() };
+        let top_left = Pos2::new(x, rect.center().y - galley.size().y / 2.0);
+        self.painter.galley(top_left, galley, color);
+    }
+
+    /// A small filled triangle with its middle at `at`, `r` pixels from the middle to each corner.
+    fn triangle(&self, at: Pos2, r: f32, dir: Dir, color: Color32) {
+        let (dx, dy) = match dir {
+            Dir::Up => (0.0, -1.0),
+            Dir::Down => (0.0, 1.0),
+            Dir::Left => (-1.0, 0.0),
+            Dir::Right => (1.0, 0.0),
+        };
+        let tip = Vec2::new(dx, dy);
+        let side = Vec2::new(-dy, dx);
+        let points = vec![at + tip * r, at - tip * r * 0.8 + side * r * 0.9, at - tip * r * 0.8 - side * r * 0.9];
+        self.painter.add(egui::Shape::convex_polygon(points, color, Stroke::NONE));
+    }
+
+    /// What is printed beside a button, drawn as vectors (the fonts lack these symbols).
+    fn symbol(&self, at: Pos2, what: Printed) {
+        let r = self.px(5.0);
+        match what {
+            Printed::Text(text) => self.text(Rect::from_center_size(at, self.vec(46.0, 16.0)), text, 10.0, DIM_TEXT, Align::Center),
+            Printed::Rewind => {
+                self.triangle(at - Vec2::new(r * 0.9, 0.0), r, Dir::Left, DIM_TEXT);
+                self.triangle(at + Vec2::new(r * 0.9, 0.0), r, Dir::Left, DIM_TEXT);
+            }
+            Printed::FastForward => {
+                self.triangle(at - Vec2::new(r * 0.9, 0.0), r, Dir::Right, DIM_TEXT);
+                self.triangle(at + Vec2::new(r * 0.9, 0.0), r, Dir::Right, DIM_TEXT);
+            }
+            Printed::Stop => {
+                self.painter.rect_filled(Rect::from_center_size(at, Vec2::splat(r * 1.6)), 1.0, DIM_TEXT);
+            }
+            Printed::Play => self.triangle(at, r, Dir::Right, DIM_TEXT),
+            Printed::Record => {
+                self.painter.circle_filled(at, r * 0.85, DIM_TEXT);
+            }
         }
     }
-}
 
-/// A light of the device that is no control: a small box with its name and a dark lamp.
-fn indicator(painter: &egui::Painter, rect: Rect, scale: f32, font: &dyn Fn(f32) -> egui::FontId, name: &str) {
-    painter.rect(rect, 6.0 * scale, Color32::from_rgb(0x23, 0x25, 0x2a), Stroke::new(1.0_f32, RING_OFF));
-    painter.rect_filled(Rect::from_center_size(rect.center_top() + Vec2::new(0.0, 12.0 * scale), Vec2::new(10.0, 7.0) * scale), 2.0 * scale, Color32::from_rgb(0x4a, 0x34, 0x1c));
-    text_box(painter, Rect::from_center_size(rect.center() + Vec2::new(0.0, 8.0 * scale), Vec2::new(rect.width(), 16.0 * scale)), name, font(9.0), DIM_TEXT, Align::Center);
-}
-
-fn fader(painter: &egui::Painter, rect: Rect, scale: f32, font: &dyn Fn(f32) -> egui::FontId, mapping: &Mapping, outline: Stroke) {
-    let slot = Rect::from_center_size(rect.center(), Vec2::new(8.0 * scale, rect.height() - 20.0 * scale));
-    painter.rect_filled(slot, 4.0 * scale, Color32::from_rgb(0x15, 0x16, 0x19));
-    for i in 0..=10 {
-        let y = slot.top() + slot.height() * i as f32 / 10.0;
-        painter.line_segment([Pos2::new(slot.left() - 9.0 * scale, y), Pos2::new(slot.left() - 3.0 * scale, y)], Stroke::new(1.0_f32, RING_OFF));
+    fn button(&self, rect: Rect, preset: &Preset, layer: Option<&str>, mapping: &Mapping, outline: Stroke) {
+        let label = title_of(&mapping.press);
+        let (fill, text) = if label.is_some() { (KEY, DARK_TEXT) } else { (KEY_UNUSED, DIM_TEXT) };
+        self.painter.rect(rect, self.px(7.0), fill, outline);
+        let lit = matches!(&mapping.press, Some(Meaning::Action(a)) if layout::is_lit(preset, layer, *a, false));
+        // The light sits in the corner; a button with one keeps its text clear of it. A single long word
+        // cannot be broken, so it may use the whole width (the light is small) and is set a little smaller.
+        let one_word = label.as_deref().is_some_and(|l| !l.contains(' '));
+        let inner = rect.shrink2(self.vec(if one_word { 2.0 } else if lit { 10.0 } else { 5.0 }, 3.0));
+        let size = if label.as_deref().is_some_and(|l| !l.contains(' ') && l.chars().count() > 7) { 10.0 } else { 12.0 };
+        self.text(inner, label.as_deref().unwrap_or("—"), size, text, Align::Center);
+        if lit {
+            self.painter.circle_filled(rect.right_top() + self.vec(-7.0, 7.0), self.px(3.5), render::GREEN);
+        }
     }
-    let knob = Rect::from_center_size(Pos2::new(rect.center().x, slot.center().y + slot.height() * 0.15), Vec2::new(rect.width() * 0.8, 44.0 * scale));
-    painter.rect(knob, 5.0 * scale, KEY, outline);
-    painter.line_segment([Pos2::new(knob.left() + 4.0 * scale, knob.center().y), Pos2::new(knob.right() - 4.0 * scale, knob.center().y)], Stroke::new(2.0 * scale, DARK_TEXT));
-    if let Some(text) = title_of(&mapping.turn) {
-        let r = Rect::from_min_size(Pos2::new(rect.center().x - 47.0 * scale, rect.top() - 46.0 * scale), Vec2::new(94.0 * scale, 38.0 * scale));
-        text_box(painter, r, &text, font(12.0), LIGHT_TEXT, Align::Center);
+
+    fn encoder(&self, rect: Rect, preset: &Preset, layer: Option<&str>, mapping: &Mapping, outline: Stroke) {
+        let centre = rect.center();
+        let radius = rect.width() / 2.0;
+        let ring_lit = matches!(&mapping.turn, Some(Meaning::Action(a)) if layout::is_lit(preset, layer, *a, true));
+        // The LED ring: three quarters of a circle, open at the bottom.
+        for i in 0..RING_DOTS {
+            let angle = (135.0 + 270.0 * i as f32 / (RING_DOTS - 1) as f32).to_radians();
+            let at = centre + Vec2::new(angle.cos(), angle.sin()) * (radius + self.px(9.0));
+            self.painter.circle_filled(at, self.px(3.0), if ring_lit { render::AMBER } else { RING_OFF });
+        }
+        self.painter.circle(centre, radius * 0.86, Color32::from_rgb(0x1b, 0x1c, 0x20), outline);
+        self.painter.circle_filled(centre, radius * 0.7, Color32::from_rgb(0xd2, 0xd3, 0xd8));
+        self.painter.line_segment([centre - Vec2::new(0.0, radius * 0.25), centre - Vec2::new(0.0, radius * 0.66)], Stroke::new(self.px(3.0), DARK_TEXT));
+
+        let (above, below) = (title_of(&mapping.turn), title_of(&mapping.press));
+        let box_width = self.px(84.0);
+        if let Some(text) = above {
+            let r = Rect::from_min_size(Pos2::new(centre.x - box_width / 2.0, centre.y - radius - self.px(54.0)), Vec2::new(box_width, self.px(38.0)));
+            self.text(r, &text, 12.0, LIGHT_TEXT, Align::Center);
+        }
+        if let Some(text) = below {
+            let r = Rect::from_min_size(Pos2::new(centre.x - box_width / 2.0, centre.y + radius + self.px(16.0)), Vec2::new(box_width, self.px(30.0)));
+            self.text(r, &format!("push: {text}"), 10.0, DIM_TEXT, Align::Center);
+        }
+    }
+
+    /// A light of the device that is no control: a small box with its name and a dark lamp.
+    fn indicator(&self, rect: Rect, name: &str) {
+        self.painter.rect(rect, self.px(6.0), Color32::from_rgb(0x23, 0x25, 0x2a), Stroke::new(1.0_f32, RING_OFF));
+        self.painter.rect_filled(Rect::from_center_size(rect.center_top() + self.vec(0.0, 12.0), self.vec(10.0, 7.0)), self.px(2.0), Color32::from_rgb(0x4a, 0x34, 0x1c));
+        self.text(Rect::from_center_size(rect.center() + self.vec(0.0, 8.0), Vec2::new(rect.width(), self.px(16.0))), name, 9.0, DIM_TEXT, Align::Center);
+    }
+
+    fn fader(&self, rect: Rect, mapping: &Mapping, outline: Stroke) {
+        let slot = Rect::from_center_size(rect.center(), Vec2::new(self.px(8.0), rect.height() - self.px(20.0)));
+        self.painter.rect_filled(slot, self.px(4.0), Color32::from_rgb(0x15, 0x16, 0x19));
+        for i in 0..=10 {
+            let y = slot.top() + slot.height() * i as f32 / 10.0;
+            self.painter.line_segment([Pos2::new(slot.left() - self.px(9.0), y), Pos2::new(slot.left() - self.px(3.0), y)], Stroke::new(1.0_f32, RING_OFF));
+        }
+        let knob = Rect::from_center_size(Pos2::new(rect.center().x, slot.center().y + slot.height() * 0.15), Vec2::new(rect.width() * 0.8, self.px(44.0)));
+        self.painter.rect(knob, self.px(5.0), KEY, outline);
+        self.painter.line_segment([Pos2::new(knob.left() + self.px(4.0), knob.center().y), Pos2::new(knob.right() - self.px(4.0), knob.center().y)], Stroke::new(self.px(2.0), DARK_TEXT));
+        if let Some(text) = title_of(&mapping.turn) {
+            let r = Rect::from_min_size(Pos2::new(rect.center().x - self.px(47.0), rect.top() - self.px(46.0)), self.vec(94.0, 38.0));
+            self.text(r, &text, 12.0, LIGHT_TEXT, Align::Center);
+        }
     }
 }
 
