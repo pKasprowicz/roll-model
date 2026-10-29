@@ -1134,7 +1134,10 @@ mod tests {
     fn the_controller_page_draws_with_and_without_a_controller() {
         let mut app = DrumApp::with_config(Config::default());
         app.refresh_controllers();
-        assert_eq!(app.controller.presets, ["Behringer X-Touch Mini", "Behringer X-Touch Compact"]);
+        assert_eq!(
+            app.controller.presets,
+            ["Behringer X-Touch Mini", "Behringer X-Touch Compact", "Novation Launch Control XL", "Korg nanoKONTROL2", "Akai MPK Mini", "Arturia BeatStep"]
+        );
         let ctx = egui::Context::default();
         for message in ["", "No controller selected."] {
             app.controller.message = message.into();

@@ -1,0 +1,57 @@
+# Arturia BeatStep (the first one, not the Pro), Control Mode (not Mackie Control).
+# (Written with extensive use of AI, from the default table as remembered; NOT verified on the device.
+# A web search confirmed only that knob 1 sends cc 10 and knob 2 cc 74; the rest, the big knob and the
+# pad notes are from memory.)
+#
+# Check every number with the monitor on Settings -> Controller; if one differs, copy this file into
+# the controllers folder, change the number and choose the copy. The port name also matches a BeatStep
+# Pro, which has other numbers: choose the right port by hand on the Controller page if both are plugged in.
+#
+# Top row of knobs (cc 10, 74, 71, 76, 77, 93, 73, 75): tempo, first bar, last bar, count-in,
+#   bars per row, click volume, (unused), (unused). Bottom row (cc 114, 18, 19, 16, 17, 91, 79, 72):
+#   volume of the eight instrument groups. The big knob (cc 7): music volume.
+# Pads 1-8 (notes 44-51): record, listen, stop, loop, click, notes, metronome, tap tempo.
+# Pads 9-16 (notes 52-59): mute of the eight instrument groups.
+# Which pads are the top row and which the bottom row is not known; the monitor shows it.
+
+name = Arturia BeatStep
+port = Arturia BeatStep
+
+# Top row of knobs
+bind = cc 10 abs -> tempo
+bind = cc 74 abs -> range_from
+bind = cc 71 abs -> range_to
+bind = cc 76 abs -> count_in
+bind = cc 77 abs -> bars_per_row
+bind = cc 93 abs -> click_volume
+
+# Bottom row of knobs
+bind = cc 114 abs -> gain 1
+bind = cc 18 abs -> gain 2
+bind = cc 19 abs -> gain 3
+bind = cc 16 abs -> gain 4
+bind = cc 17 abs -> gain 5
+bind = cc 91 abs -> gain 6
+bind = cc 79 abs -> gain 7
+bind = cc 72 abs -> gain 8
+
+# Big knob
+bind = cc 7 abs -> music_volume
+
+# Pads
+bind = note 44 -> record
+bind = note 45 -> listen
+bind = note 46 -> stop
+bind = note 47 -> loop
+bind = note 48 -> click
+bind = note 49 -> notes
+bind = note 50 -> metronome
+bind = note 51 -> tap_tempo
+bind = note 52 -> mute 1
+bind = note 53 -> mute 2
+bind = note 54 -> mute 3
+bind = note 55 -> mute 4
+bind = note 56 -> mute 5
+bind = note 57 -> mute 6
+bind = note 58 -> mute 7
+bind = note 59 -> mute 8

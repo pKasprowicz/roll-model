@@ -592,6 +592,11 @@ impl Preset {
 pub const BUILTIN: &[(&str, &str)] = &[
     ("Behringer X-Touch Mini", include_str!("../presets/x-touch-mini.txt")),
     ("Behringer X-Touch Compact", include_str!("../presets/x-touch-compact.txt")),
+    // Generic MIDI controllers (no Mackie Control); written from memory, not verified on the devices.
+    ("Novation Launch Control XL", include_str!("../presets/novation-launch-control-xl.txt")),
+    ("Korg nanoKONTROL2", include_str!("../presets/korg-nanokontrol2.txt")),
+    ("Akai MPK Mini", include_str!("../presets/akai-mpk-mini.txt")),
+    ("Arturia BeatStep", include_str!("../presets/arturia-beatstep.txt")),
 ];
 
 pub fn builtin_text(name: &str) -> Option<&'static str> {
@@ -1000,6 +1005,38 @@ mod tests {
             assert!(m.handle(note(n), &s).is_empty(), "note {n}");
         }
         assert!(m.handle(cc(60, 1), &s).is_empty(), "there is no jog wheel");
+    }
+
+    #[test]
+    fn the_generic_midi_presets_use_absolute_knobs_and_plain_buttons() {
+        let s = State::default();
+        // (preset, a message, what it must do)
+        let cases: [(&str, Msg, Option<Command>); 8] = [
+            ("Korg nanoKONTROL2", cc(41, 127), Some(Command::Press(Action::Listen))),
+            ("Korg nanoKONTROL2", cc(41, 0), None),
+            ("Korg nanoKONTROL2", cc(32, 127), Some(Command::Press(Action::Solo(0)))),
+            ("Novation Launch Control XL", note(73), Some(Command::Press(Action::Mute(0)))),
+            ("Novation Launch Control XL", cc(108, 127), Some(Command::Press(Action::Record))),
+            ("Akai MPK Mini", note(36), Some(Command::Press(Action::Record))),
+            ("Akai MPK Mini", cc(70, 64), None), // a fader-like control far from the value: waits
+            ("Arturia BeatStep", note(52), Some(Command::Press(Action::Mute(0)))),
+        ];
+        for (name, msg, expected) in cases {
+            let mut m = Mapper::new(load_preset(name, None).unwrap());
+            let got = m.handle(msg, &s);
+            assert_eq!(got.first().copied(), expected, "{name}: {msg:?}");
+        }
+        // An absolute knob moves a value once it has reached it (here the tempo is 0.5).
+        let mut m = Mapper::new(load_preset("Korg nanoKONTROL2", None).unwrap());
+        let s = State { tempo: 0.5, ..Default::default() };
+        let got = m.handle(cc(16, 64), &s);
+        assert!(matches!(got[..], [Command::Set(Action::Tempo, x)] if (x - 0.5).abs() < 0.01), "{got:?}");
+        // Controls the Mackie presets rely on are not bound by the generic ones.
+        for name in ["Korg nanoKONTROL2", "Novation Launch Control XL", "Akai MPK Mini", "Arturia BeatStep"] {
+            let p = load_preset(name, None).unwrap();
+            assert!(p.layers.is_empty() && p.lights.is_empty(), "{name}: no layers and no lights");
+            assert!(p.warnings.is_empty(), "{name}: {:?}", p.warnings);
+        }
     }
 
     #[test]

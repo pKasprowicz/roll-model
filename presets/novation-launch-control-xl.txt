@@ -1,0 +1,64 @@
+# Novation Launch Control XL, factory template (not Mackie Control).
+# (Written with extensive use of AI, from the factory template as remembered; NOT verified on the device.
+# A web search confirmed only that knob 1 sends cc 13 in the factory template. The note and button
+# numbers and the template number are from memory.)
+#
+# Select a FACTORY template (the LEDs of the buttons show it). Check every number with the monitor on
+# Settings -> Controller; if one differs, copy this file into the controllers folder, change the
+# number and choose the copy. Colours of the button LEDs are not set by this preset.
+#
+# Top knob row (cc 13-20): tempo, first bar, last bar, count-in, bars per row, click volume, music volume, (unused).
+# Faders (cc 77-84): volume of the eight instrument groups.
+# Track focus buttons (notes 41-44, 57-60): solo 1-8. Track control buttons (notes 73-76, 89-92): mute 1-8.
+# The eight buttons on the right (cc 104-111): tempo +5, tempo -5, range back, range forward,
+#   record, listen, stop, loop.
+
+name = Novation Launch Control XL
+port = Launch Control XL
+
+# Knobs, top row
+bind = cc 13 abs -> tempo
+bind = cc 14 abs -> range_from
+bind = cc 15 abs -> range_to
+bind = cc 16 abs -> count_in
+bind = cc 17 abs -> bars_per_row
+bind = cc 18 abs -> click_volume
+bind = cc 19 abs -> music_volume
+
+# Faders
+bind = cc 77 abs -> gain 1
+bind = cc 78 abs -> gain 2
+bind = cc 79 abs -> gain 3
+bind = cc 80 abs -> gain 4
+bind = cc 81 abs -> gain 5
+bind = cc 82 abs -> gain 6
+bind = cc 83 abs -> gain 7
+bind = cc 84 abs -> gain 8
+
+# Track focus (solo) and track control (mute) buttons
+bind = note 41 -> solo 1
+bind = note 42 -> solo 2
+bind = note 43 -> solo 3
+bind = note 44 -> solo 4
+bind = note 57 -> solo 5
+bind = note 58 -> solo 6
+bind = note 59 -> solo 7
+bind = note 60 -> solo 8
+bind = note 73 -> mute 1
+bind = note 74 -> mute 2
+bind = note 75 -> mute 3
+bind = note 76 -> mute 4
+bind = note 89 -> mute 5
+bind = note 90 -> mute 6
+bind = note 91 -> mute 7
+bind = note 92 -> mute 8
+
+# Buttons on the right
+bind = cc 104 -> tempo_up
+bind = cc 105 -> tempo_down
+bind = cc 106 -> range_back
+bind = cc 107 -> range_forward
+bind = cc 108 -> record
+bind = cc 109 -> listen
+bind = cc 110 -> stop
+bind = cc 111 -> loop
