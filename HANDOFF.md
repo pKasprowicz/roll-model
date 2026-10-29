@@ -32,6 +32,74 @@ First real build and smoke test done on 2026-10-24 (Windows 11, `x86_64-pc-windo
 
 ## Todo for the next session
 
+### Task index
+
+Every open task has a unique ID; refer to tasks by it. IDs are never reused: a finished task is ticked and keeps its ID, a dropped one is struck through. **Needs**: *device* = a real V31 or controller, *ears* = listening, *decision* = the owner has to choose, *code* = can be done at the desk.
+
+| ID | Task | Needs |
+|---|---|---|
+| **HW-1** | Try the X-Touch Mini against its preset | device |
+| **HW-2** | Does the Mini in MC mode switch its own layers? | device |
+| **HW-3** | Check the X-Touch Compact preset | device |
+| **HW-4** | Compare the drawn pictures with the real devices | device |
+| **HW-5** | Find what the Compact's side encoders and LAYER buttons send | device |
+| **HW-6** | Check the four generic presets on real devices | device |
+| **HW-7** | Try Learn and the Manage window with a real controller and mouse | device |
+| **HW-8** | Try unplugging and plugging in the controller | device |
+| **HW-9** | Try the controller on the Rudiments tab | device |
+| **HW-10** | Try the rudiments with the V31 | device, ears |
+| **HW-11** | Time the start-up with the devices attached | device |
+| **CTL-1** | Create and delete layers in the Manage window | code |
+| **CTL-2** | Edit lights and LED rings in the Manage window | code |
+| **CTL-3** | Guess a relative encoder's encoding while learning | code |
+| **CTL-4** | `init` system-exclusive messages for controllers | code |
+| **CTL-5** | Motor faders | code, device |
+| **CTL-6** | Scribble strip and time display feedback | code, device |
+| **CTL-7** | A second (XT) unit | code, device |
+| **CTL-8** | Blinking lights | code |
+| **RUD-1** | Check the flagged rows of `docs/rudiments.md` against the PAS chart | decision |
+| **RUD-2** | Make the buzz roll recordable | code |
+| **RUD-3** | Required flam and drag graces with a spacing check | code |
+| **RUD-4** | Grade the sticking | code, device |
+| **RUD-5** | Orchestrate a rudiment around the kit | code |
+| **RUD-6** | User-defined rudiment files | code |
+| **RUD-7** | Practice sets and routines | code |
+| **RUD-8** | A progress history on disk | code |
+| **SND-1** | Listen to the cymbals and the rest of the kit | ears |
+| **SND-2** | Ask whether volume plus WAV files is enough or several kits are wanted | decision |
+| **SND-3** | Listen to the WAV override and the hi-hat choke | ears |
+| **UI-1** | Try with a real mouse and wheel | device |
+| **UI-2** | The bar numbering mismatch (printed number against position) | decision, code |
+| **UI-3** | Shortcuts are ignored while a widget has the focus | code |
+| **UI-4** | Notation: beams, flags, rests and tuplet brackets | code |
+| **FEAT-1** | Tempo ramp for Listen and the metronome | code |
+| **FEAT-2** | Accent patterns and tap tempo for the free metronome | code |
+| **FEAT-3** | Remember the layout per score | code |
+| **FEAT-4** | A Listen without count-in setting of its own | code |
+| **NAME-1** | Check the name (GitHub, web, trademark, domain) | decision |
+| **NAME-2** | Rename the local folder `D:\projects\DrumTutor` | decision |
+| **CD-1** | Split `app.rs` and `DrumApp` | code |
+| **CD-2** | Split `controller.rs` into a folder of modules | code |
+| **CD-3** | One table for actions (shotgun surgery) | code |
+| **CD-4** | Table-driven settings keys | code |
+| **CD-5** | Merge the two timing threads | code, device |
+| **CD-6** | Split `render::show` | code |
+| **CD-7** | Value types in the controller domain | code |
+| **CD-8** | One identity for a preset | code |
+| **CD-9** | One place that chooses a preset | code |
+| **CD-10** | Typed errors instead of `String` | code |
+| **CD-11** | Long parameter lists | code |
+| **CD-12** | Encapsulate the controller and editor state | code |
+| **CD-13** | MIDI I/O off the UI thread | code, device |
+| **CD-14** | Per-frame work in the UI | code |
+| **CD-15** | Inject the settings folders | code |
+| **CD-16** | Constructors and constants in `controller_layout.rs` | code |
+| **CD-17** | Simplify `Preset::line` and `Preset::position` | code |
+| **CD-18** | Split `handle_event` and `update` into handlers | code |
+| **CD-19** | Separate the editor's view state from its learn state | code |
+| **CD-20** | Split the pure core into a library crate | code |
+| **CD-21** to **CD-25** | Polish suggestions (see the review) | code |
+
 ### Done in 0.4.0 (released; the list of that time)
 
 The five items requested after 0.3.0 are implemented, tested, and were checked in the running app (per-application audio meter for sound, screenshots for layout; see Testing).
@@ -48,24 +116,41 @@ The five items requested after 0.3.0 are implemented, tested, and were checked i
 
 Mackie Control support, see `README.md` ("Controller"). `controller.rs` is pure and unit-tested (parsing, layers, shift, fader pickup, lights); `app/controls.rs` applies the commands to `DrumApp` and is tested through `apply_command`. No device was connected.
 
-- [ ] **Try the X-Touch Mini** (MC mode) and check `presets/x-touch-mini.txt` against the monitor on Settings -> Controller: note numbers of the two button rows, the LAYER A/B buttons (84/85 assumed), the encoder pushes (32-39), the fader (pitch bend ch 1), and whether the button lights (note on, 127/0) and the ring values (cc 48-55, `0x20 | position`) are accepted. Fix the numbers in the preset file, not in the code.
-- [ ] Does the Mini in MC mode already switch its own layers (and change what it sends)? The program switches layers itself from the layer buttons' messages; if the device remaps instead, the layer lines are wrong.
-- [ ] `presets/x-touch-compact.txt` is from the Mackie Control spec only; the faders are not motorised by the program (a fader takes over when it reaches the value).
-- [ ] The help screen's picture of the Mini (`controller_layout::x_touch_mini`) follows a photograph (positions measured, the height stretched 2.1x against 1.7x in width to make room for labels; the printed symbols are `Layout::marks`). Layer A's bottom row does what is printed beside the buttons (rewind, fast forward, LOOP, stop, play, record; the first two, MC and a blank one, are Loop worst bar and Discard take), a test keeps the picture's printed marks and the bindings in step; Shift and the tempo buttons moved to the top row. Whether the Mini's bottom row really sends notes 87, 88, 91, 92, 86, 93, 94, 95 in order is unverified. The Compact's (`x_touch_compact`) follows a photograph of its front, but the printed labels were too small to read: the order of the six transport buttons on the right (Rewind, Fast forward / Stop, Play / Record, Cycle) is a guess, and the message of the eight side encoders, the two LAYER buttons and the button under the ninth fader is unknown (they are drawn and unbound). The Compact preset's function buttons (Shift, Click, Notes, Metronome, Tap tempo, Worst bar, Discard take, Next tab) are on the SELECT row, notes 24-31, the standard Mackie numbers and unverified; the earlier numbers (84, 85, 87, ...) belonged to buttons the Compact lacks. With the real device and the monitor, check the SELECT, transport and strip numbers and find what the side encoders and the LAYER buttons send; they are free for more actions. A test (`the_built_in_presets_bind_nothing_the_pictures_lack`) fails when a preset binds a message no control of its picture sends. Another controller gets a picture by adding a `Layout` and picking it in `for_preset`.
-- [ ] **The four generic presets** (`presets/novation-launch-control-xl.txt`, `korg-nanokontrol2.txt`, `akai-mpk-mini.txt`, `arturia-beatstep.txt`) are from memory: only LCXL knob 1 = cc 13, BeatStep knobs 1-2 = cc 10 / 74 and nanoKONTROL2 record = cc 64 were confirmed by a web search; the MPK Mini binds two candidate knob ranges and guessed pad notes. Check each with the monitor on a real device. They have no LED feedback or pictures; see `docs/generic-midi-controller-concept.md` for the planned learn UI, channel filter and relative encodings.
-- [ ] Generic MIDI controllers, phase 1 of `docs/generic-midi-controller-concept.md` is done (`Binding.channel`, `Encoding`, `Light.on/off/channel/scale`, all in `controller.rs` and unit-tested). Phase 2 is done too: `Preset::to_text`, `assign`, `clear`, `set_kind` and `controller::learn` (pure), and the editor `app/controls/editor.rs` (learn flow in `update_controller` via `learn_message`; tested against a temporary folder through `EditorState.dir`; the learning against a real device and the table with the mouse were not tried). The Manage window (`controller_editor_window` → `manage_ui`: `preset_list` on the left with Add / Copy / Delete, `preset_header` (rename) and `assignments_body` on the right; clicking a preset chooses it as the one in use, `select_preset`, because learning needs its connection; opened by the Manage button next to the selector) is an immediate viewport; inside the main window where the platform has no second window, and presets carry `kind` (`PresetKind`, inferred for files without one). Phase 3 is done: `controller_layout::generated` draws a picture from any preset without a drawn layout (`Layout.generated`, nine controls to a row). Not done: creating and deleting layers, editing lights and rings, guessing a relative encoding, `init` SysEx, and trying any of it on a non-Mackie device. A copy of a preset made before this keeps working; the layout pictures ignore channels (`Preset::position(.., None)`).
-- [ ] Not done: motor faders, scribble strip / time display feedback, a second (XT) unit, blinking lights, MIDI-learn for custom presets (the monitor shows the numbers to type).
-- The controller's port is looked for every 2 s (`watch_controller`): plugging it in after the start connects it, pulling it out drops it. Not tried with a real unplug.
+- [ ] **HW-1** **Try the X-Touch Mini** (MC mode) and check `presets/x-touch-mini.txt` against the monitor on Settings -> Controller: note numbers of the two button rows, the LAYER A/B buttons (84/85 assumed), the encoder pushes (32-39), the fader (pitch bend ch 1), and whether the button lights (note on, 127/0) and the ring values (cc 48-55, `0x20 | position`) are accepted. Fix the numbers in the preset file, not in the code.
+- [ ] **HW-2** Does the Mini in MC mode already switch its own layers (and change what it sends)? The program switches layers itself from the layer buttons' messages; if the device remaps instead, the layer lines are wrong.
+- [ ] **HW-3** `presets/x-touch-compact.txt` is from the Mackie Control spec only; the faders are not motorised by the program (a fader takes over when it reaches the value).
+- The help screen's picture of the Mini (`controller_layout::x_touch_mini`) follows a photograph (positions measured, the height stretched 2.1x against 1.7x in width to make room for labels; the printed symbols are `Layout::marks`). Layer A's bottom row does what is printed beside the buttons (rewind, fast forward, LOOP, stop, play, record; the first two, MC and a blank one, are Loop worst bar and Discard take), a test keeps the picture's printed marks and the bindings in step; Shift and the tempo buttons moved to the top row. Whether the Mini's bottom row really sends notes 87, 88, 91, 92, 86, 93, 94, 95 in order is unverified. The Compact's (`x_touch_compact`) follows a photograph of its front, but the printed labels were too small to read: the order of the six transport buttons on the right (Rewind, Fast forward / Stop, Play / Record, Cycle) is a guess, and the message of the eight side encoders, the two LAYER buttons and the button under the ninth fader is unknown (they are drawn and unbound). The Compact preset's function buttons (Shift, Click, Notes, Metronome, Tap tempo, Worst bar, Discard take, Next tab) are on the SELECT row, notes 24-31, the standard Mackie numbers and unverified; the earlier numbers (84, 85, 87, ...) belonged to buttons the Compact lacks. A test (`the_built_in_presets_bind_nothing_the_pictures_lack`) fails when a preset binds a message no control of its picture sends. Another controller gets a picture by adding a `Layout` and picking it in `for_preset`.
+- [ ] **HW-4** Compare the drawn pictures with the real devices (the Mini: row order, LAYER buttons, fader; the Compact: the order of the six transport buttons on the right, the SELECT, transport and strip numbers) and fix the numbers in `controller_layout.rs` and the presets.
+- [ ] **HW-5** Find what the Compact's eight side encoders, its two LAYER buttons and the button under the ninth fader send (the monitor shows it); they are drawn and unbound, free for more actions.
+- [ ] **HW-6** **The four generic presets** (`presets/novation-launch-control-xl.txt`, `korg-nanokontrol2.txt`, `akai-mpk-mini.txt`, `arturia-beatstep.txt`) are from memory: only LCXL knob 1 = cc 13, BeatStep knobs 1-2 = cc 10 / 74 and nanoKONTROL2 record = cc 64 were confirmed by a web search; the MPK Mini binds two candidate knob ranges and guessed pad notes. Check each with the monitor on a real device. They have no LED feedback or pictures; see `docs/generic-midi-controller-concept.md` for the planned learn UI, channel filter and relative encodings.
+- Generic MIDI controllers (built, see the concept): phase 1 of `docs/generic-midi-controller-concept.md` is done (`Binding.channel`, `Encoding`, `Light.on/off/channel/scale`, all in `controller.rs` and unit-tested). Phase 2 is done too: `Preset::to_text`, `assign`, `clear`, `set_kind` and `controller::learn` (pure), and the editor `app/controls/editor.rs` (learn flow in `update_controller` via `learn_message`; tested against a temporary folder through `EditorState.dir`; the learning against a real device and the table with the mouse were not tried). The Manage window (`controller_editor_window` → `manage_ui`: `preset_list` on the left with Add / Copy / Delete, `preset_header` (rename) and `assignments_body` on the right; clicking a preset chooses it as the one in use, `select_preset`, because learning needs its connection; opened by the Manage button next to the selector) is an immediate viewport; inside the main window where the platform has no second window, and presets carry `kind` (`PresetKind`, inferred for files without one). Phase 3 is done: `controller_layout::generated` draws a picture from any preset without a drawn layout (`Layout.generated`, nine controls to a row). What is not done is listed as CTL-1 to CTL-4 and HW-7. A copy of a preset made before this keeps working; the layout pictures ignore channels (`Preset::position(.., None)`).
+- [ ] **HW-7** Try Learn and the Manage window with a real controller (Mackie and a generic one) and with a real mouse: the learn flow, a relative encoding on a real endless encoder, the table, Add, Copy, Rename and Delete.
+- [ ] **CTL-1** Creating and deleting layers in the Manage window (a layer needs the message that selects it, learned like any control).
+- [ ] **CTL-2** Editing button lights and LED rings in the Manage window (the model, `Preset.lights`, already holds them).
+- [ ] **CTL-3** Guess the encoding of a relative encoder while learning it (turn a few clicks; the first message after a stop and its sign tell it).
+- [ ] **CTL-4** An `init` line for connect-time system-exclusive messages (some controllers need one to enter a mode).
+- [ ] **CTL-5** Motor faders (the program never moves a fader; it waits for the fader to reach the value).
+- [ ] **CTL-6** Scribble strip and time display feedback.
+- [ ] **CTL-7** A second (XT) unit.
+- [ ] **CTL-8** Blinking lights.
+- [ ] **HW-8** The controller's port is looked for every 2 s (`watch_controller`): plugging it in after the start connects it, pulling it out drops it. Not tried with a real unplug.
 
 ### Rudiments (since 0.6.0)
 
 The Rudiments tab sits between Score and Metronome. `docs/rudiments.md` is the catalogue and its source (the PAS chart, read off the notation); `src/rudiments.rs` is that catalogue as patterns plus `Rudiment::build(repeats, lead) -> Score`, so Listen, takes, grading, the staff, the Results tab and the controller all work on a rudiment as on a file. `src/app/rudiment.rs` is the tab. 132 tests pass; the tab was looked at in the running app (screenshots of two rudiments), nothing was heard and no V31 was connected.
 
-- [ ] **Check the ⚑ rows of `docs/rudiments.md` against the PAS chart**: the closing note values of rolls 7-15, drag paradiddles #1 and #2, and the flam drag were read from a small engraving and may be off. Only the note values are in doubt (the sticking was read carefully and is tested). The chart is `https://www.coloradomesa.edu/marching-band/documents/rudiments.pdf` (PAS, 1984).
-- [ ] **Try it with the V31.** Fast diddles on a mesh pad may double-trigger (extra hits); the adaptive window helps but the pad's retrigger setting matters. Listen to the rudiments (grace notes are 35 ms per step before the main note, `analysis::GRACE_SPACING`).
-- [ ] Try the controller on the Rudiments tab (encoder 2 repeats, 3 lead, 8 rudiments, range buttons prev/next) on a real X-Touch Mini.
-- [ ] Not done: the multiple bounce (buzz) roll is listen-only; flam/drag graces are optional (a spacing check would need them required); the sticking is shown but never graded (the module cannot hear hands), only compared per hand; orchestration of a rudiment around the kit; user-defined rudiment files (like the controller presets); practice sets / routines; a progress history beyond the best clean tempo.
-- [ ] The score view draws no beams or tuplet brackets, so triplet and 32nd-note rudiments rely on proportional spacing and the beat grid.
+- [ ] **RUD-1** **Check the ⚑ rows of `docs/rudiments.md` against the PAS chart**: the closing note values of rolls 7-15, drag paradiddles #1 and #2, and the flam drag were read from a small engraving and may be off. Only the note values are in doubt (the sticking was read carefully and is tested). The chart is `https://www.coloradomesa.edu/marching-band/documents/rudiments.pdf` (PAS, 1984).
+- [ ] **HW-10** **Try it with the V31.** Fast diddles on a mesh pad may double-trigger (extra hits); the adaptive window helps but the pad's retrigger setting matters. Listen to the rudiments (grace notes are 35 ms per step before the main note, `analysis::GRACE_SPACING`).
+- [ ] **HW-11** Time the start-up with the V31 and a controller attached (how long do the MIDI-port and drum-module steps take?), before deciding **CD-13**; the first measurement had no devices.
+- [ ] **HW-9** Try the controller on the Rudiments tab (encoder 2 repeats, 3 lead, 8 rudiments, range buttons prev/next) on a real X-Touch Mini.
+- [ ] **RUD-2** The multiple bounce (buzz) roll can only be listened to; make it recordable.
+- [ ] **RUD-3** Flam and drag graces are optional; a spacing check would need them required (`analysis::GRACE_SPACING`, optional graces).
+- [ ] **RUD-4** Grade the sticking: it is shown but never graded, only compared per hand, because the module cannot hear hands (needs hand-aware input hardware).
+- [ ] **RUD-5** Orchestration of a rudiment around the kit (a map from hand or stroke to `Lane` in `Rudiment::build`).
+- [ ] **RUD-6** User-defined rudiment files (like the controller presets).
+- [ ] **RUD-7** Practice sets and routines (a list of rudiment, repeats, BPM stepped through when a take is clean).
+- [ ] **RUD-8** A progress history beyond the best clean tempo (takes are only in memory today).
+- [ ] **UI-4** The score view draws no beams or tuplet brackets, so triplet and 32nd-note rudiments rely on proportional spacing and the beat grid.
 
 ### User manual
 
@@ -81,14 +166,17 @@ The Rudiments tab sits between Score and Metronome. `docs/rudiments.md` is the c
 
 ### Still open
 
-- [ ] **Listen to the new cymbals and the rest of the kit.** Nobody has heard them; only their spectra are tested (centroid, share below 2 kHz, lone low partials). Tune `Cymbal` parameters in `synth.rs` by ear, then adjust the guard bands if needed. The hi-hats are untouched and still very bright (spectral centroid about 13 kHz).
-- [ ] **Ask the user** whether per-instrument volume plus WAV files is enough, or whether several synthesised kits (brighter, darker, …) are wanted.
-- [ ] Try with a real mouse and wheel: the Layout popup, the mixer's mute/solo/play buttons, the wheel on sliders. Verified only through the keyboard, config keys, and headless egui tests.
-- [ ] The WAV override and the hi-hat choke have unit tests but were never heard.
-- [ ] The numbering mismatch is still there: bars drawn in the score show their printed number (repeated after unrolling repeats), while the Measures sliders and *start a row at bar* use the position. The Layout popup shows the printed number of the chosen bar; consider showing both on the bars, or making the sliders use printed numbers.
-- [ ] Ideas from the first list, not done: tempo ramp (+x BPM every n bars) for Listen and the metronome, accent patterns and tap tempo for the free metronome, remembering the layout per score, a Listen without count-in setting of its own.
-- [ ] The click is implemented twice (a sine blip in `metronome::click_audio`, used by takes and by the player); `Metronome` (takes, calibration) and `Player` (Listen, metronome tab) are two threads with separate loops. Merging them would remove the duplication but touches the take timing, which works.
-- [ ] Shortcuts (`R`, `L`, `K`, `M`, keyboard pads) are ignored while a widget has keyboard focus (after Tab); `Esc` clears it.
+- [ ] **SND-1** **Listen to the new cymbals and the rest of the kit.** Nobody has heard them; only their spectra are tested (centroid, share below 2 kHz, lone low partials). Tune `Cymbal` parameters in `synth.rs` by ear, then adjust the guard bands if needed. The hi-hats are untouched and still very bright (spectral centroid about 13 kHz).
+- [ ] **SND-2** **Ask the user** whether per-instrument volume plus WAV files is enough, or whether several synthesised kits (brighter, darker, …) are wanted.
+- [ ] **UI-1** Try with a real mouse and wheel: the Layout popup, the mixer's mute/solo/play buttons, the wheel on sliders. Verified only through the keyboard, config keys, and headless egui tests.
+- [ ] **SND-3** The WAV override and the hi-hat choke have unit tests but were never heard.
+- [ ] **UI-2** The numbering mismatch is still there: bars drawn in the score show their printed number (repeated after unrolling repeats), while the Measures sliders and *start a row at bar* use the position. The Layout popup shows the printed number of the chosen bar; consider showing both on the bars, or making the sliders use printed numbers.
+- [ ] **FEAT-1** Tempo ramp (+x BPM every n bars) for Listen and the metronome.
+- [ ] **FEAT-2** Accent patterns and tap tempo for the free metronome.
+- [ ] **FEAT-3** Remember the layout per score.
+- [ ] **FEAT-4** A Listen without count-in setting of its own.
+- The click is implemented twice (a sine blip in `metronome::click_audio`, used by takes and by the player) and `Metronome` (takes, calibration) and `Player` (Listen, metronome tab) are two threads with separate loops; this is task **CD-5** below.
+- [ ] **UI-3** Shortcuts (`R`, `L`, `K`, `M`, keyboard pads) are ignored while a widget has keyboard focus (after Tab); `Esc` clears it.
 
 ### Clean-design review (2026-10-29)
 
@@ -159,8 +247,8 @@ Severity: **High** = a structural problem that makes changes costly or risky; **
 
 The application was renamed from "Drum Tutor" to **Roll Model** (crate and binary `roll-model`). The settings folder moved to `RollModel` / `roll-model` with a one-time copy from the old one (`Config::migrate`, tested). The brainstorm is kept in [`docs/name-ideas.md`](docs/name-ideas.md).
 
-- [ ] Check the name (GitHub, web, trademark, domain) before shipping it widely.
-- [ ] Rename the local folder `D:\projects\DrumTutor` if wanted (the GitHub repository is already `roll-model`).
+- [ ] **NAME-1** Check the name (GitHub, web, trademark, domain) before shipping it widely.
+- [ ] **NAME-2** Rename the local folder `D:\projects\DrumTutor` if wanted (the GitHub repository is already `roll-model`).
 - [x] Released as 0.6.0 (the rename, rudiments, controller, licence and docs): see `CHANGELOG.md`.
 
 ## First tasks
