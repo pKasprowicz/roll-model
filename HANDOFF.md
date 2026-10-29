@@ -12,7 +12,7 @@ A Rust desktop app that:
 2. captures MIDI from a **Roland V31** drum module and draws the hits as notes directly under the score notes, on the same time axis;
 3. compares the captured hits with the score and grades the drummer.
 
-All three are implemented. User-facing documentation is in `README.md`. A fourth part, the **Rudiments** tab (the 40 PAS rudiments practised like a score), is on the branch `feature/rudiments`, see below.
+All three are implemented. User-facing documentation is in `README.md`. A fourth part, the **Rudiments** tab (the 40 PAS rudiments practised like a score), is released too (0.6.0). Since 0.6.0 (now 0.7.0): the start-up splash, the start trigger, controller help pictures, generic MIDI controllers and the Manage window; see `CHANGELOG.md`.
 
 ## Status: builds, tests pass, UI smoke-tested; V31 never connected
 
@@ -22,7 +22,7 @@ First real build and smoke test done on 2026-10-24 (Windows 11, `x86_64-pc-windo
 
 | Part | Verified how | Confidence |
 |---|---|---|
-| `xml.rs`, `drums.rs`, `score.rs`, `musicxml.rs`, `analysis.rs`, `config.rs` | Unit tests (67 in the whole crate, uncommitted work after 0.3.0) | High |
+| `xml.rs`, `drums.rs`, `score.rs`, `musicxml.rs`, `analysis.rs`, `config.rs` | Unit tests (201 in the whole crate at 0.7.0) | High |
 | `app.rs`, `render.rs`, `loader.rs`, `main.rs` | Ran the app: sample loads, both staves line up, take lifecycle (count-in, record, auto-stop), per-note colours, Results and Settings tabs, error banner | Medium-high |
 | Keyboard pads (`app.rs::keyboard_pads`) | Scripted take with synthetic key presses: 20 perfect / 12 good / 1 ok / 11 missed / 1 extra as expected | Medium (frame-time stamps, see below) |
 | `midi.rs` | Compiles. The test machine had no MIDI ports, so capture and port selection were not exercised | Low |
@@ -32,7 +32,7 @@ First real build and smoke test done on 2026-10-24 (Windows 11, `x86_64-pc-windo
 
 ## Todo for the next session
 
-### Done since 0.3.0 (uncommitted; 67 tests pass; suggest releasing as 0.4.0)
+### Done in 0.4.0 (released; the list of that time)
 
 The five items requested after 0.3.0 are implemented, tested, and were checked in the running app (per-application audio meter for sound, screenshots for layout; see Testing).
 
@@ -44,7 +44,7 @@ The five items requested after 0.3.0 are implemented, tested, and were checked i
 - **Score layout** (`render::LayoutOpts`, `layout()`, `row_starts()`; config `bars_per_row`, `layout_align_bar`; *Layout* button): see the README. Alignment is by the 1-based position in the score as shown, and the popup shows the printed number. A fixed count draws every bar at the same width (`MIN_PPQ` = 28 px per quarter at the narrowest); when it does not fit, `ViewOutput::fit_bars` reports the smaller number and the legend row says so.
 - **Sounds**: cymbals rebuilt (`synth::cymbal`, `Cymbal` parameters) as dense inharmonic partial clusters plus shaped noise, with spectral guard tests; instrument mixer (`src/app/mixer.rs`, config `gain.<Lane>` / `mute.<Lane>`, solo is session-only, `Config::effective_gain`); audition button (`DrumApp::audition`, its own `Control` so it never disturbs Listen); WAV override (`synth::load_wav`, `Kit::load`, folder `Config::sounds_dir()` = `sounds` next to `config.txt`, uses the `hound` crate); open hi-hat choked by closed/pedal (`Lane::chokes`, a fade-out in `playback::Voice`).
 
-### Controller (in 0.6.0)
+### Controller (since 0.6.0)
 
 Mackie Control support, see `README.md` ("Controller"). `controller.rs` is pure and unit-tested (parsing, layers, shift, fader pickup, lights); `app/controls.rs` applies the commands to `DrumApp` and is tested through `apply_command`. No device was connected.
 
@@ -57,7 +57,7 @@ Mackie Control support, see `README.md` ("Controller"). `controller.rs` is pure 
 - [ ] Not done: motor faders, scribble strip / time display feedback, a second (XT) unit, blinking lights, MIDI-learn for custom presets (the monitor shows the numbers to type).
 - The controller's port is looked for every 2 s (`watch_controller`): plugging it in after the start connects it, pulling it out drops it. Not tried with a real unplug.
 
-### Rudiments (in 0.6.0)
+### Rudiments (since 0.6.0)
 
 The Rudiments tab sits between Score and Metronome. `docs/rudiments.md` is the catalogue and its source (the PAS chart, read off the notation); `src/rudiments.rs` is that catalogue as patterns plus `Rudiment::build(repeats, lead) -> Score`, so Listen, takes, grading, the staff, the Results tab and the controller all work on a rudiment as on a file. `src/app/rudiment.rs` is the tab. 132 tests pass; the tab was looked at in the running app (screenshots of two rudiments), nothing was heard and no V31 was connected.
 
