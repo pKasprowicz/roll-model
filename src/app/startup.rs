@@ -78,6 +78,8 @@ pub(super) struct Startup {
     /// What the step in progress is doing, in words.
     label: String,
     log: Vec<Line>,
+    /// When the step in progress was first run; its line says how long it took.
+    began: Option<Instant>,
     sound: Receiver<SoundScan>,
     file: Option<PathBuf>,
     finished_at: Option<Instant>,
@@ -100,7 +102,7 @@ impl Startup {
             steps.push(Step::Score);
         }
         let label = label(steps[0], &Config::default(), file.as_deref());
-        Startup { steps, next: 0, drawn: false, label, log: Vec::new(), sound, file, finished_at: None, frames: 0, position: None }
+        Startup { steps, next: 0, drawn: false, label, log: Vec::new(), began: None, sound, file, finished_at: None, frames: 0, position: None }
     }
 
     fn current(&self) -> Option<Step> {
@@ -174,7 +176,10 @@ impl DrumApp {
         let Some(mut st) = self.startup.take() else { return Flow::Go };
         let was_finished = st.is_finished();
         if let Some(step) = st.due() {
-            if let Some(line) = self.run_step(step, &mut st) {
+            let began = *st.began.get_or_insert_with(Instant::now);
+            if let Some(mut line) = self.run_step(step, &mut st) {
+                line.text = format!("{} · {} ms", line.text, began.elapsed().as_millis());
+                st.began = None;
                 st.finish(line);
                 if let Some(next) = st.current() {
                     st.label = label(next, &self.cfg, st.file.as_deref());

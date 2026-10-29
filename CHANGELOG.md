@@ -6,6 +6,9 @@ All notable changes are recorded here. The format follows [Keep a Changelog](htt
 
 ## [Unreleased]
 
+### Changed
+- **The splash shows how long each start-up step took** (for example `Found 3 MIDI inputs and 2 MIDI outputs · 41 ms`), so slow drivers and devices can be seen at a glance.
+
 ## [0.7.0] - 2026-10-29
 
 A start-up splash, a start trigger, help pictures of controllers, presets for four more MIDI controllers, and a window for managing controller presets and teaching a controller by pressing its controls. The default controller is now the X-Touch Mini, and the presets of both X-Touch controllers changed (see below). Covered by unit tests (201); the splash, the help pictures and the Manage window were looked at in the running app. Not yet tried with a real V31, a real controller (Mackie or generic: the generic presets are from memory), or by ear.

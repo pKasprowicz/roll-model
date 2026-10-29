@@ -34,7 +34,7 @@ First real build and smoke test done on 2026-10-24 (Windows 11, `x86_64-pc-windo
 
 ### Task index
 
-Every open task has a unique ID; refer to tasks by it. IDs are never reused: a finished task is ticked and keeps its ID, a dropped one is struck through. **Needs**: *device* = a real V31 or controller, *ears* = listening, *decision* = the owner has to choose, *code* = can be done at the desk.
+The hardware tasks (HW-*) have a step-by-step plan in `docs/hardware-test-plan.md`, with a results sheet. Every open task has a unique ID; refer to tasks by it. IDs are never reused: a finished task is ticked and keeps its ID, a dropped one is struck through. **Needs**: *device* = a real V31 or controller, *ears* = listening, *decision* = the owner has to choose, *code* = can be done at the desk.
 
 | ID | Task | Needs |
 |---|---|---|
