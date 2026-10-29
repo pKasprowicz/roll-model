@@ -86,7 +86,7 @@ fn the_mini_has_two_layers_and_every_button_does_something() {
     let p = Preset::parse(builtin_text("Behringer X-Touch Mini").unwrap());
     assert_eq!(p.layers.iter().map(|l| l.0.as_str()).collect::<Vec<_>>(), ["A", "B"]);
     for layer in ["A", "B"] {
-        let on_layer = |src: Src| p.binds.iter().any(|b| b.layer.as_deref() == Some(layer) && b.src == src);
+        let on_layer = |src: Src| p.binds.iter().any(|b| b.layer.as_deref() == Some(layer) && b.input.src == src);
         let buttons = [89, 90, 40, 41, 42, 43, 44, 45, 87, 88, 91, 92, 86, 93, 94, 95];
         assert!(buttons.iter().all(|n| on_layer(Src::Note(*n))), "layer {layer}");
         assert!((16..24).all(|n| on_layer(Src::Cc(n))), "eight encoders on layer {layer}");
@@ -256,8 +256,8 @@ fn an_encoder_line_can_name_its_encoding_and_a_knob_moves_the_value_it_is_bound_
 fn a_line_can_be_for_one_midi_channel_and_a_channel_line_wins() {
     let p = Preset::parse("bind = note 36 ch 10 -> record\nbind = note 36 -> stop\nbind = cc 7 ch 2 abs -> tempo\n");
     assert!(p.warnings.is_empty(), "{:?}", p.warnings);
-    assert_eq!(p.binds[0].channel, Some(10));
-    assert_eq!(p.binds[1].channel, None);
+    assert_eq!(p.binds[0].input.channel, Some(10));
+    assert_eq!(p.binds[1].input.channel, None);
     let mut m = Mapper::new(p);
     let s = State { tempo: 0.5, ..Default::default() };
     let on = |ch: u8, n: u8| Msg::NoteOn { ch, note: n, vel: 100 };
@@ -361,41 +361,41 @@ fn a_pressed_control_is_learned_the_way_its_action_needs() {
     let on = |ch: u8, n: u8, vel: u8| Msg::NoteOn { ch, note: n, vel };
     let t = Encoding::Twos;
     // A button wants a press: a note on, or a cc that is not zero (a button that sends cc).
-    assert_eq!(learn(on(1, 36, 100), Action::Record, Reading::Absolute, false).map(|l| l.src), Some(Src::Note(36)));
+    assert_eq!(learn(on(1, 36, 100), Action::Record, Reading::Absolute, false).map(|l| l.input.src), Some(Src::Note(36)));
     assert_eq!(learn(on(1, 36, 0), Action::Record, Reading::Absolute, false), None, "the release");
     assert_eq!(learn(Msg::NoteOff { ch: 1, note: 36 }, Action::Record, Reading::Absolute, false), None);
-    assert_eq!(learn(cc(7, 127), Action::Record, Reading::Absolute, false).map(|l| l.src), Some(Src::Cc(7)));
+    assert_eq!(learn(cc(7, 127), Action::Record, Reading::Absolute, false).map(|l| l.input.src), Some(Src::Cc(7)));
     assert_eq!(learn(cc(7, 0), Action::Record, Reading::Absolute, false), None);
     assert_eq!(learn(Msg::Bend { ch: 1, value: 5 }, Action::Record, Reading::Absolute, false), None, "a fader is no button");
     // A value takes a cc (any value) or a fader, but not a note.
     assert_eq!(learn(on(1, 36, 100), Action::Tempo, Reading::Absolute, false), None);
     let knob = learn(cc(13, 0), Action::Tempo, Reading::Absolute, false).unwrap();
-    assert_eq!((knob.src, knob.reading), (Src::Cc(13), Reading::Absolute));
+    assert_eq!((knob.input.src, knob.reading), (Src::Cc(13), Reading::Absolute));
     let endless = learn(cc(14, 65), Action::Tempo, Reading::Relative(t), false).unwrap();
     assert_eq!(endless.reading, Reading::Relative(t));
-    assert_eq!(learn(Msg::Bend { ch: 3, value: 5 }, Action::Tempo, Reading::Absolute, true).map(|l| (l.src, l.channel)), Some((Src::Bend(3), None)));
+    assert_eq!(learn(Msg::Bend { ch: 3, value: 5 }, Action::Tempo, Reading::Absolute, true).map(|l| (l.input.src, l.input.channel)), Some((Src::Bend(3), None)));
     // The lists are only turned, so they are always relative.
     assert!(learn(cc(15, 1), Action::Score, Reading::Absolute, false).unwrap().reading.is_relative());
     assert_eq!(learn(Msg::Bend { ch: 1, value: 5 }, Action::Score, Reading::Absolute, false), None);
     // The channel is remembered only when asked for.
-    assert_eq!(learn(on(10, 36, 100), Action::Record, Reading::Absolute, true).and_then(|l| l.channel), Some(10));
-    assert_eq!(learn(on(10, 36, 100), Action::Record, Reading::Absolute, false).and_then(|l| l.channel), None);
+    assert_eq!(learn(on(10, 36, 100), Action::Record, Reading::Absolute, true).and_then(|l| l.input.channel), Some(10));
+    assert_eq!(learn(on(10, 36, 100), Action::Record, Reading::Absolute, false).and_then(|l| l.input.channel), None);
 }
 
 #[test]
 fn assigning_replaces_the_old_control_of_the_same_kind_and_takes_a_used_one() {
     let mut p = Preset::parse("bind = note 1 -> record\nbind = note 2 -> listen\nbind = cc 5 abs -> tempo\nbind = bend 1 -> tempo\n");
-    let found = |src| Learned { src, channel: None, reading: Reading::Absolute };
+    let found = |src| Learned { input: Input { src, channel: None }, reading: Reading::Absolute };
     // Record moves to note 3: the old note goes.
     assert_eq!(p.assign(None, Action::Record, found(Src::Note(3))), None);
     assert_eq!(p.bindings_of(None, Action::Record).len(), 1);
-    assert_eq!(p.bindings_of(None, Action::Record)[0].src, Src::Note(3));
+    assert_eq!(p.bindings_of(None, Action::Record)[0].input.src, Src::Note(3));
     // Stop takes note 2 from Listen.
     assert_eq!(p.assign(None, Action::Stop, found(Src::Note(2))), Some(Action::Listen));
     assert!(p.bindings_of(None, Action::Listen).is_empty());
     // Tempo gets a new knob; the fader stays.
     p.assign(None, Action::Tempo, found(Src::Cc(6)));
-    let tempo: Vec<Src> = p.bindings_of(None, Action::Tempo).iter().map(|b| b.src).collect();
+    let tempo: Vec<Src> = p.bindings_of(None, Action::Tempo).iter().map(|b| b.input.src).collect();
     assert_eq!(tempo, [Src::Bend(1), Src::Cc(6)]);
     // Another layer's lines are not touched, and clearing is per layer.
     let mut q = Preset::parse("layer = A note 8\nlayer = B note 9\nbind = A note 1 -> record\nbind = B note 1 -> mute 1\n");
@@ -405,9 +405,9 @@ fn assigning_replaces_the_old_control_of_the_same_kind_and_takes_a_used_one() {
     assert!(q.bindings_of(Some("B"), Action::Mute(0)).is_empty() && q.bindings_of(Some("A"), Action::Stop).len() == 1);
     // The kind of a cc can be changed afterwards.
     p.set_reading(None, Action::Tempo, Reading::Relative(Encoding::Offset));
-    let cc_bind = p.binds.iter().find(|b| b.src == Src::Cc(6)).unwrap();
+    let cc_bind = p.binds.iter().find(|b| b.input.src == Src::Cc(6)).unwrap();
     assert_eq!(cc_bind.reading, Reading::Relative(Encoding::Offset));
-    assert!(!p.binds.iter().find(|b| b.src == Src::Bend(1)).unwrap().reading.is_relative(), "a fader is not touched");
+    assert!(!p.binds.iter().find(|b| b.input.src == Src::Bend(1)).unwrap().reading.is_relative(), "a fader is not touched");
 }
 
 #[test]
@@ -418,7 +418,7 @@ fn an_edited_preset_replaces_the_one_in_use_and_keeps_the_layer() {
     m.handle(note(9), &s);
     assert_eq!(m.layer_name(), Some("B"));
     let mut edited = p;
-    edited.assign(Some("B"), Action::Listen, Learned { src: Src::Note(1), channel: None, reading: Reading::Absolute });
+    edited.assign(Some("B"), Action::Listen, Learned { input: Input { src: Src::Note(1), channel: None }, reading: Reading::Absolute });
     m.replace_preset(edited);
     assert_eq!(m.layer_name(), Some("B"), "still on layer B");
     assert_eq!(m.handle(note(1), &s), [Command::Press(Action::Listen)]);

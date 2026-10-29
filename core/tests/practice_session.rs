@@ -36,7 +36,7 @@ fn a_built_in_controller_preset_turns_a_button_into_a_command() {
     let state = State::default();
     // A bound button, found through the preset itself.
     let record = mapper.preset().binds.iter().find(|b| b.action == Action::Record).expect("record is bound");
-    let msg = match record.src {
+    let msg = match record.input.src {
         controller::Src::Note(note) => Msg::NoteOn { ch: 1, note, vel: 127 },
         other => panic!("record is a button, not {other:?}"),
     };

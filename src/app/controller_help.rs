@@ -104,7 +104,7 @@ impl ControllerHelp {
                 widgets::hint(ui, "This preset binds no controls yet. Teach it some under Assignments on the Controller page.");
                 egui::Grid::new("controller_help_list").num_columns(2).striped(true).show(ui, |ui| {
                     for b in self.preset.binds.iter().filter(|b| b.layer.is_none() || b.layer == layer) {
-                        ui.label(format!("{}{}", b.src.text(), if b.reading.is_relative() { " (turn)" } else { "" }));
+                        ui.label(format!("{}{}", b.input.src.text(), if b.reading.is_relative() { " (turn)" } else { "" }));
                         ui.label(b.action.title());
                         ui.end_row();
                     }
@@ -133,7 +133,7 @@ fn notes(ui: &mut egui::Ui, preset: &Preset, layout: &Layout, layer: Option<&str
         .unplaced(preset)
         .iter()
         .filter(|b| b.layer.is_none() || b.layer.as_deref() == layer)
-        .map(|b| format!("{} ({})", b.src.text(), b.action.title()))
+        .map(|b| format!("{} ({})", b.input.src.text(), b.action.title()))
         .collect();
     if !lost.is_empty() {
         ui.label(RichText::new(format!("The preset also binds {}, but the picture does not show where those are.", lost.join(", "))).small().color(render::AMBER));

@@ -7,13 +7,19 @@ use super::action::ACTIONS;
 use super::mapper::Learned;
 use super::{Action, Encoding, LoadPresetError, Out, PresetError, Reading, Src};
 
+/// A control of the device: the message it sends, and the MIDI channel it is limited to (none: any).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Input {
+    pub src: Src,
+    /// Only messages on this MIDI channel (1-based); `None`: on any channel.
+    pub channel: Option<u8>,
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub struct Binding {
     /// `None`: on every layer.
     pub layer: Option<String>,
-    pub src: Src,
-    /// Only messages on this MIDI channel (1-based); `None`: on any channel.
-    pub channel: Option<u8>,
+    pub input: Input,
     /// Absolute, or an endless encoder and how it counts (`Mackie` unless the line says otherwise).
     pub reading: Reading,
     pub action: Action,
@@ -189,7 +195,7 @@ impl Preset {
             return Err(PresetError::FaderChannel(c));
         }
         let reading = if relative { Reading::Relative(encoding) } else { Reading::Absolute };
-        self.binds.push(Binding { layer, src, channel, reading, action });
+        self.binds.push(Binding { layer, input: Input { src, channel }, reading, action });
         Ok(())
     }
 
@@ -238,7 +244,7 @@ impl Preset {
         self.binds
             .iter()
             .enumerate()
-            .filter(|(_, b)| b.src == src && channel.map_or(true, |c| b.channel.map_or(true, |bc| bc == c)))
+            .filter(|(_, b)| b.input.src == src && channel.map_or(true, |c| b.input.channel.map_or(true, |bc| bc == c)))
             .filter_map(|(i, b)| {
                 let layer_rank = if layer.is_some() && b.layer.as_deref() == layer {
                     2
@@ -247,7 +253,7 @@ impl Preset {
                 } else {
                     return None;
                 };
-                let exact_channel = b.channel.is_some() && b.channel == channel;
+                let exact_channel = b.input.channel.is_some() && b.input.channel == channel;
                 // The best rank wins; among equals the first line of the file.
                 Some(((layer_rank, exact_channel), std::cmp::Reverse(i)))
             })
@@ -267,11 +273,11 @@ impl Preset {
             if let Some(layer) = &b.layer {
                 left.push_str(&format!("{layer} "));
             }
-            left.push_str(&b.src.text());
-            if let Some(ch) = b.channel {
+            left.push_str(&b.input.src.text());
+            if let Some(ch) = b.input.channel {
                 left.push_str(&format!(" ch {ch}"));
             }
-            if matches!(b.src, Src::Cc(_)) {
+            if matches!(b.input.src, Src::Cc(_)) {
                 match b.reading {
                     Reading::Absolute => left.push_str(" abs"),
                     Reading::Relative(Encoding::Mackie) => left.push_str(" rel"),
@@ -319,14 +325,14 @@ impl Preset {
         };
         let mut taken_from = None;
         self.binds.retain(|b| {
-            let same = b.layer == layer && b.src == found.src && b.channel == found.channel;
+            let same = b.layer == layer && b.input.src == found.input.src && b.input.channel == found.input.channel;
             if same && b.action != action {
                 taken_from = Some(b.action);
             }
             !same
         });
-        self.binds.retain(|b| !(b.layer == layer && b.action == action && kind(b.src) == kind(found.src)));
-        self.binds.push(Binding { layer, src: found.src, channel: found.channel, reading: found.reading, action });
+        self.binds.retain(|b| !(b.layer == layer && b.action == action && kind(b.input.src) == kind(found.input.src)));
+        self.binds.push(Binding { layer, input: found.input, reading: found.reading, action });
         taken_from
     }
 
@@ -337,7 +343,7 @@ impl Preset {
 
     /// Changes how the cc controls of `action` on `layer` are read: as positions, or as an endless encoder.
     pub fn set_reading(&mut self, layer: Option<&str>, action: Action, reading: Reading) {
-        for b in self.binds.iter_mut().filter(|b| b.layer.as_deref() == layer && b.action == action && matches!(b.src, Src::Cc(_))) {
+        for b in self.binds.iter_mut().filter(|b| b.layer.as_deref() == layer && b.action == action && matches!(b.input.src, Src::Cc(_))) {
             b.reading = reading;
         }
     }
@@ -355,8 +361,8 @@ impl Preset {
         let mut seen: BTreeMap<(Option<String>, Src, Option<u8>), Action> = BTreeMap::new();
         let mut repeated = Vec::new();
         for b in &self.binds {
-            if let Some(first) = seen.insert((b.layer.clone(), b.src, b.channel), b.action) {
-                repeated.push(format!("{} is bound to both \"{}\" and \"{}\"", b.src.text(), first.text(), b.action.text()));
+            if let Some(first) = seen.insert((b.layer.clone(), b.input.src, b.input.channel), b.action) {
+                repeated.push(format!("{} is bound to both \"{}\" and \"{}\"", b.input.src.text(), first.text(), b.action.text()));
             }
         }
         for r in repeated {

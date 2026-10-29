@@ -113,9 +113,9 @@ fn kind_text(reading: Reading) -> String {
 }
 
 fn control_text(b: &Binding) -> String {
-    match b.channel {
-        Some(ch) => format!("{} ch {ch}", b.src.text()),
-        None => b.src.text(),
+    match b.input.channel {
+        Some(ch) => format!("{} ch {ch}", b.input.src.text()),
+        None => b.input.src.text(),
     }
 }
 
@@ -183,11 +183,11 @@ impl DrumApp {
             return false;
         };
         let layer = self.editor_layer(&preset);
-        let existing = preset.bindings_of(layer.as_deref(), action).into_iter().find(|b| matches!(b.src, controller::Src::Cc(_))).map(|b| b.reading);
+        let existing = preset.bindings_of(layer.as_deref(), action).into_iter().find(|b| matches!(b.input.src, controller::Src::Cc(_))).map(|b| b.reading);
         let reading = existing.unwrap_or_else(|| self.controller.editor.chosen_kind(action));
         let Some(found) = controller::learn(msg, action, reading, self.controller.editor.remember_channel) else { return true };
         let taken_from = self.edit_preset(|p| p.assign(layer.as_deref(), action, found)).flatten();
-        let mut notice = format!("{}: {}", action.title(), control_text(&Binding { layer: None, src: found.src, channel: found.channel, reading: found.reading, action }));
+        let mut notice = format!("{}: {}", action.title(), control_text(&Binding { layer: None, input: found.input, reading: found.reading, action }));
         if let Some(other) = taken_from {
             notice.push_str(&format!(" (it was {})", other.title()));
         }
@@ -483,7 +483,7 @@ impl DrumApp {
                         if action.is_level() || action.is_browse() {
                             let current = bound
                                 .iter()
-                                .find(|b| matches!(b.src, controller::Src::Cc(_)))
+                                .find(|b| matches!(b.input.src, controller::Src::Cc(_)))
                                 .map(|b| b.reading)
                                 .unwrap_or_else(|| self.controller.editor.chosen_kind(action));
                             egui::ComboBox::from_id_salt(("controller_kind", action.text())).selected_text(kind_text(current)).width(150.0).show_ui(ui, |ui| {
@@ -637,12 +637,12 @@ mod tests {
         app.controller.editor.learning = Some(Action::Record);
         assert!(app.learn_message(pressed(36)));
         assert_eq!(app.controller.editor.learning, Some(Action::Listen));
-        assert_eq!(saved().bindings_of(None, Action::Record)[0].src, controller::Src::Note(36));
+        assert_eq!(saved().bindings_of(None, Action::Record)[0].input.src, controller::Src::Note(36));
         // A release is used up and changes nothing; the next press binds Listen.
         assert!(app.learn_message(controller::Msg::NoteOn { ch: 1, note: 36, vel: 0 }));
         assert_eq!(app.controller.editor.learning, Some(Action::Listen));
         assert!(app.learn_message(pressed(37)));
-        assert_eq!(saved().bindings_of(None, Action::Listen)[0].src, controller::Src::Note(37));
+        assert_eq!(saved().bindings_of(None, Action::Listen)[0].input.src, controller::Src::Note(37));
         // Pressing a used pad takes it from its action, and says so.
         app.controller.editor.learning = Some(Action::Stop);
         assert!(app.learn_message(pressed(36)));
@@ -654,14 +654,14 @@ mod tests {
         assert!(app.learn_message(controller::Msg::Cc { ch: 2, cc: 13, val: 40 }));
         assert_eq!(app.controller.editor.learning, None);
         let tempo = saved().binds.iter().find(|b| b.action == Action::Tempo).cloned().unwrap();
-        assert_eq!((tempo.src, tempo.channel, tempo.reading), (controller::Src::Cc(13), None, Reading::Absolute));
+        assert_eq!((tempo.input.src, tempo.input.channel, tempo.reading), (controller::Src::Cc(13), None, Reading::Absolute));
         // The channel is remembered when asked for, and a relative choice is kept for the knob.
         app.controller.editor.remember_channel = true;
         app.controller.editor.kinds.insert(Action::RangeFrom.text(), Reading::Relative(Encoding::Twos));
         app.controller.editor.learning = Some(Action::RangeFrom);
         assert!(app.learn_message(controller::Msg::Cc { ch: 2, cc: 14, val: 1 }));
         let from = saved().binds.iter().find(|b| b.action == Action::RangeFrom).cloned().unwrap();
-        assert_eq!((from.channel, from.reading), (Some(2), Reading::Relative(Encoding::Twos)));
+        assert_eq!((from.input.channel, from.reading), (Some(2), Reading::Relative(Encoding::Twos)));
         // The file is a normal preset: it parses without complaint and says what was learned.
         assert!(saved().warnings.is_empty(), "{:?}", saved().warnings);
         assert_eq!(saved().port, "PADS");
@@ -691,9 +691,9 @@ mod tests {
         app.controller.editor.learning = Some(Action::Record);
         app.learn_message(controller::Msg::Cc { ch: 1, cc: 99, val: 127 });
         let edited = controller::Preset::parse(&std::fs::read_to_string(dir.join("Korg nanoKONTROL2 (copy).txt")).unwrap());
-        assert_eq!(edited.bindings_of(None, Action::Record)[0].src, controller::Src::Cc(99));
+        assert_eq!(edited.bindings_of(None, Action::Record)[0].input.src, controller::Src::Cc(99));
         let original = controller::Preset::parse(controller::builtin_text("Korg nanoKONTROL2").unwrap());
-        assert_eq!(original.bindings_of(None, Action::Record)[0].src, controller::Src::Cc(45), "the built-in one is untouched");
+        assert_eq!(original.bindings_of(None, Action::Record)[0].input.src, controller::Src::Cc(45), "the built-in one is untouched");
         let _ = std::fs::remove_dir_all(&dir);
     }
 

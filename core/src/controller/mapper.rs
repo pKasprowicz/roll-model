@@ -2,13 +2,12 @@
 
 use std::collections::BTreeMap;
 
-use super::{Action, Msg, Out, Preset, PresetKind, Reading, Src, State};
+use super::{Action, Input, Msg, Out, Preset, PresetKind, Reading, Src, State};
 
 /// A control found by pressing or turning it, ready to be bound to an action.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Learned {
-    pub src: Src,
-    pub channel: Option<u8>,
+    pub input: Input,
     pub reading: Reading,
 }
 
@@ -20,7 +19,7 @@ pub struct Learned {
 pub fn learn(msg: Msg, action: Action, reading: Reading, remember_channel: bool) -> Option<Learned> {
     let channel = |src: Src| (remember_channel && !matches!(src, Src::Bend(_))).then(|| msg.channel());
     let value_like = action.is_level() || action.is_browse();
-    let found = |src: Src, channel: Option<u8>, reading: Reading| Some(Learned { src, channel, reading });
+    let found = |src: Src, channel: Option<u8>, reading: Reading| Some(Learned { input: Input { src, channel }, reading });
     match msg {
         Msg::NoteOn { note, vel, .. } if vel > 0 && !value_like => found(Src::Note(note), channel(Src::Note(note)), Reading::Absolute),
         Msg::Cc { cc, .. } if value_like => {

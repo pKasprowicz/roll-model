@@ -102,7 +102,7 @@ impl Layout {
     pub fn unplaced<'a>(&self, preset: &'a Preset) -> Vec<&'a Binding> {
         let known = self.controls.iter().flat_map(|c| [c.press, c.turn]).flatten();
         let known: Vec<Src> = known.chain(preset.layers.iter().map(|(_, s)| *s)).collect();
-        preset.binds.iter().filter(|b| !known.contains(&b.src)).collect()
+        preset.binds.iter().filter(|b| !known.contains(&b.input.src)).collect()
     }
 }
 
@@ -234,7 +234,7 @@ mod rows {
 /// shows what the preset binds, not where the controls are on the device. `None` if the preset
 /// binds nothing and has no layers.
 pub fn generated(preset: &Preset) -> Option<Layout> {
-    let mut srcs: Vec<Src> = preset.binds.iter().map(|b| b.src).collect();
+    let mut srcs: Vec<Src> = preset.binds.iter().map(|b| b.input.src).collect();
     srcs.sort();
     srcs.dedup();
     let layer_srcs: Vec<(String, Src)> = preset.layers.iter().filter(|(_, s)| !srcs.contains(s)).cloned().collect();
@@ -242,7 +242,7 @@ pub fn generated(preset: &Preset) -> Option<Layout> {
         return None;
     }
     let kind_of = |src: Src| -> ControlKind {
-        let bind = preset.binds.iter().find(|b| b.src == src);
+        let bind = preset.binds.iter().find(|b| b.input.src == src);
         match (src, bind) {
             (Src::Bend(_), _) => ControlKind::Fader,
             (Src::Cc(_), Some(b)) if b.reading.is_relative() => ControlKind::Encoder,
@@ -410,7 +410,7 @@ mod tests {
         let (preset, layout) = mini();
         assert!(layout.unplaced(&preset).is_empty(), "the Mini's preset is all on the picture");
         let (preset, layout) = device(COMPACT);
-        let mut lost: Vec<String> = layout.unplaced(&preset).iter().map(|b| b.src.text()).collect();
+        let mut lost: Vec<String> = layout.unplaced(&preset).iter().map(|b| b.input.src.text()).collect();
         lost.sort();
         assert!(lost.is_empty(), "the Compact's preset binds nothing the picture lacks: {lost:?}");
     }
@@ -490,7 +490,7 @@ mod tests {
             // Every control the preset binds, and every layer button, is on the picture, once.
             let known = sources(&layout);
             for b in &preset.binds {
-                assert!(known.contains(&b.src), "{name}: {} is not on the picture", b.src.text());
+                assert!(known.contains(&b.input.src), "{name}: {} is not on the picture", b.input.src.text());
             }
             for (layer, src) in &preset.layers {
                 assert!(known.contains(src), "{name}: layer {layer} is not on the picture");
