@@ -37,6 +37,16 @@ pub(super) struct EditorState {
     pub(super) dir: Option<PathBuf>,
 }
 
+impl EditorState {
+    /// What the editor was doing belongs to the preset that was chosen: drop it when another is.
+    pub(super) fn start_over(&mut self) {
+        self.learning = None;
+        self.confirm_delete = false;
+        self.layer = 0;
+        self.notice.clear();
+    }
+}
+
 impl Default for EditorState {
     fn default() -> EditorState {
         EditorState { learning: None, layer: 0, keep_going: true, remember_channel: false, kinds: BTreeMap::new(), notice: String::new(), rename_to: String::new(), rename_for: String::new(), confirm_delete: false, open: false, dir: None }
@@ -214,13 +224,10 @@ impl DrumApp {
     fn use_new_preset(&mut self, path: &std::path::Path, status: &str) {
         self.refresh_controllers();
         if let Some(stem) = path.file_stem() {
-            self.cfg.controller_preset = stem.to_string_lossy().into_owned();
-            self.cfg.controller_port.clear();
+            self.select_preset(stem.to_string_lossy().into_owned());
         }
         self.status = status.to_string();
-        let dir = self.controller.editor.dir.take();
-        self.controller.editor = EditorState { dir, open: true, ..EditorState::default() };
-        self.connect_controller();
+        self.controller.editor.open = true;
     }
 
     /// The editor window, while it is open: a window of its own (inside the main window where the
@@ -257,18 +264,6 @@ impl DrumApp {
                 self.assignments_body(ui);
             });
         });
-    }
-
-    /// Chooses a preset (`""`: none) as the one in use and shows it in the editor.
-    pub(super) fn select_preset(&mut self, name: String) {
-        self.cfg.controller_preset = name;
-        self.cfg.controller_port.clear();
-        let editor = &mut self.controller.editor;
-        editor.learning = None;
-        editor.confirm_delete = false;
-        editor.layer = 0;
-        editor.notice.clear();
-        self.connect_controller();
     }
 
     /// All presets, grouped by what they speak, with Add, Copy and Delete under the list.
@@ -394,9 +389,8 @@ impl DrumApp {
         let result = std::fs::read_to_string(&old).and_then(|text| std::fs::write(&target, with_name(&text, &new))).and_then(|_| std::fs::remove_file(&old));
         match result {
             Ok(()) => {
-                self.cfg.controller_preset = new.clone();
                 self.refresh_controllers();
-                self.connect_controller();
+                self.choose_preset(new.clone(), true);
                 self.controller.editor.notice = format!("Renamed to {new}.");
             }
             Err(e) => self.error = Some(format!("Could not rename the preset: {e}")),
@@ -410,10 +404,8 @@ impl DrumApp {
         let name = self.cfg.controller_preset.clone();
         match std::fs::remove_file(&path) {
             Ok(()) => {
-                self.cfg.controller_preset.clear();
-                self.cfg.controller_port.clear();
                 self.refresh_controllers();
-                self.connect_controller();
+                self.select_preset(String::new());
                 self.controller.editor.notice = format!("Deleted {name}.");
             }
             Err(e) => self.error = Some(format!("Could not delete {}: {e}", path.display())),

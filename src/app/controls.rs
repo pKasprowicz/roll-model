@@ -195,6 +195,22 @@ impl DrumApp {
         self.controller.presets = names;
     }
 
+    /// Chooses a preset (`""`: none) as the one in use and connects its controller. The port
+    /// is the preset's own again, and what the editor was doing with the old one is dropped.
+    pub(super) fn select_preset(&mut self, name: String) {
+        self.choose_preset(name, false);
+    }
+
+    /// `select_preset`, optionally keeping a port chosen by hand (a renamed preset keeps it).
+    pub(super) fn choose_preset(&mut self, name: String, keep_port: bool) {
+        self.cfg.controller_preset = name;
+        if !keep_port {
+            self.cfg.controller_port.clear();
+        }
+        self.controller.editor.start_over();
+        self.connect_controller();
+    }
+
     /// (Re)connects the chosen preset's controller; a failure is explained on the Controller page.
     pub(super) fn connect_controller(&mut self) {
         let c = &mut self.controller;
@@ -703,9 +719,7 @@ impl DrumApp {
             }
         });
         if let Some(name) = preset {
-            self.cfg.controller_preset = name;
-            self.cfg.controller_port.clear();
-            self.connect_controller();
+            self.select_preset(name);
         }
 
         let mut port: Option<String> = None;
