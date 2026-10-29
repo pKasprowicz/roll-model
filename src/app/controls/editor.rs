@@ -126,12 +126,11 @@ impl DrumApp {
 
     /// The file of the chosen preset if it is one the user may edit: not a built-in one.
     pub(super) fn editable_path(&self) -> Option<PathBuf> {
-        let name = &self.cfg.controller_preset;
-        if name.is_empty() || controller::builtin_text(name).is_some() {
-            return None;
-        }
         let dir = self.preset_dir()?;
-        controller::custom_presets(&dir).into_iter().find(|(n, _)| n == name).map(|(_, path)| path)
+        match controller::preset_source(&self.cfg.controller_preset, Some(&dir))? {
+            controller::PresetSource::File(path) => Some(path),
+            controller::PresetSource::BuiltIn(_) => None,
+        }
     }
 
     /// The chosen preset as it is now, for the table: the one in use, or its file.
@@ -227,15 +226,14 @@ impl DrumApp {
             self.error = Some("No settings folder is available on this system.".into());
             return;
         };
-        let text = match controller::builtin_text(&name) {
-            Some(text) => text.to_string(),
-            None => match controller::custom_presets(&dir).into_iter().find(|(n, _)| *n == name).map(|(_, p)| std::fs::read_to_string(p)) {
-                Some(Ok(text)) => text,
-                _ => {
-                    self.error = Some(format!("Could not read the preset \"{name}\"."));
-                    return;
-                }
-            },
+        let text = match controller::preset_source(&name, Some(&dir)) {
+            Some(controller::PresetSource::BuiltIn(text)) => Ok(text.to_string()),
+            Some(controller::PresetSource::File(path)) => std::fs::read_to_string(path),
+            None => Err(std::io::Error::new(std::io::ErrorKind::NotFound, "no such preset")),
+        };
+        let Ok(text) = text else {
+            self.error = Some(format!("Could not read the preset \"{name}\"."));
+            return;
         };
         match copy_preset(&dir, &name, &text) {
             Ok(path) => self.use_new_preset(&path, &format!("Copied to {}", path.display())),
@@ -409,7 +407,7 @@ impl DrumApp {
             self.controller.editor.say("A preset with that name exists already.");
             return;
         }
-        let result = std::fs::read_to_string(&old).and_then(|text| std::fs::write(&target, with_name(&text, &new))).and_then(|_| std::fs::remove_file(&old));
+        let result = std::fs::rename(&old, &target);
         match result {
             Ok(()) => {
                 self.refresh_controllers();
@@ -562,27 +560,6 @@ fn check_preset_name(name: &str) -> Result<(), &'static str> {
     }
 }
 
-/// `text` (a preset file) with its `name` line set to `name`, or one added at the top.
-fn with_name(text: &str, name: &str) -> String {
-    let mut done = false;
-    let mut lines: Vec<String> = text
-        .lines()
-        .map(|line| {
-            let key = line.split('#').next().and_then(|l| l.split_once('=')).map(|(k, _)| k.trim());
-            if !done && key == Some("name") {
-                done = true;
-                format!("name = {name}")
-            } else {
-                line.to_string()
-            }
-        })
-        .collect();
-    if !done {
-        lines.insert(0, format!("name = {name}"));
-    }
-    lines.join("\n") + "\n"
-}
-
 /// "NAME.txt" in `dir`, or "NAME 2.txt", … if that exists; the folder is created.
 fn unused_path(dir: &std::path::Path, name: &str) -> std::io::Result<PathBuf> {
     std::fs::create_dir_all(dir)?;
@@ -713,14 +690,11 @@ mod tests {
     }
 
     #[test]
-    fn names_are_checked_and_the_name_line_is_set() {
+    fn names_are_checked() {
         assert!(check_preset_name("My pads 2").is_ok());
         for bad in ["", "a/b", "a\\b", "what?", "a:b", ".hidden", "dot.", "Korg nanoKONTROL2", "x\ty"] {
             assert!(check_preset_name(bad).is_err(), "{bad:?}");
         }
-        assert_eq!(with_name("# c\nname = Old\nport = P\n", "New"), "# c\nname = New\nport = P\n");
-        assert_eq!(with_name("port = P\n", "New"), "name = New\nport = P\n");
-        assert_eq!(with_name("name=Old # x\nbind = note 1 -> record\n", "N"), "name = N\nbind = note 1 -> record\n");
     }
 
     #[test]
@@ -747,7 +721,8 @@ mod tests {
         assert!(!dir.join("Pads.txt").exists() && dir.join("Stage pads.txt").exists());
         assert_eq!(app.cfg.controller_preset, "Stage pads");
         let text = std::fs::read_to_string(dir.join("Stage pads.txt")).unwrap();
-        assert!(text.contains("# my notes") && text.contains("name = Stage pads") && text.contains("bind = note 1 -> record"), "{text}");
+        assert!(text.contains("# my notes") && text.contains("bind = note 1 -> record"), "the file is moved as it is: {text}");
+        assert_eq!(controller::load_preset("Stage pads", Some(&dir)).unwrap().name, "Stage pads", "and is known by its new name");
         // Deleting asks first in the window (a flag), then removes the file and the choice.
         app.controller.editor.confirm_delete = true;
         app.delete_preset();

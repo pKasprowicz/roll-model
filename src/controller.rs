@@ -965,21 +965,39 @@ pub fn custom_presets(dir: &Path) -> Vec<(String, PathBuf)> {
     found
 }
 
-/// A built-in preset by name, or the custom file with that name in `dir`.
-pub fn load_preset(name: &str, dir: Option<&Path>) -> Result<Preset, String> {
+/// Where a preset comes from. A preset is known by one name, the one in the list and in the
+/// settings: the name of the built-in preset, or the name of the file without `.txt`.
+#[derive(Clone, Debug, PartialEq)]
+pub enum PresetSource {
+    BuiltIn(&'static str),
+    File(PathBuf),
+}
+
+/// Where the preset called `name` is: a built-in one first (a built-in name always wins over a
+/// file of the same name), then a file of `dir`.
+pub fn preset_source(name: &str, dir: Option<&Path>) -> Option<PresetSource> {
     if let Some(text) = builtin_text(name) {
-        return Ok(Preset::parse(text));
+        return Some(PresetSource::BuiltIn(text));
     }
-    let path = dir
-        .and_then(|d| custom_presets(d).into_iter().find(|(n, _)| n == name))
-        .map(|(_, p)| p)
-        .ok_or_else(|| format!("controller preset \"{name}\" not found"))?;
-    let text = std::fs::read_to_string(&path).map_err(|e| format!("could not read {}: {e}", path.display()))?;
-    let mut p = Preset::parse(&text);
-    if p.name.is_empty() {
-        p.name = name.to_string();
+    let dir = dir?;
+    custom_presets(dir).into_iter().find(|(n, _)| n == name).map(|(_, path)| PresetSource::File(path))
+}
+
+/// The preset called `name`. Its `name` is always the name it is known by: for a file, the `name`
+/// line is ignored (a renamed file is the same preset under its new name).
+pub fn load_preset(name: &str, dir: Option<&Path>) -> Result<Preset, String> {
+    let source = preset_source(name, dir).ok_or_else(|| format!("controller preset \"{name}\" not found"))?;
+    let mut preset = match &source {
+        PresetSource::BuiltIn(text) => Preset::parse(text),
+        PresetSource::File(path) => {
+            let text = std::fs::read_to_string(path).map_err(|e| format!("could not read {}: {e}", path.display()))?;
+            Preset::parse(&text)
+        }
+    };
+    if matches!(source, PresetSource::File(_)) || preset.name.is_empty() {
+        preset.name = name.to_string();
     }
-    Ok(p)
+    Ok(preset)
 }
 
 // -------------------------------------------------------------------- mapper
@@ -1815,6 +1833,12 @@ mod tests {
         assert_eq!(custom_presets(&dir).iter().map(|c| c.0.as_str()).collect::<Vec<_>>(), ["My pads"]);
         let p = load_preset("My pads", Some(&dir)).unwrap();
         assert_eq!((p.name.as_str(), p.port.as_str(), p.binds.len()), ("My pads", "PADS", 1));
+        // The file's name is the preset's name, whatever its `name` line says.
+        std::fs::write(dir.join("Renamed.txt"), "name = Something else\nport = P\n").unwrap();
+        assert_eq!(load_preset("Renamed", Some(&dir)).unwrap().name, "Renamed");
+        assert!(matches!(preset_source("My pads", Some(&dir)), Some(PresetSource::File(_))));
+        assert!(matches!(preset_source("Korg nanoKONTROL2", Some(&dir)), Some(PresetSource::BuiltIn(_))));
+        assert_eq!(preset_source("Nope", Some(&dir)), None);
         assert!(load_preset("Nope", Some(&dir)).is_err());
         assert!(load_preset("Nope", None).is_err());
         assert!(custom_presets(&dir.join("missing")).is_empty());
