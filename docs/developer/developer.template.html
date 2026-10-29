@@ -773,7 +773,7 @@ impl DrumApp {
 <ol class="steps">
 <li><strong>Find the helpers.</strong> The <code>tests</code> module of <code>playback.rs</code> defines a <code>Fake</code> sink that records <code>Ev</code> events, <code>opts()</code> (a <code>PlayOptions</code> with audio and MIDI on), <code>click(t)</code> and <code>drum(lane, t)</code> to make cues, and <code>play(cue, opts, control)</code> which runs <code>dispatch</code> once and returns the recorded events. <code>PlayOptions</code> has no <code>Default</code>, so build on <code>opts()</code>.</li>
 <li><strong>Read the existing test.</strong> This exact behaviour is already covered; it is the model to copy. The live switch is in <code>Control</code>, the count-in is a cue at negative time:
-{{code:src/playback.rs::fn click_switch_mutes_the_music_but_not_the_count_in}}</li>
+{{code:src/playback/tests.rs::fn click_switch_mutes_the_music_but_not_the_count_in}}</li>
 <li><strong>Write yours the same way:</strong> build the <code>Control</code> and cues, call <code>play(&amp;cue, &amp;opts(), &amp;control)</code>, assert on the returned events. Run it with <code>cargo test click_switch</code>. Change one thing (for example a second <code>Control</code> with <code>set_notes(false)</code>) to see the test fail for the right reason.</li>
 <li><strong>Time-dependent behaviour</strong> (looping, stopping, late cues) goes through <code>run_with</code>, which takes the zero instant, the cues, a stop flag and the sink, with a short <code>tail</code>, so a test can run a real pass in a few milliseconds. Look at <code>looping_repeats_until_switched_off_and_finishes_the_pass</code>.</li>
 </ol>
