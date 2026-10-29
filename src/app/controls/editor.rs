@@ -1,4 +1,5 @@
-//! The preset editor on the Controller page: a table of the program's actions with the control
+//! The Manage window of the Controller page: creating, copying, renaming and deleting presets,
+//! and below them a table of the program's actions with the control
 //! each is bound to, and *Learn* (press or turn a control on the device to bind it). The preset
 //! being edited is a file in the controllers folder; every change is written at once and put in
 //! place in the running controller. The built-in presets are not edited: copy one first, or start
@@ -25,7 +26,12 @@ pub(super) struct EditorState {
     /// How a value's cc is read, chosen before it is learned (by the action's name).
     pub(super) kinds: BTreeMap<String, (bool, Encoding)>,
     pub(super) notice: String,
-    /// The editor window is open.
+    /// The new name typed for the chosen preset, and the preset it was typed for.
+    pub(super) rename_to: String,
+    pub(super) rename_for: String,
+    /// "Delete" was clicked and waits for a second click.
+    pub(super) confirm_delete: bool,
+    /// The Manage window is open.
     pub(super) open: bool,
     /// The folder of the user's presets; `None`: the settings folder (tests use another).
     pub(super) dir: Option<PathBuf>,
@@ -33,7 +39,7 @@ pub(super) struct EditorState {
 
 impl Default for EditorState {
     fn default() -> EditorState {
-        EditorState { learning: None, layer: 0, keep_going: true, remember_channel: false, kinds: BTreeMap::new(), notice: String::new(), open: false, dir: None }
+        EditorState { learning: None, layer: 0, keep_going: true, remember_channel: false, kinds: BTreeMap::new(), notice: String::new(), rename_to: String::new(), rename_for: String::new(), confirm_delete: false, open: false, dir: None }
     }
 }
 
@@ -45,6 +51,9 @@ enum Op {
     Kind(Action, bool, Encoding),
     NewPreset,
     CopyToEdit,
+    Rename,
+    AskDelete(bool),
+    Delete,
 }
 
 const KINDS: [(bool, Encoding); 5] = [
@@ -214,51 +223,22 @@ impl DrumApp {
         self.connect_controller();
     }
 
-    /// The Assignments section of the Controller page: what the editor is for, and the buttons
-    /// that open it. The editor itself is a window of its own (`controller_editor_window`).
-    pub(super) fn controller_assignments_section(&mut self, ui: &mut egui::Ui) {
-        ui.add_space(10.0);
-        ui.heading("Assignments");
-        ui.label(
-            RichText::new("Teach the program which control does what: press Learn, then the control on the device. The editor opens in a window of its own and every change is saved to the preset file at once. The built-in presets are copied first.")
-                .small()
-                .weak(),
-        );
-        let mut op: Option<Op> = None;
-        ui.horizontal(|ui| {
-            if ui.button("Edit assignments…").clicked() {
-                self.controller.editor.open = true;
-            }
-            if ui.add_enabled(!self.cfg.controller_preset.is_empty(), egui::Button::new("Copy the chosen preset to edit")).clicked() {
-                op = Some(Op::CopyToEdit);
-            }
-            if ui.button("New preset by learning").clicked() {
-                op = Some(Op::NewPreset);
-            }
-        });
-        if !self.controller.editor.notice.is_empty() && !self.controller.editor.open {
-            ui.label(RichText::new(self.controller.editor.notice.clone()).small().color(render::AMBER));
-        }
-        self.run_op(op);
-    }
-
     /// The editor window, while it is open: a window of its own (inside the main window where the
     /// platform has no second window).
     pub(in crate::app) fn controller_editor_window(&mut self, ctx: &egui::Context) {
         if !self.controller.editor.open {
             return;
         }
-        let name = if self.cfg.controller_preset.is_empty() { "no preset".to_string() } else { self.cfg.controller_preset.clone() };
-        let title = format!("Controller assignments: {name}");
+        let title = "Manage controller presets".to_string();
         let builder = ViewportBuilder::default().with_title(title.clone()).with_inner_size([660.0, 780.0]).with_min_inner_size([480.0, 320.0]);
         let closed = ctx.show_viewport_immediate(ViewportId::from_hash_of("controller_editor"), builder, |ctx, class| {
             if class == ViewportClass::Embedded {
                 let mut open = true;
-                egui::Window::new(title.clone()).id(egui::Id::new("controller_editor_window")).open(&mut open).default_width(620.0).vscroll(true).show(ctx, |ui| self.editor_body(ui));
+                egui::Window::new(title.clone()).id(egui::Id::new("controller_editor_window")).open(&mut open).default_width(620.0).vscroll(true).show(ctx, |ui| self.manage_body(ui));
                 !open
             } else {
                 egui::CentralPanel::default().show(ctx, |ui| {
-                    egui::ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| self.editor_body(ui));
+                    egui::ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| self.manage_body(ui));
                 });
                 ctx.input(|i| i.viewport().close_requested())
             }
@@ -269,36 +249,130 @@ impl DrumApp {
         }
     }
 
-    /// The table of actions (the contents of the editor window).
-    fn editor_body(&mut self, ui: &mut egui::Ui) {
+    /// The contents of the window: what can be done with presets, then the table of actions.
+    fn manage_body(&mut self, ui: &mut egui::Ui) {
+        self.preset_operations(ui);
+        self.assignments_body(ui);
+    }
+
+    /// Creating, copying, renaming and deleting presets.
+    fn preset_operations(&mut self, ui: &mut egui::Ui) {
+        let chosen = self.cfg.controller_preset.clone();
+        if self.controller.editor.rename_for != chosen {
+            self.controller.editor.rename_for = chosen.clone();
+            self.controller.editor.rename_to = chosen.clone();
+            self.controller.editor.confirm_delete = false;
+        }
+        let custom = self.editable_path().is_some();
         let mut op: Option<Op> = None;
-        let Some(path) = self.editable_path() else {
-            ui.label(RichText::new("The built-in presets cannot be edited. Copy one to change its assignments, or start a new preset and teach it your controls by pressing them.").small().weak());
+        ui.horizontal(|ui| {
+            ui.label("Preset");
+            ui.label(RichText::new(if chosen.is_empty() { "none chosen" } else { chosen.as_str() }).strong());
+            if let Some(kind) = self.controller.kinds.get(&chosen) {
+                ui.label(RichText::new(format!("{}{}", kind.label(), if custom { "" } else { ", built in" })).small().weak());
+            }
+        });
+        ui.horizontal(|ui| {
+            if ui.button("New preset by learning").on_hover_text("An empty preset for the controller's port; press the controls to bind them").clicked() {
+                op = Some(Op::NewPreset);
+            }
+            if ui.add_enabled(!chosen.is_empty(), egui::Button::new("Copy")).on_hover_text("A copy of the chosen preset that can be changed").clicked() {
+                op = Some(Op::CopyToEdit);
+            }
+        });
+        if custom {
             ui.horizontal(|ui| {
-                if ui.add_enabled(!self.cfg.controller_preset.is_empty(), egui::Button::new("Copy the chosen preset to edit")).clicked() {
-                    op = Some(Op::CopyToEdit);
+                ui.label("Name");
+                ui.add(egui::TextEdit::singleline(&mut self.controller.editor.rename_to).desired_width(220.0));
+                if ui.button("Rename").clicked() {
+                    op = Some(Op::Rename);
                 }
-                if ui.button("New preset by learning").clicked() {
-                    op = Some(Op::NewPreset);
+                if self.controller.editor.confirm_delete {
+                    ui.label(RichText::new("Delete the file?").color(render::AMBER));
+                    if ui.button("Delete").clicked() {
+                        op = Some(Op::Delete);
+                    }
+                    if ui.button("Keep").clicked() {
+                        op = Some(Op::AskDelete(false));
+                    }
+                } else if ui.button("Delete…").clicked() {
+                    op = Some(Op::AskDelete(true));
                 }
             });
-            self.run_op(op);
-            if !self.controller.editor.notice.is_empty() {
-                ui.label(RichText::new(self.controller.editor.notice.clone()).small().color(render::AMBER));
+        } else if !chosen.is_empty() {
+            ui.label(RichText::new("A built-in preset cannot be renamed, deleted or changed. Copy it to make one of your own.").small().weak());
+        }
+        if !custom {
+            if let Some(dir) = self.preset_dir() {
+                ui.label(RichText::new(format!("Your presets are text files in {} (any name ending in .txt).", dir.display())).small().weak());
             }
+        }
+        if !custom && !self.controller.editor.notice.is_empty() {
+            ui.label(RichText::new(self.controller.editor.notice.clone()).small().color(render::AMBER));
+        }
+        self.run_op(op);
+    }
+
+    /// A new name for the chosen preset of the user's: its file is renamed and the `name` line changed.
+    fn rename_preset(&mut self) {
+        let Some(old) = self.editable_path() else { return };
+        let new = self.controller.editor.rename_to.trim().to_string();
+        let notice = match check_preset_name(&new) {
+            _ if new == self.cfg.controller_preset => Some("It already has that name.".to_string()),
+            Err(why) => Some(why.to_string()),
+            Ok(()) => None,
+        };
+        if let Some(notice) = notice {
+            self.controller.editor.notice = notice;
+            return;
+        }
+        let Some(dir) = self.preset_dir() else { return };
+        let target = dir.join(format!("{new}.txt"));
+        if target.exists() {
+            self.controller.editor.notice = "A preset with that name exists already.".into();
+            return;
+        }
+        let result = std::fs::read_to_string(&old).and_then(|text| std::fs::write(&target, with_name(&text, &new))).and_then(|_| std::fs::remove_file(&old));
+        match result {
+            Ok(()) => {
+                self.cfg.controller_preset = new.clone();
+                self.refresh_controllers();
+                self.connect_controller();
+                self.controller.editor.notice = format!("Renamed to {new}.");
+            }
+            Err(e) => self.error = Some(format!("Could not rename the preset: {e}")),
+        }
+    }
+
+    /// Deletes the chosen preset of the user's (its file).
+    fn delete_preset(&mut self) {
+        self.controller.editor.confirm_delete = false;
+        let Some(path) = self.editable_path() else { return };
+        let name = self.cfg.controller_preset.clone();
+        match std::fs::remove_file(&path) {
+            Ok(()) => {
+                self.cfg.controller_preset.clear();
+                self.cfg.controller_port.clear();
+                self.refresh_controllers();
+                self.connect_controller();
+                self.controller.editor.notice = format!("Deleted {name}.");
+            }
+            Err(e) => self.error = Some(format!("Could not delete {}: {e}", path.display())),
+        }
+    }
+
+    /// The table of actions.
+    fn assignments_body(&mut self, ui: &mut egui::Ui) {
+        let mut op: Option<Op> = None;
+        let Some(path) = self.editable_path() else {
+            ui.separator();
+            ui.label(RichText::new("Nothing to edit: a built-in preset cannot be changed. Copy it above, or start a new preset, then teach it your controls by pressing them.").small().weak());
             return;
         };
         let Some(preset) = self.preset_being_edited() else { return };
+        ui.separator();
         let connected = self.controller.link.is_some();
         ui.label(RichText::new(format!("Editing {}. Every change is saved at once.", path.display())).small().weak());
-        ui.horizontal(|ui| {
-            if ui.button("Copy this preset").on_hover_text("Make a copy to try something without changing this one").clicked() {
-                op = Some(Op::CopyToEdit);
-            }
-            if ui.button("New preset by learning").clicked() {
-                op = Some(Op::NewPreset);
-            }
-        });
         ui.checkbox(&mut self.controller.editor.keep_going, "After learning a control, go on to the next action");
         ui.checkbox(&mut self.controller.editor.remember_channel, "Limit a learned control to the MIDI channel it sends on");
         if preset.layers.len() > 1 {
@@ -396,8 +470,45 @@ impl DrumApp {
             }
             Op::NewPreset => self.new_learned_preset(),
             Op::CopyToEdit => self.copy_to_edit(),
+            Op::Rename => self.rename_preset(),
+            Op::AskDelete(ask) => self.controller.editor.confirm_delete = ask,
+            Op::Delete => self.delete_preset(),
         }
     }
+}
+
+/// Why `name` cannot be the name of a preset file of the user's, if it cannot.
+fn check_preset_name(name: &str) -> Result<(), &'static str> {
+    if name.is_empty() {
+        Err("Type a name.")
+    } else if name.chars().any(|c| "\\/:*?\"<>|".contains(c) || c.is_control()) || name.starts_with('.') || name.ends_with('.') {
+        Err("A name cannot contain \\ / : * ? \" < > | or start or end with a dot.")
+    } else if controller::builtin_text(name).is_some() {
+        Err("That is the name of a built-in preset.")
+    } else {
+        Ok(())
+    }
+}
+
+/// `text` (a preset file) with its `name` line set to `name`, or one added at the top.
+fn with_name(text: &str, name: &str) -> String {
+    let mut done = false;
+    let mut lines: Vec<String> = text
+        .lines()
+        .map(|line| {
+            let key = line.split('#').next().and_then(|l| l.split_once('=')).map(|(k, _)| k.trim());
+            if !done && key == Some("name") {
+                done = true;
+                format!("name = {name}")
+            } else {
+                line.to_string()
+            }
+        })
+        .collect();
+    if !done {
+        lines.insert(0, format!("name = {name}"));
+    }
+    lines.join("\n") + "\n"
 }
 
 /// "NAME.txt" in `dir`, or "NAME 2.txt", … if that exists; the folder is created.
@@ -530,6 +641,57 @@ mod tests {
     }
 
     #[test]
+    fn names_are_checked_and_the_name_line_is_set() {
+        assert!(check_preset_name("My pads 2").is_ok());
+        for bad in ["", "a/b", "a\\b", "what?", "a:b", ".hidden", "dot.", "Korg nanoKONTROL2", "x\ty"] {
+            assert!(check_preset_name(bad).is_err(), "{bad:?}");
+        }
+        assert_eq!(with_name("# c\nname = Old\nport = P\n", "New"), "# c\nname = New\nport = P\n");
+        assert_eq!(with_name("port = P\n", "New"), "name = New\nport = P\n");
+        assert_eq!(with_name("name=Old # x\nbind = note 1 -> record\n", "N"), "name = N\nbind = note 1 -> record\n");
+    }
+
+    #[test]
+    fn a_preset_can_be_renamed_and_deleted_and_a_built_in_one_cannot() {
+        let dir = temp_dir("rename");
+        std::fs::write(dir.join("Pads.txt"), "# my notes\nname = Pads\nport = PADS\nbind = note 1 -> record\n").unwrap();
+        let mut app = DrumApp::with_config(Config { controller_preset: "Pads".into(), ..Config::default() });
+        app.controller.editor.dir = Some(dir.clone());
+        // A bad name changes nothing and says why.
+        app.controller.editor.rename_to = "a/b".into();
+        app.rename_preset();
+        assert!(dir.join("Pads.txt").exists() && app.controller.editor.notice.contains("cannot contain"), "{}", app.controller.editor.notice);
+        app.controller.editor.rename_to = "Pads".into();
+        app.rename_preset();
+        assert!(app.controller.editor.notice.contains("already"));
+        // A name in use is refused.
+        std::fs::write(dir.join("Other.txt"), "name = Other\n").unwrap();
+        app.controller.editor.rename_to = "Other".into();
+        app.rename_preset();
+        assert!(app.controller.editor.notice.contains("exists"));
+        // A good name renames the file, keeps the content and the comments, and follows the choice.
+        app.controller.editor.rename_to = "Stage pads".into();
+        app.rename_preset();
+        assert!(!dir.join("Pads.txt").exists() && dir.join("Stage pads.txt").exists());
+        assert_eq!(app.cfg.controller_preset, "Stage pads");
+        let text = std::fs::read_to_string(dir.join("Stage pads.txt")).unwrap();
+        assert!(text.contains("# my notes") && text.contains("name = Stage pads") && text.contains("bind = note 1 -> record"), "{text}");
+        // Deleting asks first in the window (a flag), then removes the file and the choice.
+        app.controller.editor.confirm_delete = true;
+        app.delete_preset();
+        assert!(!dir.join("Stage pads.txt").exists() && dir.join("Other.txt").exists());
+        assert_eq!(app.cfg.controller_preset, "");
+        assert!(!app.controller.editor.confirm_delete);
+        // A built-in preset is neither renamed nor deleted.
+        app.cfg.controller_preset = "Korg nanoKONTROL2".into();
+        app.controller.editor.rename_to = "Mine".into();
+        app.rename_preset();
+        app.delete_preset();
+        assert_eq!(app.cfg.controller_preset, "Korg nanoKONTROL2");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
     fn a_new_preset_needs_a_port() {
         let dir = temp_dir("noport");
         let mut app = DrumApp::with_config(Config::default());
@@ -545,10 +707,7 @@ mod tests {
         let ctx = egui::Context::default();
         let mut app = DrumApp::with_config(Config::default());
         let frame = |app: &mut DrumApp| {
-            let _ = ctx.run(egui::RawInput::default(), |ctx| {
-                egui::CentralPanel::default().show(ctx, |ui| app.controller_assignments_section(ui));
-                app.controller_editor_window(ctx);
-            });
+            let _ = ctx.run(egui::RawInput::default(), |ctx| app.controller_editor_window(ctx));
         };
         frame(&mut app);
         assert!(!app.controller.editor.open, "closed until asked for");
@@ -574,13 +733,13 @@ mod tests {
         let ctx = egui::Context::default();
         for _ in 0..2 {
             let _ = ctx.run(egui::RawInput::default(), |ctx| {
-                egui::CentralPanel::default().show(ctx, |ui| app.editor_body(ui));
+                egui::CentralPanel::default().show(ctx, |ui| app.manage_body(ui));
             });
         }
         assert!(app.editable_path().is_none(), "the Mini is built in");
         app.cfg.controller_preset = String::new();
         let _ = ctx.run(egui::RawInput::default(), |ctx| {
-            egui::CentralPanel::default().show(ctx, |ui| app.editor_body(ui));
+            egui::CentralPanel::default().show(ctx, |ui| app.manage_body(ui));
         });
         // A message while nothing is being learned is not used up.
         assert!(!app.learn_message(controller::Msg::NoteOn { ch: 1, note: 1, vel: 100 }));

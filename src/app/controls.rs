@@ -670,7 +670,7 @@ impl DrumApp {
     pub(super) fn settings_controller(&mut self, ui: &mut egui::Ui) {
         ui.heading("Controller");
         ui.label(
-            RichText::new("Control surfaces that run the program from the stool. A preset is either Mackie Control (the Behringer X-Touch Mini and Compact, in MC mode) or Generic MIDI (knobs, faders and buttons that send plain notes and cc, such as the Novation Launch Control XL, Korg nanoKONTROL2, Akai MPK Mini and Arturia BeatStep). Choose a preset, or teach your own: copy one or start a new preset, then press the controls to bind them. Click the controller indicator at the top right of the window for a picture of it. Close other programs that use the controller's MIDI port.")
+            RichText::new("Control surfaces that run the program from the stool. A preset is either Mackie Control (the Behringer X-Touch Mini and Compact, in MC mode) or Generic MIDI (knobs, faders and buttons that send plain notes and cc, such as the Novation Launch Control XL, Korg nanoKONTROL2, Akai MPK Mini and Arturia BeatStep). Choose a preset, or use Manage to copy, rename or delete presets, start a new one and teach it by pressing the controls. Click the controller indicator at the top right of the window for a picture of it. Close other programs that use the controller's MIDI port.")
                 .small()
                 .weak(),
         );
@@ -698,6 +698,9 @@ impl DrumApp {
                     }
                 }
             });
+            if ui.button("Manage").on_hover_text("Create, copy, rename and delete presets, and change what their controls do").clicked() {
+                self.controller.editor.open = true;
+            }
         });
         if let Some(name) = preset {
             self.cfg.controller_preset = name;
@@ -766,47 +769,10 @@ impl DrumApp {
             });
         }
 
-        self.controller_assignments_section(ui);
-
         ui.add_space(6.0);
         ui.label(RichText::new("Monitor (latest first): press and turn the controls to see what they send and what they are bound to").strong());
         for line in &self.controller.monitor {
             ui.label(RichText::new(line).monospace());
-        }
-
-        ui.add_space(10.0);
-        ui.heading("Your own presets");
-        match Config::controllers_dir() {
-            Some(dir) => {
-                ui.label(
-                    RichText::new(format!(
-                        "A preset is a text file in {} (any name ending in .txt); it then appears in the list above. Copy a built-in preset there to change it: the lines are explained at the top of each.",
-                        dir.display()
-                    ))
-                    .small()
-                    .weak(),
-                );
-                let builtin = controller::builtin_text(&self.cfg.controller_preset);
-                if ui.add_enabled(builtin.is_some(), egui::Button::new("Copy the selected built-in preset there")).clicked() {
-                    if let Some(text) = builtin {
-                        match copy_preset(&dir, &self.cfg.controller_preset, text) {
-                            Ok(path) => {
-                                self.status = format!("Saved {}", path.display());
-                                self.refresh_controllers();
-                                if let Some(stem) = path.file_stem() {
-                                    self.cfg.controller_preset = stem.to_string_lossy().into_owned();
-                                    self.cfg.controller_port.clear();
-                                    self.connect_controller();
-                                }
-                            }
-                            Err(e) => self.error = Some(format!("Could not save the preset: {e}")),
-                        }
-                    }
-                }
-            }
-            None => {
-                ui.label("No settings folder is available on this system.");
-            }
         }
     }
 }
