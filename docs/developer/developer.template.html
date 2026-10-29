@@ -424,6 +424,8 @@ python3 tools/build_notices.py      # target/notices/THIRD_PARTY_NOTICES.txt</co
 <dt><code>controller_layout.rs</code> (pure)</dt><dd>What a controller <em>looks like</em>: where its controls are and which message each sends, as plain numbers; plus what each control does on a layer, looked up in a preset.</dd>
 <dt><code>app/controls.rs</code></dt><dd>The impure half: the MIDI port, the plug-and-play watch, building the <code>State</code>, turning <code>Command</code>s into method calls, the Controller page of Settings.</dd>
 <dt><code>app/controls/editor.rs</code></dt><dd>The Manage window: the list of presets, creating, copying, renaming, deleting, and the table of assignments with <em>Learn</em>.</dd>
+<dt><code>app/home.rs</code>, <code>score_tab.rs</code>, <code>results.rs</code>, <code>settings.rs</code></dt><dd>One tab each (the Settings pages except the controller page): their <code>impl DrumApp</code> blocks, which read the same fields as <code>app.rs</code> because a child module sees its parent's private items.</dd>
+<dt><code>app/session.rs</code></dt><dd>The lifecycles of a take, Listen, an audition and the latency calibration: starting, following every frame, stopping.</dd>
 <dt><code>app/controller_help.rs</code></dt><dd>The help screen that draws a controller from its layout.</dd>
 <dt><code>presets/*.txt</code></dt><dd>The built-in presets, compiled in with <code>include_str!</code> (<code>BUILTIN</code>).</dd>
 </dl>
@@ -681,7 +683,7 @@ show_sticking: true,
 key!("show_sticking", c.show_sticking, Flag),</code></pre>
 The kind says how the text is read: <code>Text</code>, <code>Flag</code>, <code>number(lo, hi)</code> (kept in range, a bad value changes nothing), <code>LaneName</code> or <code>RudimentNumber</code>. A list or a map needs code in <code>to_text</code> and <code>from_text</code> instead.</li>
 <li><strong>Test.</strong> Add the field to the <code>roundtrip</code> test (set it to <code>false</code> so it differs from the default) and run <code>cargo test config</code>. A forgotten writer or reader fails there.</li>
-<li><strong>UI.</strong> A setting goes on the page it belongs to. In <code>settings_general</code> (<code>app.rs</code>) add:
+<li><strong>UI.</strong> A setting goes on the page it belongs to. In <code>settings_general</code> (<code>app/settings.rs</code>) add:
 <pre class="code"><code>ui.checkbox(&amp;mut self.cfg.show_sticking, "Show hand letters under the notes");</code></pre>
 Saving is automatic: <code>update()</code> notices <code>cfg != saved_cfg</code>.</li>
 <li><strong>Use it.</strong> The renderer must not read <code>Config</code>, so pass the flag through the view struct: add <code>pub show_hands: bool</code> to <code>ScoreView</code>, set it where the view is built in <code>score_body</code> (<code>show_hands: self.cfg.show_sticking</code>), and guard the <code>draw_hand</code> call in <code>render::show</code> with <code>view.show_hands</code>. The metronome's <code>RollingView</code> can stay as it is.</li>
@@ -821,7 +823,7 @@ impl DrumApp {
 <ul>
 <li><strong>V31 and controllers are untested on hardware.</strong> The note map is the common Roland V-Drums factory map; the hi-hat pedal polarity (127 = closed) is the Roland convention; the Mackie presets are from the Mackie Control table and the four generic presets are from memory (a web search confirmed only a few of their numbers). Learning against a real device has not been tried.</li>
 <li><strong>The preset editor</strong> binds actions only: it cannot create layers or edit lights and rings, and editing rewrites the file without its comments. The generated help picture does not show where the controls are on the device.</li>
-<li><strong>Large files.</strong> <code>app.rs</code> and <code>controller/</code> are each about two thousand lines; <code>HANDOFF.md</code> lists the review of them against clean-design rules.</li>
+<li><strong>Large files and structs.</strong> <code>app.rs</code> still holds the 48 fields of <code>DrumApp</code> and the MIDI, keyboard and file handling; the tabs and the take, Listen and calibration lifecycles are in <code>app/home.rs</code>, <code>score_tab.rs</code>, <code>results.rs</code>, <code>settings.rs</code> and <code>session.rs</code>. <code>HANDOFF.md</code> lists the review of them against clean-design rules.</li>
 <li><strong>Nobody has listened to the synthesised kit</strong> (only spectral guards test it). The built-in sounds are intentionally simple.</li>
 <li><strong>Notation</strong>: proportional spacing, noteheads and stems only.</li>
 <li><strong>MusicXML</strong>: D.S./D.C./coda are not followed, <code>score-timewise</code> is rejected, only the first drum-looking part is used.</li>
