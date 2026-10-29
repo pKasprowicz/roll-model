@@ -5,7 +5,6 @@
 use egui::{Align, Color32, Pos2, Rect, RichText, Sense, Stroke, Vec2};
 
 use super::DrumApp;
-use crate::config::Config;
 use crate::controller::{self, Preset};
 use crate::controller_layout::{self as layout, Control, ControlKind, Layout, Mapping, Meaning, Printed};
 use crate::render;
@@ -41,7 +40,7 @@ impl DrumApp {
         }
         let (preset, layer) = match self.controller.live() {
             Some((preset, layer)) => (preset.clone(), layer.map(str::to_string)),
-            None => match controller::load_preset(&self.cfg.controller_preset, Config::controllers_dir().as_deref()) {
+            None => match controller::load_preset(&self.cfg.controller_preset, self.paths.controllers_dir().as_deref()) {
                 Ok(preset) => (preset, None),
                 Err(e) => {
                     self.error = Some(e.to_string());

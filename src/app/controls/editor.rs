@@ -41,8 +41,6 @@ pub(super) struct EditorState {
     pub(super) notice: String,
     /// What the Manage window remembers about itself.
     pub(super) view: ManageView,
-    /// The folder of the user's presets; `None`: the settings folder (tests use another).
-    pub(super) dir: Option<PathBuf>,
 }
 
 impl EditorState {
@@ -82,7 +80,7 @@ impl EditorState {
 
 impl Default for EditorState {
     fn default() -> EditorState {
-        EditorState { learning: None, keep_going: true, remember_channel: false, kinds: BTreeMap::new(), notice: String::new(), view: ManageView::default(), dir: None }
+        EditorState { learning: None, keep_going: true, remember_channel: false, kinds: BTreeMap::new(), notice: String::new(), view: ManageView::default() }
     }
 }
 
@@ -128,7 +126,7 @@ fn action_order() -> Vec<Action> {
 
 impl DrumApp {
     fn preset_dir(&self) -> Option<PathBuf> {
-        self.controller.editor.dir.clone().or_else(Config::controllers_dir)
+        self.paths.controllers_dir()
     }
 
     /// The file of the chosen preset if it is one the user may edit: not a built-in one.
@@ -582,6 +580,7 @@ fn unused_path(dir: &std::path::Path, name: &str) -> std::io::Result<PathBuf> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::config::Paths;
 
     #[test]
     fn new_presets_never_overwrite() {
@@ -613,8 +612,10 @@ mod tests {
     fn temp_dir(tag: &str) -> PathBuf {
         let dir = std::env::temp_dir().join(format!("roll-model-editor-{tag}-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
-        std::fs::create_dir_all(&dir).unwrap();
-        dir
+        let dir = dir.join("settings");
+        let controllers = dir.join("controllers");
+        std::fs::create_dir_all(&controllers).unwrap();
+        controllers
     }
 
     fn pressed(note: u8) -> controller::Msg {
@@ -626,7 +627,7 @@ mod tests {
         let dir = temp_dir("learn");
         std::fs::write(dir.join("Pads.txt"), "name = Pads\nport = PADS\n").unwrap();
         let mut app = DrumApp::with_config(Config { controller_preset: "Pads".into(), ..Config::default() });
-        app.controller.editor.dir = Some(dir.clone());
+        app.paths = Paths::in_dir(dir.parent().unwrap().to_path_buf());
         assert!(app.editable_path().is_some());
         let saved = || controller::Preset::parse(&std::fs::read_to_string(dir.join("Pads.txt")).unwrap());
 
@@ -671,7 +672,7 @@ mod tests {
     fn a_new_preset_is_made_for_a_port_and_a_built_in_one_is_copied_to_be_edited() {
         let dir = temp_dir("new");
         let mut app = DrumApp::with_config(Config { controller_preset: "Behringer X-Touch Mini".into(), ..Config::default() });
-        app.controller.editor.dir = Some(dir.clone());
+        app.paths = Paths::in_dir(dir.parent().unwrap().to_path_buf());
         app.midi_inputs = vec!["Some Pad Controller".into()];
         assert!(app.editable_path().is_none(), "a built-in preset is not edited");
         app.new_learned_preset();
@@ -679,7 +680,7 @@ mod tests {
         let text = std::fs::read_to_string(dir.join("My controller.txt")).unwrap();
         assert!(text.contains("port = Some Pad Controller"), "{text}");
         assert!(app.editable_path().is_some());
-        assert_eq!(app.controller.editor.dir, Some(dir.clone()), "the folder is kept");
+        assert_eq!(app.paths.controllers_dir(), Some(dir.clone()), "the folder is kept");
         // A copy of a built-in preset has all its assignments and is editable.
         app.cfg.controller_preset = "Korg nanoKONTROL2".into();
         app.copy_to_edit();
@@ -709,7 +710,7 @@ mod tests {
         let dir = temp_dir("rename");
         std::fs::write(dir.join("Pads.txt"), "# my notes\nname = Pads\nport = PADS\nbind = note 1 -> record\n").unwrap();
         let mut app = DrumApp::with_config(Config { controller_preset: "Pads".into(), ..Config::default() });
-        app.controller.editor.dir = Some(dir.clone());
+        app.paths = Paths::in_dir(dir.parent().unwrap().to_path_buf());
         // A bad name changes nothing and says why.
         app.controller.editor.view.rename_to = "a/b".into();
         app.rename_preset();
@@ -750,7 +751,7 @@ mod tests {
         let dir = temp_dir("choose");
         std::fs::write(dir.join("Pads.txt"), "name = Pads\nport = PADS\nbind = note 1 -> record\n").unwrap();
         let mut app = DrumApp::with_config(Config { controller_preset: "Korg nanoKONTROL2".into(), controller_port: "X".into(), ..Config::default() });
-        app.controller.editor.dir = Some(dir.clone());
+        app.paths = Paths::in_dir(dir.parent().unwrap().to_path_buf());
         app.controller.editor.learning = Some(Action::Record);
         app.controller.editor.view.confirm_delete = true;
         app.select_preset("Pads".into());
@@ -776,7 +777,7 @@ mod tests {
     fn a_new_preset_needs_a_port() {
         let dir = temp_dir("noport");
         let mut app = DrumApp::with_config(Config::default());
-        app.controller.editor.dir = Some(dir.clone());
+        app.paths = Paths::in_dir(dir.parent().unwrap().to_path_buf());
         app.new_learned_preset();
         assert!(app.controller.editor.notice.contains("No MIDI input"), "{}", app.controller.editor.notice);
         assert!(std::fs::read_dir(&dir).unwrap().next().is_none(), "nothing was written");
@@ -799,7 +800,7 @@ mod tests {
         // Making a preset opens the editor on it.
         let dir = temp_dir("window");
         app.controller.editor.view.open = false;
-        app.controller.editor.dir = Some(dir.clone());
+        app.paths = Paths::in_dir(dir.parent().unwrap().to_path_buf());
         app.midi_inputs = vec!["Some Pad Controller".into()];
         app.new_learned_preset();
         assert!(app.controller.editor.view.open, "a new preset opens the editor");

@@ -21,7 +21,7 @@ use std::time::{Duration, Instant};
 use egui::RichText;
 
 use crate::analysis::{Expected, Hit, Report};
-use crate::config::Config;
+use crate::config::{Config, Paths};
 use crate::control::Control;
 use crate::drums::Lane;
 use crate::loader::load_score;
@@ -167,6 +167,8 @@ struct Calibration {
 pub struct DrumApp {
     cfg: Config,
     saved_cfg: Config,
+    /// Where the settings, sounds and controller presets are kept.
+    paths: Paths,
     tab: Tab,
     settings_page: SettingsPage,
     /// Whose practice fields (`score` to `history`, below) are in use; the other's are in `parked`.
@@ -267,7 +269,8 @@ impl DrumApp {
         });
         // Everything slow is a step of the splash (`startup.rs`), so that the first frame is not late.
         let mut app = DrumApp::with_config(Config::default());
-        app.startup = Some(startup::Startup::new(initial_file, startup::scan_sound_outputs(), Config::load));
+        app.paths = Paths::system();
+        app.startup = Some(startup::Startup::new(initial_file, startup::scan_sound_outputs()));
         app
     }
 
@@ -275,6 +278,7 @@ impl DrumApp {
     fn with_config(cfg: Config) -> DrumApp {
         DrumApp {
             saved_cfg: cfg.clone(),
+            paths: Paths::none(),
             cfg,
             tab: Tab::Home,
             settings_page: SettingsPage::MidiInput,
@@ -640,7 +644,7 @@ impl eframe::App for DrumApp {
         self.controller_editor_window(ctx);
 
         if self.cfg != self.saved_cfg {
-            if let Err(e) = self.cfg.save() {
+            if let Err(e) = self.cfg.save(&self.paths) {
                 self.status = format!("Could not save settings: {e}");
             }
             self.saved_cfg = self.cfg.clone();

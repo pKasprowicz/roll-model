@@ -80,7 +80,6 @@ pub(super) struct Startup {
     log: Vec<Line>,
     sound: Receiver<SoundScan>,
     file: Option<PathBuf>,
-    load_settings: fn() -> Config,
     finished_at: Option<Instant>,
     frames: u32,
     /// Where the splash opens: the middle of the main window, worked out once.
@@ -88,7 +87,7 @@ pub(super) struct Startup {
 }
 
 impl Startup {
-    pub(super) fn new(file: Option<PathBuf>, sound: Receiver<SoundScan>, load_settings: fn() -> Config) -> Startup {
+    pub(super) fn new(file: Option<PathBuf>, sound: Receiver<SoundScan>) -> Startup {
         let mut steps = vec![
             Step::Settings,
             Step::MidiPorts,
@@ -101,7 +100,7 @@ impl Startup {
             steps.push(Step::Score);
         }
         let label = label(steps[0], &Config::default(), file.as_deref());
-        Startup { steps, next: 0, drawn: false, label, log: Vec::new(), sound, file, load_settings, finished_at: None, frames: 0, position: None }
+        Startup { steps, next: 0, drawn: false, label, log: Vec::new(), sound, file, finished_at: None, frames: 0, position: None }
     }
 
     fn current(&self) -> Option<Step> {
@@ -208,10 +207,10 @@ impl DrumApp {
     fn run_step(&mut self, step: Step, st: &mut Startup) -> Option<Line> {
         Some(match step {
             Step::Settings => {
-                let cfg = (st.load_settings)();
+                let cfg = Config::load_from(&self.paths);
                 self.saved_cfg = cfg.clone();
                 self.cfg = cfg;
-                match Config::path().filter(|p| p.is_file()) {
+                match self.paths.config_file().filter(|p| p.is_file()) {
                     Some(p) => Line { text: format!("Settings read from {}", p.display()), ok: true },
                     None => Line { text: "No settings file yet, starting with the defaults".into(), ok: true },
                 }
@@ -338,10 +337,6 @@ fn contents(ui: &mut egui::Ui, st: &Startup) {
 mod tests {
     use super::*;
 
-    fn defaults() -> Config {
-        Config::default()
-    }
-
     fn sample() -> PathBuf {
         Path::new(env!("CARGO_MANIFEST_DIR")).join("examples").join("basic_rock_beat.musicxml")
     }
@@ -350,7 +345,7 @@ mod tests {
         let (tx, rx) = mpsc::channel();
         tx.send((vec!["Speakers".to_string()], Some("Speakers".to_string()))).unwrap();
         let mut app = DrumApp::with_config(Config::default());
-        app.startup = Some(Startup::new(file, rx, defaults));
+        app.startup = Some(Startup::new(file, rx));
         app
     }
 
@@ -391,11 +386,11 @@ mod tests {
     #[test]
     fn the_steps_are_the_same_for_every_start_but_a_score_is_opened_last() {
         let (_tx, rx) = mpsc::channel();
-        let plain = Startup::new(None, rx, defaults);
+        let plain = Startup::new(None, rx);
         assert_eq!(plain.steps.first(), Some(&Step::Settings), "the others need the settings");
         assert!(!plain.steps.contains(&Step::Score));
         let (_tx, rx) = mpsc::channel();
-        let with_file = Startup::new(Some(sample()), rx, defaults);
+        let with_file = Startup::new(Some(sample()), rx);
         assert_eq!(with_file.steps.last(), Some(&Step::Score));
         assert_eq!(with_file.steps.len(), plain.steps.len() + 1);
     }
@@ -403,7 +398,7 @@ mod tests {
     #[test]
     fn a_step_runs_only_after_the_splash_that_names_it_was_drawn() {
         let (_tx, rx) = mpsc::channel();
-        let mut st = Startup::new(None, rx, defaults);
+        let mut st = Startup::new(None, rx);
         assert_eq!(st.due(), None, "nothing is shown yet");
         st.drawn = true;
         assert_eq!(st.due(), Some(Step::Settings));
@@ -447,7 +442,7 @@ mod tests {
         let ctx = egui::Context::default();
         let (tx, rx) = mpsc::channel();
         let mut app = DrumApp::with_config(Config::default());
-        app.startup = Some(Startup::new(None, rx, defaults));
+        app.startup = Some(Startup::new(None, rx));
         for _ in 0..12 {
             assert_eq!(frame(&mut app, &ctx), Flow::Starting, "waiting for the sound outputs");
         }

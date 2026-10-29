@@ -197,13 +197,13 @@ impl DrumApp {
     /// The names offered on the Controller page.
     pub(super) fn refresh_controllers(&mut self) {
         let mut names: Vec<String> = controller::BUILTIN.iter().map(|(n, _)| n.to_string()).collect();
-        let custom = Config::controllers_dir().map(|d| controller::custom_presets(&d)).unwrap_or_default();
+        let custom = self.paths.controllers_dir().map(|d| controller::custom_presets(&d)).unwrap_or_default();
         for (name, _) in custom {
             if !names.contains(&name) {
                 names.push(name);
             }
         }
-        let dir = Config::controllers_dir();
+        let dir = self.paths.controllers_dir();
         self.controller.kinds = names.iter().filter_map(|n| controller::load_preset(n, dir.as_deref()).ok().map(|p| (n.clone(), p.kind))).collect();
         self.controller.presets = names;
     }
@@ -237,7 +237,7 @@ impl DrumApp {
             c.message = "No controller selected.".into();
             return;
         }
-        let dir = Config::controllers_dir();
+        let dir = self.paths.controllers_dir();
         let preset = match controller::load_preset(&self.cfg.controller_preset, dir.as_deref()) {
             Ok(p) => p,
             Err(e) => {

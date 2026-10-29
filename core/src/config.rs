@@ -305,6 +305,62 @@ const KEYS: &[Key] = &[
     key!("rudiment_ladder", c.rudiment_ladder, Flag),
 ];
 
+/// Where the settings, the replacement sounds and the user's controller presets live. The
+/// application has one, found from the operating system; a test makes one on a temporary folder
+/// (or `none`, which has no folder at all), so nothing reads or writes the user's own files.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Paths {
+    dir: Option<PathBuf>,
+    /// Where the settings were kept when the application was called Drum Tutor.
+    legacy: Option<PathBuf>,
+}
+
+impl Paths {
+    /// The settings folder of the operating system's convention.
+    pub fn system() -> Paths {
+        Paths { dir: Paths::dir_named("RollModel", "roll-model"), legacy: Paths::dir_named("DrumTutor", "drum-tutor") }
+    }
+
+    /// `dir` as the settings folder.
+    pub fn in_dir(dir: PathBuf) -> Paths {
+        Paths { dir: Some(dir), legacy: None }
+    }
+
+    /// No folder: nothing is read, and saving fails.
+    pub fn none() -> Paths {
+        Paths { dir: None, legacy: None }
+    }
+
+    /// The settings folder of the application called `windows_mac` (Windows and macOS) or `xdg`
+    /// (elsewhere).
+    fn dir_named(windows_mac: &str, xdg: &str) -> Option<PathBuf> {
+        if cfg!(windows) {
+            std::env::var_os("APPDATA").map(|a| PathBuf::from(a).join(windows_mac))
+        } else if cfg!(target_os = "macos") {
+            std::env::var_os("HOME").map(|h| PathBuf::from(h).join("Library/Application Support").join(windows_mac))
+        } else {
+            std::env::var_os("XDG_CONFIG_HOME")
+                .map(PathBuf::from)
+                .or_else(|| std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".config")))
+                .map(|p| p.join(xdg))
+        }
+    }
+
+    pub fn config_file(&self) -> Option<PathBuf> {
+        self.dir.as_ref().map(|d| d.join("config.txt"))
+    }
+
+    /// Folder with WAV files that replace built-in sounds.
+    pub fn sounds_dir(&self) -> Option<PathBuf> {
+        self.dir.as_ref().map(|d| d.join("sounds"))
+    }
+
+    /// Controller presets written by the user.
+    pub fn controllers_dir(&self) -> Option<PathBuf> {
+        self.dir.as_ref().map(|d| d.join("controllers"))
+    }
+}
+
 impl Config {
     /// Volume of one instrument in Listen (1.0 unless changed).
     pub fn gain_of(&self, lane: Lane) -> f32 {
@@ -322,11 +378,6 @@ impl Config {
         }
     }
 
-    /// Folder with WAV files that replace built-in sounds, next to the settings file.
-    pub fn sounds_dir() -> Option<PathBuf> {
-        Config::path().and_then(|p| p.parent().map(|d| d.join("sounds")))
-    }
-
     /// Puts `path` at the top of the recent list (without duplicates; paths
     /// compare case-insensitively on Windows) and trims the list.
     pub fn remember_recent(&mut self, path: &str) {
@@ -334,39 +385,6 @@ impl Config {
         self.recent_files.retain(|p| !same(p, path));
         self.recent_files.insert(0, path.to_string());
         self.recent_files.truncate(MAX_RECENT);
-    }
-
-    /// The settings folder of the application called `windows_mac` (Windows and
-    /// macOS) or `xdg` (elsewhere).
-    fn dir_named(windows_mac: &str, xdg: &str) -> Option<PathBuf> {
-        if cfg!(windows) {
-            std::env::var_os("APPDATA").map(|a| PathBuf::from(a).join(windows_mac))
-        } else if cfg!(target_os = "macos") {
-            std::env::var_os("HOME").map(|h| PathBuf::from(h).join("Library/Application Support").join(windows_mac))
-        } else {
-            std::env::var_os("XDG_CONFIG_HOME")
-                .map(PathBuf::from)
-                .or_else(|| std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".config")))
-                .map(|p| p.join(xdg))
-        }
-    }
-
-    fn dir() -> Option<PathBuf> {
-        Config::dir_named("RollModel", "roll-model")
-    }
-
-    /// Where the settings were kept when the application was called Drum Tutor.
-    fn legacy_dir() -> Option<PathBuf> {
-        Config::dir_named("DrumTutor", "drum-tutor")
-    }
-
-    /// Controller presets written by the user, next to the settings file.
-    pub fn controllers_dir() -> Option<PathBuf> {
-        Config::dir().map(|d| d.join("controllers"))
-    }
-
-    pub fn path() -> Option<PathBuf> {
-        Config::dir().map(|d| d.join("config.txt"))
     }
 
     /// Copies the settings folder (settings, sounds) of the old name to the new
@@ -391,18 +409,21 @@ impl Config {
         copy(old, new)
     }
 
-    pub fn load() -> Config {
-        if let (Some(old), Some(new)) = (Config::legacy_dir(), Config::dir()) {
-            let _ = Config::migrate(&old, &new);
+    /// The settings kept in `paths` (the defaults when there is no file); the settings of the
+    /// application's former name are copied across first, once.
+    pub fn load_from(paths: &Paths) -> Config {
+        if let (Some(old), Some(new)) = (&paths.legacy, &paths.dir) {
+            let _ = Config::migrate(old, new);
         }
-        Config::path()
+        paths
+            .config_file()
             .and_then(|p| std::fs::read_to_string(p).ok())
             .map(|t| Config::from_text(&t))
             .unwrap_or_default()
     }
 
-    pub fn save(&self) -> Result<PathBuf, ConfigError> {
-        let p = Config::path().ok_or(ConfigError::NoDirectory)?;
+    pub fn save(&self, paths: &Paths) -> Result<PathBuf, ConfigError> {
+        let p = paths.config_file().ok_or(ConfigError::NoDirectory)?;
         if let Some(dir) = p.parent() {
             std::fs::create_dir_all(dir).map_err(|e| ConfigError::Write(e.to_string()))?;
         }

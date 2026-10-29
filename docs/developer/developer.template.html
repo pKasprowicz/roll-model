@@ -599,7 +599,7 @@ ring  = tempo -&gt; cc 20 scale=127      # a plain value 0..scale instead</code>
 <tr><td>Real-time core</td><td>A fake <code>Sink</code> records what would sound; times are given as numbers, no sleeping</td><td><code>playback.rs</code></td></tr>
 <tr><td>Controller</td><td>Messages in, commands and light bytes out; presets parsed from strings; the built-in presets are loaded and must have no warnings</td><td><code>controller/</code></td></tr>
 <tr><td>App logic</td><td><code>DrumApp::with_config(Config::default())</code> touches no devices; tests call <code>apply_command</code>, <code>sync_source</code>, <code>start_take</code> directly</td><td><code>app/controls.rs</code>, <code>app/rudiment.rs</code></td></tr>
-<tr><td>Presets and the editor</td><td>Presets parsed from strings and round-tripped; the editor runs on a temporary folder (<code>EditorState.dir</code>) with real files</td><td><code>controller/</code>, <code>app/controls/editor.rs</code></td></tr>
+<tr><td>Presets and the editor</td><td>Presets parsed from strings and round-tripped; the editor runs on a temporary folder (<code>DrumApp.paths</code>, a <code>Paths::in_dir</code>) with real files</td><td><code>controller/</code>, <code>app/controls/editor.rs</code></td></tr>
 <tr><td>Pictures</td><td>Geometry invariants over every layout, drawn and generated; the help screen draws headlessly</td><td><code>controller_layout.rs</code>, <code>app/controller_help.rs</code></td></tr>
 <tr><td>Start-up</td><td>The whole sequence, frame by frame, with a fake settings loader and a channel instead of the sound scan</td><td><code>app/startup.rs</code></td></tr>
 <tr><td>Screens</td><td>Headless <code>egui::Context::run</code> with default input: proves a screen draws without panicking; wheel tests feed <code>Event::MouseWheel</code></td><td><code>widgets.rs</code>, <code>the_tab_draws_for_every_rudiment</code></td></tr>
@@ -613,7 +613,7 @@ ring  = tempo -&gt; cc 20 scale=127      # a plain value 0..scale instead</code>
 <li>A bug fix starts with a failing test.</li>
 <li>Do not start real audio in a test: set <code>cfg.click_audio</code> and <code>cfg.click_midi</code> to false before <code>start_take</code>.</li>
 <li>Tests that change shared tables (the catalogue size, the number of lanes) will fail loudly: update the counts in the tests deliberately.</li>
-<li>A test that reads the user's real folders is fragile: it fails on a machine whose owner has made presets of their own. Give the code a folder to use (as <code>EditorState.dir</code> does) or compare only what the test controls.</li>
+<li>A test that reads the user's real folders is fragile: it fails on a machine whose owner has made presets of their own. A <code>DrumApp</code> made for a test has <code>Paths::none()</code>; give it <code>Paths::in_dir(temporary folder)</code> when the test needs files, or compare only what the test controls.</li>
 <li>To check an <em>older commit</em> (is every commit green?) export it with <code>git archive</code> and <strong>touch the files</strong> before building: files carry the commit's old timestamp and cargo then reuses a newer build.</li>
 <li>Before committing: <code>cargo test</code>, <code>cargo build</code> (no warnings) and <code>cargo check --no-default-features</code>.</li>
 </ul>

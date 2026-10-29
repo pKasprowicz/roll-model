@@ -5,7 +5,7 @@
 use egui::RichText;
 
 use super::DrumApp;
-use crate::config::{Config, MAX_LANE_GAIN};
+use crate::config::MAX_LANE_GAIN;
 use crate::drums::Lane;
 use crate::widgets;
 
@@ -17,7 +17,7 @@ impl DrumApp {
                 .small()
                 .weak(),
         );
-        let dir = Config::sounds_dir();
+        let dir = self.paths.sounds_dir();
         let mut audition: Option<Lane> = None;
         egui::Grid::new("mixer").num_columns(6).spacing([14.0, 6.0]).striped(true).show(ui, |ui| {
             for heading in ["Instrument", "Volume", "Mute", "Solo", "", "Sound"] {

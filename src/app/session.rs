@@ -4,7 +4,6 @@
 use std::time::{Duration, Instant};
 
 use crate::analysis::{analyze_with, expected_notes, Grade};
-use crate::config::Config;
 use crate::drums::Lane;
 use crate::metronome::{ClickOptions, Metronome, HAS_AUDIO};
 use crate::playback::{self, PlayOptions, Player};
@@ -131,7 +130,7 @@ impl DrumApp {
         PlayOptions {
             audio: c.playback_audio && HAS_AUDIO,
             audio_device: c.audio_output.clone(),
-            sounds_dir: Config::sounds_dir(),
+            sounds_dir: self.paths.sounds_dir(),
             click_audio: c.click_audio && HAS_AUDIO,
             midi_port: (c.playback_midi || c.click_midi).then(|| c.midi_out_port.clone()),
             midi_drums: c.playback_midi,

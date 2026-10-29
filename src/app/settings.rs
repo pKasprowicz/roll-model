@@ -3,7 +3,6 @@
 
 use egui::RichText;
 
-use crate::config::Config;
 use crate::drums::{format_note_list, parse_note_list, Lane};
 use crate::metronome::HAS_AUDIO;
 use crate::midi;
@@ -279,7 +278,7 @@ impl DrumApp {
         );
 
         ui.add_space(10.0);
-        if let Some(p) = Config::path() {
+        if let Some(p) = self.paths.config_file() {
             widgets::hint(ui, format!("Settings are saved automatically to {}", p.display()));
         }
     }
