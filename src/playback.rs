@@ -435,7 +435,6 @@ fn run(zero: Instant, cues: Vec<Cue>, pass_len: f64, opts: PlayOptions, control:
 
     let has_clicks = cues.iter().any(|c| matches!(c.sound, Sound::Click { .. }));
     let want_audio = opts.audio || (opts.click_audio && has_clicks);
-    #[allow(clippy::let_unit_value)]
     let (audio, audio_note) = open_audio(want_audio, &opts.audio_device);
     if let Some(message) = audio_note {
         errors.push(message);

@@ -92,8 +92,9 @@ pub(crate) fn wait_until(target: Instant, stop: &AtomicBool) -> bool {
 
 #[cfg(feature = "audio")]
 pub(crate) type Audio = Option<(rodio::OutputStream, rodio::OutputStreamHandle)>;
+/// Without the `audio` feature there is never an output: a type with no value, so `None` is the only one.
 #[cfg(not(feature = "audio"))]
-pub(crate) type Audio = ();
+pub(crate) type Audio = Option<std::convert::Infallible>;
 
 /// Opens the sound output called `device` (empty = the system default). If
 /// that device is missing or will not open, falls back to the default one and
@@ -128,7 +129,7 @@ pub(crate) fn open_audio(enabled: bool, device: &str) -> (Audio, Option<String>)
 
 #[cfg(not(feature = "audio"))]
 pub(crate) fn open_audio(_enabled: bool, _device: &str) -> (Audio, Option<String>) {
-    ((), None)
+    (None, None)
 }
 
 /// Names of the sound outputs the computer offers (without duplicates).
@@ -199,7 +200,6 @@ fn run(
     stop: Arc<AtomicBool>,
     errors: ErrorLog,
 ) {
-    #[allow(clippy::let_unit_value)]
     let (audio, audio_note) = open_audio(opts.audio, &opts.audio_device);
     if let Some(message) = audio_note {
         errors.push(message);
