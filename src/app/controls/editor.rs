@@ -230,16 +230,14 @@ impl DrumApp {
             return;
         }
         let title = "Manage controller presets".to_string();
-        let builder = ViewportBuilder::default().with_title(title.clone()).with_inner_size([660.0, 780.0]).with_min_inner_size([480.0, 320.0]);
+        let builder = ViewportBuilder::default().with_title(title.clone()).with_inner_size([960.0, 780.0]).with_min_inner_size([640.0, 360.0]);
         let closed = ctx.show_viewport_immediate(ViewportId::from_hash_of("controller_editor"), builder, |ctx, class| {
             if class == ViewportClass::Embedded {
                 let mut open = true;
-                egui::Window::new(title.clone()).id(egui::Id::new("controller_editor_window")).open(&mut open).default_width(620.0).vscroll(true).show(ctx, |ui| self.manage_body(ui));
+                egui::Window::new(title.clone()).id(egui::Id::new("controller_editor_window")).open(&mut open).default_size([860.0, 560.0]).resizable(true).show(ctx, |ui| self.manage_ui(ui));
                 !open
             } else {
-                egui::CentralPanel::default().show(ctx, |ui| {
-                    egui::ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| self.manage_body(ui));
-                });
+                egui::CentralPanel::default().show(ctx, |ui| self.manage_ui(ui));
                 ctx.input(|i| i.viewport().close_requested())
             }
         });
@@ -249,60 +247,121 @@ impl DrumApp {
         }
     }
 
-    /// The contents of the window: what can be done with presets, then the table of actions.
-    fn manage_body(&mut self, ui: &mut egui::Ui) {
-        self.preset_operations(ui);
-        self.assignments_body(ui);
+    /// The contents of the window: the list of presets on the left, the chosen preset's
+    /// name and assignments on the right.
+    fn manage_ui(&mut self, ui: &mut egui::Ui) {
+        egui::SidePanel::left("controller_preset_list").resizable(true).default_width(290.0).min_width(190.0).show_inside(ui, |ui| self.preset_list(ui));
+        egui::CentralPanel::default().show_inside(ui, |ui| {
+            egui::ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| {
+                self.preset_header(ui);
+                self.assignments_body(ui);
+            });
+        });
     }
 
-    /// Creating, copying, renaming and deleting presets.
-    fn preset_operations(&mut self, ui: &mut egui::Ui) {
+    /// Chooses a preset (`""`: none) as the one in use and shows it in the editor.
+    pub(super) fn select_preset(&mut self, name: String) {
+        self.cfg.controller_preset = name;
+        self.cfg.controller_port.clear();
+        let editor = &mut self.controller.editor;
+        editor.learning = None;
+        editor.confirm_delete = false;
+        editor.layer = 0;
+        editor.notice.clear();
+        self.connect_controller();
+    }
+
+    /// All presets, grouped by what they speak, with Add, Copy and Delete under the list.
+    fn preset_list(&mut self, ui: &mut egui::Ui) {
         let chosen = self.cfg.controller_preset.clone();
-        if self.controller.editor.rename_for != chosen {
-            self.controller.editor.rename_for = chosen.clone();
-            self.controller.editor.rename_to = chosen.clone();
-            self.controller.editor.confirm_delete = false;
-        }
         let custom = self.editable_path().is_some();
         let mut op: Option<Op> = None;
-        ui.horizontal(|ui| {
-            ui.label("Preset");
-            ui.label(RichText::new(if chosen.is_empty() { "none chosen" } else { chosen.as_str() }).strong());
-            if let Some(kind) = self.controller.kinds.get(&chosen) {
-                ui.label(RichText::new(format!("{}{}", kind.label(), if custom { "" } else { ", built in" })).small().weak());
-            }
-        });
-        ui.horizontal(|ui| {
-            if ui.button("New preset by learning").on_hover_text("An empty preset for the controller's port; press the controls to bind them").clicked() {
-                op = Some(Op::NewPreset);
-            }
-            if ui.add_enabled(!chosen.is_empty(), egui::Button::new("Copy")).on_hover_text("A copy of the chosen preset that can be changed").clicked() {
-                op = Some(Op::CopyToEdit);
-            }
-        });
-        if custom {
-            ui.horizontal(|ui| {
-                ui.label("Name");
-                ui.add(egui::TextEdit::singleline(&mut self.controller.editor.rename_to).desired_width(220.0));
-                if ui.button("Rename").clicked() {
-                    op = Some(Op::Rename);
-                }
-                if self.controller.editor.confirm_delete {
-                    ui.label(RichText::new("Delete the file?").color(render::AMBER));
+        let mut choose: Option<String> = None;
+        egui::TopBottomPanel::bottom("controller_preset_buttons").show_inside(ui, |ui| {
+            ui.add_space(4.0);
+            if self.controller.editor.confirm_delete {
+                ui.label(RichText::new(format!("Delete \"{chosen}\"? Its file is removed.")).color(render::AMBER));
+                ui.horizontal(|ui| {
                     if ui.button("Delete").clicked() {
                         op = Some(Op::Delete);
                     }
                     if ui.button("Keep").clicked() {
                         op = Some(Op::AskDelete(false));
                     }
-                } else if ui.button("Delete…").clicked() {
-                    op = Some(Op::AskDelete(true));
+                });
+            } else {
+                ui.horizontal(|ui| {
+                    if ui.button("Add").on_hover_text("A new, empty preset for the controller's port; press the controls to bind them").clicked() {
+                        op = Some(Op::NewPreset);
+                    }
+                    if ui.add_enabled(!chosen.is_empty(), egui::Button::new("Copy")).on_hover_text("A copy of the chosen preset that can be changed").clicked() {
+                        op = Some(Op::CopyToEdit);
+                    }
+                    if ui.add_enabled(custom, egui::Button::new("Delete…")).on_hover_text("Remove the chosen preset (built-in presets cannot be removed)").clicked() {
+                        op = Some(Op::AskDelete(true));
+                    }
+                });
+            }
+            ui.add_space(2.0);
+        });
+        egui::CentralPanel::default().show_inside(ui, |ui| {
+            egui::ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| {
+                if ui.selectable_label(chosen.is_empty(), "— none —").clicked() {
+                    choose = Some(String::new());
+                }
+                for kind in [controller::PresetKind::Mackie, controller::PresetKind::Midi] {
+                    let of_kind: Vec<&String> = self.controller.presets.iter().filter(|n| self.controller.kinds.get(*n).copied().unwrap_or_default() == kind).collect();
+                    if of_kind.is_empty() {
+                        continue;
+                    }
+                    ui.add_space(6.0);
+                    ui.label(RichText::new(kind.label()).strong());
+                    for name in of_kind {
+                        let label = if controller::builtin_text(name).is_some() { format!("{name}  (built in)") } else { name.clone() };
+                        if ui.selectable_label(&chosen == name, label).clicked() {
+                            choose = Some(name.clone());
+                        }
+                    }
                 }
             });
-        } else if !chosen.is_empty() {
-            ui.label(RichText::new("A built-in preset cannot be renamed, deleted or changed. Copy it to make one of your own.").small().weak());
+        });
+        if let Some(name) = choose {
+            if name != chosen {
+                self.select_preset(name);
+            }
         }
-        if !custom {
+        self.run_op(op);
+    }
+
+    /// The chosen preset's name and type, renaming it, and what cannot be done with a built-in one.
+    fn preset_header(&mut self, ui: &mut egui::Ui) {
+        let chosen = self.cfg.controller_preset.clone();
+        if self.controller.editor.rename_for != chosen {
+            self.controller.editor.rename_for = chosen.clone();
+            self.controller.editor.rename_to = chosen.clone();
+        }
+        if chosen.is_empty() {
+            ui.label(RichText::new("No preset is chosen. Pick one in the list, or Add a new one.").weak());
+            return;
+        }
+        let custom = self.editable_path().is_some();
+        let mut op: Option<Op> = None;
+        ui.horizontal(|ui| {
+            ui.heading(chosen.as_str());
+            if let Some(kind) = self.controller.kinds.get(&chosen) {
+                ui.label(RichText::new(format!("{}{}", kind.label(), if custom { "" } else { ", built in" })).small().weak());
+            }
+        });
+        if custom {
+            ui.horizontal(|ui| {
+                ui.label("Name");
+                ui.add(egui::TextEdit::singleline(&mut self.controller.editor.rename_to).desired_width(240.0));
+                if ui.button("Rename").clicked() {
+                    op = Some(Op::Rename);
+                }
+            });
+        } else {
+            ui.label(RichText::new("A built-in preset cannot be renamed, deleted or changed. Copy it to make one of your own.").small().weak());
             if let Some(dir) = self.preset_dir() {
                 ui.label(RichText::new(format!("Your presets are text files in {} (any name ending in .txt).", dir.display())).small().weak());
             }
@@ -692,6 +751,33 @@ mod tests {
     }
 
     #[test]
+    fn clicking_a_preset_in_the_list_chooses_it_and_shows_its_assignments() {
+        let dir = temp_dir("choose");
+        std::fs::write(dir.join("Pads.txt"), "name = Pads\nport = PADS\nbind = note 1 -> record\n").unwrap();
+        let mut app = DrumApp::with_config(Config { controller_preset: "Korg nanoKONTROL2".into(), controller_port: "X".into(), ..Config::default() });
+        app.controller.editor.dir = Some(dir.clone());
+        app.controller.editor.learning = Some(Action::Record);
+        app.controller.editor.confirm_delete = true;
+        app.select_preset("Pads".into());
+        assert_eq!(app.cfg.controller_preset, "Pads");
+        assert!(app.cfg.controller_port.is_empty(), "the preset's own port is used");
+        assert!(app.controller.editor.learning.is_none() && !app.controller.editor.confirm_delete);
+        assert!(app.editable_path().is_some(), "and it is one that can be edited");
+        // The window draws with the list on the left for a built-in and for an own preset, and for none.
+        app.refresh_controllers();
+        let ctx = egui::Context::default();
+        for name in ["Pads", "Korg nanoKONTROL2", ""] {
+            app.select_preset(name.into());
+            for _ in 0..2 {
+                let _ = ctx.run(egui::RawInput::default(), |ctx| {
+                    egui::CentralPanel::default().show(ctx, |ui| app.manage_ui(ui));
+                });
+            }
+        }
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
     fn a_new_preset_needs_a_port() {
         let dir = temp_dir("noport");
         let mut app = DrumApp::with_config(Config::default());
@@ -733,13 +819,13 @@ mod tests {
         let ctx = egui::Context::default();
         for _ in 0..2 {
             let _ = ctx.run(egui::RawInput::default(), |ctx| {
-                egui::CentralPanel::default().show(ctx, |ui| app.manage_body(ui));
+                egui::CentralPanel::default().show(ctx, |ui| app.manage_ui(ui));
             });
         }
         assert!(app.editable_path().is_none(), "the Mini is built in");
         app.cfg.controller_preset = String::new();
         let _ = ctx.run(egui::RawInput::default(), |ctx| {
-            egui::CentralPanel::default().show(ctx, |ui| app.manage_body(ui));
+            egui::CentralPanel::default().show(ctx, |ui| app.manage_ui(ui));
         });
         // A message while nothing is being learned is not used up.
         assert!(!app.learn_message(controller::Msg::NoteOn { ch: 1, note: 1, vel: 100 }));
