@@ -382,32 +382,42 @@ impl DrumApp {
     }
 
     fn handle_event(&mut self, ev: RawEvent) {
+        self.learn_note(ev);
+        let lane = self.cfg.note_map.lane(ev.note).map(|l| l.by_hihat_pedal(ev.hihat, self.cfg.hihat_cc_max));
+        self.midi.monitor.push_front((ev, lane));
+        self.midi.monitor.truncate(14);
+        self.record_calibration_hit(ev);
+        if let Some(lane) = lane {
+            // A hit that belongs to the start trigger is no note of the take it starts.
+            if self.handle_trigger(lane, ev.at) {
+                return;
+            }
+            self.record_take_hit(ev, lane);
+        }
+    }
+
+    /// MIDI-learn: the note now belongs to the lane that was waiting for one, and to no other.
+    fn learn_note(&mut self, ev: RawEvent) {
         if let Some(lane) = self.midi.learn.take() {
-            // MIDI-learn: the note now belongs to this lane only.
             self.cfg.note_map.assign(ev.note, lane);
             self.midi.lane_text.clear();
             self.view.status = format!("Note {} ({}) mapped to {}", ev.note, midi::note_name(ev.note), lane.label());
         }
-        let lane = self.cfg.note_map.lane(ev.note).map(|l| l.by_hihat_pedal(ev.hihat, self.cfg.hihat_cc_max));
-        self.midi.monitor.push_front((ev, lane));
-        self.midi.monitor.truncate(14);
+    }
 
+    fn record_calibration_hit(&mut self, ev: RawEvent) {
         if let Some(cal) = self.calibration.as_mut() {
             cal.hits.push(signed_secs(ev.at, cal.zero));
         }
-        // A hit that belongs to the start trigger is no note of the take it starts.
-        if let Some(lane) = lane {
-            if self.handle_trigger(lane, ev.at) {
-                return;
-            }
-        }
+    }
+
+    /// A hit of `lane` goes into the take that is running (from a little before its first beat on).
+    fn record_take_hit(&mut self, ev: RawEvent, lane: Lane) {
         let latency = self.cfg.latency_ms / 1000.0;
-        if let (Some(take), Some(lane)) = (self.take.as_mut(), lane) {
-            if take.running {
-                let t = signed_secs(ev.at, take.zero) - latency;
-                if t > -take.count_in_beat_sec * 0.75 {
-                    take.hits.push(Hit { t, note: ev.note, velocity: ev.velocity, lane });
-                }
+        if let Some(take) = self.take.as_mut().filter(|t| t.running) {
+            let t = signed_secs(ev.at, take.zero) - latency;
+            if t > -take.count_in_beat_sec * 0.75 {
+                take.hits.push(Hit { t, note: ev.note, velocity: ev.velocity, lane });
             }
         }
     }
@@ -585,6 +595,20 @@ impl eframe::App for DrumApp {
             self.open_file(p);
         }
 
+        self.update_state(ctx, key_taken);
+        if !ctx.wants_keyboard_input() && !key_taken {
+            self.shortcut_keys(ctx);
+        }
+        self.draw(ctx);
+        self.save_settings_if_changed();
+        self.schedule_repaint(ctx);
+    }
+}
+
+impl DrumApp {
+    /// What happens every frame before anything is drawn: MIDI in, the controller, and the
+    /// lifecycles of takes, Listen, the metronome, auditions and the calibration.
+    fn update_state(&mut self, ctx: &egui::Context, key_taken: bool) {
         self.sync_source();
         self.drain_midi();
         self.update_controller();
@@ -598,42 +622,46 @@ impl eframe::App for DrumApp {
         self.update_audition();
         self.update_calibration();
         self.show_sound_errors();
+    }
 
-        if !ctx.wants_keyboard_input() && !key_taken {
-            let (rec, listen, metro, click, esc) = ctx.input(|i| {
-                (
-                    i.key_pressed(egui::Key::R),
-                    i.key_pressed(egui::Key::L),
-                    i.key_pressed(egui::Key::M),
-                    i.key_pressed(egui::Key::K),
-                    i.key_pressed(egui::Key::Escape),
-                )
-            });
-            if click {
-                self.cfg.metronome_during_take = !self.cfg.metronome_during_take;
-            }
-            let running = self.take.as_ref().is_some_and(|t| t.running);
-            if esc && (running || self.playback.player.is_some() || self.metro_run.run.is_some()) {
-                self.stop_take(false);
+    /// R records, L listens, M starts the metronome, K switches the click, Esc stops.
+    fn shortcut_keys(&mut self, ctx: &egui::Context) {
+        let (rec, listen, metro, click, esc) = ctx.input(|i| {
+            (
+                i.key_pressed(egui::Key::R),
+                i.key_pressed(egui::Key::L),
+                i.key_pressed(egui::Key::M),
+                i.key_pressed(egui::Key::K),
+                i.key_pressed(egui::Key::Escape),
+            )
+        });
+        if click {
+            self.cfg.metronome_during_take = !self.cfg.metronome_during_take;
+        }
+        let running = self.take.as_ref().is_some_and(|t| t.running);
+        if esc && (running || self.playback.player.is_some() || self.metro_run.run.is_some()) {
+            self.stop_take(false);
+            self.stop_listen();
+            self.stop_metro();
+        } else if rec && !running && self.score.is_some() {
+            self.start_take();
+        } else if listen && !running && self.score.is_some() {
+            if self.playback.listen.is_some() {
                 self.stop_listen();
+            } else {
+                self.start_listen();
+            }
+        } else if metro && !running {
+            if self.metro_run.run.is_some() {
                 self.stop_metro();
-            } else if rec && !running && self.score.is_some() {
-                self.start_take();
-            } else if listen && !running && self.score.is_some() {
-                if self.playback.listen.is_some() {
-                    self.stop_listen();
-                } else {
-                    self.start_listen();
-                }
-            } else if metro && !running {
-                if self.metro_run.run.is_some() {
-                    self.stop_metro();
-                } else {
-                    self.start_metro();
-                }
+            } else {
+                self.start_metro();
             }
         }
+    }
 
+    /// The top bar, the status line, the tab that is shown and the windows of the controller.
+    fn draw(&mut self, ctx: &egui::Context) {
         egui::TopBottomPanel::top("top").show(ctx, |ui| self.top_bar(ui));
         // A tab clicked just now needs its practice source before it is drawn.
         self.sync_source();
@@ -660,16 +688,20 @@ impl eframe::App for DrumApp {
 
         self.controller_help_window(ctx);
         self.controller_editor_window(ctx);
+    }
 
+    fn save_settings_if_changed(&mut self) {
         if self.cfg != self.saved_cfg {
             if let Err(e) = self.cfg.save(&self.paths) {
                 self.view.status = format!("Could not save settings: {e}");
             }
             self.saved_cfg = self.cfg.clone();
         }
+    }
 
-        // Keep animating while recording/calibrating; otherwise poll MIDI
-        // often enough for the monitor and MIDI-learn.
+    /// Keep animating while recording, calibrating, listening or clicking; otherwise poll MIDI
+    /// often enough for the monitor and MIDI-learn.
+    fn schedule_repaint(&self, ctx: &egui::Context) {
         if self.take.as_ref().is_some_and(|t| t.running)
             || self.calibration.is_some()
             || self.playback.listen.is_some()
