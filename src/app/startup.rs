@@ -216,10 +216,10 @@ impl DrumApp {
                 }
             }
             Step::MidiPorts => {
-                self.midi_inputs = midi::list_inputs().unwrap_or_default();
-                self.midi_outputs = midi::list_outputs().unwrap_or_default();
+                self.midi.inputs = midi::list_inputs().unwrap_or_default();
+                self.midi.outputs = midi::list_outputs().unwrap_or_default();
                 Line {
-                    text: format!("Found {} and {}", count(self.midi_inputs.len(), "MIDI input"), count(self.midi_outputs.len(), "MIDI output")),
+                    text: format!("Found {} and {}", count(self.midi.inputs.len(), "MIDI input"), count(self.midi.outputs.len(), "MIDI output")),
                     ok: true,
                 }
             }
@@ -227,7 +227,7 @@ impl DrumApp {
                 let chosen = !self.cfg.midi_in_port.trim().is_empty();
                 self.connect_midi(None);
                 if chosen {
-                    Line { text: self.status.clone(), ok: self.midi_in.is_some() }
+                    Line { text: self.view.status.clone(), ok: self.midi.input.is_some() }
                 } else {
                     Line { text: "No drum module chosen yet: choose its port in Settings".into(), ok: false }
                 }
@@ -259,9 +259,9 @@ impl DrumApp {
                 if let Some(path) = st.file.clone() {
                     self.open_file(&path);
                 }
-                match &self.error {
+                match &self.view.error {
                     Some(e) => Line { text: e.clone(), ok: false },
-                    None => Line { text: self.status.clone(), ok: true },
+                    None => Line { text: self.view.status.clone(), ok: true },
                 }
             }
         })
@@ -432,7 +432,7 @@ mod tests {
         assert_eq!(starting, 7, "one frame to show each of the 7 steps");
         assert!(app.startup.as_ref().is_some_and(|s| s.is_finished()), "the splash is still there to be read");
         assert!(app.score.is_some(), "the score given on the command line is open");
-        assert!(app.tab == super::super::Tab::Score);
+        assert!(app.view.tab == super::super::Tab::Score);
         assert_eq!(app.audio_devices, ["Speakers"]);
         assert_eq!(app.startup.as_ref().unwrap().log.len(), 7, "every step left a line");
     }

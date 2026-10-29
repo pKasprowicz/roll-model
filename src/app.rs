@@ -164,13 +164,60 @@ struct Calibration {
     hits: Vec<f64>,
 }
 
+/// What the window shows and says: the tab and Settings page, the status line, the last error.
+struct ViewState {
+    tab: Tab,
+    settings_page: SettingsPage,
+    status: String,
+    error: Option<String>,
+    /// A fixed bars-per-row that does not fit, as reported by the last drawing of the score.
+    fit_bars: Option<usize>,
+}
+
+/// The drum module's MIDI input: the ports, the connection, the events waiting and what the
+/// settings page shows of them.
+struct MidiState {
+    inputs: Vec<String>,
+    outputs: Vec<String>,
+    input: Option<InputHandle>,
+    queue: EventQueue,
+    monitor: VecDeque<(RawEvent, Option<Lane>)>,
+    learn: Option<Lane>,
+    lane_text: BTreeMap<Lane, String>,
+}
+
+/// Listen, and the instrument played from the mixer.
+struct Playback {
+    /// Set while the playhead runs; the player may outlive it while the last notes ring.
+    listen: Option<Listen>,
+    player: Option<Player>,
+    /// Live switches of Listen (the click switch is `cfg.metronome_during_take`).
+    notes: bool,
+    looping: bool,
+    /// Range and tempo changed while listening, and since when: restarts once it settles.
+    pending: Option<((usize, usize, i32, u32), Instant)>,
+    /// Shared with the sound threads of Listen and of takes.
+    control: Arc<Control>,
+    /// Instruments soloed in the mixer (not saved).
+    solo: BTreeSet<Lane>,
+    /// One instrument played from the mixer; it has its own control so it never disturbs Listen.
+    audition: Option<Player>,
+    audition_control: Arc<Control>,
+}
+
+/// The free metronome tab's run, its sound thread and the settings that thread shares.
+struct MetroState {
+    run: Option<metro::Run>,
+    player: Option<Player>,
+    control: Arc<Control>,
+}
+
 pub struct DrumApp {
     cfg: Config,
     saved_cfg: Config,
     /// Where the settings, sounds and controller presets are kept.
     paths: Paths,
-    tab: Tab,
-    settings_page: SettingsPage,
+    view: ViewState,
     /// Whose practice fields (`score` to `history`, below) are in use; the other's are in `parked`.
     source: Source,
     parked: Parked,
@@ -184,21 +231,13 @@ pub struct DrumApp {
     trigger_learn: Option<crate::trigger::Slot>,
     score: Option<Score>,
     score_path: Option<PathBuf>,
-    status: String,
-    error: Option<String>,
 
     range_from: usize,
     range_to: usize,
     tempo_pct: f32,
     follow: bool,
 
-    midi_inputs: Vec<String>,
-    midi_outputs: Vec<String>,
-    midi_in: Option<InputHandle>,
-    queue: EventQueue,
-    monitor: VecDeque<(RawEvent, Option<Lane>)>,
-    learn: Option<Lane>,
-    lane_text: BTreeMap<Lane, String>,
+    midi: MidiState,
 
     take: Option<Take>,
     takes_started: usize,
@@ -206,32 +245,13 @@ pub struct DrumApp {
     metronome: Option<Metronome>,
     calibration: Option<Calibration>,
 
-    /// Set while the playhead runs; the player may outlive it while the last notes ring.
-    listen: Option<Listen>,
-    player: Option<Player>,
-    /// Live switches of Listen (the click switch is `cfg.metronome_during_take`).
-    listen_notes: bool,
-    listen_loop: bool,
-    /// Shared with the sound threads of Listen and of takes.
-    control: Arc<Control>,
-
-    /// Instruments soloed in the mixer (not saved).
-    solo: BTreeSet<Lane>,
-    /// One instrument played from the mixer; it has its own control so it never disturbs Listen.
-    audition: Option<Player>,
-    audition_control: Arc<Control>,
+    playback: Playback,
     audio_devices: Vec<String>,
     /// Name of the system's default sound output, for the settings page.
     audio_default: Option<String>,
-    /// A fixed bars-per-row that does not fit, as reported by the last drawing of the score.
-    fit_bars: Option<usize>,
-    /// Range and tempo changed while listening, and since when: restarts once it settles.
-    listen_pending: Option<((usize, usize, i32, u32), Instant)>,
 
     /// The free metronome tab.
-    metro: Option<metro::Run>,
-    metro_player: Option<Player>,
-    metro_control: Arc<Control>,
+    metro_run: MetroState,
 
     /// The Mackie Control surface (X-Touch).
     controller: controls::Controller,
@@ -280,8 +300,7 @@ impl DrumApp {
             saved_cfg: cfg.clone(),
             paths: Paths::none(),
             cfg,
-            tab: Tab::Home,
-            settings_page: SettingsPage::MidiInput,
+            view: ViewState { tab: Tab::Home, settings_page: SettingsPage::MidiInput, status: String::new(), error: None, fit_bars: None },
             source: Source::Score,
             parked: Parked::new(),
             score_gen: 0,
@@ -290,39 +309,38 @@ impl DrumApp {
             trigger_learn: None,
             score: None,
             score_path: None,
-            status: String::new(),
-            error: None,
             range_from: 0,
             range_to: 0,
             tempo_pct: 100.0,
             follow: true,
-            midi_inputs: Vec::new(),
-            midi_outputs: Vec::new(),
-            midi_in: None,
-            queue: Arc::new(Mutex::new(Vec::new())),
-            monitor: VecDeque::new(),
-            learn: None,
-            lane_text: BTreeMap::new(),
+            midi: MidiState {
+                inputs: Vec::new(),
+                outputs: Vec::new(),
+                input: None,
+                queue: Arc::new(Mutex::new(Vec::new())),
+                monitor: VecDeque::new(),
+                learn: None,
+                lane_text: BTreeMap::new(),
+            },
             take: None,
             takes_started: 0,
             history: Vec::new(),
             metronome: None,
             calibration: None,
-            listen: None,
-            player: None,
-            listen_notes: true,
-            listen_loop: false,
-            control: Control::new(),
-            solo: BTreeSet::new(),
-            audition: None,
-            audition_control: Control::new(),
+            playback: Playback {
+                listen: None,
+                player: None,
+                notes: true,
+                looping: false,
+                pending: None,
+                control: Control::new(),
+                solo: BTreeSet::new(),
+                audition: None,
+                audition_control: Control::new(),
+            },
             audio_devices: Vec::new(),
             audio_default: None,
-            fit_bars: None,
-            listen_pending: None,
-            metro: None,
-            metro_player: None,
-            metro_control: Control::new(),
+            metro_run: MetroState { run: None, player: None, control: Control::new() },
             controller: controls::Controller::new(),
             controller_help: None,
             startup: None,
@@ -332,29 +350,29 @@ impl DrumApp {
     // ----------------------------------------------------------------- MIDI
 
     fn refresh_ports(&mut self) {
-        self.midi_inputs = midi::list_inputs().unwrap_or_default();
-        self.midi_outputs = midi::list_outputs().unwrap_or_default();
+        self.midi.inputs = midi::list_inputs().unwrap_or_default();
+        self.midi.outputs = midi::list_outputs().unwrap_or_default();
         self.audio_devices = metronome::output_devices();
         self.audio_default = metronome::default_output_device();
     }
 
     fn connect_midi(&mut self, name: Option<String>) {
-        self.midi_in = None; // close the old port first (Windows ports are exclusive)
+        self.midi.input = None; // close the old port first (Windows ports are exclusive)
         let wanted = name.unwrap_or_else(|| self.cfg.midi_in_port.clone());
-        match midi::connect_input(&wanted, self.queue.clone()) {
+        match midi::connect_input(&wanted, self.midi.queue.clone()) {
             Ok(h) => {
-                self.status = format!("MIDI input: {}", h.port_name);
+                self.view.status = format!("MIDI input: {}", h.port_name);
                 self.cfg.midi_in_port = h.port_name.clone();
-                self.midi_in = Some(h);
+                self.midi.input = Some(h);
             }
             Err(e) => {
-                self.status = format!("{e}. Choose the drum module's port in Settings.");
+                self.view.status = format!("{e}. Choose the drum module's port in Settings.");
             }
         }
     }
 
     fn drain_midi(&mut self) {
-        let events: Vec<RawEvent> = match self.queue.lock() {
+        let events: Vec<RawEvent> = match self.midi.queue.lock() {
             Ok(mut q) => std::mem::take(&mut *q),
             Err(_) => return,
         };
@@ -364,15 +382,15 @@ impl DrumApp {
     }
 
     fn handle_event(&mut self, ev: RawEvent) {
-        if let Some(lane) = self.learn.take() {
+        if let Some(lane) = self.midi.learn.take() {
             // MIDI-learn: the note now belongs to this lane only.
             self.cfg.note_map.assign(ev.note, lane);
-            self.lane_text.clear();
-            self.status = format!("Note {} ({}) mapped to {}", ev.note, midi::note_name(ev.note), lane.label());
+            self.midi.lane_text.clear();
+            self.view.status = format!("Note {} ({}) mapped to {}", ev.note, midi::note_name(ev.note), lane.label());
         }
         let lane = self.cfg.note_map.lane(ev.note).map(|l| l.by_hihat_pedal(ev.hihat, self.cfg.hihat_cc_max));
-        self.monitor.push_front((ev, lane));
-        self.monitor.truncate(14);
+        self.midi.monitor.push_front((ev, lane));
+        self.midi.monitor.truncate(14);
 
         if let Some(cal) = self.calibration.as_mut() {
             cal.hits.push(signed_secs(ev.at, cal.zero));
@@ -426,7 +444,7 @@ impl DrumApp {
         }
         self.stop_take(false);
         self.stop_listen();
-        self.listen_pending = None;
+        self.playback.pending = None;
         let Parked { score, score_path, range_from, range_to, tempo_pct, take, takes_started, history } = &mut self.parked;
         std::mem::swap(&mut self.score, score);
         std::mem::swap(&mut self.score_path, score_path);
@@ -472,7 +490,7 @@ impl DrumApp {
         let opts = ParseOptions { expand_repeats: self.cfg.expand_repeats };
         match load_score(path, &opts) {
             Ok(score) => {
-                self.status = format!(
+                self.view.status = format!(
                     "Loaded \"{}\": {} measures, {} notes, {:.0} BPM",
                     score.title,
                     score.measures.len(),
@@ -486,11 +504,11 @@ impl DrumApp {
                 let absolute = std::path::absolute(path).unwrap_or_else(|_| path.to_path_buf());
                 self.cfg.remember_recent(&absolute.to_string_lossy());
                 self.take = None;
-                self.error = None;
+                self.view.error = None;
                 self.score_gen += 1;
-                self.tab = Tab::Score;
+                self.view.tab = Tab::Score;
             }
-            Err(e) => self.error = Some(format!("Could not load {}: {e}", path.display())),
+            Err(e) => self.view.error = Some(format!("Could not load {}: {e}", path.display())),
         }
     }
 
@@ -511,16 +529,16 @@ impl DrumApp {
                 }
             }
             ui.separator();
-            ui.selectable_value(&mut self.tab, Tab::Home, "🏠 Home");
+            ui.selectable_value(&mut self.view.tab, Tab::Home, "🏠 Home");
             ui.add_enabled_ui(self.has_main_score(), |ui| {
-                ui.selectable_value(&mut self.tab, Tab::Score, "🎼 Score");
+                ui.selectable_value(&mut self.view.tab, Tab::Score, "🎼 Score");
             });
-            ui.selectable_value(&mut self.tab, Tab::Rudiments, "🔁 Rudiments");
-            ui.selectable_value(&mut self.tab, Tab::Metronome, "⏱ Metronome");
-            ui.selectable_value(&mut self.tab, Tab::Results, "📊 Results");
-            ui.selectable_value(&mut self.tab, Tab::Settings, "⚙ Settings");
+            ui.selectable_value(&mut self.view.tab, Tab::Rudiments, "🔁 Rudiments");
+            ui.selectable_value(&mut self.view.tab, Tab::Metronome, "⏱ Metronome");
+            ui.selectable_value(&mut self.view.tab, Tab::Results, "📊 Results");
+            ui.selectable_value(&mut self.view.tab, Tab::Settings, "⚙ Settings");
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                match &self.midi_in {
+                match &self.midi.input {
                     Some(h) => ui.label(RichText::new(format!("⏺ {}", h.port_name)).color(render::GREEN)),
                     None => ui.label(RichText::new("⏺ no MIDI input").color(render::RED)),
                 };
@@ -531,7 +549,7 @@ impl DrumApp {
                         self.toggle_controller_help();
                     }
                 }
-                if let Some((ev, lane)) = self.monitor.front() {
+                if let Some((ev, lane)) = self.midi.monitor.front() {
                     if ev.at.elapsed() < Duration::from_millis(1500) {
                         ui.label(format!(
                             "{} · note {} · vel {}",
@@ -595,20 +613,20 @@ impl eframe::App for DrumApp {
                 self.cfg.metronome_during_take = !self.cfg.metronome_during_take;
             }
             let running = self.take.as_ref().is_some_and(|t| t.running);
-            if esc && (running || self.player.is_some() || self.metro.is_some()) {
+            if esc && (running || self.playback.player.is_some() || self.metro_run.run.is_some()) {
                 self.stop_take(false);
                 self.stop_listen();
                 self.stop_metro();
             } else if rec && !running && self.score.is_some() {
                 self.start_take();
             } else if listen && !running && self.score.is_some() {
-                if self.listen.is_some() {
+                if self.playback.listen.is_some() {
                     self.stop_listen();
                 } else {
                     self.start_listen();
                 }
             } else if metro && !running {
-                if self.metro.is_some() {
+                if self.metro_run.run.is_some() {
                     self.stop_metro();
                 } else {
                     self.start_metro();
@@ -621,17 +639,17 @@ impl eframe::App for DrumApp {
         self.sync_source();
         egui::TopBottomPanel::bottom("status").show(ctx, |ui| {
             ui.horizontal(|ui| {
-                if let Some(e) = self.error.clone() {
+                if let Some(e) = self.view.error.clone() {
                     ui.label(RichText::new(e).color(render::RED));
                     if ui.small_button("Dismiss").clicked() {
-                        self.error = None;
+                        self.view.error = None;
                     }
                 } else {
-                    ui.label(RichText::new(&self.status).small());
+                    ui.label(RichText::new(&self.view.status).small());
                 }
             });
         });
-        egui::CentralPanel::default().show(ctx, |ui| match self.tab {
+        egui::CentralPanel::default().show(ctx, |ui| match self.view.tab {
             Tab::Home => egui::ScrollArea::vertical().show(ui, |ui| self.welcome_panel(ui)).inner,
             Tab::Score => self.score_tab(ui),
             Tab::Rudiments => self.rudiments_tab(ui),
@@ -645,7 +663,7 @@ impl eframe::App for DrumApp {
 
         if self.cfg != self.saved_cfg {
             if let Err(e) = self.cfg.save(&self.paths) {
-                self.status = format!("Could not save settings: {e}");
+                self.view.status = format!("Could not save settings: {e}");
             }
             self.saved_cfg = self.cfg.clone();
         }
@@ -654,8 +672,8 @@ impl eframe::App for DrumApp {
         // often enough for the monitor and MIDI-learn.
         if self.take.as_ref().is_some_and(|t| t.running)
             || self.calibration.is_some()
-            || self.listen.is_some()
-            || self.metro.is_some()
+            || self.playback.listen.is_some()
+            || self.metro_run.run.is_some()
         {
             ctx.request_repaint();
         } else {
@@ -675,7 +693,7 @@ mod tests {
     #[test]
     fn the_app_starts_on_home_with_no_score() {
         let app = DrumApp::with_config(Config::default());
-        assert!(app.tab == Tab::Home);
+        assert!(app.view.tab == Tab::Home);
         assert!(app.score.is_none(), "so the Score tab is greyed out");
     }
 
@@ -684,13 +702,13 @@ mod tests {
         let mut app = DrumApp::with_config(Config::default());
         app.open_file(&sample());
         assert!(app.score.is_some());
-        assert!(app.tab == Tab::Score);
+        assert!(app.view.tab == Tab::Score);
         assert_eq!(app.cfg.recent_files.len(), 1, "remembered for the Home tab");
 
-        app.tab = Tab::Home;
+        app.view.tab = Tab::Home;
         app.open_file(Path::new("no/such/score.musicxml"));
-        assert!(app.error.is_some());
-        assert!(app.tab == Tab::Home, "a failed open does not leave Home");
+        assert!(app.view.error.is_some());
+        assert!(app.view.tab == Tab::Home, "a failed open does not leave Home");
         assert!(app.score.is_some(), "the loaded score stays");
         assert_eq!(app.cfg.recent_files.len(), 1, "a failed file is not remembered");
     }

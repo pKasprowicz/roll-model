@@ -155,13 +155,13 @@ impl DrumApp {
         let mut preset = match controller::load_preset(&self.cfg.controller_preset, Some(&dir)) {
             Ok(p) => p,
             Err(e) => {
-                self.error = Some(e.to_string());
+                self.view.error = Some(e.to_string());
                 return None;
             }
         };
         let result = change(&mut preset);
         if let Err(e) = std::fs::write(&path, preset.to_text()) {
-            self.error = Some(format!("Could not save {}: {e}", path.display()));
+            self.view.error = Some(format!("Could not save {}: {e}", path.display()));
             return None;
         }
         self.controller.replace_preset(preset);
@@ -203,24 +203,24 @@ impl DrumApp {
 
     /// A new, empty preset for the chosen port, to be taught by pressing the controls.
     fn new_learned_preset(&mut self) {
-        let drum = self.midi_in.as_ref().map(|h| h.port_name.clone());
+        let drum = self.midi.input.as_ref().map(|h| h.port_name.clone());
         let port = if !self.cfg.controller_port.is_empty() {
             Some(self.cfg.controller_port.clone())
         } else {
-            self.midi_inputs.iter().find(|p| Some(*p) != drum.as_ref()).cloned()
+            self.midi.inputs.iter().find(|p| Some(*p) != drum.as_ref()).cloned()
         };
         let Some(port) = port else {
             self.controller.editor.say("No MIDI input to use. Plug the controller in, then use Refresh and reconnect.");
             return;
         };
         let Some(dir) = self.preset_dir() else {
-            self.error = Some("No settings folder is available on this system.".into());
+            self.view.error = Some("No settings folder is available on this system.".into());
             return;
         };
         let text = format!("name = My controller\nport = {port}\n");
         match unused_path(&dir, "My controller").and_then(|path| std::fs::write(&path, text).map(|_| path)) {
             Ok(path) => self.use_new_preset(&path, &format!("Saved {}", path.display())),
-            Err(e) => self.error = Some(format!("Could not create the preset: {e}")),
+            Err(e) => self.view.error = Some(format!("Could not create the preset: {e}")),
         }
     }
 
@@ -228,7 +228,7 @@ impl DrumApp {
     fn copy_to_edit(&mut self) {
         let name = self.cfg.controller_preset.clone();
         let Some(dir) = self.preset_dir() else {
-            self.error = Some("No settings folder is available on this system.".into());
+            self.view.error = Some("No settings folder is available on this system.".into());
             return;
         };
         let text = match controller::preset_source(&name, Some(&dir)) {
@@ -237,12 +237,12 @@ impl DrumApp {
             None => Err(std::io::Error::new(std::io::ErrorKind::NotFound, "no such preset")),
         };
         let Ok(text) = text else {
-            self.error = Some(format!("Could not read the preset \"{name}\"."));
+            self.view.error = Some(format!("Could not read the preset \"{name}\"."));
             return;
         };
         match copy_preset(&dir, &name, &text) {
             Ok(path) => self.use_new_preset(&path, &format!("Copied to {}", path.display())),
-            Err(e) => self.error = Some(format!("Could not copy the preset: {e}")),
+            Err(e) => self.view.error = Some(format!("Could not copy the preset: {e}")),
         }
     }
 
@@ -252,7 +252,7 @@ impl DrumApp {
         if let Some(stem) = path.file_stem() {
             self.select_preset(stem.to_string_lossy().into_owned());
         }
-        self.status = status.to_string();
+        self.view.status = status.to_string();
         self.controller.editor.view.open = true;
     }
 
@@ -419,7 +419,7 @@ impl DrumApp {
                 self.choose_preset(new.clone(), true);
                 self.controller.editor.say(format!("Renamed to {new}."));
             }
-            Err(e) => self.error = Some(format!("Could not rename the preset: {e}")),
+            Err(e) => self.view.error = Some(format!("Could not rename the preset: {e}")),
         }
     }
 
@@ -434,7 +434,7 @@ impl DrumApp {
                 self.select_preset(String::new());
                 self.controller.editor.say(format!("Deleted {name}."));
             }
-            Err(e) => self.error = Some(format!("Could not delete {}: {e}", path.display())),
+            Err(e) => self.view.error = Some(format!("Could not delete {}: {e}", path.display())),
         }
     }
 
@@ -673,7 +673,7 @@ mod tests {
         let dir = temp_dir("new");
         let mut app = DrumApp::with_config(Config { controller_preset: "Behringer X-Touch Mini".into(), ..Config::default() });
         app.paths = Paths::in_dir(dir.parent().unwrap().to_path_buf());
-        app.midi_inputs = vec!["Some Pad Controller".into()];
+        app.midi.inputs = vec!["Some Pad Controller".into()];
         assert!(app.editable_path().is_none(), "a built-in preset is not edited");
         app.new_learned_preset();
         assert_eq!(app.cfg.controller_preset, "My controller");
@@ -801,7 +801,7 @@ mod tests {
         let dir = temp_dir("window");
         app.controller.editor.view.open = false;
         app.paths = Paths::in_dir(dir.parent().unwrap().to_path_buf());
-        app.midi_inputs = vec!["Some Pad Controller".into()];
+        app.midi.inputs = vec!["Some Pad Controller".into()];
         app.new_learned_preset();
         assert!(app.controller.editor.view.open, "a new preset opens the editor");
         frame(&mut app);

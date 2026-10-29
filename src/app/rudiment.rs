@@ -40,7 +40,7 @@ impl DrumApp {
     /// Puts the right practice source in place for the tab that is showing, and keeps the
     /// rudiment's score and tempo up to date.
     pub(super) fn sync_source(&mut self) {
-        match self.tab {
+        match self.view.tab {
             Tab::Score => self.activate(Source::Score),
             Tab::Rudiments => {
                 self.activate(Source::Rudiments);
@@ -73,7 +73,7 @@ impl DrumApp {
         self.rud.built = Some(params);
         if another {
             self.tempo_pct = self.cfg.rudiment_bpm.get(&r.number).copied().unwrap_or(r.default_bpm() as f32);
-            self.status = format!("Rudiment {}: {} — {}", r.number, r.name, r.sticking());
+            self.view.status = format!("Rudiment {}: {} — {}", r.number, r.name, r.sticking());
         }
     }
 
@@ -138,7 +138,7 @@ impl DrumApp {
 
     pub(super) fn reset_rudiment_tempo(&mut self) {
         self.tempo_pct = self.rudiment().default_bpm() as f32;
-        self.status = format!("Tempo {:.0} BPM", self.tempo_pct);
+        self.view.status = format!("Tempo {:.0} BPM", self.tempo_pct);
     }
 
     /// Called when a take of the rudiment was clean: remembers the tempo if it is the best so
@@ -159,7 +159,7 @@ impl DrumApp {
             self.tempo_pct = (bpm + LADDER_STEP).min(BPM_RANGE.1);
             message.push_str(&format!(" · up to {:.0} BPM", self.tempo_pct));
         }
-        self.status = format!("{} · {message}", self.status);
+        self.view.status = format!("{} · {message}", self.view.status);
     }
 
     pub(super) fn rudiments_tab(&mut self, ui: &mut egui::Ui) {
@@ -297,7 +297,7 @@ mod tests {
     /// An app that has the Rudiments tab open.
     fn on_rudiments() -> DrumApp {
         let mut app = app();
-        app.tab = Tab::Rudiments;
+        app.view.tab = Tab::Rudiments;
         app.sync_source();
         app
     }
@@ -310,7 +310,7 @@ mod tests {
     fn opening_the_tab_builds_the_chosen_rudiment_at_its_own_tempo() {
         let mut app = app();
         app.cfg.rudiment = 16;
-        app.tab = Tab::Rudiments;
+        app.view.tab = Tab::Rudiments;
         app.sync_source();
         let score = app.score.as_ref().expect("the rudiment is the score");
         assert_eq!(score.title, "Single paradiddle");
@@ -372,9 +372,9 @@ mod tests {
         app.open_file(&sample());
         app.tempo_pct = 80.0;
         app.range_from = 1;
-        assert!(app.tab == Tab::Score && app.source == Source::Score);
+        assert!(app.view.tab == Tab::Score && app.source == Source::Score);
 
-        app.tab = Tab::Rudiments;
+        app.view.tab = Tab::Rudiments;
         app.sync_source();
         assert!(app.source == Source::Rudiments);
         assert_eq!(app.score.as_ref().unwrap().title, "Single stroke roll");
@@ -391,7 +391,7 @@ mod tests {
             extra: 0,
         });
 
-        app.tab = Tab::Score;
+        app.view.tab = Tab::Score;
         app.sync_source();
         assert!(app.source == Source::Score);
         assert_eq!(app.score.as_ref().unwrap().title, "Basic Rock Beat", "the file is back with its own settings");
@@ -400,10 +400,10 @@ mod tests {
         assert_eq!(app.parked.history.len(), 1);
 
         // Opening a file from the Rudiments tab goes to the Score tab and does not touch the rudiment.
-        app.tab = Tab::Rudiments;
+        app.view.tab = Tab::Rudiments;
         app.sync_source();
         app.open_file(&sample());
-        assert!(app.tab == Tab::Score && app.source == Source::Score);
+        assert!(app.view.tab == Tab::Score && app.source == Source::Score);
         assert_eq!(app.parked.score.as_ref().unwrap().title, "Single stroke roll");
     }
 
@@ -413,7 +413,7 @@ mod tests {
         assert!(app.main_path().is_none());
         app.open_file(&sample());
         let path = app.main_path().expect("loaded");
-        app.tab = Tab::Rudiments;
+        app.view.tab = Tab::Rudiments;
         app.sync_source();
         assert!(app.score_path.is_none(), "the rudiment has no file");
         assert_eq!(app.main_path(), Some(path));
@@ -454,10 +454,10 @@ mod tests {
         let mut app = on_rudiments();
         app.select_rudiment(16);
         app.tempo_pct = 90.0;
-        app.status.clear();
+        app.view.status.clear();
         app.note_clean_rudiment(90.0);
         assert_eq!(app.cfg.rudiment_best.get(&16), Some(&90.0));
-        assert!(app.status.contains("new best"), "{}", app.status);
+        assert!(app.view.status.contains("new best"), "{}", app.view.status);
         assert_eq!(app.tempo_pct, 90.0, "the ladder is off");
         app.cfg.rudiment_ladder = true;
         app.note_clean_rudiment(85.0);
@@ -476,7 +476,7 @@ mod tests {
         app.select_rudiment(4);
         app.start_take();
         assert!(app.take.is_none(), "no take");
-        assert!(app.status.contains("cannot be graded"), "{}", app.status);
+        assert!(app.view.status.contains("cannot be graded"), "{}", app.view.status);
         app.select_rudiment(16);
         assert!(app.rudiment().gradable());
     }
@@ -522,7 +522,7 @@ mod tests {
             });
         }
         // And on the Home tab with the new button.
-        app.tab = Tab::Home;
+        app.view.tab = Tab::Home;
         let _ = ctx.run(egui::RawInput::default(), |ctx| {
             egui::CentralPanel::default().show(ctx, |ui| app.welcome_panel(ui));
         });

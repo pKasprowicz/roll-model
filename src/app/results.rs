@@ -222,8 +222,8 @@ impl DrumApp {
             }
         }
         match std::fs::write(&path, s) {
-            Ok(()) => self.status = format!("Saved {}", path.display()),
-            Err(e) => self.error = Some(format!("Could not save: {e}")),
+            Ok(()) => self.view.status = format!("Saved {}", path.display()),
+            Err(e) => self.view.error = Some(format!("Could not save: {e}")),
         }
     }
 }

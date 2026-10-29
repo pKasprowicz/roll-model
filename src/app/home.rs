@@ -75,7 +75,7 @@ impl DrumApp {
             ui.add_space(14.0);
             let rudiments = egui::Button::new(RichText::new("Practise the 40 rudiments").size(16.0)).min_size(egui::vec2(260.0, 38.0));
             if ui.add(rudiments).on_hover_text("Singles, rolls, paradiddles, flams and drags: pick one, repeat it and play it along with the click").clicked() {
-                self.tab = Tab::Rudiments;
+                self.view.tab = Tab::Rudiments;
             }
         });
         ui.add_space(28.0);

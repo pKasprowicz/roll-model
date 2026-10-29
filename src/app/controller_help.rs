@@ -43,7 +43,7 @@ impl DrumApp {
             None => match controller::load_preset(&self.cfg.controller_preset, self.paths.controllers_dir().as_deref()) {
                 Ok(preset) => (preset, None),
                 Err(e) => {
-                    self.error = Some(e.to_string());
+                    self.view.error = Some(e.to_string());
                     return;
                 }
             },
@@ -461,6 +461,6 @@ mod tests {
         let mut app = DrumApp::with_config(Config { controller_preset: "No such controller".into(), ..Config::default() });
         app.toggle_controller_help();
         assert!(app.controller_help.is_none());
-        assert!(app.error.is_some());
+        assert!(app.view.error.is_some());
     }
 }

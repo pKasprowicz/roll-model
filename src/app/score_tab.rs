@@ -78,7 +78,7 @@ impl DrumApp {
                     self.start_take();
                 }
             }
-            if self.listen.is_some() {
+            if self.playback.listen.is_some() {
                 if ui.button(RichText::new("⏹ Stop listening (L)").strong()).clicked() {
                     self.stop_listen();
                 }
@@ -118,9 +118,9 @@ impl DrumApp {
         ui.checkbox(&mut self.cfg.metronome_during_take, "click (K)")
             .on_hover_text("Switch the metronome on or off at any time, also while playing or recording. The count-in always sounds.");
         ui.add_enabled_ui(!running, |ui| {
-            ui.checkbox(&mut self.listen_notes, "notes")
+            ui.checkbox(&mut self.playback.notes, "notes")
                 .on_hover_text("Play the notes of the score in Listen. Switch them off to use Listen as a click track.");
-            ui.checkbox(&mut self.listen_loop, "loop")
+            ui.checkbox(&mut self.playback.looping, "loop")
                 .on_hover_text("Repeat the selected measures in Listen until it is stopped. Switching it off lets the current round finish.");
             widgets::slider(ui, "count-in bars", &mut self.cfg.count_in_bars, 0..=2, "", 1.0);
         });
@@ -174,7 +174,7 @@ impl DrumApp {
             legend(ui, render::ORANGE, "wrong pad");
             legend(ui, render::RED, "missed / extra");
             widgets::hint(ui, "· click a measure to start there, shift+click to set the end · mouse wheel over a slider fine-tunes it");
-            if let Some(fit) = self.fit_bars {
+            if let Some(fit) = self.view.fit_bars {
                 let msg = format!("· {} bars per row do not fit at this width: showing {fit}", self.cfg.bars_per_row);
                 ui.label(RichText::new(msg).small().color(render::AMBER));
             }
@@ -201,14 +201,14 @@ impl DrumApp {
             playhead_q: playhead,
             range: (self.range_from, self.range_to),
             zoom: self.cfg.zoom,
-            follow: self.follow && (running || self.listen.is_some()),
+            follow: self.follow && (running || self.playback.listen.is_some()),
             layout: LayoutOpts { bars_per_row: self.cfg.bars_per_row, align_bar: self.cfg.layout_align_bar },
         };
         let out = egui::ScrollArea::vertical()
             .auto_shrink([false, false])
             .show(ui, |ui| render::show(ui, &view))
             .inner;
-        self.fit_bars = out.fit_bars;
+        self.view.fit_bars = out.fit_bars;
         if let (Some((mi, shift)), false) = (out.clicked_measure, running) {
             if shift {
                 self.range_to = mi.max(self.range_from);

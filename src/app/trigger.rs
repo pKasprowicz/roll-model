@@ -20,7 +20,7 @@ impl DrumApp {
     /// something to play, and not while a take records or the latency is being measured.
     fn trigger_allowed(&self) -> bool {
         self.cfg.trigger_enabled
-            && matches!(self.tab, Tab::Score | Tab::Rudiments)
+            && matches!(self.view.tab, Tab::Score | Tab::Rudiments)
             && self.score.is_some()
             && !self.take.as_ref().is_some_and(|t| t.running)
             && self.calibration.is_none()
@@ -35,7 +35,7 @@ impl DrumApp {
                 Slot::Second => self.cfg.trigger_second = lane,
             }
             self.trigger.reset();
-            self.status = format!("{} trigger hit: {}", slot.label(), lane.label());
+            self.view.status = format!("{} trigger hit: {}", slot.label(), lane.label());
             return true;
         }
         if !self.trigger_allowed() {
@@ -47,7 +47,7 @@ impl DrumApp {
         }
         self.start_take();
         if self.take.as_ref().is_some_and(|t| t.running) {
-            self.status = format!("{} — recording started by the trigger", self.status);
+            self.view.status = format!("{} — recording started by the trigger", self.view.status);
         }
         true
     }
@@ -153,7 +153,7 @@ mod tests {
         assert!(!recording(&app) && app.trigger_hint().unwrap().1, "armed after the first hit");
         hit(&mut app, t0, Lane::Tom1, 300);
         assert!(recording(&app));
-        assert!(app.status.contains("started by the trigger"), "{}", app.status);
+        assert!(app.view.status.contains("started by the trigger"), "{}", app.view.status);
         assert!(app.take.as_ref().unwrap().hits.is_empty(), "the trigger hits are not part of the take");
     }
 
@@ -170,16 +170,16 @@ mod tests {
     fn it_works_on_the_rudiments_tab_and_not_on_the_others() {
         let mut app = app();
         let t0 = Instant::now();
-        app.tab = Tab::Metronome;
+        app.view.tab = Tab::Metronome;
         hit(&mut app, t0, Lane::Crash1, 0);
         hit(&mut app, t0, Lane::Tom1, 100);
         assert!(!recording(&app), "not on the Metronome tab");
-        app.tab = Tab::Settings;
+        app.view.tab = Tab::Settings;
         hit(&mut app, t0, Lane::Crash1, 200);
         hit(&mut app, t0, Lane::Tom1, 300);
         assert!(!recording(&app), "not on Settings");
 
-        app.tab = Tab::Rudiments;
+        app.view.tab = Tab::Rudiments;
         app.sync_source();
         hit(&mut app, t0, Lane::Crash1, 400);
         hit(&mut app, t0, Lane::Tom1, 500);
@@ -191,9 +191,9 @@ mod tests {
     fn a_hit_on_another_tab_does_not_leave_the_trigger_half_armed() {
         let mut app = app();
         let t0 = Instant::now();
-        app.tab = Tab::Settings;
+        app.view.tab = Tab::Settings;
         hit(&mut app, t0, Lane::Crash1, 0);
-        app.tab = Tab::Score;
+        app.view.tab = Tab::Score;
         hit(&mut app, t0, Lane::Tom1, 100);
         assert!(!recording(&app));
     }
@@ -221,14 +221,14 @@ mod tests {
     #[test]
     fn a_closed_roll_is_not_started_and_says_why() {
         let mut app = app();
-        app.tab = Tab::Rudiments;
+        app.view.tab = Tab::Rudiments;
         app.sync_source();
         app.select_rudiment(4);
         let t0 = Instant::now();
         hit(&mut app, t0, Lane::Crash1, 0);
         hit(&mut app, t0, Lane::Tom1, 100);
         assert!(!recording(&app));
-        assert!(app.status.contains("cannot be graded"), "{}", app.status);
+        assert!(app.view.status.contains("cannot be graded"), "{}", app.view.status);
     }
 
     #[test]
@@ -238,7 +238,7 @@ mod tests {
         app.trigger_learn = Some(Slot::First);
         hit(&mut app, t0, Lane::Ride, 0);
         assert_eq!(app.cfg.trigger_first, Lane::Ride);
-        assert!(app.trigger_learn.is_none() && app.status.contains("First trigger hit: Ride"), "{}", app.status);
+        assert!(app.trigger_learn.is_none() && app.view.status.contains("First trigger hit: Ride"), "{}", app.view.status);
         app.trigger_learn = Some(Slot::Second);
         hit(&mut app, t0, Lane::Snare, 100);
         assert_eq!(app.cfg.trigger_second, Lane::Snare);

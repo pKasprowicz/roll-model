@@ -248,7 +248,7 @@ impl DrumApp {
         let wanted = if self.cfg.controller_port.is_empty() { preset.port.clone() } else { self.cfg.controller_port.clone() };
         c.wanted = wanted.clone();
         match midi::connect_controller(&wanted, c.queue.clone()) {
-            Ok(handle) if self.midi_in.as_ref().is_some_and(|h| h.port_name == handle.port_name) => {
+            Ok(handle) if self.midi.input.as_ref().is_some_and(|h| h.port_name == handle.port_name) => {
                 c.message = format!("\"{}\" is the drum input. Choose the controller's own port.", handle.port_name);
             }
             Ok(handle) => {
@@ -257,7 +257,7 @@ impl DrumApp {
                 } else {
                     format!("Connected to {}, but it has no output port that could be opened: the lights stay off.", handle.port_name)
                 };
-                self.status = format!("Controller: {}", handle.port_name);
+                self.view.status = format!("Controller: {}", handle.port_name);
                 c.link = Some(Link { handle, mapper: Mapper::new(preset) });
             }
             Err(e) => c.message = format!("{e}. Switch the controller to Mackie Control mode, or choose its port below."),
@@ -313,13 +313,13 @@ impl DrumApp {
         self.controller.last_watch = Instant::now();
         let ports = midi::list_inputs().unwrap_or_default();
         let connected = self.controller.link.as_ref().map(|l| l.handle.port_name.as_str());
-        let drum = self.midi_in.as_ref().map(|h| h.port_name.as_str());
+        let drum = self.midi.input.as_ref().map(|h| h.port_name.as_str());
         match watch_step(connected, &ports, &self.controller.wanted, drum) {
             Watch::Keep => {}
             Watch::Lost => {
                 self.controller.link = None;
                 self.controller.message = "The controller was disconnected. It connects again when it is plugged in.".into();
-                self.status = "Controller disconnected".into();
+                self.view.status = "Controller disconnected".into();
             }
             Watch::Connect => self.connect_controller(),
         }
@@ -327,7 +327,7 @@ impl DrumApp {
 
     /// Tempo controls act on the metronome while its tab is open (or no score is loaded).
     fn tempo_is_metronome(&self) -> bool {
-        self.tab == Tab::Metronome || self.score.is_none()
+        self.view.tab == Tab::Metronome || self.score.is_none()
     }
 
     /// The range of the practice tempo: percent of the written tempo, or BPM for a rudiment.
@@ -367,11 +367,11 @@ impl DrumApp {
         };
         let mut s = State {
             record: self.take.as_ref().is_some_and(|t| t.running),
-            listen: self.listen.is_some(),
+            listen: self.playback.listen.is_some(),
             click: c.metronome_during_take,
-            looping: self.listen_loop,
-            notes: self.listen_notes,
-            metronome: self.metro.is_some(),
+            looping: self.playback.looping,
+            notes: self.playback.notes,
+            metronome: self.metro_run.run.is_some(),
             tempo: tempo.clamp(0.0, 1.0),
             range_from: along(self.range_from),
             range_to: along(self.range_to),
@@ -392,7 +392,7 @@ impl DrumApp {
             let lanes = controller::group_lanes(i);
             s.gain[i] = (c.gain_of(lanes[0]) / MAX_LANE_GAIN).clamp(0.0, 1.0);
             s.mute[i] = lanes.iter().all(|l| c.lane_mute.contains(l));
-            s.solo[i] = lanes.iter().all(|l| self.solo.contains(l));
+            s.solo[i] = lanes.iter().all(|l| self.playback.solo.contains(l));
         }
         s
     }
@@ -404,7 +404,7 @@ impl DrumApp {
     /// Whether a change of tempo, range or score is allowed now; says why not.
     fn unlocked(&mut self) -> bool {
         if self.take_running() {
-            self.status = "Locked while a take is recording.".into();
+            self.view.status = "Locked while a take is recording.".into();
             return false;
         }
         true
@@ -424,7 +424,7 @@ impl DrumApp {
             Action::Record if running => self.stop_take(false),
             Action::Record if self.score.is_some() => self.start_take(),
             Action::Listen if !running && self.score.is_some() => {
-                if self.listen.is_some() {
+                if self.playback.listen.is_some() {
                     self.stop_listen();
                 } else {
                     self.start_listen();
@@ -432,7 +432,7 @@ impl DrumApp {
             }
             Action::Record | Action::Listen => {
                 if self.score.is_none() {
-                    self.status = "Open a score first.".into();
+                    self.view.status = "Open a score first.".into();
                 }
             }
             Action::Stop => {
@@ -441,10 +441,10 @@ impl DrumApp {
                 self.stop_metro();
             }
             Action::Click => self.cfg.metronome_during_take = !self.cfg.metronome_during_take,
-            Action::Loop if !running => self.listen_loop = !self.listen_loop,
-            Action::Notes if !running => self.listen_notes = !self.listen_notes,
+            Action::Loop if !running => self.playback.looping = !self.playback.looping,
+            Action::Notes if !running => self.playback.notes = !self.playback.notes,
             Action::Metronome if !running => {
-                if self.metro.is_some() {
+                if self.metro_run.run.is_some() {
                     self.stop_metro();
                 } else {
                     self.start_metro();
@@ -465,20 +465,20 @@ impl DrumApp {
                 } else {
                     self.tempo_pct = 100.0;
                 }
-                self.status = "Tempo reset.".into();
+                self.view.status = "Tempo reset.".into();
             }
             Action::PrevRudiment if self.unlocked() => self.step_rudiment(-1),
             Action::NextRudiment if self.unlocked() => self.step_rudiment(1),
             Action::DiscardTake if self.unlocked() => {
                 if let Some(take) = self.take.take() {
                     self.history.retain(|h| h.number != take.number);
-                    self.status = format!("Take {} discarded.", take.number);
+                    self.view.status = format!("Take {} discarded.", take.number);
                 }
             }
             Action::OpenScore if self.unlocked() => {
                 match self.cfg.recent_files.get(self.controller.cursor.min(self.cfg.recent_files.len().saturating_sub(1))).cloned() {
                     Some(path) => self.open_file(Path::new(&path)),
-                    None => self.status = "There are no recent scores to open.".into(),
+                    None => self.view.status = "There are no recent scores to open.".into(),
                 }
             }
             Action::Mute(i) => self.toggle_mute(i as usize),
@@ -496,11 +496,11 @@ impl DrumApp {
             Action::Tempo if self.unlocked() => {
                 if tempo_here {
                     self.cfg.metro_bpm = (self.cfg.metro_bpm.round() + steps as f32).clamp(METRO_RANGE.0, METRO_RANGE.1);
-                    self.status = format!("Metronome {:.0} BPM", self.cfg.metro_bpm);
+                    self.view.status = format!("Metronome {:.0} BPM", self.cfg.metro_bpm);
                 } else {
                     let range = self.tempo_range();
                     self.tempo_pct = (self.tempo_pct.round() + steps as f32).clamp(range.0, range.1);
-                    self.status = match self.source {
+                    self.view.status = match self.source {
                         Source::Rudiments => format!("Tempo {:.0} BPM", self.tempo_pct),
                         Source::Score => format!("Tempo {:.0} %", self.tempo_pct),
                     };
@@ -525,11 +525,11 @@ impl DrumApp {
             Action::Score if self.unlocked() => self.browse_scores(steps),
             Action::Repeats if self.unlocked() => {
                 self.step_repeats(steps);
-                self.status = format!("{} repeats", self.cfg.rudiment_repeats);
+                self.view.status = format!("{} repeats", self.cfg.rudiment_repeats);
             }
             Action::Lead if self.unlocked() => {
                 self.step_lead(one);
-                self.status = format!("{} hand leads", self.rudiment_lead().label());
+                self.view.status = format!("{} hand leads", self.rudiment_lead().label());
             }
             Action::Rudiment if self.unlocked() => self.step_rudiment(one),
             _ => {}
@@ -571,7 +571,7 @@ impl DrumApp {
     fn status_range(&mut self) {
         if let Some(score) = self.score.as_ref() {
             let number = |i: usize| score.measures.get(i).map(|m| m.number.clone()).unwrap_or_default();
-            self.status = format!("Measures {}–{}", number(self.range_from), number(self.range_to));
+            self.view.status = format!("Measures {}–{}", number(self.range_from), number(self.range_to));
         }
     }
 
@@ -581,7 +581,7 @@ impl DrumApp {
             tabs.push(Tab::Score);
         }
         tabs.extend([Tab::Rudiments, Tab::Metronome, Tab::Results, Tab::Settings]);
-        self.tab = match tabs.iter().position(|t| *t == self.tab) {
+        self.view.tab = match tabs.iter().position(|t| *t == self.view.tab) {
             Some(i) => tabs[(i + 1) % tabs.len()],
             None => tabs[0],
         };
@@ -590,17 +590,17 @@ impl DrumApp {
 
     fn tap_tempo(&mut self) {
         let Some(bpm) = register_tap(&mut self.controller.taps, Instant::now()) else {
-            self.status = "Tap the tempo…".into();
+            self.view.status = "Tap the tempo…".into();
             return;
         };
         if self.tempo_is_metronome() {
             self.cfg.metro_bpm = (bpm as f32).clamp(METRO_RANGE.0, METRO_RANGE.1);
-            self.status = format!("Metronome {:.0} BPM (tapped)", self.cfg.metro_bpm);
+            self.view.status = format!("Metronome {:.0} BPM (tapped)", self.cfg.metro_bpm);
         } else if let Some(score) = self.score.as_ref() {
             let written = score.tempo.bpm_at(score.measures[self.range_from.min(score.measures.len() - 1)].start_q);
             let range = self.tempo_range();
             self.tempo_pct = (bpm / written * 100.0).clamp(f64::from(range.0), f64::from(range.1)).round() as f32;
-            self.status = match self.source {
+            self.view.status = match self.source {
                 Source::Rudiments => format!("Tempo {:.0} BPM (tapped)", self.tempo_pct),
                 Source::Score => format!("Tempo {:.0} % = {bpm:.0} BPM (tapped)", self.tempo_pct),
             };
@@ -632,12 +632,12 @@ impl DrumApp {
             _ => None,
         };
         match worst {
-            None => self.status = "Record a take first.".into(),
-            Some(None) => self.status = "The last take had no mistakes to practise.".into(),
+            None => self.view.status = "Record a take first.".into(),
+            Some(None) => self.view.status = "The last take had no mistakes to practise.".into(),
             Some(Some(m)) => {
                 self.range_from = m;
                 self.range_to = m;
-                self.listen_loop = true;
+                self.playback.looping = true;
                 self.status_range();
                 self.start_listen();
             }
@@ -647,13 +647,13 @@ impl DrumApp {
     fn browse_scores(&mut self, steps: i32) {
         let n = self.cfg.recent_files.len();
         if n == 0 {
-            self.status = "There are no recent scores.".into();
+            self.view.status = "There are no recent scores.".into();
             return;
         }
         let at = (self.controller.cursor.min(n - 1) as i32 + steps).clamp(0, n as i32 - 1) as usize;
         self.controller.cursor = at;
         let name = Path::new(&self.cfg.recent_files[at]).file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default();
-        self.status = format!("Score {}/{n}: {name} — push the encoder to open it", at + 1);
+        self.view.status = format!("Score {}/{n}: {name} — push the encoder to open it", at + 1);
     }
 
     fn set_group_gain(&mut self, group: usize, gain: f32) {
@@ -665,7 +665,7 @@ impl DrumApp {
                 self.cfg.lane_gain.insert(*lane, gain);
             }
         }
-        self.status = format!("{}: volume {:.0} %", controller::group_label(group), gain * 100.0);
+        self.view.status = format!("{}: volume {:.0} %", controller::group_label(group), gain * 100.0);
     }
 
     fn toggle_mute(&mut self, group: usize) {
@@ -678,20 +678,20 @@ impl DrumApp {
                 self.cfg.lane_mute.insert(*lane);
             }
         }
-        self.status = format!("{} {}", controller::group_label(group), if muted { "unmuted" } else { "muted" });
+        self.view.status = format!("{} {}", controller::group_label(group), if muted { "unmuted" } else { "muted" });
     }
 
     fn toggle_solo(&mut self, group: usize) {
         let lanes = controller::group_lanes(group);
-        let soloed = lanes.iter().all(|l| self.solo.contains(l));
+        let soloed = lanes.iter().all(|l| self.playback.solo.contains(l));
         for lane in lanes {
             if soloed {
-                self.solo.remove(lane);
+                self.playback.solo.remove(lane);
             } else {
-                self.solo.insert(*lane);
+                self.playback.solo.insert(*lane);
             }
         }
-        self.status = format!("{} {}", controller::group_label(group), if soloed { "no longer solo" } else { "solo" });
+        self.view.status = format!("{} {}", controller::group_label(group), if soloed { "no longer solo" } else { "solo" });
     }
 
     // ------------------------------------------------------------ settings page
@@ -747,7 +747,7 @@ impl DrumApp {
                 if ui.selectable_label(self.cfg.controller_port.is_empty(), "automatic (the preset's port)").clicked() {
                     port = Some(String::new());
                 }
-                for p in &self.midi_inputs {
+                for p in &self.midi.inputs {
                     if ui.selectable_label(&self.cfg.controller_port == p, p.as_str()).clicked() {
                         port = Some(p.clone());
                     }
@@ -931,7 +931,7 @@ mod tests {
     #[test]
     fn on_the_metronome_tab_the_tempo_controls_set_its_bpm() {
         let mut app = app_with_score();
-        app.tab = Tab::Metronome;
+        app.view.tab = Tab::Metronome;
         app.apply_command(Command::Turn(Action::Tempo, 10));
         assert_eq!(app.cfg.metro_bpm, 110.0);
         assert_eq!(app.tempo_pct, 100.0, "the practice tempo is left alone");
@@ -989,10 +989,10 @@ mod tests {
         assert!(app.cfg.lane_mute.is_empty());
 
         app.apply_command(Command::Press(Action::Solo(7)));
-        assert!(app.solo.contains(&Lane::Ride) && app.controller_state().solo[7]);
-        assert_eq!(app.cfg.effective_gain(&app.solo, Lane::Kick), 0.0);
+        assert!(app.playback.solo.contains(&Lane::Ride) && app.controller_state().solo[7]);
+        assert_eq!(app.cfg.effective_gain(&app.playback.solo, Lane::Kick), 0.0);
         app.apply_command(Command::Press(Action::Solo(7)));
-        assert!(app.solo.is_empty());
+        assert!(app.playback.solo.is_empty());
     }
 
     #[test]
@@ -1023,28 +1023,28 @@ mod tests {
         let click = app.cfg.metronome_during_take;
         app.apply_command(Command::Press(Action::Click));
         assert_eq!(app.cfg.metronome_during_take, !click);
-        assert!(app.listen_notes && !app.listen_loop);
+        assert!(app.playback.notes && !app.playback.looping);
         app.apply_command(Command::Press(Action::Loop));
         app.apply_command(Command::Press(Action::Notes));
-        assert!(!app.listen_notes && app.listen_loop);
+        assert!(!app.playback.notes && app.playback.looping);
         let s = app.controller_state();
         assert!(s.looping && !s.notes && !s.record && !s.listen && !s.metronome);
 
-        assert!(app.tab == Tab::Score);
+        assert!(app.view.tab == Tab::Score);
         for expected in [Tab::Rudiments, Tab::Metronome, Tab::Results, Tab::Settings, Tab::Score] {
             app.apply_command(Command::Press(Action::NextTab));
-            assert!(app.tab == expected);
+            assert!(app.view.tab == expected);
         }
         let mut bare = DrumApp::with_config(Config::default());
         bare.apply_command(Command::Press(Action::NextTab));
-        assert!(bare.tab == Tab::Rudiments, "no Score tab without a score");
+        assert!(bare.view.tab == Tab::Rudiments, "no Score tab without a score");
     }
 
     #[test]
     fn with_a_rudiment_the_range_controls_choose_repetitions_lead_and_rudiment() {
         let mut app = app_with_score();
         app.apply_command(Command::Press(Action::NextTab));
-        assert!(app.tab == Tab::Rudiments && app.source == Source::Rudiments);
+        assert!(app.view.tab == Tab::Rudiments && app.source == Source::Rudiments);
         assert_eq!(app.cfg.rudiment, 1);
 
         // The encoder that browses the recent scores browses the rudiments, one at a time.
@@ -1095,7 +1095,7 @@ mod tests {
         app.apply_command(Command::Press(Action::NextTab));
         app.apply_command(Command::Press(Action::NextTab));
         app.apply_command(Command::Press(Action::NextTab));
-        assert!(app.tab == Tab::Score && app.source == Source::Score);
+        assert!(app.view.tab == Tab::Score && app.source == Source::Score);
         let (from, to) = (app.range_from, app.range_to);
         app.apply_command(Command::Turn(Action::RangeTo, -1));
         assert_eq!((app.range_from, app.range_to), (from, to - 1));
@@ -1116,7 +1116,7 @@ mod tests {
         assert_eq!(app.cfg.rudiment, 1);
         assert_eq!(app.cfg.rudiment_repeats, crate::rudiments::DEFAULT_REPEATS);
         assert!(app.rud.lead.is_none());
-        assert!(app.status.contains("Locked"), "{}", app.status);
+        assert!(app.view.status.contains("Locked"), "{}", app.view.status);
         app.apply_command(Command::Press(Action::Stop));
         app.apply_command(Command::Press(Action::NextRudiment));
         assert_eq!(app.cfg.rudiment, 2);
@@ -1126,32 +1126,32 @@ mod tests {
     fn recent_scores_are_browsed_and_opened() {
         let mut app = DrumApp::with_config(Config::default());
         app.apply_command(Command::Turn(Action::Score, 1));
-        assert!(app.status.contains("no recent"));
+        assert!(app.view.status.contains("no recent"));
         let sample = sample().to_string_lossy().into_owned();
         app.cfg.recent_files = vec!["missing-1.musicxml".into(), sample, "missing-2.musicxml".into()];
         app.apply_command(Command::Turn(Action::Score, 1));
         assert_eq!(app.controller.cursor, 1);
-        assert!(app.status.contains("basic_rock_beat") && app.status.contains("2/3"), "{}", app.status);
+        assert!(app.view.status.contains("basic_rock_beat") && app.view.status.contains("2/3"), "{}", app.view.status);
         app.apply_command(Command::Turn(Action::Score, 50));
         assert_eq!(app.controller.cursor, 2);
         app.apply_command(Command::Turn(Action::Score, -50));
         assert_eq!(app.controller.cursor, 0);
         app.apply_command(Command::Turn(Action::Score, 1));
         app.apply_command(Command::Press(Action::OpenScore));
-        assert!(app.score.is_some() && app.tab == Tab::Score);
+        assert!(app.score.is_some() && app.view.tab == Tab::Score);
     }
 
     #[test]
     fn loop_worst_bar_and_discard_need_a_take() {
         let mut app = app_with_score();
         app.apply_command(Command::Press(Action::LoopWorstBar));
-        assert_eq!(app.status, "Record a take first.");
-        assert!(!app.listen_loop);
+        assert_eq!(app.view.status, "Record a take first.");
+        assert!(!app.playback.looping);
         app.apply_command(Command::Press(Action::DiscardTake));
         let mut closed = DrumApp::with_config(Config::default());
         closed.apply_command(Command::Press(Action::Record));
-        assert_eq!(closed.status, "Open a score first.");
-        assert!(closed.take.is_none() && closed.listen.is_none());
+        assert_eq!(closed.view.status, "Open a score first.");
+        assert!(closed.take.is_none() && closed.playback.listen.is_none());
     }
 
     #[test]
