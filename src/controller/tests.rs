@@ -1,5 +1,5 @@
 use super::mapper::Learned;
-use super::action::SIMPLE;
+use super::action::ACTIONS;
 use super::mapper::ring_value;
 use super::*;
 
@@ -343,8 +343,8 @@ fn every_action_is_in_the_editor_once() {
     texts.sort();
     texts.dedup();
     assert_eq!(texts.len(), n, "no action twice");
-    for (name, _) in SIMPLE {
-        assert!(all.iter().any(|a| a.text() == *name), "{name} is missing");
+    for info in ACTIONS {
+        assert!(all.iter().any(|a| a.text() == info.name), "{} is missing", info.name);
     }
     for i in 0..GROUPS as u8 {
         for a in [Action::Gain(i), Action::Mute(i), Action::Solo(i), Action::Audition(i)] {
@@ -554,8 +554,8 @@ fn bad_lines_are_reported_and_the_rest_is_used() {
 
 #[test]
 fn actions_round_trip_through_their_names() {
-    for (_, a) in SIMPLE {
-        assert_eq!(Action::parse(&a.text()), Some(*a));
+    for info in ACTIONS {
+        assert_eq!(Action::parse(info.name), Some(info.action));
     }
     for i in 0..GROUPS as u8 {
         for a in [Action::Mute(i), Action::Solo(i), Action::Audition(i), Action::Gain(i)] {
@@ -601,4 +601,13 @@ fn custom_presets_are_read_from_a_folder() {
     assert!(load_preset("Nope", None).is_err());
     assert!(custom_presets(&dir.join("missing")).is_empty());
     let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn every_action_has_a_name_a_title_and_an_explanation() {
+    for (_, actions) in Action::sections() {
+        for a in actions {
+            assert!(!a.text().is_empty() && !a.title().is_empty() && !a.help().is_empty(), "{a:?} is not in the ACTIONS table");
+        }
+    }
 }

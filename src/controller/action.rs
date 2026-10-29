@@ -98,38 +98,61 @@ pub enum Action {
     Rudiment,
 }
 
-pub(super) const SIMPLE: &[(&str, Action)] = &[
-    ("record", Action::Record),
-    ("listen", Action::Listen),
-    ("stop", Action::Stop),
-    ("click", Action::Click),
-    ("loop", Action::Loop),
-    ("notes", Action::Notes),
-    ("metronome", Action::Metronome),
-    ("next_tab", Action::NextTab),
-    ("loop_worst_bar", Action::LoopWorstBar),
-    ("range_back", Action::RangeBack),
-    ("range_forward", Action::RangeForward),
-    ("tap_tempo", Action::TapTempo),
-    ("tempo_down", Action::TempoDown),
-    ("tempo_up", Action::TempoUp),
-    ("discard_take", Action::DiscardTake),
-    ("tempo_reset", Action::TempoReset),
-    ("open_score", Action::OpenScore),
-    ("prev_rudiment", Action::PrevRudiment),
-    ("next_rudiment", Action::NextRudiment),
-    ("shift", Action::Shift),
-    ("tempo", Action::Tempo),
-    ("range_from", Action::RangeFrom),
-    ("range_to", Action::RangeTo),
-    ("click_volume", Action::ClickVolume),
-    ("music_volume", Action::MusicVolume),
-    ("count_in", Action::CountIn),
-    ("bars_per_row", Action::BarsPerRow),
-    ("repeats", Action::Repeats),
-    ("lead", Action::Lead),
-    ("score", Action::Score),
-    ("rudiment", Action::Rudiment),
+/// How an action is used: pressed, set to a level (a fader, or a turned encoder), or turned through a list.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) enum Class {
+    Button,
+    Level,
+    Browse,
+}
+
+/// Everything known about an action that is not a strip's: the one place to add a new one.
+/// The order is the order in the preset editor.
+pub(super) struct Info {
+    pub(super) action: Action,
+    /// The word in a preset file.
+    pub(super) name: &'static str,
+    /// The label on the help screen.
+    pub(super) title: &'static str,
+    /// The explanation on the help screen.
+    pub(super) help: &'static str,
+    pub(super) class: Class,
+    /// A button's light can show this.
+    pub(super) light: bool,
+}
+
+pub(super) const ACTIONS: &[Info] = &[
+    Info { action: Action::Record, name: "record", title: "Record", help: "Starts a recording of the selected measures (count-in first); pressed again, it stops. The light is on while it records.", class: Class::Button, light: true },
+    Info { action: Action::Listen, name: "listen", title: "Listen", help: "Plays the selected measures through the speakers or the MIDI output; pressed again, it stops. The light is on while it plays.", class: Class::Button, light: true },
+    Info { action: Action::Stop, name: "stop", title: "Stop", help: "Stops a recording, Listen and the metronome.", class: Class::Button, light: true },
+    Info { action: Action::Click, name: "click", title: "Click", help: "Switches the click on or off while you listen or record. The count-in always sounds.", class: Class::Button, light: true },
+    Info { action: Action::Loop, name: "loop", title: "Loop", help: "Listen repeats the selected measures instead of stopping at the end.", class: Class::Button, light: true },
+    Info { action: Action::Notes, name: "notes", title: "Notes", help: "Switches the drum notes on or off in Listen, to hear the click alone.", class: Class::Button, light: true },
+    Info { action: Action::Metronome, name: "metronome", title: "Metronome", help: "Starts or stops the free metronome.", class: Class::Button, light: true },
+    Info { action: Action::NextTab, name: "next_tab", title: "Next tab", help: "Goes to the next tab: Score, Rudiments, Metronome, Results, Settings.", class: Class::Button, light: false },
+    Info { action: Action::LoopWorstBar, name: "loop_worst_bar", title: "Worst bar", help: "Selects the measure the last take went worst in and plays it in a loop.", class: Class::Button, light: false },
+    Info { action: Action::RangeBack, name: "range_back", title: "Range back", help: "Moves the selected measures back by their own length. On the Rudiments tab: the previous rudiment.", class: Class::Button, light: false },
+    Info { action: Action::RangeForward, name: "range_forward", title: "Range forward", help: "Moves the selected measures forward by their own length. On the Rudiments tab: the next rudiment.", class: Class::Button, light: false },
+    Info { action: Action::TapTempo, name: "tap_tempo", title: "Tap tempo", help: "Tap it in time: from the second tap on it sets the tempo (the metronome's tempo on the Metronome tab).", class: Class::Button, light: false },
+    Info { action: Action::TempoDown, name: "tempo_down", title: "Tempo −", help: "Lowers the practice tempo by 5 (per cent, or BPM for rudiments and the metronome).", class: Class::Button, light: false },
+    Info { action: Action::TempoUp, name: "tempo_up", title: "Tempo +", help: "Raises the practice tempo by 5 (per cent, or BPM for rudiments and the metronome).", class: Class::Button, light: false },
+    Info { action: Action::TempoReset, name: "tempo_reset", title: "Reset tempo", help: "Back to the written tempo (100 %), the rudiment's starting tempo, or the metronome's default.", class: Class::Button, light: false },
+    Info { action: Action::DiscardTake, name: "discard_take", title: "Discard take", help: "Throws the last take away, so it is not in the results and the history.", class: Class::Button, light: false },
+    Info { action: Action::OpenScore, name: "open_score", title: "Open score", help: "Opens the score chosen with the recent-scores encoder.", class: Class::Button, light: false },
+    Info { action: Action::PrevRudiment, name: "prev_rudiment", title: "Prev rudiment", help: "Chooses the previous rudiment.", class: Class::Button, light: false },
+    Info { action: Action::NextRudiment, name: "next_rudiment", title: "Next rudiment", help: "Chooses the next rudiment.", class: Class::Button, light: false },
+    Info { action: Action::Shift, name: "shift", title: "Shift", help: "Hold it while turning an encoder: every step counts five times.", class: Class::Button, light: true },
+    Info { action: Action::Tempo, name: "tempo", title: "Tempo", help: "The practice tempo: per cent of the written tempo, BPM for rudiments and on the Metronome tab. A fader sets it directly.", class: Class::Level, light: false },
+    Info { action: Action::RangeFrom, name: "range_from", title: "First bar", help: "The first measure of the selected measures. On the Rudiments tab: how often the rudiment repeats.", class: Class::Level, light: false },
+    Info { action: Action::RangeTo, name: "range_to", title: "Last bar", help: "The last measure of the selected measures. On the Rudiments tab: which hand leads.", class: Class::Level, light: false },
+    Info { action: Action::ClickVolume, name: "click_volume", title: "Click volume", help: "The volume of the click.", class: Class::Level, light: false },
+    Info { action: Action::MusicVolume, name: "music_volume", title: "Music volume", help: "The volume of the drum notes in Listen.", class: Class::Level, light: false },
+    Info { action: Action::CountIn, name: "count_in", title: "Count-in", help: "The count-in: none, one bar or two.", class: Class::Level, light: false },
+    Info { action: Action::BarsPerRow, name: "bars_per_row", title: "Bars per row", help: "Bars per row of the score; none means as many as fit.", class: Class::Level, light: false },
+    Info { action: Action::Repeats, name: "repeats", title: "Repeats", help: "How often the rudiment repeats.", class: Class::Level, light: false },
+    Info { action: Action::Lead, name: "lead", title: "Lead hand", help: "Which hand leads the rudiment: right, left or alternating.", class: Class::Level, light: false },
+    Info { action: Action::Score, name: "score", title: "Recent scores", help: "Browses the recent scores; push the encoder to open the one shown.", class: Class::Browse, light: false },
+    Info { action: Action::Rudiment, name: "rudiment", title: "Rudiment", help: "Browses the rudiments.", class: Class::Browse, light: false },
 ];
 
 impl Action {
@@ -138,7 +161,7 @@ impl Action {
         let words: Vec<&str> = text.split_whitespace().collect();
         let name = words.first()?.to_ascii_lowercase();
         match words.as_slice() {
-            [_] => SIMPLE.iter().find(|(n, _)| *n == name).map(|(_, a)| *a),
+            [_] => ACTIONS.iter().find(|i| i.name == name).map(|i| i.action),
             [_, n] => {
                 let strip = n.parse::<u8>().ok().filter(|n| (1..=GROUPS as u8).contains(n))? - 1;
                 match name.as_str() {
@@ -160,99 +183,36 @@ impl Action {
             Action::Solo(i) => numbered("solo", i),
             Action::Audition(i) => numbered("audition", i),
             Action::Gain(i) => numbered("gain", i),
-            other => SIMPLE.iter().find(|(_, a)| *a == other).map(|(n, _)| n.to_string()).unwrap_or_default(),
+            other => other.info().map(|i| i.name.to_string()).unwrap_or_default(),
         }
     }
 
     /// Every action a preset can bind, in sections for the preset editor: (title, actions).
     pub fn sections() -> Vec<(&'static str, Vec<Action>)> {
+        let of = |wanted: fn(Class) -> bool| ACTIONS.iter().filter(|i| wanted(i.class)).map(|i| i.action).collect::<Vec<_>>();
         let strips = |make: fn(u8) -> Action| (0..GROUPS as u8).map(make).collect::<Vec<_>>();
         let mixer: Vec<Action> = [strips(Action::Gain), strips(Action::Mute), strips(Action::Solo), strips(Action::Audition)].concat();
         vec![
-            (
-                "Transport and practice",
-                vec![
-                    Action::Record,
-                    Action::Listen,
-                    Action::Stop,
-                    Action::Click,
-                    Action::Loop,
-                    Action::Notes,
-                    Action::Metronome,
-                    Action::NextTab,
-                    Action::LoopWorstBar,
-                    Action::RangeBack,
-                    Action::RangeForward,
-                    Action::TapTempo,
-                    Action::TempoDown,
-                    Action::TempoUp,
-                    Action::TempoReset,
-                    Action::DiscardTake,
-                    Action::OpenScore,
-                    Action::PrevRudiment,
-                    Action::NextRudiment,
-                    Action::Shift,
-                ],
-            ),
-            (
-                "Values (knobs, encoders, faders)",
-                vec![
-                    Action::Tempo,
-                    Action::RangeFrom,
-                    Action::RangeTo,
-                    Action::ClickVolume,
-                    Action::MusicVolume,
-                    Action::CountIn,
-                    Action::BarsPerRow,
-                    Action::Repeats,
-                    Action::Lead,
-                    Action::Score,
-                    Action::Rudiment,
-                ],
-            ),
+            ("Transport and practice", of(|c| c == Class::Button)),
+            ("Values (knobs, encoders, faders)", of(|c| c != Class::Button)),
             ("Mixer: volume, mute, solo, play, per instrument group", mixer),
         ]
+    }
+
+    /// The table row of an action; none for a strip's.
+    fn info(self) -> Option<&'static Info> {
+        ACTIONS.iter().find(|i| i.action == self)
     }
 
     /// A few words for the control's label on the help screen.
     pub fn title(self) -> String {
         let group = |i: u8| group_label(i as usize);
         match self {
-            Action::Record => "Record".into(),
-            Action::Listen => "Listen".into(),
-            Action::Stop => "Stop".into(),
-            Action::Click => "Click".into(),
-            Action::Loop => "Loop".into(),
-            Action::Notes => "Notes".into(),
-            Action::Metronome => "Metronome".into(),
-            Action::NextTab => "Next tab".into(),
-            Action::LoopWorstBar => "Worst bar".into(),
-            Action::RangeBack => "Range back".into(),
-            Action::RangeForward => "Range forward".into(),
-            Action::TapTempo => "Tap tempo".into(),
-            Action::TempoDown => "Tempo −".into(),
-            Action::TempoUp => "Tempo +".into(),
-            Action::DiscardTake => "Discard take".into(),
-            Action::TempoReset => "Reset tempo".into(),
-            Action::OpenScore => "Open score".into(),
-            Action::PrevRudiment => "Prev rudiment".into(),
-            Action::NextRudiment => "Next rudiment".into(),
-            Action::Shift => "Shift".into(),
             Action::Mute(i) => format!("Mute {}", group(i)),
             Action::Solo(i) => format!("Solo {}", group(i)),
             Action::Audition(i) => format!("Play {}", group(i)),
-            Action::Tempo => "Tempo".into(),
-            Action::RangeFrom => "First bar".into(),
-            Action::RangeTo => "Last bar".into(),
-            Action::ClickVolume => "Click volume".into(),
-            Action::MusicVolume => "Music volume".into(),
-            Action::CountIn => "Count-in".into(),
-            Action::BarsPerRow => "Bars per row".into(),
             Action::Gain(i) => format!("{} volume", group(i)),
-            Action::Repeats => "Repeats".into(),
-            Action::Lead => "Lead hand".into(),
-            Action::Score => "Recent scores".into(),
-            Action::Rudiment => "Rudiment".into(),
+            other => other.info().map(|i| i.title.to_string()).unwrap_or_default(),
         }
     }
 
@@ -260,81 +220,27 @@ impl Action {
     pub fn help(self) -> String {
         let group = |i: u8| group_label(i as usize);
         match self {
-            Action::Record => "Starts a recording of the selected measures (count-in first); pressed again, it stops. The light is on while it records.".into(),
-            Action::Listen => "Plays the selected measures through the speakers or the MIDI output; pressed again, it stops. The light is on while it plays.".into(),
-            Action::Stop => "Stops a recording, Listen and the metronome.".into(),
-            Action::Click => "Switches the click on or off while you listen or record. The count-in always sounds.".into(),
-            Action::Loop => "Listen repeats the selected measures instead of stopping at the end.".into(),
-            Action::Notes => "Switches the drum notes on or off in Listen, to hear the click alone.".into(),
-            Action::Metronome => "Starts or stops the free metronome.".into(),
-            Action::NextTab => "Goes to the next tab: Score, Rudiments, Metronome, Results, Settings.".into(),
-            Action::LoopWorstBar => "Selects the measure the last take went worst in and plays it in a loop.".into(),
-            Action::RangeBack => "Moves the selected measures back by their own length. On the Rudiments tab: the previous rudiment.".into(),
-            Action::RangeForward => "Moves the selected measures forward by their own length. On the Rudiments tab: the next rudiment.".into(),
-            Action::TapTempo => "Tap it in time: from the second tap on it sets the tempo (the metronome's tempo on the Metronome tab).".into(),
-            Action::TempoDown => "Lowers the practice tempo by 5 (per cent, or BPM for rudiments and the metronome).".into(),
-            Action::TempoUp => "Raises the practice tempo by 5 (per cent, or BPM for rudiments and the metronome).".into(),
-            Action::DiscardTake => "Throws the last take away, so it is not in the results and the history.".into(),
-            Action::TempoReset => "Back to the written tempo (100 %), the rudiment's starting tempo, or the metronome's default.".into(),
-            Action::OpenScore => "Opens the score chosen with the recent-scores encoder.".into(),
-            Action::PrevRudiment => "Chooses the previous rudiment.".into(),
-            Action::NextRudiment => "Chooses the next rudiment.".into(),
-            Action::Shift => "Hold it while turning an encoder: every step counts five times.".into(),
             Action::Mute(i) => format!("Mutes or unmutes {} in Listen. The light is on while it is muted.", group(i)),
             Action::Solo(i) => format!("Plays only the soloed instruments in Listen; {} is added or taken away. The light is on while it is solo.", group(i)),
             Action::Audition(i) => format!("Plays a hit of {}, to hear its volume.", group(i)),
-            Action::Tempo => "The practice tempo: per cent of the written tempo, BPM for rudiments and on the Metronome tab. A fader sets it directly.".into(),
-            Action::RangeFrom => "The first measure of the selected measures. On the Rudiments tab: how often the rudiment repeats.".into(),
-            Action::RangeTo => "The last measure of the selected measures. On the Rudiments tab: which hand leads.".into(),
-            Action::ClickVolume => "The volume of the click.".into(),
-            Action::MusicVolume => "The volume of the drum notes in Listen.".into(),
-            Action::CountIn => "The count-in: none, one bar or two.".into(),
-            Action::BarsPerRow => "Bars per row of the score; none means as many as fit.".into(),
             Action::Gain(i) => format!("The volume of {} in Listen.", group(i)),
-            Action::Repeats => "How often the rudiment repeats.".into(),
-            Action::Lead => "Which hand leads the rudiment: right, left or alternating.".into(),
-            Action::Score => "Browses the recent scores; push the encoder to open the one shown.".into(),
-            Action::Rudiment => "Browses the rudiments.".into(),
+            other => other.info().map(|i| i.help.to_string()).unwrap_or_default(),
         }
     }
 
     /// Set to a position by a fader, or turned by an encoder.
     pub fn is_level(self) -> bool {
-        matches!(
-            self,
-            Action::Tempo
-                | Action::RangeFrom
-                | Action::RangeTo
-                | Action::ClickVolume
-                | Action::MusicVolume
-                | Action::CountIn
-                | Action::BarsPerRow
-                | Action::Repeats
-                | Action::Lead
-                | Action::Gain(_)
-        )
+        matches!(self, Action::Gain(_)) || self.info().is_some_and(|i| i.class == Class::Level)
     }
 
     /// Browses a list: only turned, and not sped up by Shift.
     pub fn is_browse(self) -> bool {
-        matches!(self, Action::Score | Action::Rudiment)
+        self.info().is_some_and(|i| i.class == Class::Browse)
     }
 
     /// A button's light can show this.
     pub fn has_light(self) -> bool {
-        matches!(
-            self,
-            Action::Record
-                | Action::Listen
-                | Action::Stop
-                | Action::Click
-                | Action::Loop
-                | Action::Notes
-                | Action::Metronome
-                | Action::Shift
-                | Action::Mute(_)
-                | Action::Solo(_)
-        )
+        matches!(self, Action::Mute(_) | Action::Solo(_)) || self.info().is_some_and(|i| i.light)
     }
 }
 

@@ -3,7 +3,7 @@
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
-use super::action::SIMPLE;
+use super::action::ACTIONS;
 use super::mapper::Learned;
 use super::{Action, Encoding, LoadPresetError, Out, PresetError, Reading, Src};
 
@@ -197,7 +197,7 @@ impl Preset {
     fn parse_light(&mut self, ring: bool, value: &str) -> Result<(), PresetError> {
         let (left, right) = value.split_once("->").ok_or(PresetError::ExpectedArrow)?;
         let mut w: Vec<&str> = left.split_whitespace().collect();
-        let layer = split_layer(&mut w, &SIMPLE.iter().map(|(n, _)| *n).chain(["mute", "solo", "gain", "audition"]).collect::<Vec<_>>());
+        let layer = split_layer(&mut w, &ACTIONS.iter().map(|i| i.name).chain(["mute", "solo", "gain", "audition"]).collect::<Vec<_>>());
         let action = Action::parse(&w.join(" ")).ok_or_else(|| PresetError::UnknownAction(w.join(" ")))?;
         if ring && !action.is_level() || !ring && !action.has_light() {
             return Err(PresetError::CannotBeShown { action: action.text(), ring });
