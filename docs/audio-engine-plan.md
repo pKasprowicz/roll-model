@@ -100,6 +100,17 @@ Listen on the sample score, recorded by loopback: the drums sound (peak 0.78), a
 - **Not done (needs a person):** unplugging the output while it runs, changing the default device, and a long looping Listen with a tempo ramp (looping is a session-only checkbox on the Score tab, not scriptable from here).
 - A measurement note: a metric of "deviation from the ideal 62.5 ms grid" is confounded by the sound card's effects (each tone is delayed differently); the fold (spread per place) and the click spacing are the sound ones.
 
+## Estimated latency gain (2026-10-30)
+
+**About 5 ms on average, 0 to 10 ms per sound, and the 10 ms swing between sounds is gone.** An estimate from the design and the measurements, not an end-to-end measurement.
+
+- *Before:* a sound meant for time T was handed to rodio at T and began at the next audio callback. The callbacks come every 10.00 ms (measured: 480 frames, spacing 10.00 ms), so the wait was anywhere from 0 to 10 ms, 5 ms on average for a random phase.
+- *After:* the sound begins at the frame that matches T. The callback that renders that frame runs within 0.1 ms of its time (measured: median 0.10 ms, worst 0.87 ms behind the clock estimate), so the extra wait is about 0.1 ms.
+- *For the test pattern* (sixteenths at 240 BPM, a click every 62.5 ms) the clicks fall on four phases of the 10 ms callback grid, 2.5 ms apart, so the delays are one set shifted around the grid and average **3.75 ms**. The old recordings agree: relative to the first click the old ones came at 0, -2.1, +5 and +2.5 ms of the ideal grid, which puts the first click's own delay between 2.1 and 5 ms (the theory says 2.4 ms).
+- *What does not change:* everything after the callback: the WASAPI shared-mode path (one 10 ms period, the driver reports about 10 ms), the sound card and what is connected to it. AUD-9 (a smaller period) has nothing to ask for on this machine's drivers, so there is no further gain here. Bluetooth stays at 100-200 ms and more.
+- *As a share:* if the whole delay from program to air is 25-35 ms on a shared-mode output (an assumption; loopback cannot see the driver, so it was not measured), 5 ms is about one sixth of it.
+- *For the drummer:* the calibrated latency is about 5 ms smaller after Calibrate is run again (the reason the Timing page asks for it), and, more useful than the 5 ms, it no longer wobbles by up to 10 ms between clicks, so the calibration itself is steadier and the click sits on the grid.
+
 ## What the drivers offer (AUD-9 evidence, 2026-10-30)
 
 Asked with the `wasapi` crate 0.26 (`IAudioClient3::GetSharedModeEnginePeriod` for the mix format of each active output, from a throwaway program outside the repository):
