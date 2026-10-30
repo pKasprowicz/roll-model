@@ -167,20 +167,22 @@ fn typical_len_q(score: &Score) -> f64 {
         .max(0.25)
 }
 
-/// Cuts the rows `systems` after every bar in `pauses` that is not the last of the score.
-fn break_after(systems: Vec<(usize, usize)>, pauses: &[bool]) -> Vec<(usize, usize)> {
-    let mut out = Vec::new();
-    for (a, b) in systems {
-        let mut start = a;
-        for i in a..b.saturating_sub(1) {
-            if pauses.get(i).copied().unwrap_or(false) {
-                out.push((start, i + 1));
-                start = i + 1;
-            }
+/// The rows when each holds `per_row` bars: the score is cut after every bar in `pauses` (not the
+/// last one) and each part is laid out by `row_starts`, so a pause always starts a new row and the
+/// bars after it are counted from there. `align` (0-based) is honoured in the part it falls in.
+fn fixed_rows(n: usize, per_row: usize, align: Option<usize>, pauses: &[bool]) -> Vec<(usize, usize)> {
+    let mut cuts: Vec<usize> = (0..n.saturating_sub(1)).filter(|i| pauses.get(*i).copied().unwrap_or(false)).map(|i| i + 1).collect();
+    cuts.push(n);
+    let mut rows = Vec::new();
+    let mut a = 0;
+    for b in cuts {
+        let starts = row_starts(b - a, per_row, align.filter(|x| (a..b).contains(x)).map(|x| x - a));
+        for (i, s) in starts.iter().enumerate() {
+            rows.push((a + s, a + starts.get(i + 1).copied().unwrap_or(b - a)));
         }
-        out.push((start, b));
+        a = b;
     }
-    out
+    rows
 }
 
 fn layout(score: &Score, width: f32, zoom: f32, opts: LayoutOpts) -> Layout {
@@ -206,11 +208,7 @@ fn layout(score: &Score, width: f32, zoom: f32, opts: LayoutOpts) -> Layout {
             fit_bars = Some(k);
         }
         ppq = per_quarter(k).max(4.0);
-        let starts = row_starts(n, k, align);
-        for (i, s) in starts.iter().enumerate() {
-            systems.push((*s, starts.get(i + 1).copied().unwrap_or(n)));
-        }
-        systems = break_after(systems, &pauses);
+        systems = fixed_rows(n, k, align, &pauses);
     } else {
         ppq = 56.0 * zoom;
         let mut start = 0usize;
@@ -1031,10 +1029,16 @@ mod tests {
         let on = LayoutOpts { break_at_pause: true, ..LayoutOpts::default() };
         assert_eq!(layout(&score, 2400.0, 1.0, on).systems, [(0, 2), (2, 6)], "only the pause breaks");
         assert_eq!(layout(&score, 2400.0, 1.0, LayoutOpts::default()).systems, [(0, 6)], "off: one row");
-        // A fixed number of bars per row: the row of four is cut where the pause is; the rows after it
-        // keep their places.
+        // A fixed number of bars per row: the pause starts a row, and the bars after it are counted
+        // from there, not from the old places of the rows.
         let fixed = LayoutOpts { bars_per_row: 4, break_at_pause: true, ..LayoutOpts::default() };
-        assert_eq!(layout(&score, W, 1.0, fixed).systems, [(0, 2), (2, 4), (4, 6)]);
+        assert_eq!(layout(&score, W, 1.0, fixed).systems, [(0, 2), (2, 6)]);
+        let two = LayoutOpts { bars_per_row: 2, break_at_pause: true, ..LayoutOpts::default() };
+        score.rests = vec![Rest { measure: 2, q: q(2, 2.0), dur_q: 2.0, up: true, whole_bar: false }];
+        score.notes = vec![note(2, q(2, 0.0))];
+        assert_eq!(layout(&score, W, 1.0, two).systems, [(0, 2), (2, 3), (3, 5), (5, 6)], "pause after bar 3, then pairs again");
+        score.notes.clear();
+        score.rests.clear();
         // Empty bars in a row make one pause: the row ends after the last of them.
         let empty = |measure: usize| Rest { measure, q: q(measure, 0.0), dur_q: 4.0, up: true, whole_bar: true };
         score.notes.clear();
