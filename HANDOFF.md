@@ -34,57 +34,57 @@ First real build and smoke test done on 2026-10-24 (Windows 11, `x86_64-pc-windo
 
 ### Task index
 
-The hardware tasks (HW-*) have a step-by-step plan in `docs/hardware-test-plan.md`, with a results sheet. Every open task has a unique ID; refer to tasks by it. IDs are never reused: a finished task is ticked and keeps its ID, a dropped one is struck through. **Needs**: *device* = a real V31 or controller, *ears* = listening, *decision* = the owner has to choose, *code* = can be done at the desk.
+The hardware tasks (HW-*) have a step-by-step plan in `docs/hardware-test-plan.md`, with a results sheet. **Every open task is also a GitHub issue** (<https://github.com/pKasprowicz/roll-model/issues>, titled with the ID, labelled by area and by what it needs), and **the issue says whether a task is open**: its number stands next to each open task below, while the full description stays here. Close the issue when the task is done (a commit message with `Closes #N` does it once the commit reaches `main`) and tick the task here as before. Every task has a unique ID; refer to tasks by it. IDs are never reused: a finished task is ticked and keeps its ID, a dropped one is struck through. **Needs**: *device* = a real V31 or controller, *ears* = listening, *decision* = the owner has to choose, *code* = can be done at the desk.
 
 | ID | Task | Needs |
 |---|---|---|
-| **HW-1** | Try the X-Touch Mini against its preset | device |
-| **HW-2** | Does the Mini in MC mode switch its own layers? | device |
-| **HW-3** | Check the X-Touch Compact preset | device |
-| **HW-4** | Compare the drawn pictures with the real devices | device |
-| **HW-5** | Find what the Compact's side encoders and LAYER buttons send | device |
-| **HW-6** | Check the four generic presets on real devices | device |
-| **HW-7** | Try Learn and the Manage window with a real controller and mouse | device |
-| **HW-8** | Try unplugging and plugging in the controller | device |
-| **HW-9** | Try the controller on the Rudiments tab | device |
-| **HW-10** | Try the rudiments with the V31 | device, ears |
-| **HW-11** | Time the start-up with the devices attached | device |
+| **HW-1** [#1](https://github.com/pKasprowicz/roll-model/issues/1) | Try the X-Touch Mini against its preset | device |
+| **HW-2** [#2](https://github.com/pKasprowicz/roll-model/issues/2) | Does the Mini in MC mode switch its own layers? | device |
+| **HW-3** [#3](https://github.com/pKasprowicz/roll-model/issues/3) | Check the X-Touch Compact preset | device |
+| **HW-4** [#4](https://github.com/pKasprowicz/roll-model/issues/4) | Compare the drawn pictures with the real devices | device |
+| **HW-5** [#5](https://github.com/pKasprowicz/roll-model/issues/5) | Find what the Compact's side encoders and LAYER buttons send | device |
+| **HW-6** [#6](https://github.com/pKasprowicz/roll-model/issues/6) | Check the four generic presets on real devices | device |
+| **HW-7** [#7](https://github.com/pKasprowicz/roll-model/issues/7) | Try Learn and the Manage window with a real controller and mouse | device |
+| **HW-8** [#13](https://github.com/pKasprowicz/roll-model/issues/13) | Try unplugging and plugging in the controller | device |
+| **HW-9** [#17](https://github.com/pKasprowicz/roll-model/issues/17) | Try the controller on the Rudiments tab | device |
+| **HW-10** [#15](https://github.com/pKasprowicz/roll-model/issues/15) | Try the rudiments with the V31 | device, ears |
+| **HW-11** [#16](https://github.com/pKasprowicz/roll-model/issues/16) | Time the start-up with the devices attached | device |
 | **CTL-1** | Create and delete layers in the Manage window | code |
 | **CTL-2** | Edit lights and LED rings in the Manage window | code |
 | **CTL-3** | Guess a relative encoder's encoding while learning | code |
-| **CTL-4** | `init` system-exclusive messages for controllers | code |
-| **CTL-5** | Motor faders | code, device |
-| **CTL-6** | Scribble strip and time display feedback | code, device |
-| **CTL-7** | A second (XT) unit | code, device |
-| **CTL-8** | Blinking lights | code |
-| **RUD-1** | Check the flagged rows of `docs/rudiments.md` against the PAS chart | decision |
-| **RUD-2** | Make the buzz roll recordable | code |
-| **RUD-3** | Required flam and drag graces with a spacing check | code |
-| **RUD-4** | Grade the sticking | code, device |
-| **RUD-5** | Orchestrate a rudiment around the kit | code |
-| **RUD-6** | User-defined rudiment files | code |
-| **RUD-7** | Practice sets and routines | code |
-| **RUD-8** | A progress history on disk | code |
-| **SND-1** | Listen to the cymbals and the rest of the kit | ears |
-| **SND-2** | Ask whether volume plus WAV files is enough or several kits are wanted | decision |
-| **SND-3** | Listen to the WAV override and the hi-hat choke | ears |
-| **UI-1** | Try with a real mouse and wheel | device |
-| **UI-2** | The bar numbering mismatch (printed number against position) | decision, code |
+| **CTL-4** [#8](https://github.com/pKasprowicz/roll-model/issues/8) | `init` system-exclusive messages for controllers | code |
+| **CTL-5** [#9](https://github.com/pKasprowicz/roll-model/issues/9) | Motor faders | code, device |
+| **CTL-6** [#10](https://github.com/pKasprowicz/roll-model/issues/10) | Scribble strip and time display feedback | code, device |
+| **CTL-7** [#11](https://github.com/pKasprowicz/roll-model/issues/11) | A second (XT) unit | code, device |
+| **CTL-8** [#12](https://github.com/pKasprowicz/roll-model/issues/12) | Blinking lights | code |
+| **RUD-1** [#14](https://github.com/pKasprowicz/roll-model/issues/14) | Check the flagged rows of `docs/rudiments.md` against the PAS chart | decision |
+| **RUD-2** [#18](https://github.com/pKasprowicz/roll-model/issues/18) | Make the buzz roll recordable | code |
+| **RUD-3** [#19](https://github.com/pKasprowicz/roll-model/issues/19) | Required flam and drag graces with a spacing check | code |
+| **RUD-4** [#20](https://github.com/pKasprowicz/roll-model/issues/20) | Grade the sticking | code, device |
+| **RUD-5** [#21](https://github.com/pKasprowicz/roll-model/issues/21) | Orchestrate a rudiment around the kit | code |
+| **RUD-6** [#22](https://github.com/pKasprowicz/roll-model/issues/22) | User-defined rudiment files | code |
+| **RUD-7** [#23](https://github.com/pKasprowicz/roll-model/issues/23) | Practice sets and routines | code |
+| **RUD-8** [#24](https://github.com/pKasprowicz/roll-model/issues/24) | A progress history on disk | code |
+| **SND-1** [#27](https://github.com/pKasprowicz/roll-model/issues/27) | Listen to the cymbals and the rest of the kit | ears |
+| **SND-2** [#28](https://github.com/pKasprowicz/roll-model/issues/28) | Ask whether volume plus WAV files is enough or several kits are wanted | decision |
+| **SND-3** [#30](https://github.com/pKasprowicz/roll-model/issues/30) | Listen to the WAV override and the hi-hat choke | ears |
+| **UI-1** [#29](https://github.com/pKasprowicz/roll-model/issues/29) | Try with a real mouse and wheel | device |
+| **UI-2** [#31](https://github.com/pKasprowicz/roll-model/issues/31) | The bar numbering mismatch (printed number against position) | decision, code |
 | **UI-3** | Shortcuts are ignored while a widget has the focus | code |
-| **UI-4** | Notation: beams, flags, rests and tuplet brackets | code (metronome staff, ties left) |
+| **UI-4** [#25](https://github.com/pKasprowicz/roll-model/issues/25) | Notation: beams, flags, rests and tuplet brackets | code (metronome staff, ties left) |
 | **FEAT-1** | Tempo ramp for Listen and the metronome | code |
-| **FEAT-2** | Accent patterns and tap tempo for the free metronome | code |
+| **FEAT-2** [#32](https://github.com/pKasprowicz/roll-model/issues/32) | Accent patterns and tap tempo for the free metronome | code |
 | **FEAT-3** | Remember the layout per score | code |
 | **FEAT-4** | A Listen without count-in setting of its own | code |
-| **NAME-1** | Check the name (GitHub, web, trademark, domain) | decision |
-| **NAME-2** | Rename the local folder `D:\projects\DrumTutor` | decision |
+| **NAME-1** [#36](https://github.com/pKasprowicz/roll-model/issues/36) | Check the name (GitHub, web, trademark, domain) | decision |
+| **NAME-2** [#37](https://github.com/pKasprowicz/roll-model/issues/37) | Rename the local folder `D:\projects\DrumTutor` | decision |
 | **PUB-1** | Make the repository public and set the GitHub options (see "Going public") | decision |
-| **PUB-2** | Turn on GitHub Pages and make the first deployment | decision |
+| **PUB-2** [#26](https://github.com/pKasprowicz/roll-model/issues/26) | Turn on GitHub Pages and make the first deployment | decision |
 | **CD-1** | Split `app.rs` and `DrumApp` | code |
 | **CD-2** | Split `controller.rs` into a folder of modules | code |
 | **CD-3** | One table for actions (shotgun surgery) | code |
 | **CD-4** | Table-driven settings keys | code |
-| **CD-5** | Merge the two timing threads | code, device |
+| **CD-5** [#33](https://github.com/pKasprowicz/roll-model/issues/33) | Merge the two timing threads | code, device |
 | **CD-6** | Split `render::show` | code |
 | **CD-7** | Value types in the controller domain | code |
 | **CD-8** | One identity for a preset | code |
@@ -92,8 +92,8 @@ The hardware tasks (HW-*) have a step-by-step plan in `docs/hardware-test-plan.m
 | **CD-10** | Typed errors instead of `String` | code |
 | **CD-11** | Long parameter lists | code |
 | **CD-12** | Encapsulate the controller and editor state | code |
-| **CD-13** | MIDI I/O off the UI thread | code, device |
-| **CD-14** | Per-frame work in the UI | code |
+| **CD-13** [#34](https://github.com/pKasprowicz/roll-model/issues/34) | MIDI I/O off the UI thread | code, device |
+| **CD-14** [#35](https://github.com/pKasprowicz/roll-model/issues/35) | Per-frame work in the UI | code |
 | **CD-15** | Inject the settings folders | code |
 | **CD-16** | Constructors and constants in `controller_layout.rs` | code |
 | **CD-17** | Simplify `Preset::line` and `Preset::position` | code |
@@ -122,41 +122,41 @@ The five items requested after 0.3.0 are implemented, tested, and were checked i
 
 Mackie Control support, see `README.md` ("Controller"). `controller.rs` is pure and unit-tested (parsing, layers, shift, fader pickup, lights); `app/controls.rs` applies the commands to `DrumApp` and is tested through `apply_command`. No device was connected.
 
-- [ ] **HW-1** **Try the X-Touch Mini** (MC mode) and check `presets/x-touch-mini.txt` against the monitor on Settings -> Controller: note numbers of the two button rows, the LAYER A/B buttons (84/85 assumed), the encoder pushes (32-39), the fader (pitch bend ch 1), and whether the button lights (note on, 127/0) and the ring values (cc 48-55, `0x20 | position`) are accepted. Fix the numbers in the preset file, not in the code.
-- [ ] **HW-2** Does the Mini in MC mode already switch its own layers (and change what it sends)? The program switches layers itself from the layer buttons' messages; if the device remaps instead, the layer lines are wrong.
-- [ ] **HW-3** `presets/x-touch-compact.txt` is from the Mackie Control spec only; the faders are not motorised by the program (a fader takes over when it reaches the value).
+- [ ] **HW-1** ([#1](https://github.com/pKasprowicz/roll-model/issues/1)) **Try the X-Touch Mini** (MC mode) and check `presets/x-touch-mini.txt` against the monitor on Settings -> Controller: note numbers of the two button rows, the LAYER A/B buttons (84/85 assumed), the encoder pushes (32-39), the fader (pitch bend ch 1), and whether the button lights (note on, 127/0) and the ring values (cc 48-55, `0x20 | position`) are accepted. Fix the numbers in the preset file, not in the code.
+- [ ] **HW-2** ([#2](https://github.com/pKasprowicz/roll-model/issues/2)) Does the Mini in MC mode already switch its own layers (and change what it sends)? The program switches layers itself from the layer buttons' messages; if the device remaps instead, the layer lines are wrong.
+- [ ] **HW-3** ([#3](https://github.com/pKasprowicz/roll-model/issues/3)) `presets/x-touch-compact.txt` is from the Mackie Control spec only; the faders are not motorised by the program (a fader takes over when it reaches the value).
 - The help screen's picture of the Mini (`controller_layout::x_touch_mini`) follows a photograph (positions measured, the height stretched 2.1x against 1.7x in width to make room for labels; the printed symbols are `Layout::marks`). Layer A's bottom row does what is printed beside the buttons (rewind, fast forward, LOOP, stop, play, record; the first two, MC and a blank one, are Loop worst bar and Discard take), a test keeps the picture's printed marks and the bindings in step; Shift and the tempo buttons moved to the top row. Whether the Mini's bottom row really sends notes 87, 88, 91, 92, 86, 93, 94, 95 in order is unverified. The Compact's (`x_touch_compact`) follows a photograph of its front, but the printed labels were too small to read: the order of the six transport buttons on the right (Rewind, Fast forward / Stop, Play / Record, Cycle) is a guess, and the message of the eight side encoders, the two LAYER buttons and the button under the ninth fader is unknown (they are drawn and unbound). The Compact preset's function buttons (Shift, Click, Notes, Metronome, Tap tempo, Worst bar, Discard take, Next tab) are on the SELECT row, notes 24-31, the standard Mackie numbers and unverified; the earlier numbers (84, 85, 87, ...) belonged to buttons the Compact lacks. A test (`the_built_in_presets_bind_nothing_the_pictures_lack`) fails when a preset binds a message no control of its picture sends. Another controller gets a picture by adding a `Layout` and picking it in `for_preset`.
-- [ ] **HW-4** Compare the drawn pictures with the real devices (the Mini: row order, LAYER buttons, fader; the Compact: the order of the six transport buttons on the right, the SELECT, transport and strip numbers) and fix the numbers in `controller_layout.rs` and the presets.
-- [ ] **HW-5** Find what the Compact's eight side encoders, its two LAYER buttons and the button under the ninth fader send (the monitor shows it); they are drawn and unbound, free for more actions.
-- [ ] **HW-6** **The four generic presets** (`presets/novation-launch-control-xl.txt`, `korg-nanokontrol2.txt`, `akai-mpk-mini.txt`, `arturia-beatstep.txt`) are from memory: only LCXL knob 1 = cc 13, BeatStep knobs 1-2 = cc 10 / 74 and nanoKONTROL2 record = cc 64 were confirmed by a web search; the MPK Mini binds two candidate knob ranges and guessed pad notes. Check each with the monitor on a real device. They have no LED feedback or pictures; see `docs/generic-midi-controller-concept.md` for the planned learn UI, channel filter and relative encodings.
+- [ ] **HW-4** ([#4](https://github.com/pKasprowicz/roll-model/issues/4)) Compare the drawn pictures with the real devices (the Mini: row order, LAYER buttons, fader; the Compact: the order of the six transport buttons on the right, the SELECT, transport and strip numbers) and fix the numbers in `controller_layout.rs` and the presets.
+- [ ] **HW-5** ([#5](https://github.com/pKasprowicz/roll-model/issues/5)) Find what the Compact's eight side encoders, its two LAYER buttons and the button under the ninth fader send (the monitor shows it); they are drawn and unbound, free for more actions.
+- [ ] **HW-6** ([#6](https://github.com/pKasprowicz/roll-model/issues/6)) **The four generic presets** (`presets/novation-launch-control-xl.txt`, `korg-nanokontrol2.txt`, `akai-mpk-mini.txt`, `arturia-beatstep.txt`) are from memory: only LCXL knob 1 = cc 13, BeatStep knobs 1-2 = cc 10 / 74 and nanoKONTROL2 record = cc 64 were confirmed by a web search; the MPK Mini binds two candidate knob ranges and guessed pad notes. Check each with the monitor on a real device. They have no LED feedback or pictures; see `docs/generic-midi-controller-concept.md` for the planned learn UI, channel filter and relative encodings.
 - Generic MIDI controllers (built, see the concept): phase 1 of `docs/generic-midi-controller-concept.md` is done (`Binding.channel`, `Encoding`, `Light.on/off/channel/scale`, all in `controller.rs` and unit-tested). Phase 2 is done too: `Preset::to_text`, `assign`, `clear`, `set_kind` and `controller::learn` (pure), and the editor `app/controls/editor.rs` (learn flow in `update_controller` via `learn_message`; tested against a temporary folder through `EditorState.dir`; the learning against a real device and the table with the mouse were not tried). The Manage window (`controller_editor_window` → `manage_ui`: `preset_list` on the left with Add / Copy / Delete, `preset_header` (rename) and `assignments_body` on the right; clicking a preset chooses it as the one in use, `select_preset`, because learning needs its connection; opened by the Manage button next to the selector) is an immediate viewport; inside the main window where the platform has no second window, and presets carry `kind` (`PresetKind`, inferred for files without one). Phase 3 is done: `controller_layout::generated` draws a picture from any preset without a drawn layout (`Layout.generated`, nine controls to a row). What is not done is listed as CTL-1 to CTL-4 and HW-7. A copy of a preset made before this keeps working; the layout pictures ignore channels (`Preset::position(.., None)`).
-- [ ] **HW-7** Try Learn and the Manage window with a real controller (Mackie and a generic one) and with a real mouse: the learn flow, a relative encoding on a real endless encoder, the table, Add, Copy, Rename and Delete.
+- [ ] **HW-7** ([#7](https://github.com/pKasprowicz/roll-model/issues/7)) Try Learn and the Manage window with a real controller (Mackie and a generic one) and with a real mouse: the learn flow, a relative encoding on a real endless encoder, the table, Add, Copy, Rename and Delete.
 - [x] **CTL-1** Creating and deleting layers in the Manage window. **Done**: `Preset::add_layer` / `remove_layer` (`LayerError`), `EditorState.learning_layer`, the Layer row of the assignments (Add layer…, Delete layer). Tested with simulated messages; not tried with a mouse or a device (HW-7 covers the Manage window).
 - [x] **CTL-2** Editing button lights and LED rings in the Manage window. **Done**: `Light::new`, `Preset::lights_of` / `set_light` / `clear_light`, the *Lights and rings* section (`light_cell`). A new light uses the control of the action (note or cc, its channel, 127/0); the device may want other numbers, so they are editable. Tested with simulated clicks; no device has lit one.
 - [x] **CTL-3** Guess the encoding of a relative encoder while learning it. **Done** as a separate step, not inside Learn: *Detect* (`Encoding::guess`, `EditorState.detecting`): four clicks right, then four left; the first direction is asked for because Mackie and signbit2 differ only in which way is up. Tested with simulated values; not with a real encoder (HW-7).
-- [ ] **CTL-4** An `init` line for connect-time system-exclusive messages (some controllers need one to enter a mode).
-- [ ] **CTL-5** Motor faders (the program never moves a fader; it waits for the fader to reach the value).
-- [ ] **CTL-6** Scribble strip and time display feedback.
-- [ ] **CTL-7** A second (XT) unit.
-- [ ] **CTL-8** Blinking lights.
-- [ ] **HW-8** The controller's port is looked for every 2 s (`watch_controller`): plugging it in after the start connects it, pulling it out drops it. Not tried with a real unplug.
+- [ ] **CTL-4** ([#8](https://github.com/pKasprowicz/roll-model/issues/8)) An `init` line for connect-time system-exclusive messages (some controllers need one to enter a mode).
+- [ ] **CTL-5** ([#9](https://github.com/pKasprowicz/roll-model/issues/9)) Motor faders (the program never moves a fader; it waits for the fader to reach the value).
+- [ ] **CTL-6** ([#10](https://github.com/pKasprowicz/roll-model/issues/10)) Scribble strip and time display feedback.
+- [ ] **CTL-7** ([#11](https://github.com/pKasprowicz/roll-model/issues/11)) A second (XT) unit.
+- [ ] **CTL-8** ([#12](https://github.com/pKasprowicz/roll-model/issues/12)) Blinking lights.
+- [ ] **HW-8** ([#13](https://github.com/pKasprowicz/roll-model/issues/13)) The controller's port is looked for every 2 s (`watch_controller`): plugging it in after the start connects it, pulling it out drops it. Not tried with a real unplug.
 
 ### Rudiments (since 0.6.0)
 
 The Rudiments tab sits between Score and Metronome. `docs/rudiments.md` is the catalogue and its source (the PAS chart, read off the notation); `core/src/rudiments.rs` is that catalogue as patterns plus `Rudiment::build(repeats, lead) -> Score`, so Listen, takes, grading, the staff, the Results tab and the controller all work on a rudiment as on a file. `src/app/rudiment.rs` is the tab. 132 tests pass; the tab was looked at in the running app (screenshots of two rudiments), nothing was heard and no V31 was connected.
 
-- [ ] **RUD-1** **Check the ⚑ rows of `docs/rudiments.md` against the PAS chart**: the closing note values of rolls 7-15, drag paradiddles #1 and #2, and the flam drag were read from a small engraving and may be off. Only the note values are in doubt (the sticking was read carefully and is tested). The chart is `https://www.coloradomesa.edu/marching-band/documents/rudiments.pdf` (PAS, 1984).
-- [ ] **HW-10** **Try it with the V31.** Fast diddles on a mesh pad may double-trigger (extra hits); the adaptive window helps but the pad's retrigger setting matters. Listen to the rudiments (grace notes are 35 ms per step before the main note, `analysis::GRACE_SPACING`).
-- [ ] **HW-11** Time the start-up with the V31 and a controller attached (how long do the MIDI-port and drum-module steps take?), before deciding **CD-13**; the first measurement had no devices.
-- [ ] **HW-9** Try the controller on the Rudiments tab (encoder 2 repeats, 3 lead, 8 rudiments, range buttons prev/next) on a real X-Touch Mini.
-- [ ] **RUD-2** The multiple bounce (buzz) roll can only be listened to; make it recordable.
-- [ ] **RUD-3** Flam and drag graces are optional; a spacing check would need them required (`analysis::GRACE_SPACING`, optional graces).
-- [ ] **RUD-4** Grade the sticking: it is shown but never graded, only compared per hand, because the module cannot hear hands (needs hand-aware input hardware).
-- [ ] **RUD-5** Orchestration of a rudiment around the kit (a map from hand or stroke to `Lane` in `Rudiment::build`).
-- [ ] **RUD-6** User-defined rudiment files (like the controller presets).
-- [ ] **RUD-7** Practice sets and routines (a list of rudiment, repeats, BPM stepped through when a take is clean).
-- [ ] **RUD-8** A progress history beyond the best clean tempo (takes are only in memory today).
-- [ ] **UI-4** Beams, flags, tuplet brackets (worked out from the onsets in `core/src/notation.rs`), rests (`Score.rests`) and the row break after a pause (`notation::pause_bars`, setting `break_at_pause`) are done and looked at. Left: beams on the metronome's rolling staff, ties.
+- [ ] **RUD-1** ([#14](https://github.com/pKasprowicz/roll-model/issues/14)) **Check the ⚑ rows of `docs/rudiments.md` against the PAS chart**: the closing note values of rolls 7-15, drag paradiddles #1 and #2, and the flam drag were read from a small engraving and may be off. Only the note values are in doubt (the sticking was read carefully and is tested). The chart is `https://www.coloradomesa.edu/marching-band/documents/rudiments.pdf` (PAS, 1984).
+- [ ] **HW-10** ([#15](https://github.com/pKasprowicz/roll-model/issues/15)) **Try it with the V31.** Fast diddles on a mesh pad may double-trigger (extra hits); the adaptive window helps but the pad's retrigger setting matters. Listen to the rudiments (grace notes are 35 ms per step before the main note, `analysis::GRACE_SPACING`).
+- [ ] **HW-11** ([#16](https://github.com/pKasprowicz/roll-model/issues/16)) Time the start-up with the V31 and a controller attached (how long do the MIDI-port and drum-module steps take?), before deciding **CD-13**; the first measurement had no devices.
+- [ ] **HW-9** ([#17](https://github.com/pKasprowicz/roll-model/issues/17)) Try the controller on the Rudiments tab (encoder 2 repeats, 3 lead, 8 rudiments, range buttons prev/next) on a real X-Touch Mini.
+- [ ] **RUD-2** ([#18](https://github.com/pKasprowicz/roll-model/issues/18)) The multiple bounce (buzz) roll can only be listened to; make it recordable.
+- [ ] **RUD-3** ([#19](https://github.com/pKasprowicz/roll-model/issues/19)) Flam and drag graces are optional; a spacing check would need them required (`analysis::GRACE_SPACING`, optional graces).
+- [ ] **RUD-4** ([#20](https://github.com/pKasprowicz/roll-model/issues/20)) Grade the sticking: it is shown but never graded, only compared per hand, because the module cannot hear hands (needs hand-aware input hardware).
+- [ ] **RUD-5** ([#21](https://github.com/pKasprowicz/roll-model/issues/21)) Orchestration of a rudiment around the kit (a map from hand or stroke to `Lane` in `Rudiment::build`).
+- [ ] **RUD-6** ([#22](https://github.com/pKasprowicz/roll-model/issues/22)) User-defined rudiment files (like the controller presets).
+- [ ] **RUD-7** ([#23](https://github.com/pKasprowicz/roll-model/issues/23)) Practice sets and routines (a list of rudiment, repeats, BPM stepped through when a take is clean).
+- [ ] **RUD-8** ([#24](https://github.com/pKasprowicz/roll-model/issues/24)) A progress history beyond the best clean tempo (takes are only in memory today).
+- [ ] **UI-4** ([#25](https://github.com/pKasprowicz/roll-model/issues/25)) Beams, flags, tuplet brackets (worked out from the onsets in `core/src/notation.rs`), rests (`Score.rests`) and the row break after a pause (`notation::pause_bars`, setting `break_at_pause`) are done and looked at. Left: beams on the metronome's rolling staff, ties.
 
 ### User manual
 
@@ -175,17 +175,17 @@ The Rudiments tab sits between Score and Metronome. `docs/rudiments.md` is the c
 Checked on 2026-10-30, while the repository was still private. Every commit and the working tree hold no secrets, keys, binaries, private paths or third-party content; the only personal data is the author's name and email in the `LICENSE` copyright line (and so in the commit metadata), and the donation handle. The 464 dependencies are all permissive (`r-efi` lists MIT among its choices). The remote has `main`, `develop` and the release tags only. Added: `CONTRIBUTING.md` (**no pull requests are accepted, the author makes every change**; bug reports and hardware results are welcome as issues), `SECURITY.md`, the bug report form in `.github/ISSUE_TEMPLATE/`, `.github/workflows/ci.yml` (tests on GitHub-hosted Ubuntu and Windows on pushes to `develop`; it has no `pull_request` trigger on purpose), `repository` in both manifests and `publish = false` for the app crate. The Windows job of `release.yml` moved from the self-hosted runner to `windows-latest` with the GNU toolchain (`x86_64-pc-windows-gnu`, what every Windows release has been built with; MSVC would need the Visual C++ runtime on the user's machine). **That job and `ci.yml` have not run on GitHub yet**: put the `preview` tag on a `develop` commit to try the Windows build before the next `vX.Y.Z`; if the hosted image lacks a MinGW `gcc`, install one in that job. Decided by the owner: the name stays as it is for now (NAME-1 stays open), the old MIT tags `v0.1.0` to `v0.5.0` may become visible with the history, and the author's email stays in the commit metadata.
 
 - [x] **PUB-1** **Done** (2026-10-30), by the owner on GitHub: the repository is public; private vulnerability reporting, Secret Protection and push protection are on; the ruleset "protect main" blocks deletion and force-push on `main`; pull requests are limited to collaborators; Wiki and Projects are off, Issues and Discussions stay on; description and topics are set. The first `CI` run was green on Ubuntu and Windows (GNU toolchain). The repository allows only GitHub-created actions plus `dtolnay/rust-toolchain`, `Swatinem/rust-cache` and `softprops/action-gh-release` (Settings → Actions → General): **a workflow that uses any other third-party action fails to start until it is added there.** Not run yet: the Windows job of `release.yml` (packaging); put the `preview` tag on a `develop` commit to try it. GitHub does not recognise the PolyForm licence text (shows "NOASSERTION"); that is cosmetic.
-- [ ] **PUB-2** Turn on GitHub Pages: Settings → Pages → Build and deployment → Source: **GitHub Actions**. The `Pages` workflow (`.github/workflows/pages.yml`) triggers on pushes to `main` and by hand, and GitHub only offers a workflow's *Run workflow* button once the file is on the default branch, so the first deployment comes with the next merge of `develop` into `main` (the next release). Until then the site does not exist. That push also runs `release.yml` untagged, which is the first real try of its Windows job. The workflow was not run on GitHub; it uses only `actions/*` actions, which the repository's allowlist covers. The site shows the documents of `main` labelled `v` plus the version in `Cargo.toml`.
+- [ ] **PUB-2** ([#26](https://github.com/pKasprowicz/roll-model/issues/26)) Turn on GitHub Pages: Settings → Pages → Build and deployment → Source: **GitHub Actions**. The `Pages` workflow (`.github/workflows/pages.yml`) triggers on pushes to `main` and by hand, and GitHub only offers a workflow's *Run workflow* button once the file is on the default branch, so the first deployment comes with the next merge of `develop` into `main` (the next release). Until then the site does not exist. That push also runs `release.yml` untagged, which is the first real try of its Windows job. The workflow was not run on GitHub; it uses only `actions/*` actions, which the repository's allowlist covers. The site shows the documents of `main` labelled `v` plus the version in `Cargo.toml`.
 
 ### Still open
 
-- [ ] **SND-1** **Listen to the new cymbals and the rest of the kit.** Nobody has heard them; only their spectra are tested (centroid, share below 2 kHz, lone low partials). Tune `Cymbal` parameters in `synth.rs` by ear, then adjust the guard bands if needed. The hi-hats are untouched and still very bright (spectral centroid about 13 kHz).
-- [ ] **SND-2** **Ask the user** whether per-instrument volume plus WAV files is enough, or whether several synthesised kits (brighter, darker, …) are wanted.
-- [ ] **UI-1** Try with a real mouse and wheel: the Layout popup, the mixer's mute/solo/play buttons, the wheel on sliders. Verified only through the keyboard, config keys, and headless egui tests.
-- [ ] **SND-3** The WAV override and the hi-hat choke have unit tests but were never heard.
-- [ ] **UI-2** The numbering mismatch is still there: bars drawn in the score show their printed number (repeated after unrolling repeats), while the Measures sliders and *start a row at bar* use the position. The Layout popup shows the printed number of the chosen bar; consider showing both on the bars, or making the sliders use printed numbers.
+- [ ] **SND-1** ([#27](https://github.com/pKasprowicz/roll-model/issues/27)) **Listen to the new cymbals and the rest of the kit.** Nobody has heard them; only their spectra are tested (centroid, share below 2 kHz, lone low partials). Tune `Cymbal` parameters in `synth.rs` by ear, then adjust the guard bands if needed. The hi-hats are untouched and still very bright (spectral centroid about 13 kHz).
+- [ ] **SND-2** ([#28](https://github.com/pKasprowicz/roll-model/issues/28)) **Ask the user** whether per-instrument volume plus WAV files is enough, or whether several synthesised kits (brighter, darker, …) are wanted.
+- [ ] **UI-1** ([#29](https://github.com/pKasprowicz/roll-model/issues/29)) Try with a real mouse and wheel: the Layout popup, the mixer's mute/solo/play buttons, the wheel on sliders. Verified only through the keyboard, config keys, and headless egui tests.
+- [ ] **SND-3** ([#30](https://github.com/pKasprowicz/roll-model/issues/30)) The WAV override and the hi-hat choke have unit tests but were never heard.
+- [ ] **UI-2** ([#31](https://github.com/pKasprowicz/roll-model/issues/31)) The numbering mismatch is still there: bars drawn in the score show their printed number (repeated after unrolling repeats), while the Measures sliders and *start a row at bar* use the position. The Layout popup shows the printed number of the chosen bar; consider showing both on the bars, or making the sliders use printed numbers.
 - [x] **FEAT-1** Tempo ramp (+x BPM every n bars) for Listen and the metronome. **Done**: `playback::Ramp { every, step }` in `PlayOptions` (the pass loop scales later passes; `locate`/`base_seconds` map real time to the starting tempo for the playhead, position label, beat lights and rolling staff); config `ramp_percent`, `ramp_passes`, `metro_ramp_bpm`, `metro_ramp_bars`. Tested with the fake sink and measured gaps; **nobody has listened to it** (the ramp is fixed at the start; changing it while running applies at the next start). This is the first change to the timing thread since CD-5 was written down: the player's pass loop now has the ramp, `metronome.rs` (takes) does not.
-- [ ] **FEAT-2** Accent patterns and tap tempo for the free metronome.
+- [ ] **FEAT-2** ([#32](https://github.com/pKasprowicz/roll-model/issues/32)) Accent patterns and tap tempo for the free metronome.
 - [x] **FEAT-3** Remember the layout per score. **Done**: `Config.layouts` (`RowLayout`, `layout` lines in the settings file, 30 scores, keyed by the absolute path); `restore_layout` on opening and `keep_layout` when a Layout slider changes. The zoom is not per score.
 - [x] **FEAT-4** A Listen without count-in setting of its own. **Done**: `listen_count_in` and the *in Listen* box.
 - The click is implemented twice (a sine blip in `metronome::click_audio`, used by takes and by the player) and `Metronome` (takes, calibration) and `Player` (Listen, metronome tab) are two threads with separate loops; this is task **CD-5** below.
@@ -211,7 +211,7 @@ Severity: **High** = a structural problem that makes changes costly or risky; **
   *Fix:* one table `ACTIONS: &[ActionInfo { action, name, title, help, class }]` (class: button, value, list) from which `parse`, `text`, `title`, `help`, `is_level`, `is_browse` and `sections` derive; the per-strip actions (`Mute(i)` …) stay computed. Keep the exhaustive test that every action is in the editor once. Also makes `Action::title/help` return `&'static str`/`Cow` (CD-14). Effort M.
 - [x] **CD-4 Shotgun surgery to add a setting** (OCP, DRY). A key is written in the struct, `Default`, `from_text` (a 93-line `match`), `to_text` (62 lines), a round-trip test and a Settings page. **Done**: `KEYS` in `config.rs` (`key!("zoom", c.zoom, number(0.3, 4.0))`) is both the reader and the writer of every one-line setting; lists and maps (`recent`, `gain.*`, `mute.*`, `map.*`, `rudiment_bpm.*`, `rudiment_best.*`) stay by hand. A number that is NaN or infinite is now ignored like any other bad value.
   *Fix:* table-driven keys (`const KEYS: &[Key { name, parse, write }]`) or a small declarative macro, so a setting is one line plus its page; keep tolerant loading (unknown keys ignored, bad values keep the default). Effort M, risk low (the round-trip test compares whole `Config` values).
-- [ ] **CD-5 Two timing threads with duplicated click and loop logic** (DRY; already a known gap). `metronome.rs` (takes, calibration) and `playback.rs` (Listen, the metronome tab, audition) each have a loop that sleeps, spins, clicks and checks stop. `playback::run_with` takes 8 parameters and `run` 7.
+- [ ] **CD-5** ([#33](https://github.com/pKasprowicz/roll-model/issues/33)) **Two timing threads with duplicated click and loop logic** (DRY; already a known gap). `metronome.rs` (takes, calibration) and `playback.rs` (Listen, the metronome tab, audition) each have a loop that sleeps, spins, clicks and checks stop. `playback::run_with` takes 8 parameters and `run` 7.
   *Fix:* one scheduler thread that plays a list of timed cues to a `Sink`, used by both; takes would use the `Player` with a clock-zero argument. Touches take timing, which works: do it behind the existing fake-`Sink` tests first, and verify with a real take on a release build. Effort L, risk high. At least group the parameters into a `RunSpec` struct (S).
 - [x] **CD-6 `render::show` is 218 lines and its helpers take 5 parameters** (long method, data clump). One function lays out systems, draws both staves, notes, hits, velocity bars and the playhead; `draw_head`, `draw_ledgers`, `draw_staff`, `draw_hand` all take `(painter, x, y, ...)` again. **Done**: `show` is 65 lines: it builds a `Frame` (view, layout, `Canvas` of painter and colours, buckets of notes) and calls `draw_system`, `draw_measure_marks`, `draw_score_note` and `draw_played_note`; `Rows` holds the vertical positions of a system. Checked by dumping every shape drawn for a sample score before and after (identical). The small helpers (`draw_head`, `draw_ledgers`, `draw_staff`, `draw_hand`) keep their signatures because `rolling` uses them too.
   *Fix:* a `Canvas { painter, scale, colours }` context passed to small functions; split `show` into phases (`systems`, `score_notes`, `played_notes`, `playhead`). The layout (`layout`, `row_starts`) is already separate and tested. Effort M.
@@ -229,9 +229,9 @@ Severity: **High** = a structural problem that makes changes costly or risky; **
   *Fix:* a `Paint { painter, scale, font }` for the help drawing (removes both `allow`s), option structs for `slider` and `learn`. Effort S.
 - [x] **CD-12 Law of Demeter and encapsulation around `Controller`.** The editor (a child module) reads and writes `self.controller.editor.learning`, `.notice`, `.confirm_delete`, `self.controller.link`, `self.controller.kinds` directly, six-plus times per function. That is allowed by the module privacy and makes the state machine hard to see. **Done**: the learn state machine and the notices go through `EditorState::{say, start_learning, stop_learning, chosen_kind, choose_kind}`, and the connection through `Controller::{kind_of, replace_preset, is_connected}`. Plain widget flags (`open`, `keep_going`, `confirm_delete`, the rename text) are still touched directly (CD-19 separates them).
   *Fix:* methods on `EditorState` (`start_learning`, `finish_learning`, `cancel`, `say`) and on `Controller` (`link_mut`, `kind_of`); the learn flow then reads as a sequence of named steps. Effort S.
-- [ ] **CD-13 Blocking I/O on the UI thread.** `watch_controller` calls `midi::list_inputs()` (which creates a `MidiInput` each time) every two seconds from the UI thread; the start-up steps `MidiPorts`, `DrumInput` and `Controller` still open and list MIDI ports on the UI thread (only the sound-output scan is on a thread), and opening a vendor driver can take seconds. The first measurement of start-up could not time them (no devices attached).
+- [ ] **CD-13** ([#34](https://github.com/pKasprowicz/roll-model/issues/34)) **Blocking I/O on the UI thread.** `watch_controller` calls `midi::list_inputs()` (which creates a `MidiInput` each time) every two seconds from the UI thread; the start-up steps `MidiPorts`, `DrumInput` and `Controller` still open and list MIDI ports on the UI thread (only the sound-output scan is on a thread), and opening a vendor driver can take seconds. The first measurement of start-up could not time them (no devices attached).
   *Fix:* one worker thread for MIDI enumeration and opening that answers over a channel, as `scan_sound_outputs` does; the splash then keeps animating. Time it with a real V31 and X-Touch connected first. Effort M.
-- [ ] **CD-14 Per-frame work in the UI.** `preset_being_edited` clones the whole preset (and reads and parses its file when disconnected) every frame the Manage window is open; `Action::title/help` return a new `String` per call and the table calls them for ~90 rows; `Action::sections()` builds `Vec`s every frame; `refresh_controllers` parses every preset file on each refresh; `recent_row` calls `is_file` per row per frame. **Looked at, left open on purpose** (UI-3 session): the string allocations of `title`/`help` and the `sections()` vectors are about 100 small allocations per frame in a window that is open for seconds; changing them to `Cow` touches a dozen call sites for a gain nobody can measure. Do the preset cache only if the Manage window is seen to lag.
+- [ ] **CD-14** ([#35](https://github.com/pKasprowicz/roll-model/issues/35)) **Per-frame work in the UI.** `preset_being_edited` clones the whole preset (and reads and parses its file when disconnected) every frame the Manage window is open; `Action::title/help` return a new `String` per call and the table calls them for ~90 rows; `Action::sections()` builds `Vec`s every frame; `refresh_controllers` parses every preset file on each refresh; `recent_row` calls `is_file` per row per frame. **Looked at, left open on purpose** (UI-3 session): the string allocations of `title`/`help` and the `sections()` vectors are about 100 small allocations per frame in a window that is open for seconds; changing them to `Cow` touches a dozen call sites for a gain nobody can measure. Do the preset cache only if the Manage window is seen to lag.
   *Fix:* cache the edited preset in `EditorState` (invalidate in `edit_preset`, the one writer), return `&'static str`/`Cow` from `title/help` (with CD-3), make `sections()` a `static`. Measure first; none of this is visible at the current sizes. Effort S to M.
 - [x] **CD-15 Test seams in production types, and a fragile test.** `EditorState.dir` and `Startup.load_settings` exist for tests, while `Config::controllers_dir()` and `Config::path()` are called from a dozen places. `the_controller_page_draws_with_and_without_a_controller` once failed because it listed the real settings folder, which held the owner's own presets. **Done**: `config::Paths` (`system()`, `in_dir()`, `none()`; `config_file`, `sounds_dir`, `controllers_dir`) is held by `DrumApp.paths` and used everywhere; `Config::load_from(&paths)` and `save(&paths)` replace the global path functions. `EditorState.dir` and `Startup.load_settings` are gone. A test `DrumApp` has `Paths::none()`, so no test can read the owner's files.
   *Fix:* an injected `Paths { settings_dir, controllers_dir }` held by `DrumApp` and used everywhere; tests build one on a temporary folder. Effort M.
@@ -264,8 +264,8 @@ Severity: **High** = a structural problem that makes changes costly or risky; **
 
 The application was renamed from "Drum Tutor" to **Roll Model** (crate and binary `roll-model`). The settings folder moved to `RollModel` / `roll-model` with a one-time copy from the old one (`Config::migrate`, tested). The brainstorm is kept in [`docs/name-ideas.md`](docs/name-ideas.md).
 
-- [ ] **NAME-1** Check the name (GitHub, web, trademark, domain) before shipping it widely. A web search on 2026-10-30 found no drum or music software called Roll Model, but **THE ROLL MODEL** is a registered US trademark of Tune Up Fitness Worldwide, Inc. (Jill Miller's book and the Roll Model® Method of self-massage fitness; classes 28 and 41 according to directory sites, not checked at the USPTO). A different field, but the class 41 (education) overlap is the thing to look at. Nothing was checked in the EU or elsewhere.
-- [ ] **NAME-2** Rename the local folder `D:\projects\DrumTutor` if wanted (the GitHub repository is already `roll-model`).
+- [ ] **NAME-1** ([#36](https://github.com/pKasprowicz/roll-model/issues/36)) Check the name (GitHub, web, trademark, domain) before shipping it widely. A web search on 2026-10-30 found no drum or music software called Roll Model, but **THE ROLL MODEL** is a registered US trademark of Tune Up Fitness Worldwide, Inc. (Jill Miller's book and the Roll Model® Method of self-massage fitness; classes 28 and 41 according to directory sites, not checked at the USPTO). A different field, but the class 41 (education) overlap is the thing to look at. Nothing was checked in the EU or elsewhere.
+- [ ] **NAME-2** ([#37](https://github.com/pKasprowicz/roll-model/issues/37)) Rename the local folder `D:\projects\DrumTutor` if wanted (the GitHub repository is already `roll-model`).
 - [x] Released as 0.6.0 (the rename, rudiments, controller, licence and docs): see `CHANGELOG.md`.
 
 ## First tasks
