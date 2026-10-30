@@ -1,6 +1,6 @@
 # Audio engine rework: plan
 
-Status: **in progress on `feature/audio_rework`: AUD-1 to AUD-7 are done (the new engine plays), AUD-8 is left** (2026-10-30). Tasks AUD-1 to AUD-9 in `HANDOFF.md`.
+Status: **in progress on `feature/audio_rework`: AUD-1 to AUD-7 are done (the new engine plays), AUD-8 is mostly done (the person-only checks are left), AUD-9 has its evidence** (2026-10-30). Tasks AUD-1 to AUD-9 in `HANDOFF.md`.
 
 Origin: a handover note ("low-latency audio rework", written the same day from a read of the repository on GitHub, nothing compiled or measured). This plan checks that note against the source and corrects it. All latency figures are typical values, not measurements of this app, until AUD-1 has run.
 
@@ -91,6 +91,26 @@ The same script, the same machine, the new engine (cpal 0.17, look-ahead 30 ms),
 
 Listen on the sample score, recorded by loopback: the drums sound (peak 0.78), and after Esc the output is digitally silent within half a second. What the loopback cannot tell: how the kit sounds (nobody listened), the hardware latency, and the behaviour on a V31. Not tried yet: unplugging the output while it runs, a change of the default device, a long looping Listen with a ramp (AUD-8).
 
+## Long run and load (AUD-8, measured 2026-10-30)
+
+`tools/audio_baseline.ps1` got `-SoakMinutes` and `-LoadThreads` (busy-loop processes while recording); the engine's own counters were read from the Sound page after a soak.
+
+- **A soak found a bug, now fixed.** A quiet 4-minute run showed 244 sounds "too late" (2 minutes: 124, the worst by 6.4 ms) although every 30 s recording looked perfect. A temporary trace of the hand-overs and the callbacks (not committed) showed the callbacks regular (480 frames every 10.00 ms, within 0.9 ms of the estimated line) and the cause on the scheduling side: the first cue of every looped pass was handed over with no look-ahead (lead 0 instead of 30 ms), because `run_with` waited for the end of the pass before it began the next one. For the metronome that is one click in sixteen (one per bar), hence 6%. Fixed: the wait ends one look-ahead early when the music goes on (`the_first_cue_of_a_looped_pass_is_handed_over_ahead_of_its_time_too`). Afterwards: 0 late, 0 dropped in 2 minutes quiet, and in 3 minutes with the last 90 s under full load (before: 185 late). The counter now also shows how late the worst sound was.
+- **Full CPU load** (22 busy processes on 22 logical processors): 30 s recorded, widest spread 0.06 ms, 600 starts, no lost sound. Recorded for 90 s, **both builds glitch in some 10-second windows** (extra sound starts, broken gaps); v0.7.3 slightly worse (283-347 starts in the bad windows, the new engine at most 259 against about 200 normal), so that is the machine at its limit, not a regression. The scheduling thread's priority did not need raising (after the fix the loaded soak shows no late sound), so nothing `unsafe` was added.
+- **Not done (needs a person):** unplugging the output while it runs, changing the default device, and a long looping Listen with a tempo ramp (looping is a session-only checkbox on the Score tab, not scriptable from here).
+- A measurement note: a metric of "deviation from the ideal 62.5 ms grid" is confounded by the sound card's effects (each tone is delayed differently); the fold (spread per place) and the click spacing are the sound ones.
+
+## What the drivers offer (AUD-9 evidence, 2026-10-30)
+
+Asked with the `wasapi` crate 0.26 (`IAudioClient3::GetSharedModeEnginePeriod` for the mix format of each active output, from a throwaway program outside the repository):
+
+| Output | Mix format | Shared-mode period: default / fundamental / min / max |
+|---|---|---|
+| Speakers (Realtek(R) Audio) | 48 kHz, 2 ch, 32 bit | 480 / 480 / 480 / 480 frames = **10 ms, nothing smaller** |
+| Headphones (soundcore Liberty 5 Pro), Bluetooth | 48 kHz, 2 ch, 32 bit | 480 / 480 / 480 / 480 frames = 10 ms, nothing smaller |
+
+The "minimum 3 ms" that `IAudioClient::GetDevicePeriod` reports on both is the exclusive-mode period, which is out of scope. So **on this machine a small-period shared-mode backend (`IAudioClient3`) has nothing to ask for: the drivers allow exactly one period, the 10 ms the engine already uses.** Recommendation: **no-go** for AUD-9; it would only pay on an audio interface whose driver offers a range (some USB class 2 and professional interfaces do), and then as one more backend behind the same callback. Revisit if such a device turns up.
+
 ## Steps
 
 | ID | Step | Needs |
@@ -103,7 +123,7 @@ Listen on the sample score, recorded by loopback: the drums sound (peak 0.78), a
 | **AUD-6** | **Done on `feature/audio_rework`.** Switch-over, together with AUD-4: `Sink` gets `when`; `run_with` waits to `target - LOOKAHEAD` and keeps a due-queue for MIDI; `MAX_LATE` becomes an exact frame check; choke groups replace `Voice`, `play_voice` and `Ringing`; takes, calibration, audition and the metronome tab use the engine (this also ends the duplicated click synthesis of CD-5); the audio thread raises its priority from the first callback; drop rodio. `Metronome` and `Player` stay two threads (merging them is CD-5). | code |
 | **AUD-7** | **Done on `feature/audio_rework`; the 0.8.0 bump is left to the release commit.** Settings and docs, trimmed: latency readout and overrun counter on Settings -> Sound; the one key that records which engine the calibration was made with, and an amber "recalibrate" warning in Settings -> Timing; CHANGELOG, 0.8.0 (`Cargo.toml`, `core/Cargo.toml`, `Cargo.lock`), `tools/build_notices.py` for rtrb; manual (Latency, Sound; Bluetooth output is unusable), developer guide (threads; run `tools/build_devguide.py`), README, HANDOFF. No `audio_backend` or `audio_buffer` keys. | code |
 | **AUD-8** | Hardware validation: repeat AUD-1; unplug, change of the default device, a long looping Listen with a ramp, exact stop. Record the results in the test plan. | device |
-| **AUD-9** | Go/no-go on the AUD-1/AUD-8 numbers; if go, a `cfg(windows)` low-latency backend with the `wasapi` crate (MIT) behind the same render callback: COM as MTA, the smallest period `get_shared_mode_engine_period` reports, MMCSS "Pro Audio", automatic fallback to cpal; a single "low-latency mode" checkbox. Its own release. | decision, device |
+| **AUD-9** | **Evidence in: no-go on this machine (see "What the drivers offer"); the owner confirms.** Go/no-go on the AUD-1/AUD-8 numbers; if go, a `cfg(windows)` low-latency backend with the `wasapi` crate (MIT) behind the same render callback: COM as MTA, the smallest period `get_shared_mode_engine_period` reports, MMCSS "Pro Audio", automatic fallback to cpal; a single "low-latency mode" checkbox. Its own release. | decision, device |
 
 Order: AUD-1; then AUD-2, AUD-3 (and AUD-5 if it is needed) as tested code that nothing calls yet; then AUD-4 with AUD-6 as one switch-over; then AUD-7, AUD-8; AUD-9 last.
 

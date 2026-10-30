@@ -50,6 +50,8 @@ pub enum Command {
 pub struct Counters {
     /// Sounds whose frame had already passed when the block started; they started at its first frame.
     pub late: u64,
+    /// The most frames any of them was late by.
+    pub worst_late: u64,
     /// Sounds dropped because [`MAX_PENDING`] were waiting.
     pub dropped_pending: u64,
     /// Sounds dropped because [`MAX_VOICES`] were playing.
@@ -190,6 +192,7 @@ impl Mixer {
             let t = self.pending.remove(i);
             if t.start_frame < block_start {
                 self.counters.late += 1;
+                self.counters.worst_late = self.counters.worst_late.max(block_start - t.start_frame);
             }
             for v in self.voices.iter_mut() {
                 if v.group < 32 && t.chokes & (1 << v.group) != 0 {

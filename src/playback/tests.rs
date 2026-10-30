@@ -385,12 +385,19 @@ struct Early {
     told: Vec<(Instant, Instant)>,
     due: Option<Instant>,
     flushed_at: Vec<(Instant, Instant)>,
+    /// Switches looping off once this many cues were handed over.
+    stop_after: Option<(Arc<Control>, usize)>,
 }
 
 impl Sink for Early {
     fn audio_click(&mut self, _: ClickLevel, _: f32, when: Instant) {
         self.told.push((when, Instant::now()));
         self.due = Some(when + Duration::from_millis(20));
+        if let Some((control, n)) = &self.stop_after {
+            if self.told.len() >= *n {
+                control.set_looping(false);
+            }
+        }
     }
     fn midi_click(&mut self, _: ClickLevel, _: Instant) {}
     fn audio_drum(&mut self, _: Lane, _: f32, _: Instant) {}
@@ -411,7 +418,7 @@ impl Sink for Early {
 
 #[test]
 fn a_sink_that_wants_its_cues_early_gets_them_ahead_of_their_time() {
-    let mut sink = Early { lookahead: Duration::from_millis(30), told: Vec::new(), due: None, flushed_at: Vec::new() };
+    let mut sink = Early { lookahead: Duration::from_millis(30), told: Vec::new(), due: None, flushed_at: Vec::new(), stop_after: None };
     let zero = Instant::now() + Duration::from_millis(100);
     run_with(zero, &[click(0.0), click(0.2)], 0.3, &opts(), &Control::new(), &AtomicBool::new(false), &mut sink, Duration::ZERO);
     assert_eq!(sink.told.len(), 2);
@@ -425,12 +432,28 @@ fn a_sink_that_wants_its_cues_early_gets_them_ahead_of_their_time() {
 
 #[test]
 fn what_a_sink_holds_back_is_sent_at_its_time_while_the_player_waits_for_the_next_cue() {
-    let mut sink = Early { lookahead: Duration::from_millis(30), told: Vec::new(), due: None, flushed_at: Vec::new() };
+    let mut sink = Early { lookahead: Duration::from_millis(30), told: Vec::new(), due: None, flushed_at: Vec::new(), stop_after: None };
     let zero = Instant::now() + Duration::from_millis(100);
     run_with(zero, &[click(0.0), click(0.3)], 0.4, &opts(), &Control::new(), &AtomicBool::new(false), &mut sink, Duration::ZERO);
     assert_eq!(sink.flushed_at.len(), 2);
     for (due, sent) in &sink.flushed_at {
         let late = sent.saturating_duration_since(*due);
         assert!(late < Duration::from_millis(10), "sent {late:?} after its time");
+    }
+}
+
+#[test]
+fn the_first_cue_of_a_looped_pass_is_handed_over_ahead_of_its_time_too() {
+    // The bar of the metronome loops; its first click used to be handed over exactly at its time,
+    // because the player waited for the end of the pass before it began the next one.
+    let control = Control::new();
+    control.set_looping(true);
+    let mut sink = Early { lookahead: Duration::from_millis(30), told: Vec::new(), due: None, flushed_at: Vec::new(), stop_after: Some((control.clone(), 6)) };
+    let zero = Instant::now() + Duration::from_millis(100);
+    run_with(zero, &[click(0.0), click(0.1)], 0.2, &opts(), &control, &AtomicBool::new(false), &mut sink, Duration::ZERO);
+    assert!(sink.told.len() >= 6, "{} cues", sink.told.len());
+    for (i, (when, told_at)) in sink.told.iter().enumerate() {
+        let ahead = when.saturating_duration_since(*told_at);
+        assert!(ahead >= Duration::from_millis(20), "cue {i} was handed over only {ahead:?} ahead of its time");
     }
 }

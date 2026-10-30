@@ -8,7 +8,7 @@ All notable changes are recorded here. The format follows [Keep a Changelog](htt
 
 ### Changed
 - **Clicks and the built-in drums start at an exact moment** (a new audio engine in place of rodio): sounds are handed to one output stream that stays open, about 30 ms ahead, and start at the very frame that matches their time instead of at the next audio callback. On the development machine (Windows 11, Realtek output) the onsets of a metronome at 240 BPM in sixteenths used to flip between two positions 10 ms apart and now stay within 0.1 ms, and the clicks are spaced evenly (62.5 ms) where they used to alternate between 60 and 70 ms. The sound output setting (`audio_output`) is unchanged; the first sound opens the output, later ones do not open it again. **Run Settings → Timing → Calibrate again**: the delay of the click changed with the engine.
-- **Settings → Sound shows the open output** (its name, rate, the delay the driver reports, and how many sounds came too late or were dropped) and says that Bluetooth audio cannot be used for timing.
+- **Settings → Sound shows the open output** (its name, rate, the delay the driver reports, and how many sounds came too late, by how much at worst, or were dropped) and says that Bluetooth audio cannot be used for timing.
 - **Settings → Timing says when the latency compensation is from an earlier audio engine** (new setting `latency_engine`, written by Calibrate and when the slider is moved), with a *Keep this value* button. A file from an earlier version has no engine recorded, so a calibrated latency shows the note once.
 - **The sound output library is cpal 0.17** (rodio is gone); a stream that fails (for example an unplugged device) is opened again at the next start.
 

@@ -197,7 +197,7 @@ impl DrumApp {
         };
         widgets::hint(ui, &format!("Open: {} at {} Hz. {delay}", info.device, info.rate));
         if info.late + info.dropped > 0 {
-            ui.label(RichText::new(format!("Sounds that came too late: {}, dropped: {}. The computer may be too busy for the output.", info.late, info.dropped)).small().color(render::AMBER));
+            ui.label(RichText::new(format!("Sounds that came too late: {} (the worst by {:.1} ms), dropped: {}. The computer may be too busy for the output.", info.late, info.worst_late_ms, info.dropped)).small().color(render::AMBER));
         }
         widgets::hint(ui, "Bluetooth headphones add 100-200 ms or more and cannot be used for timing: use a wired output, or send the click to the V31 (below).");
     }

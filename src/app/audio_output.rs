@@ -22,6 +22,8 @@ pub(super) struct AudioInfo {
     /// What the driver reports between the callback and the sound leaving; `None` when it reports none.
     pub latency_ms: Option<f64>,
     pub late: u64,
+    /// How late the worst of them was.
+    pub worst_late_ms: f64,
     pub dropped: u64,
 }
 
@@ -60,6 +62,7 @@ impl AudioOutput {
             rate: shared.rate(),
             latency_ms: (latency > 0.0).then_some(latency),
             late: counters.late,
+            worst_late_ms: counters.worst_late as f64 * 1000.0 / shared.rate().max(1) as f64,
             dropped: counters.dropped_pending + counters.dropped_voices,
         })
     }

@@ -9,6 +9,10 @@
 #   cargo build --release --example audio_probe
 #   cargo build --release
 #   powershell -File tools\audio_baseline.ps1 [-Exe path\to\roll-model.exe] [-Seconds 30] [-Out folder]
+#                                            [-SoakMinutes 0] [-LoadThreads 0]
+#
+# -SoakMinutes: let the metronome run this long before recording (a long run).
+# -LoadThreads: busy-loop this many processes while recording (a busy computer; 0 = none).
 #
 # Compare runs on the same machine, with the same background load: the numbers depend on both.
 
@@ -16,7 +20,9 @@ param(
     [string]$Exe = "target\release\roll-model.exe",
     [string]$Probe = "target\release\examples\audio_probe.exe",
     [int]$Seconds = 30,
-    [string]$Out = (Join-Path $env:TEMP "audio_baseline")
+    [string]$Out = (Join-Path $env:TEMP "audio_baseline"),
+    [int]$SoakMinutes = 0,
+    [int]$LoadThreads = 0
 )
 
 $ErrorActionPreference = "Stop"
@@ -61,12 +67,19 @@ try {
     Start-Sleep -Seconds 1.5
     Send-ToApp "m"                                         # starts the metronome
     Start-Sleep -Seconds 4                                 # the device is open, the clicks are steady
+    if ($SoakMinutes -gt 0) { Write-Host "soaking for $SoakMinutes min..."; Start-Sleep -Seconds ($SoakMinutes * 60) }
+    if ($LoadThreads -gt 0) {
+        Write-Host "loading $LoadThreads processes..."
+        $load = 1..$LoadThreads | ForEach-Object { Start-Process powershell -ArgumentList "-NoProfile", "-Command", "while (`$true) {}" -WindowStyle Hidden -PassThru }
+    }
 
     & $Probe record $wav $Seconds
     if ($LASTEXITCODE -ne 0) { throw "recording failed" }
+    if ($load) { $load | ForEach-Object { if (-not $_.HasExited) { $_.Kill() } }; $load = $null }
 
-    Send-ToApp "{ESC}"
+    try { Send-ToApp "{ESC}" } catch { Write-Host "(the program was not in front; it is closed below)" }
 } finally {
+    if ($load) { $load | ForEach-Object { if (-not $_.HasExited) { $_.Kill() } } }
     if (-not $app.HasExited) { [void]$app.CloseMainWindow(); Start-Sleep -Seconds 1 }
     if (-not $app.HasExited) { $app.Kill() }
 }

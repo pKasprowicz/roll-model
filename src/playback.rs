@@ -335,11 +335,18 @@ fn run_with(
             dispatch(cue, target, opts, control, sink);
         }
         if let Some(end) = at(zero, offset + pass_len * squeeze) {
-            if !wait_for(end, stop, sink) {
+            // The next pass starts at `end` and its first cues are handed over ahead of their time
+            // like any other, so when the music goes on the wait ends one look-ahead early. (Looping
+            // switched off in that last moment still lets one more pass begin.)
+            let hand_over = end.checked_sub(sink.lookahead()).unwrap_or(end);
+            if !wait_for(hand_over, stop, sink) {
                 break;
             }
-        }
-        if !control.looping() {
+            if !control.looping() {
+                wait_for(end, stop, sink);
+                break;
+            }
+        } else if !control.looping() {
             break;
         }
         pass += 1;

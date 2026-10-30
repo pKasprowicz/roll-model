@@ -48,6 +48,7 @@ pub struct Shared {
     ready: AtomicBool,
     latency_frames: AtomicU32,
     late: AtomicU64,
+    worst_late: AtomicU64,
     dropped_pending: AtomicU64,
     dropped_voices: AtomicU64,
     next_run: AtomicU32,
@@ -63,6 +64,7 @@ impl Shared {
             ready: AtomicBool::new(false),
             latency_frames: AtomicU32::new(0),
             late: AtomicU64::new(0),
+            worst_late: AtomicU64::new(0),
             dropped_pending: AtomicU64::new(0),
             dropped_voices: AtomicU64::new(0),
             next_run: AtomicU32::new(1),
@@ -83,6 +85,7 @@ impl Shared {
         self.intercept.store(intercept.to_bits(), Ordering::Relaxed);
         self.ready.store(true, Ordering::Release);
         self.late.store(counters.late, Ordering::Relaxed);
+        self.worst_late.store(counters.worst_late, Ordering::Relaxed);
         self.dropped_pending.store(counters.dropped_pending, Ordering::Relaxed);
         self.dropped_voices.store(counters.dropped_voices, Ordering::Relaxed);
     }
@@ -95,6 +98,7 @@ impl Shared {
     pub fn counters(&self) -> Counters {
         Counters {
             late: self.late.load(Ordering::Relaxed),
+            worst_late: self.worst_late.load(Ordering::Relaxed),
             dropped_pending: self.dropped_pending.load(Ordering::Relaxed),
             dropped_voices: self.dropped_voices.load(Ordering::Relaxed),
         }
@@ -177,8 +181,8 @@ mod tests {
     #[test]
     fn counters_and_latency_are_passed_on() {
         let shared = Shared::new(Instant::now(), 48_000);
-        shared.publish(0.0, Counters { late: 3, dropped_pending: 2, dropped_voices: 1 });
-        assert_eq!(shared.counters(), Counters { late: 3, dropped_pending: 2, dropped_voices: 1 });
+        shared.publish(0.0, Counters { late: 3, worst_late: 7, dropped_pending: 2, dropped_voices: 1 });
+        assert_eq!(shared.counters(), Counters { late: 3, worst_late: 7, dropped_pending: 2, dropped_voices: 1 });
         shared.set_latency_frames(960);
         assert_eq!(shared.latency(), Duration::from_millis(20));
     }
