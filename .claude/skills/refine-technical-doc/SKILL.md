@@ -37,7 +37,7 @@ One entry per term, alphabetical, as `<dt id="g-ID">Term</dt><dd>…</dd>` insid
 `scripts/link_glossary.py` does this mechanically and reports every link it made, so you can read each in context:
 
 ```
-python -I docs/skills/refine-technical-doc/scripts/link_glossary.py link \
+python -I .claude/skills/refine-technical-doc/scripts/link_glossary.py link \
     --file docs/developer/developer.template.html --section audio \
     --glossary glossary.html --rules rules.json            # dry run, prints each match
 … add --write to apply
