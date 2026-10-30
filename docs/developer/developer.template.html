@@ -82,12 +82,12 @@ cargo run --release -- examples/basic_rock_beat.musicxml
 cargo test                                           # every test of both crates (no devices needed)
 cargo test -p roll-model-core                        # the core alone: builds no GUI, MIDI or audio crate
 cargo doc -p roll-model-core --no-deps --open        # rustdoc of the core
-cargo build --release --no-default-features          # without the sound card (no rodio/cpal)
+cargo build --release --no-default-features          # without the sound card (no cpal)
 cargo check --no-default-features                    # quick check of the other feature set</code></pre>
 <ul>
 <li>It is a <strong>Cargo workspace of two crates</strong>: <code>roll-model</code> (the application: window, MIDI ports, sound; <code>src/</code>) and <code>roll-model-core</code> (everything that needs none of them; <code>core/</code>). <code>default-members</code> makes <code>cargo build</code> and <code>cargo test</code> cover both. A single test runs with <code>cargo test the_hands_are</code> (a test of the application is in the binary's test target, a test of the core in the library's). The application re-exports the core's modules at its root (<code>use roll_model_core::{analysis, config, &hellip;}</code> in <code>main.rs</code>), so its code writes <code>crate::analysis</code>.</li>
 <li>Use a <strong>release build</strong> for anything that depends on timing (recording takes, keyboard pads): debug frames are slow enough to make timestamps unreliable.</li>
-<li>The feature <code>audio</code> (default) pulls in <code>rodio</code>. Without it the click and Listen can still go to a MIDI output. Code that needs the sound card is behind <code>#[cfg(feature = "audio")]</code> with a stub for the other case.</li>
+<li>The feature <code>audio</code> (default) pulls in <code>cpal</code>. Without it the click and Listen can still go to a MIDI output. Code that needs the sound card is behind <code>#[cfg(feature = "audio")]</code> with a stub for the other case.</li>
 </ul>
 <h4>Building the documentation</h4>
 <pre><code>python3 tools/build_manual.py       # target/manual/roll-model-manual.html
@@ -170,7 +170,7 @@ python3 tools/build_notices.py      # target/notices/THIRD_PARTY_NOTICES.txt</co
 
 <h3 id="deps">Dependencies</h3>
 {{DEPENDENCIES}}
-<p>Dependency versions are deliberately old (eframe 0.29, rodio 0.19, zip 2) because those APIs were known. Upgrading eframe means at least handling <code>rect_stroke</code> gaining a <code>StrokeKind</code> and <code>Rounding</code> becoming <code>CornerRadius</code>. The XML parser is hand-written (<code>xml.rs</code>) because MusicXML is namespace-free and a dependency would be heavier than the 300 lines.</p>
+<p>Dependency versions are deliberately old (eframe 0.29, cpal 0.17, zip 2) because those APIs were known. cpal 0.18 cannot be used next to eframe 0.29 (they need different versions of <code>objc2-encode</code>), so it waits for the eframe upgrade. Upgrading eframe means at least handling <code>rect_stroke</code> gaining a <code>StrokeKind</code> and <code>Rounding</code> becoming <code>CornerRadius</code>. The XML parser is hand-written (<code>xml.rs</code>) because MusicXML is namespace-free and a dependency would be heavier than the 300 lines.</p>
 
 <h3 id="dataflow">Data flow</h3>
 <figure>
@@ -276,8 +276,10 @@ python3 tools/build_notices.py      # target/notices/THIRD_PARTY_NOTICES.txt</co
 <h3 id="timing">The timing threads</h3>
 <p>Two kinds of thread schedule sounds: <code>Metronome</code> (the count-in and click of a take, and the calibration clicks) and <code>Player</code> (Listen, the free metronome, the audition button). Both walk a sorted list of (time, what) and wait for each target with the same helper: sleep coarsely, then spin for the last 1.5 ms.</p>
 {{code:src/metronome.rs::pub(crate) fn wait_until}}
-<p>A <code>Player</code> owns one audio stream and one MIDI connection so that the click and the drums can share a MIDI port (Windows ports are exclusive). Cues that are more than 250 ms late are dropped rather than played as a burst. <code>stop()</code> sets an <code>AtomicBool</code> and joins the thread; <code>Drop</code> calls <code>stop()</code>, so letting a handle go out of scope cannot leak a thread.</p>
+<p>A <code>Player</code> owns one MIDI connection so that the click and the drums can share a MIDI port (Windows ports are exclusive); its sound goes to the audio engine (below). Cues that are more than 250 ms late are dropped rather than played as a burst. <code>stop()</code> sets an <code>AtomicBool</code> and joins the thread; <code>Drop</code> calls <code>stop()</code>, so letting a handle go out of scope cannot leak a thread.</p>
 {{code:src/playback.rs::impl Drop for Player}}
+<p>The sound itself is made by the <strong>audio engine</strong> (<code>src/audio/</code>): one output stream that stays open, so that a sound starts at an exact frame of the stream instead of at the next callback. A scheduler thread tells the engine <em>when</em> a sound should start, as an <code>Instant</code>, about 30 ms ahead (<code>AUDIO_LOOKAHEAD</code>). The callback keeps an estimate of which frame it renders at that moment (<code>clock.rs</code>: the smallest offset over the last callbacks, since a callback can be late but never early) and the mixer (<code>mixer.rs</code>) starts the sound at that frame, whatever the size of the block. Nothing in the callback allocates, locks or frees: the voice pool is fixed, commands arrive through a wait-free queue and the samples of finished sounds go back through another to be let go of elsewhere. The whole callback is the function below, so its timing is tested by simulating late callbacks and a drifting sound card clock, with no sound card.</p>
+{{code:src/audio/handle.rs::pub fn render}}
 <p><code>DrumApp.listen</code> exists only while the playhead runs; the <code>player</code> may outlive it by up to 2.2 seconds so the last cymbal rings out.</p>
 
 <h3 id="control">Shared live settings</h3>
@@ -577,8 +579,8 @@ ring  = tempo -&gt; cc 20 scale=127      # a plain value 0..scale instead</code>
 <h3>Const tables and <code>const fn</code></h3>
 <p>The rudiment catalogue is a <code>static</code> array of a fixed length (<code>[Rudiment; 40]</code>) built with a <code>const fn</code>; the compiler checks the count and the data costs no start-up work. <code>Lane::ALL</code> plays the same role, and <code>Control</code> sizes an atomic array from it with <code>[AtomicU32; Lane::ALL.len()]</code>.</p>
 <h3>Conditional compilation with a stub</h3>
-<p>Audio is an optional feature. Rather than sprinkling <code>cfg</code> through callers, the module offers two implementations with the same signature, so the rest of the code is feature-agnostic. Without the feature the output type is <code>Option&lt;Infallible&gt;</code>, a type with no value, so the stub returns <code>None</code> and no unit value is passed around (which clippy would flag):</p>
-{{code:src/metronome.rs::pub(crate) fn open_audio(_enabled}}
+<p>Audio is an optional feature. Rather than sprinkling <code>cfg</code> through callers, <code>audio.rs</code> re-exports either the real backend or <code>silent.rs</code> under the same names, so the rest of the code is feature-agnostic. Without the feature <code>Engine</code> is an enum with no variants: it can never be opened, so the stub methods are <code>match *self {}</code> and no unit value is passed around (which clippy would flag):</p>
+{{code:src/audio/silent.rs::pub enum Engine}}
 <h3>Generics where they remove duplication</h3>
 <p><code>widgets::slider&lt;N: Numeric&gt;</code> serves integers and floats with one body. Elsewhere the code prefers plain functions over clever generics.</p>
 <h3>Iterators returning <code>impl Trait</code></h3>
@@ -650,7 +652,7 @@ ring  = tempo -&gt; cc 20 scale=127      # a plain value 0..scale instead</code>
 <tr><td>Orchestrating a rudiment around the kit</td><td><span class="pill">medium</span></td><td><code>Rudiment::build</code></td><td>Give <code>build</code> a map from hand or stroke index to <code>Lane</code>; the grader already matches by lane and the renderer already uses the lane's staff position.</td></tr>
 <tr><td>Ties, beams on the metronome's staff, rests in program-made scores</td><td><span class="pill">medium</span></td><td><code>notation.rs</code>, <code>render.rs</code>, <code>rudiments.rs</code></td><td>Beams, flags, tuplets and printed rests are done; what is left needs note lengths on <code>ScoreNote</code> (the importer drops the tied notes now) or the rolling strip going through <code>notation::analyse</code>.</td></tr>
 <tr><td>Following D.S./D.C./coda jumps</td><td><span class="pill">medium</span></td><td><code>musicxml.rs</code> (<code>playback_order</code>)</td><td>The importer already unrolls repeats and voltas.</td></tr>
-<tr><td>Merging the two timing threads</td><td><span class="pill hard">large</span></td><td><code>metronome.rs</code>, <code>playback.rs</code></td><td>Duplicated click and loop logic; touching it risks take timing, which works today.</td></tr>
+<tr><td>Merging the two timing threads</td><td><span class="pill hard">large</span></td><td><code>metronome.rs</code>, <code>playback.rs</code></td><td>The click sound is shared now (<code>audio/click.rs</code>); what is left is two loops that sleep, click and check stop. Touching them risks take timing, which works today.</td></tr>
 <tr><td>A command-line tool on the core (grade a MIDI file against a score)</td><td><span class="pill">medium</span></td><td><code>core/</code>, a new member of the workspace</td><td>The core crate has no GUI, MIDI or audio dependency, so a tool can depend on it alone; <code>core/tests/practice_session.rs</code> shows the calls.</td></tr>
 <tr><td>UI language, themes, accessibility</td><td><span class="pill hard">large</span></td><td>all UI strings</td><td>Strings are literals in the UI code; a string table is needed first.</td></tr>
 <tr><td>Hand-aware input hardware</td><td><span class="pill hard">large</span></td><td><code>midi.rs</code>, <code>analysis.rs</code></td><td>Some practice pads or sensors can report the hand; <code>Hand</code> on notes and hits would turn the Hands table from inferred into measured.</td></tr>

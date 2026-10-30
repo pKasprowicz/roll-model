@@ -21,16 +21,16 @@ struct Fake {
 }
 
 impl Sink for Fake {
-    fn audio_click(&mut self, level: ClickLevel, volume: f32) {
+    fn audio_click(&mut self, level: ClickLevel, volume: f32, _: Instant) {
         self.events.push(Ev::AudioClick(level, volume));
     }
-    fn midi_click(&mut self, level: ClickLevel) {
+    fn midi_click(&mut self, level: ClickLevel, _: Instant) {
         self.events.push(Ev::MidiClick(level));
     }
-    fn audio_drum(&mut self, lane: Lane, gain: f32) {
+    fn audio_drum(&mut self, lane: Lane, gain: f32, _: Instant) {
         self.events.push(Ev::AudioDrum(lane, gain));
     }
-    fn midi_drum(&mut self, note: u8, velocity: u8) {
+    fn midi_drum(&mut self, note: u8, velocity: u8, _: Instant) {
         self.events.push(Ev::MidiDrum(note, velocity));
     }
 }
@@ -38,7 +38,7 @@ impl Sink for Fake {
 fn opts() -> PlayOptions {
     PlayOptions {
         audio: true,
-        audio_device: String::new(),
+        engine: None,
         sounds_dir: None,
         click_audio: true,
         midi_port: None,
@@ -62,7 +62,7 @@ fn drum(lane: Lane, t: f64) -> Cue {
 
 fn play(cue: &Cue, opts: &PlayOptions, control: &Control) -> Vec<Ev> {
     let mut sink = Fake::default();
-    dispatch(cue, opts, control, &mut sink);
+    dispatch(cue, Instant::now(), opts, control, &mut sink);
     sink.events
 }
 
@@ -345,10 +345,10 @@ fn a_ramp_makes_every_few_passes_faster_up_to_a_limit() {
 struct Stamps(Vec<Instant>);
 
 impl Sink for Stamps {
-    fn audio_click(&mut self, _: ClickLevel, _: f32) {}
-    fn midi_click(&mut self, _: ClickLevel) {}
-    fn audio_drum(&mut self, _: Lane, _: f32) {}
-    fn midi_drum(&mut self, _: u8, _: u8) {
+    fn audio_click(&mut self, _: ClickLevel, _: f32, _: Instant) {}
+    fn midi_click(&mut self, _: ClickLevel, _: Instant) {}
+    fn audio_drum(&mut self, _: Lane, _: f32, _: Instant) {}
+    fn midi_drum(&mut self, _: u8, _: u8, _: Instant) {
         self.0.push(Instant::now());
     }
 }
@@ -376,4 +376,61 @@ fn the_player_squeezes_the_later_passes_of_a_ramp() {
     assert!(gaps[1] < gaps[0] * 0.75, "the second pass is shorter than the first: {gaps:?}");
     assert!(gaps[2] < gaps[1] * 0.9, "and the third shorter again: {gaps:?}");
     assert!((gaps[3] - gaps[2]).abs() < 0.012, "at the limit the passes stop getting shorter: {gaps:?}");
+}
+
+/// A sink that wants its cues early, like the audio engine, and holds a note back like the MIDI queue.
+struct Early {
+    lookahead: Duration,
+    /// (the time a sound was meant for, the moment the sink was told).
+    told: Vec<(Instant, Instant)>,
+    due: Option<Instant>,
+    flushed_at: Vec<(Instant, Instant)>,
+}
+
+impl Sink for Early {
+    fn audio_click(&mut self, _: ClickLevel, _: f32, when: Instant) {
+        self.told.push((when, Instant::now()));
+        self.due = Some(when + Duration::from_millis(20));
+    }
+    fn midi_click(&mut self, _: ClickLevel, _: Instant) {}
+    fn audio_drum(&mut self, _: Lane, _: f32, _: Instant) {}
+    fn midi_drum(&mut self, _: u8, _: u8, _: Instant) {}
+    fn lookahead(&self) -> Duration {
+        self.lookahead
+    }
+    fn next_due(&self) -> Option<Instant> {
+        self.due
+    }
+    fn flush(&mut self, now: Instant) {
+        if let Some(due) = self.due.filter(|d| *d <= now) {
+            self.flushed_at.push((due, now));
+            self.due = None;
+        }
+    }
+}
+
+#[test]
+fn a_sink_that_wants_its_cues_early_gets_them_ahead_of_their_time() {
+    let mut sink = Early { lookahead: Duration::from_millis(30), told: Vec::new(), due: None, flushed_at: Vec::new() };
+    let zero = Instant::now() + Duration::from_millis(100);
+    run_with(zero, &[click(0.0), click(0.2)], 0.3, &opts(), &Control::new(), &AtomicBool::new(false), &mut sink, Duration::ZERO);
+    assert_eq!(sink.told.len(), 2);
+    for (when, told_at) in &sink.told {
+        let ahead = when.saturating_duration_since(*told_at);
+        assert!(ahead >= Duration::from_millis(20) && ahead <= Duration::from_millis(40), "told {ahead:?} ahead");
+    }
+    // The cue's own time is what the sink is given, not the moment it was handed over.
+    assert!(sink.told[1].0 - sink.told[0].0 >= Duration::from_millis(199));
+}
+
+#[test]
+fn what_a_sink_holds_back_is_sent_at_its_time_while_the_player_waits_for_the_next_cue() {
+    let mut sink = Early { lookahead: Duration::from_millis(30), told: Vec::new(), due: None, flushed_at: Vec::new() };
+    let zero = Instant::now() + Duration::from_millis(100);
+    run_with(zero, &[click(0.0), click(0.3)], 0.4, &opts(), &Control::new(), &AtomicBool::new(false), &mut sink, Duration::ZERO);
+    assert_eq!(sink.flushed_at.len(), 2);
+    for (due, sent) in &sink.flushed_at {
+        let late = sent.saturating_duration_since(*due);
+        assert!(late < Duration::from_millis(10), "sent {late:?} after its time");
+    }
 }

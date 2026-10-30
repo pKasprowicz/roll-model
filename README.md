@@ -48,7 +48,7 @@ The binary ends up in `target/release/roll-model(.exe)`.
 | macOS | none (CoreMIDI, CoreAudio) |
 | Linux | `sudo apt install libasound2-dev pkg-config` (ALSA, for MIDI and audio) |
 
-Build without the sound-card metronome (drops `rodio`/`cpal`): `cargo build --release --no-default-features`. The click can still be sent to the V31 over MIDI.
+Build without the sound-card metronome (drops `cpal`): `cargo build --release --no-default-features`. The click can still be sent to the V31 over MIDI.
 
 Run the unit tests (XML parser, MusicXML import, repeats, tempo maps, scoring): `cargo test`.
 

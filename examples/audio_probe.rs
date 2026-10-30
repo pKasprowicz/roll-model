@@ -13,8 +13,8 @@
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use rodio::cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
-use rodio::cpal::{self, SampleFormat};
+use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
+use cpal::SampleFormat;
 
 /// A sound starts when the envelope rises through this level...
 const HIGH: f32 = 0.05;
@@ -41,12 +41,12 @@ fn main() {
 
 fn record(out: &str, seconds: f64) -> Result<(), String> {
     let device = cpal::default_host().default_output_device().ok_or("no default sound output")?;
-    let name = device.name().unwrap_or_default();
+    let name = device.description().map(|d| d.name().to_string()).unwrap_or_default();
     let supported = device.default_output_config().map_err(|e| e.to_string())?;
     if supported.sample_format() != SampleFormat::F32 {
         return Err(format!("the output format is {:?}; this tool reads f32 only", supported.sample_format()));
     }
-    let (rate, channels) = (supported.sample_rate().0, supported.channels() as usize);
+    let (rate, channels) = (supported.sample_rate(), supported.channels() as usize);
     let config: cpal::StreamConfig = supported.into();
 
     // (seconds since the first block, channel 0 of the block); a tool, so a lock in the callback is fine.

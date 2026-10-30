@@ -1,6 +1,6 @@
 # Audio engine rework: plan
 
-Status: **in progress on `feature/audio_rework`: AUD-1 to AUD-3 are done** (2026-10-30). Tasks AUD-1 to AUD-9 in `HANDOFF.md`.
+Status: **in progress on `feature/audio_rework`: AUD-1 to AUD-6 are done (the new engine plays), AUD-7 and AUD-8 are left** (2026-10-30). Tasks AUD-1 to AUD-9 in `HANDOFF.md`.
 
 Origin: a handover note ("low-latency audio rework", written the same day from a read of the repository on GitHub, nothing compiled or measured). This plan checks that note against the source and corrects it. All latency figures are typical values, not measurements of this app, until AUD-1 has run.
 
@@ -78,6 +78,19 @@ What the tool does and does not see:
 - The sound card's effects change a click (the attack is a ramp, the 30 ms burst ends with a pop and rings on), so one click yields two sound starts in the recording; they move together, so the fold is not disturbed, but the report lists twenty places instead of sixteen.
 - The default output of this machine was a Bluetooth headset until it was switched off; the measurement is the same, but the delay to the ears there is 100-200 ms and more.
 
+## After the switch-over (AUD-4 to AUD-6, measured 2026-10-30)
+
+The same script, the same machine, the new engine (cpal 0.17, look-ahead 30 ms), 30 s at 240 BPM in sixteenths:
+
+| | v0.7.3 (rodio) | new engine |
+|---|---|---|
+| Widest spread of a sound start | 10.02 ms | **1.14 ms** (most places 0.04-0.06 ms) |
+| Pooled standard deviation | 0.72-1.09 ms | **0.08 ms** |
+| Places in the bar that jump | 3-5 of 20 | 0 (the two with a spread over 0.5 ms are ringing artefacts of the sound card's effects, not clicks) |
+| Click spacing | 60 and 70 ms alternating | **exactly 62.5 ms** |
+
+Listen on the sample score, recorded by loopback: the drums sound (peak 0.78), and after Esc the output is digitally silent within half a second. What the loopback cannot tell: how the kit sounds (nobody listened), the hardware latency, and the behaviour on a V31. Not tried yet: unplugging the output while it runs, a change of the default device, a long looping Listen with a ramp (AUD-8).
+
 ## Steps
 
 | ID | Step | Needs |
@@ -85,9 +98,9 @@ What the tool does and does not see:
 | **AUD-1** | **Done (2026-10-30).** Baseline, no app change: `tools/audio_baseline.ps1` runs the release build with its own settings folder, records the output by WASAPI loopback and `examples/audio_probe.rs` lays the sound starts over one bar and reports the jitter (results above). Needs a Windows machine with an output device and no other sound, not a V31. The README and the manual already say that sending the click to the V31 over MIDI avoids computer-audio latency. | machine |
 | **AUD-2** | **Done on `feature/audio_rework`.** Pure mixer `src/audio/mixer.rs` (no cpal): voice pool, pending list, choke groups, fade, run IDs and `CancelRun`, mono to N channels, sample-format conversion; fixed capacities and no allocation in `render`. Offline tests: onset at the exact frame, mid-block start, choke fade, pool and pending exhaustion with counters, cancel, no allocation. Port the offline mix tests of `playback/tests.rs`. | code |
 | **AUD-3** | **Done on `feature/audio_rework`.** Clock and handle: shared counters (`frames`, `rate`, `latency_frames`, `overruns`), the smoothed `Instant <-> frame` estimator built on cpal's device-clock callback timestamps (tested on synthetic jittery times), `EngineHandle` (`Mutex<Producer>`) with `trigger(run, instant, sample, gain, group)`, `cancel_run`, `frame_at`. The stream owner stays on the UI thread. | code |
-| **AUD-4** | cpal backend on **cpal 0.18** (rodio is going, so the upgrade is free; check the API changes since 0.15): open by device name with the existing fallback messages, errors to `ErrorLog`, reopen on the next start after a device loss, variable block sizes, `I16`/`U16` output; try opening the device at 44.1 kHz and letting Windows resample (decides AUD-5); keep the `audio` feature with a no-sound stub. No buffer-size setting. | code, device |
-| **AUD-5** | Rate-aware kit and clicks, **only if AUD-4 shows that Windows cannot resample for us**: `Kit::load(lanes, sounds_dir, rate)` resamples the built-in sounds and WAVs with a proper interpolator (the linear one in `load_wav` is poor for cymbals); clicks generated at the rate; the kit lives in an engine-owned cache so the callback never frees a sample. Otherwise drop the task. | code |
-| **AUD-6** | Switch-over, together with AUD-4: `Sink` gets `when`; `run_with` waits to `target - LOOKAHEAD` and keeps a due-queue for MIDI; `MAX_LATE` becomes an exact frame check; choke groups replace `Voice`, `play_voice` and `Ringing`; takes, calibration, audition and the metronome tab use the engine (this also ends the duplicated click synthesis of CD-5); the audio thread raises its priority from the first callback; drop rodio. `Metronome` and `Player` stay two threads (merging them is CD-5). | code |
+| **AUD-4** | **Done on `feature/audio_rework`, with cpal 0.17: 0.18 cannot be resolved next to eframe 0.29 (different `objc2-encode`).** cpal backend on **cpal 0.18** (rodio is going, so the upgrade is free; check the API changes since 0.15): open by device name with the existing fallback messages, errors to `ErrorLog`, reopen on the next start after a device loss, variable block sizes, `I16`/`U16` output; try opening the device at 44.1 kHz and letting Windows resample (decides AUD-5); keep the `audio` feature with a no-sound stub. No buffer-size setting. | code, device |
+| **AUD-5** | **Done on `feature/audio_rework`; needed (cpal 0.17 has no Windows resampling flag).** Rate-aware kit and clicks, **only if AUD-4 shows that Windows cannot resample for us**: `Kit::load(lanes, sounds_dir, rate)` resamples the built-in sounds and WAVs with a proper interpolator (the linear one in `load_wav` is poor for cymbals); clicks generated at the rate; the kit lives in an engine-owned cache so the callback never frees a sample. Otherwise drop the task. | code |
+| **AUD-6** | **Done on `feature/audio_rework`.** Switch-over, together with AUD-4: `Sink` gets `when`; `run_with` waits to `target - LOOKAHEAD` and keeps a due-queue for MIDI; `MAX_LATE` becomes an exact frame check; choke groups replace `Voice`, `play_voice` and `Ringing`; takes, calibration, audition and the metronome tab use the engine (this also ends the duplicated click synthesis of CD-5); the audio thread raises its priority from the first callback; drop rodio. `Metronome` and `Player` stay two threads (merging them is CD-5). | code |
 | **AUD-7** | Settings and docs, trimmed: latency readout and overrun counter on Settings -> Sound; the one key that records which engine the calibration was made with, and an amber "recalibrate" warning in Settings -> Timing; CHANGELOG, 0.8.0 (`Cargo.toml`, `core/Cargo.toml`, `Cargo.lock`), `tools/build_notices.py` for rtrb; manual (Latency, Sound; Bluetooth output is unusable), developer guide (threads; run `tools/build_devguide.py`), README, HANDOFF. No `audio_backend` or `audio_buffer` keys. | code |
 | **AUD-8** | Hardware validation: repeat AUD-1; unplug, change of the default device, a long looping Listen with a ramp, exact stop. Record the results in the test plan. | device |
 | **AUD-9** | Go/no-go on the AUD-1/AUD-8 numbers; if go, a `cfg(windows)` low-latency backend with the `wasapi` crate (MIT) behind the same render callback: COM as MTA, the smallest period `get_shared_mode_engine_period` reports, MMCSS "Pro Audio", automatic fallback to cpal; a single "low-latency mode" checkbox. Its own release. | decision, device |

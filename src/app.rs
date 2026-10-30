@@ -1,5 +1,6 @@
 //! Application state and UI (Score / Metronome / Results / Settings tabs).
 
+mod audio_output;
 mod controller_help;
 mod controls;
 mod home;
@@ -25,7 +26,7 @@ use crate::config::{Config, Paths, RowLayout};
 use crate::control::Control;
 use crate::drums::Lane;
 use crate::loader::load_score;
-use crate::metronome::{self, Metronome};
+use crate::metronome::Metronome;
 use crate::midi::{self, EventQueue, InputHandle, RawEvent};
 use crate::musicxml::ParseOptions;
 use crate::playback::{Player, Ramp};
@@ -252,6 +253,8 @@ pub struct DrumApp {
     audio_devices: Vec<String>,
     /// Name of the system's default sound output, for the settings page.
     audio_default: Option<String>,
+    /// The open sound output (see `audio_output.rs`).
+    audio: audio_output::AudioOutput,
 
     /// The free metronome tab.
     metro_run: MetroState,
@@ -343,6 +346,7 @@ impl DrumApp {
             },
             audio_devices: Vec::new(),
             audio_default: None,
+            audio: audio_output::AudioOutput::default(),
             metro_run: MetroState { run: None, player: None, control: Control::new() },
             controller: controls::Controller::new(),
             controller_help: None,
@@ -355,8 +359,8 @@ impl DrumApp {
     fn refresh_ports(&mut self) {
         self.midi.inputs = midi::list_inputs().unwrap_or_default();
         self.midi.outputs = midi::list_outputs().unwrap_or_default();
-        self.audio_devices = metronome::output_devices();
-        self.audio_default = metronome::default_output_device();
+        self.audio_devices = crate::audio::output_devices();
+        self.audio_default = crate::audio::default_output_device();
     }
 
     fn connect_midi(&mut self, name: Option<String>) {

@@ -6,6 +6,10 @@ All notable changes are recorded here. The format follows [Keep a Changelog](htt
 
 ## [Unreleased]
 
+### Changed
+- **Clicks and the built-in drums start at an exact moment** (a new audio engine in place of rodio): sounds are handed to one output stream that stays open, about 30 ms ahead, and start at the very frame that matches their time instead of at the next audio callback. On the development machine (Windows 11, Realtek output) the onsets of a metronome at 240 BPM in sixteenths used to flip between two positions 10 ms apart and now stay within 0.1 ms, and the clicks are spaced evenly (62.5 ms) where they used to alternate between 60 and 70 ms. The sound output setting (`audio_output`) is unchanged; the first sound opens the output, later ones do not open it again. **Run Settings → Timing → Calibrate again**: the delay of the click changed with the engine.
+- **The sound output library is cpal 0.17** (rodio is gone); a stream that fails (for example an unplugged device) is opened again at the next start.
+
 ## [0.7.3] - 2026-10-30
 
 The score is drawn like a drum part: beams, flags, tuplet brackets and the rests a file prints. A bar that ends with a pause now ends its row. Covered by unit and integration tests (231); the notation, the rests, the row breaks and the zoom slider were looked at in the running app with the sample and with a real score. The manual and the developer guide are published online with this release (the first deployment of the GitHub Pages workflow). Nothing in the controller, tempo ramp and layer work of 0.7.2 has been tried on a device yet.

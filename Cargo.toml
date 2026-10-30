@@ -15,10 +15,10 @@ default-members = [".", "core"]
 
 [features]
 default = ["audio"]
-# Audible metronome through the default sound output (rodio/cpal).
+# Audible metronome and software drum kit through the sound output (cpal).
 # Build with `--no-default-features` to drop it; the click can still be sent
 # to the drum module over MIDI out.
-audio = ["dep:rodio"]
+audio = ["dep:cpal"]
 
 [dependencies]
 roll-model-core = { path = "core" }
@@ -30,7 +30,7 @@ rfd = "0.15"
 hound = "3"
 # Wait-free queue from the scheduler threads to the audio callback.
 rtrb = "0.4"
-rodio = { version = "0.19", default-features = false, optional = true }
+cpal = { version = "0.17", optional = true }
 
 [[example]]
 name = "audio_probe"

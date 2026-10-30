@@ -50,6 +50,7 @@ pub struct Shared {
     late: AtomicU64,
     dropped_pending: AtomicU64,
     dropped_voices: AtomicU64,
+    next_run: AtomicU32,
 }
 
 impl Shared {
@@ -64,7 +65,13 @@ impl Shared {
             late: AtomicU64::new(0),
             dropped_pending: AtomicU64::new(0),
             dropped_voices: AtomicU64::new(0),
+            next_run: AtomicU32::new(1),
         }
+    }
+
+    /// A number for a run of sounds, different from every other this engine has given out.
+    pub fn new_run(&self) -> u32 {
+        self.next_run.fetch_add(1, Ordering::Relaxed)
     }
 
     pub fn origin(&self) -> Instant {

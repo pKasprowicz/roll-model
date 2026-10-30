@@ -28,7 +28,7 @@ impl DrumApp {
     pub(super) fn click_options(&self) -> ClickOptions {
         ClickOptions {
             audio: self.cfg.click_audio && HAS_AUDIO,
-            audio_device: self.cfg.audio_output.clone(),
+            engine: self.audio.handle(),
             volume: self.cfg.click_volume,
             midi_port: self.cfg.click_midi.then(|| self.cfg.midi_out_port.clone()),
             midi_note: self.cfg.click_note,
@@ -89,6 +89,7 @@ impl DrumApp {
         self.stop_take(false);
         self.stop_listen();
         self.stop_metro();
+        self.ensure_audio();
         self.sync_control();
         if self.source == Source::Rudiments && !self.rudiment().gradable() {
             self.view.status = format!("{} cannot be graded stroke by stroke: use Listen.", self.rudiment().name);
@@ -129,7 +130,7 @@ impl DrumApp {
         let c = &self.cfg;
         PlayOptions {
             audio: c.playback_audio && HAS_AUDIO,
-            audio_device: c.audio_output.clone(),
+            engine: self.audio.handle(),
             sounds_dir: self.paths.sounds_dir(),
             click_audio: c.click_audio && HAS_AUDIO,
             midi_port: (c.playback_midi || c.click_midi).then(|| c.midi_out_port.clone()),
@@ -174,6 +175,7 @@ impl DrumApp {
         self.stop_take(false);
         self.stop_listen();
         self.stop_metro();
+        self.ensure_audio();
         self.playback.pending = None;
         let opts = self.play_options();
         if let Some(message) = Self::nothing_audible(&opts) {
@@ -261,6 +263,9 @@ impl DrumApp {
 
     /// Shows the first problem the metronome thread of a take or a calibration ran into.
     pub(super) fn show_sound_errors(&mut self) {
+        if let Some(e) = self.audio.take_errors().into_iter().next() {
+            self.view.error = Some(e);
+        }
         if let Some(m) = self.metronome.as_ref() {
             if let Some(e) = m.take_errors().into_iter().next() {
                 self.view.error = Some(e);
@@ -299,6 +304,7 @@ impl DrumApp {
 
     /// Plays one instrument on its own so it can be heard (and tuned) without a score.
     pub(super) fn audition(&mut self, lane: Lane) {
+        self.ensure_audio();
         let opts = self.play_options();
         if !opts.audio && !opts.midi_drums {
             self.view.error = Some(Self::nothing_audible(&PlayOptions { click_audio: false, click_midi: false, ..opts }).unwrap_or_else(|| {
@@ -400,6 +406,7 @@ impl DrumApp {
         self.stop_take(false);
         self.stop_listen();
         self.stop_metro();
+        self.ensure_audio();
         let beat = 0.6; // 100 BPM
         let zero = Instant::now() + Duration::from_secs_f64(1.0);
         let beats: Vec<f64> = (0..16).map(|i| i as f64 * beat).collect();

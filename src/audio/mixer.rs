@@ -9,6 +9,8 @@
 
 use std::sync::Arc;
 
+use rtrb::Producer;
+
 /// Sounds that can play at once; one more is dropped.
 pub const MAX_VOICES: usize = 64;
 /// Sounds that can wait for their frame; one more is dropped.
@@ -80,6 +82,9 @@ pub struct Mixer {
     /// The earliest `start_frame` of the waiting sounds; `u64::MAX` when none wait.
     next_due: u64,
     counters: Counters,
+    /// Where a sample goes when its sound is over, so that the last reference to it is let go of
+    /// outside the audio callback (freeing memory there can take long enough to be heard).
+    graveyard: Option<Producer<Arc<[f32]>>>,
 }
 
 impl Default for Mixer {
@@ -90,7 +95,20 @@ impl Default for Mixer {
 
 impl Mixer {
     pub fn new() -> Mixer {
-        Mixer { voices: Vec::with_capacity(MAX_VOICES), pending: Vec::with_capacity(MAX_PENDING), frame: 0, next_due: u64::MAX, counters: Counters::default() }
+        Mixer { voices: Vec::with_capacity(MAX_VOICES), pending: Vec::with_capacity(MAX_PENDING), frame: 0, next_due: u64::MAX, counters: Counters::default(), graveyard: None }
+    }
+
+    /// A mixer that hands the samples of finished sounds to `graveyard`.
+    pub fn with_graveyard(mut self, graveyard: Producer<Arc<[f32]>>) -> Mixer {
+        self.graveyard = Some(graveyard);
+        self
+    }
+
+    fn bury(&mut self, sample: Arc<[f32]>) {
+        if let Some(g) = self.graveyard.as_mut() {
+            // A full graveyard hands the sample back, and it is let go of here after all.
+            let _ = g.push(sample);
+        }
     }
 
     /// The first frame of the next block to render.
@@ -121,7 +139,15 @@ impl Mixer {
                 self.pending.push(trigger);
             }
             Command::CancelRun(run) => {
-                self.pending.retain(|t| t.run != run);
+                let mut i = 0;
+                while i < self.pending.len() {
+                    if self.pending[i].run == run {
+                        let t = self.pending.remove(i);
+                        self.bury(t.sample);
+                    } else {
+                        i += 1;
+                    }
+                }
                 self.next_due = self.pending.iter().map(|t| t.start_frame).min().unwrap_or(u64::MAX);
                 for v in self.voices.iter_mut().filter(|v| v.run == run) {
                     v.fade();
@@ -150,28 +176,31 @@ impl Mixer {
 
     /// Starts the waiting sounds whose frame has come, in the order they were queued.
     fn start_due(&mut self, now: u64, block_start: u64) {
-        let Mixer { voices, pending, counters, .. } = self;
         let mut next = u64::MAX;
-        pending.retain_mut(|t| {
-            if t.start_frame > now {
-                next = next.min(t.start_frame);
-                return true;
+        let mut i = 0;
+        while i < self.pending.len() {
+            if self.pending[i].start_frame > now {
+                next = next.min(self.pending[i].start_frame);
+                i += 1;
+                continue;
             }
+            // In the order they were queued, so sounds that start together choke each other predictably.
+            let t = self.pending.remove(i);
             if t.start_frame < block_start {
-                counters.late += 1;
+                self.counters.late += 1;
             }
-            for v in voices.iter_mut() {
+            for v in self.voices.iter_mut() {
                 if v.group < 32 && t.chokes & (1 << v.group) != 0 {
                     v.fade();
                 }
             }
-            if voices.len() < MAX_VOICES {
-                voices.push(Voice { run: t.run, sample: t.sample.clone(), pos: 0, gain: t.gain, group: t.group, fade_left: None });
+            if self.voices.len() < MAX_VOICES {
+                self.voices.push(Voice { run: t.run, sample: t.sample, pos: 0, gain: t.gain, group: t.group, fade_left: None });
             } else {
-                counters.dropped_voices += 1;
+                self.counters.dropped_voices += 1;
+                self.bury(t.sample);
             }
-            false
-        });
+        }
         self.next_due = next;
     }
 
@@ -182,7 +211,8 @@ impl Mixer {
             let v = &mut self.voices[i];
             let ramp = match v.fade_left {
                 Some(0) => {
-                    self.voices.swap_remove(i);
+                    let v = self.voices.swap_remove(i);
+                    self.bury(v.sample);
                     continue;
                 }
                 Some(left) => {
@@ -198,7 +228,8 @@ impl Mixer {
                     i += 1;
                 }
                 None => {
-                    self.voices.swap_remove(i);
+                    let v = self.voices.swap_remove(i);
+                    self.bury(v.sample);
                 }
             }
         }
