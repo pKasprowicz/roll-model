@@ -286,6 +286,8 @@ python3 tools/build_notices.py      # target/notices/THIRD_PARTY_NOTICES.txt</co
 {{code:src/control.rs::fn store(}}
 <p>Every frame <code>sync_control</code> copies the relevant settings (and the effective gain, with mute and solo applied) into the <code>Control</code>s. There are three: one for takes and Listen, one for the free metronome and one for the audition button, so the audition never disturbs Listen.</p>
 
+<h3 id="ramp">Tempo ramp</h3>
+<p>A looping run can speed up: <code>PlayOptions.ramp</code> is a <code>Ramp { every, step }</code>. The cues of a pass are always given for the starting tempo; <code>run_with</code> squeezes pass <em>p</em> by <code>1 / factor(p)</code> and starts it where the shorter earlier passes ended (<code>start_of</code>), so there is no gap and no new cue list. Everything that shows where the music is (Listen's playhead and label, the metronome's beat lights and rolling staff) asks <code>Ramp::locate</code> or <code>base_seconds</code> to turn real seconds into seconds at the starting tempo, and then works as before. The count-in is never squeezed. The test with the fake sink measures the gaps between cues.</p>
 <h3 id="sink">The Sink seam</h3>
 <p>What a cue <em>sounds like</em> is decided in one pure function, <code>dispatch</code>, which talks to a trait. The real implementation drives the devices; tests pass a fake that records calls.</p>
 {{code:src/playback.rs::pub trait Sink}}

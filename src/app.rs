@@ -28,7 +28,7 @@ use crate::loader::load_score;
 use crate::metronome::{self, Metronome};
 use crate::midi::{self, EventQueue, InputHandle, RawEvent};
 use crate::musicxml::ParseOptions;
-use crate::playback::Player;
+use crate::playback::{Player, Ramp};
 use crate::render::{self};
 use crate::score::Score;
 use crate::widgets;
@@ -124,6 +124,8 @@ struct Listen {
     /// Seconds per beat of the first measure, and the beats of the count-in.
     beat_sec: f64,
     count_in_beats: u32,
+    /// The tempo ramp it plays with (none: `every` is 0).
+    ramp: Ramp,
     /// What it was started with; a change of range or tempo (or of the score) restarts it.
     from: usize,
     to: usize,

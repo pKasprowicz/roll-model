@@ -184,6 +184,7 @@ cargo build --release --no-default-features          # without the sound card (d
 <tr><td><em>click (K)</em></td><td>Switches the metronome on or off at any moment, also while playing or recording. The count-in always sounds.</td></tr>
 <tr><td><em>notes</em></td><td>Plays the notes of the score in Listen. Switch them off to use Listen as a click track of the selected bars.</td></tr>
 <tr><td><em>loop</em></td><td>Repeats the selected bars in Listen until you stop it. Unticking it lets the current round finish.</td></tr>
+<tr><td><em>ramp +</em></td><td>A tempo ramp for Listen with <em>loop</em> on: the tempo rises by this many per cent of the written tempo every <em>every</em> passes (2 passes at 80 %, then 85 %, and so on), up to three times the starting tempo. The label next to the Listen button shows the tempo in force. Set at the next start of Listen; <em>off</em> by default.</td></tr>
 <tr><td><em>count-in bars</em></td><td>0&ndash;2 bars of clicks before the music (and before recording).</td></tr>
 <tr><td><em>in Listen</em></td><td>Whether Listen starts with the count-in too. Switch it off to hear the music at once; a recording always has the count-in.</td></tr>
 </tbody></table>
@@ -285,6 +286,7 @@ cargo build --release --no-default-features          # without the sound card (d
 <p>A click track that needs no score. Press <em>Start</em> (or <kbd>M</kbd>) and set:</p>
 <ul>
 <li><em>tempo</em> 20&ndash;300 BPM, <em>beats per bar</em> 1&ndash;12, and the <em>subdivision</em>: none, eighths, triplets or sixteenths; <em>volume</em>.</li>
+<li><em>faster by</em> (off by default) and <em>every</em>: a tempo ramp, +1 to +20 BPM every 1 to 32 bars, up to three times the starting tempo. It runs from the next start, and the beat lights and the rolling staff follow it.</li>
 <li>The first beat of each bar is accented and subdivisions are softer. One circle per beat lights up as it sounds (the first in red).</li>
 <li>Changes while it runs take effect after a moment.</li>
 </ul>
@@ -591,7 +593,8 @@ ring  = tempo -&gt; cc 20 scale=127      # a plain value 0 to 127 instead of Mac
 <tr><td><code>bars_per_row</code>, <code>layout_align_bar</code></td><td>Score layout</td></tr>
 <tr><td><code>recent</code> (repeated)</td><td>Recent scores, newest first</td></tr>
 <tr><td><code>layout</code> (repeated)</td><td>Row layout of a score: bars per row, the bar that starts a row, and the file</td></tr>
-<tr><td><code>metro_bpm</code>, <code>metro_beats</code>, <code>metro_sub</code>, <code>metro_preview</code></td><td>Metronome tab</td></tr>
+<tr><td><code>metro_bpm</code>, <code>metro_beats</code>, <code>metro_sub</code>, <code>metro_preview</code>, <code>metro_ramp_bpm</code>, <code>metro_ramp_bars</code></td><td>Metronome tab</td></tr>
+<tr><td><code>ramp_percent</code>, <code>ramp_passes</code></td><td>Tempo ramp of Listen</td></tr>
 <tr><td><code>controller_preset</code>, <code>controller_port</code></td><td>Control surface</td></tr>
 <tr><td><code>rudiment</code>, <code>rudiment_repeats</code>, <code>rudiment_nard_only</code>, <code>rudiment_ladder</code></td><td>Rudiments tab</td></tr>
 <tr><td><code>rudiment_bpm.N</code>, <code>rudiment_best.N</code></td><td>Tempo last used and best clean tempo of rudiment N</td></tr>

@@ -8,7 +8,7 @@ use egui::{pos2, vec2, RichText, Sense, Stroke};
 
 use super::{DrumApp, Source};
 use crate::metronome::HAS_AUDIO;
-use crate::playback::{self, PlayOptions, Player, Subdivision};
+use crate::playback::{self, PlayOptions, Player, Ramp, Subdivision};
 use crate::render;
 use crate::score::Score;
 use crate::widgets;
@@ -20,6 +20,9 @@ const RESTART_DELAY: Duration = Duration::from_millis(300);
 pub(super) struct Run {
     zero: Instant,
     beat_sec: f64,
+    /// Seconds of one bar at the starting tempo, and the tempo ramp it runs with.
+    bar_sec: f64,
+    ramp: Ramp,
     /// Tenths of a BPM, beats per bar, subdivision: a change restarts it.
     signature: (i32, u32, usize),
     /// A changed signature and since when it has been stable.
@@ -29,6 +32,15 @@ pub(super) struct Run {
 impl DrumApp {
     fn metro_signature(&self) -> (i32, u32, usize) {
         ((self.cfg.metro_bpm * 10.0).round() as i32, self.cfg.metro_beats, self.cfg.metro_sub)
+    }
+
+    /// The metronome gets `metro_ramp_bpm` faster every `metro_ramp_bars` bars.
+    pub(super) fn metro_ramp(&self) -> Ramp {
+        let c = &self.cfg;
+        if c.metro_ramp_bpm == 0 || c.metro_bpm <= 0.0 {
+            return Ramp::default();
+        }
+        Ramp { every: c.metro_ramp_bars, step: c.metro_ramp_bpm as f64 / c.metro_bpm as f64 }
     }
 
     /// The click goes where the Sound settings send it; there are no drums.
@@ -46,6 +58,7 @@ impl DrumApp {
             click_note: c.click_note,
             click_channel: c.click_channel,
             drum_notes: BTreeMap::new(),
+            ramp: self.metro_ramp(),
         }
     }
 
@@ -69,8 +82,12 @@ impl DrumApp {
         // Half a second of lead: the sound device needs time to open.
         let zero = Instant::now() + Duration::from_millis(500);
         self.metro_run.player = Some(Player::start(zero, cues, bar_len, opts, self.metro_run.control.clone()));
-        self.metro_run.run = Some(Run { zero, beat_sec: 60.0 / bpm, signature: self.metro_signature(), pending: None });
+        self.metro_run.run = Some(Run { zero, beat_sec: 60.0 / bpm, bar_sec: bar_len, ramp: self.metro_ramp(), signature: self.metro_signature(), pending: None });
         self.view.status = format!("Metronome: {bpm:.0} BPM, {} beats per bar", self.cfg.metro_beats);
+        let ramp = self.metro_ramp();
+        if ramp.every > 0 {
+            self.view.status.push_str(&format!(", {} BPM faster every {} bars", self.cfg.metro_ramp_bpm, ramp.every));
+        }
     }
 
     pub(super) fn stop_metro(&mut self) {
@@ -138,6 +155,13 @@ impl DrumApp {
                 }
             });
             widgets::slider(ui, "volume", &mut self.cfg.click_volume, 0.0..=1.0, "", 0.02);
+            ui.horizontal(|ui| {
+                widgets::slider_with_zero(ui, "faster by", &mut self.cfg.metro_ramp_bpm, 0..=20, " BPM", 1.0, Some("off"))
+                    .on_hover_text("A tempo ramp: the metronome gets faster by this much every few bars, up to three times the starting tempo. Takes effect at the next start.");
+                if self.cfg.metro_ramp_bpm > 0 {
+                    widgets::slider(ui, "every", &mut self.cfg.metro_ramp_bars, 1..=32, " bars", 1.0);
+                }
+            });
         });
         ui.add_space(8.0);
         ui.label(
@@ -159,7 +183,7 @@ impl DrumApp {
             Some(d) => d.as_secs_f64(),
             None => -run.zero.duration_since(now).as_secs_f64(),
         };
-        start_q + (elapsed / run.beat_sec).rem_euclid(len_q.max(1e-6))
+        start_q + (run.ramp.base_seconds(run.bar_sec, elapsed) / run.beat_sec).rem_euclid(len_q.max(1e-6))
     }
 
     /// The loaded score, or with none the metronome's own bar, scrolling past a
@@ -232,7 +256,7 @@ impl DrumApp {
         let painter = ui.painter_at(rect);
         let current = self.metro_run.run.as_ref().and_then(|run| {
             let elapsed = Instant::now().checked_duration_since(run.zero)?.as_secs_f64();
-            let beat = elapsed / run.beat_sec;
+            let beat = run.ramp.base_seconds(run.bar_sec, elapsed) / run.beat_sec;
             Some((beat.floor() as u64 % beats as u64, 1.0 - beat.fract() as f32))
         });
         let outline = ui.visuals().widgets.noninteractive.fg_stroke.color.gamma_multiply(0.5);

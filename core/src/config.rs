@@ -23,6 +23,10 @@ pub struct Config {
     pub count_in_bars: u32,
     /// Listen starts with the count-in too (a take always does).
     pub listen_count_in: bool,
+    /// Listen with the loop on raises the tempo by `ramp_percent` (points of the written tempo,
+    /// 0 = off) every `ramp_passes` passes.
+    pub ramp_percent: u32,
+    pub ramp_passes: usize,
     pub click_audio: bool,
     pub click_volume: f32,
     pub click_midi: bool,
@@ -62,6 +66,9 @@ pub struct Config {
     pub metro_sub: usize,
     /// Show the loaded score rolling by on the Metronome tab.
     pub metro_preview: bool,
+    /// The free metronome gets faster by `metro_ramp_bpm` (0 = off) every `metro_ramp_bars` bars.
+    pub metro_ramp_bpm: u32,
+    pub metro_ramp_bars: usize,
     /// Hardware controller: a built-in preset's name or the name of a file in the
     /// controllers folder; empty = none.
     pub controller_preset: String,
@@ -119,6 +126,8 @@ impl Default for Config {
             metronome_during_take: true,
             count_in_bars: 1,
             listen_count_in: true,
+            ramp_percent: 0,
+            ramp_passes: 2,
             click_audio: true,
             click_volume: 0.5,
             click_midi: false,
@@ -144,6 +153,8 @@ impl Default for Config {
             metro_beats: 4,
             metro_sub: 0,
             metro_preview: true,
+            metro_ramp_bpm: 0,
+            metro_ramp_bars: 4,
             controller_preset: DEFAULT_CONTROLLER.to_string(),
             controller_port: String::new(),
             rudiment: 1,
@@ -301,6 +312,8 @@ const KEYS: &[Key] = &[
     key!("metronome_during_take", c.metronome_during_take, Flag),
     key!("count_in_bars", c.count_in_bars, number(0, 4)),
     key!("listen_count_in", c.listen_count_in, Flag),
+    key!("ramp_percent", c.ramp_percent, number(0, 50)),
+    key!("ramp_passes", c.ramp_passes, number(1, 32)),
     key!("click_audio", c.click_audio, Flag),
     key!("click_volume", c.click_volume, number(f32::MIN, f32::MAX)),
     key!("click_midi", c.click_midi, Flag),
@@ -321,6 +334,8 @@ const KEYS: &[Key] = &[
     key!("metro_beats", c.metro_beats, number(1, 12)),
     key!("metro_sub", c.metro_sub, number(0, 3)),
     key!("metro_preview", c.metro_preview, Flag),
+    key!("metro_ramp_bpm", c.metro_ramp_bpm, number(0, 60)),
+    key!("metro_ramp_bars", c.metro_ramp_bars, number(1, 64)),
     key!("controller_preset", c.controller_preset, Text),
     key!("controller_port", c.controller_port, Text),
     key!("trigger_enabled", c.trigger_enabled, Flag),

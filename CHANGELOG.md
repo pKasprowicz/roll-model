@@ -7,6 +7,7 @@ All notable changes are recorded here. The format follows [Keep a Changelog](htt
 ## [Unreleased]
 
 ### Added
+- **A tempo ramp for Listen and the metronome**: with *loop* on, *ramp +* on the Score tab raises Listen's tempo by that many per cent of the written tempo every few passes; the Metronome tab's *faster by* does the same in BPM every few bars. Both stop at three times the starting tempo, are off by default, and take effect at the next start. The player squeezes the later passes in one go, without a gap; the playhead, the position label (which now shows the tempo in force), the beat lights and the rolling staff follow it.
 - **Each score remembers its row layout** (bars per row and the bar that starts a row, in the Layout menu of the Score tab): open the score again and its rows are as you left them. The last 30 scores are kept; a score never laid out keeps the settings on screen.
 
 ## [0.7.1] - 2026-10-30
