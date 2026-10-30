@@ -1035,8 +1035,14 @@ mod tests {
         // keep their places.
         let fixed = LayoutOpts { bars_per_row: 4, break_at_pause: true, ..LayoutOpts::default() };
         assert_eq!(layout(&score, W, 1.0, fixed).systems, [(0, 2), (2, 4), (4, 6)]);
+        // Empty bars in a row make one pause: the row ends after the last of them.
+        let empty = |measure: usize| Rest { measure, q: q(measure, 0.0), dur_q: 4.0, up: true, whole_bar: true };
+        score.notes.clear();
+        score.rests = vec![empty(0), empty(1), empty(2)];
+        assert_eq!(layout(&score, 2400.0, 1.0, on).systems, [(0, 3), (3, 6)]);
+        score.rests = vec![Rest { measure: 1, q: q(1, 2.0), dur_q: 2.0, up: true, whole_bar: false }];
         // A pause at the end of the score adds no empty row.
-        score.rests.push(Rest { measure: 5, q: q(5, 0.0), dur_q: 4.0, up: true, whole_bar: true });
+        score.rests.push(empty(5));
         assert_eq!(layout(&score, 2400.0, 1.0, on).systems.last(), Some(&(2, 6)));
     }
 

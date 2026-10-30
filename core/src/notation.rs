@@ -181,7 +181,7 @@ fn tuplet_of(onsets: &[Onset], start: f64) -> Option<u8> {
 
 /// For each measure, whether it ends with a pause: a rest runs to the end of the bar and no note
 /// starts during it (in any voice), or the whole bar is a rest. A rest under notes of another voice
-/// is not a pause.
+/// is not a pause. A run of empty bars counts once, at its last bar.
 pub fn pause_bars(score: &Score) -> Vec<bool> {
     let mut last_onset: Vec<Option<f64>> = vec![None; score.measures.len()];
     for n in score.notes.iter().filter(|n| !n.grace) {
@@ -195,6 +195,12 @@ pub fn pause_bars(score: &Score) -> Vec<bool> {
         let reaches_end = r.whole_bar || r.q + r.dur_q >= m.end_q() - EPS;
         if reaches_end && last_onset[r.measure].is_none_or(|q| q < r.q - EPS) {
             pauses[r.measure] = true;
+        }
+    }
+    // Bars with no note at all that follow one another are one pause: the break comes after the last.
+    for i in 0..pauses.len().saturating_sub(1) {
+        if pauses[i] && last_onset[i].is_none() && last_onset[i + 1].is_none() && pauses[i + 1] {
+            pauses[i] = false;
         }
     }
     pauses
