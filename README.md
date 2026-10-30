@@ -168,7 +168,7 @@ Settings are saved automatically. Sliders show their caption in front of them, a
 
 **Audio output device.** By default sound goes to the system's default output. Pick another one on the Sound page (for example a USB interface) and the click, Listen and the calibration clicks follow it. If the chosen device is not connected, the default is used and a message says so.
 
-**Score layout.** The **Layout** button on the Score tab sets *bars per row* (auto fits as many as the width allows) and *start a row at bar*. With a fixed number every bar has the same width, so barlines line up from row to row, and the first row may be shorter: with 4 bars per row and a row starting at bar 2 you get `[1] [2–5] [6–9] …`. If that many bars do not fit the window, fewer are shown and a note says so. The bar number is the position in the score as shown (the same numbering as the Measures sliders); with repeats expanded the numbers printed above the bars can repeat, and the button shows the printed number of the chosen bar.
+**Score layout.** The **Layout** button on the Score tab sets *bars per row* (auto fits as many as the width allows) and *start a row at bar*. With a fixed number every bar has the same width, so barlines line up from row to row, and the first row may be shorter: with 4 bars per row and a row starting at bar 2 you get `[1] [2–5] [6–9] …`. If that many bars do not fit the window, fewer are shown and a note says so. The zoom slider only works with automatic rows (with a fixed number it is greyed out: the bars fill the width). A bar that ends with a pause ends its row (*new row after a pause* in the same menu, on by default): the score goes on in the next row and the bars are counted from there. A rest under notes of another voice does not count as a pause, and neither does the rest of an empty bar in a run of them: the row ends after the last empty bar. The bar number is the position in the score as shown (the same numbering as the Measures sliders); with repeats expanded the numbers printed above the bars can repeat, and the button shows the printed number of the chosen bar.
 
 ## Latency
 
@@ -186,7 +186,7 @@ Every audio and MIDI path adds some delay. Use **Settings → Timing → Calibra
 
 ## MusicXML support
 
-Partwise MusicXML 2.0–4.0: multiple voices (`backup`/`forward`), chords, tempo changes (`sound tempo` or metronome marks), time-signature changes, pickup bars, repeats with 1st/2nd endings (expanded by default), ties, accents, ghost notes (parenthesised noteheads), grace notes, notehead shapes. Instruments are identified from `midi-unpitched` (General MIDI), then the instrument name, then staff position and notehead. Not supported: D.S./D.C./coda jumps and `score-timewise` files.
+Partwise MusicXML 2.0–4.0: multiple voices (`backup`/`forward`), chords, tempo changes (`sound tempo` or metronome marks), time-signature changes, pickup bars, repeats with 1st/2nd endings (expanded by default), ties, rests (drawn; the voice decides whether a rest goes high or low), accents, ghost notes (parenthesised noteheads), grace notes, notehead shapes. Instruments are identified from `midi-unpitched` (General MIDI), then the instrument name, then staff position and notehead. Not supported: D.S./D.C./coda jumps and `score-timewise` files.
 
 ## License
 
