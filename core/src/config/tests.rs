@@ -48,6 +48,7 @@ fn roundtrip() {
         metronome_during_take: false,
         count_in_bars: 2,
         listen_count_in: false,
+        break_at_pause: false,
         ramp_percent: 5,
         ramp_passes: 3,
         metro_ramp_bpm: 4,

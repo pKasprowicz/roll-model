@@ -23,6 +23,8 @@ pub struct Config {
     pub count_in_bars: u32,
     /// Listen starts with the count-in too (a take always does).
     pub listen_count_in: bool,
+    /// A bar that ends with a pause is the last of its row on the Score tab.
+    pub break_at_pause: bool,
     /// Listen with the loop on raises the tempo by `ramp_percent` (points of the written tempo,
     /// 0 = off) every `ramp_passes` passes.
     pub ramp_percent: u32,
@@ -126,6 +128,7 @@ impl Default for Config {
             metronome_during_take: true,
             count_in_bars: 1,
             listen_count_in: true,
+            break_at_pause: true,
             ramp_percent: 0,
             ramp_passes: 2,
             click_audio: true,
@@ -312,6 +315,7 @@ const KEYS: &[Key] = &[
     key!("metronome_during_take", c.metronome_during_take, Flag),
     key!("count_in_bars", c.count_in_bars, number(0, 4)),
     key!("listen_count_in", c.listen_count_in, Flag),
+    key!("break_at_pause", c.break_at_pause, Flag),
     key!("ramp_percent", c.ramp_percent, number(0, 50)),
     key!("ramp_passes", c.ramp_passes, number(1, 32)),
     key!("click_audio", c.click_audio, Flag),

@@ -83,6 +83,8 @@ pub struct LayoutOpts {
     pub bars_per_row: usize,
     /// Position (1-based, in the score as shown) of a bar that must start a row; 0 = none.
     pub align_bar: usize,
+    /// A bar that ends with a pause is the last of its row.
+    pub break_at_pause: bool,
 }
 
 pub const GREEN: Color32 = Color32::from_rgb(0x2e, 0xb8, 0x5c);
@@ -165,8 +167,25 @@ fn typical_len_q(score: &Score) -> f64 {
         .max(0.25)
 }
 
+/// Cuts the rows `systems` after every bar in `pauses` that is not the last of the score.
+fn break_after(systems: Vec<(usize, usize)>, pauses: &[bool]) -> Vec<(usize, usize)> {
+    let mut out = Vec::new();
+    for (a, b) in systems {
+        let mut start = a;
+        for i in a..b.saturating_sub(1) {
+            if pauses.get(i).copied().unwrap_or(false) {
+                out.push((start, i + 1));
+                start = i + 1;
+            }
+        }
+        out.push((start, b));
+    }
+    out
+}
+
 fn layout(score: &Score, width: f32, zoom: f32, opts: LayoutOpts) -> Layout {
     let n = score.measures.len();
+    let pauses = if opts.break_at_pause { notation::pause_bars(score) } else { Vec::new() };
     let line_w = (width - LEFT - 8.0).max(200.0);
     let align = (opts.align_bar >= 1 && opts.align_bar <= n).then(|| opts.align_bar - 1);
     let fixed = opts.bars_per_row > 0;
@@ -191,13 +210,15 @@ fn layout(score: &Score, width: f32, zoom: f32, opts: LayoutOpts) -> Layout {
         for (i, s) in starts.iter().enumerate() {
             systems.push((*s, starts.get(i + 1).copied().unwrap_or(n)));
         }
+        systems = break_after(systems, &pauses);
     } else {
         ppq = 56.0 * zoom;
         let mut start = 0usize;
         let mut w = 0.0f32;
         for (i, m) in score.measures.iter().enumerate() {
             let mw = m.len_q as f32 * ppq + 2.0 * MEASURE_PAD;
-            if i > start && (w + mw > line_w || align == Some(i)) {
+            let after_pause = i > 0 && pauses.get(i - 1).copied().unwrap_or(false);
+            if i > start && (w + mw > line_w || align == Some(i) || after_pause) {
                 systems.push((start, i));
                 start = i;
                 w = 0.0;
@@ -977,10 +998,46 @@ mod tests {
     }
 
     const W: f32 = 1300.0;
-    const FIXED: fn(usize, usize) -> LayoutOpts = |bars_per_row, align_bar| LayoutOpts { bars_per_row, align_bar };
+    const FIXED: fn(usize, usize) -> LayoutOpts = |bars_per_row, align_bar| LayoutOpts { bars_per_row, align_bar, break_at_pause: false };
 
     fn width_of(lay: &Layout, bar: usize) -> f32 {
         lay.measures[bar].w
+    }
+
+    #[test]
+    fn a_bar_that_ends_with_a_pause_ends_its_row() {
+        use crate::score::Rest;
+        let mut score = score_of(&[4.0; 6]);
+        // Bar 2 (index 1) ends with a rest from its third beat; bar 5 has a rest but a note after it.
+        let q = |bar: usize, beat: f64| bar as f64 * 4.0 + beat;
+        score.rests = vec![
+            Rest { measure: 1, q: q(1, 2.0), dur_q: 2.0, up: true, whole_bar: false },
+            Rest { measure: 4, q: q(4, 1.0), dur_q: 3.0, up: false, whole_bar: false },
+        ];
+        let note = |measure: usize, q: f64| crate::score::ScoreNote {
+            q,
+            measure,
+            lane: Lane::Snare,
+            staff_step: 5,
+            head: NoteHead::Normal,
+            accent: false,
+            ghost: false,
+            grace: false,
+            grace_order: 0,
+            hand: None,
+            stem_up: None,
+        };
+        score.notes = vec![note(1, q(1, 0.0)), note(4, q(4, 2.0))];
+        let on = LayoutOpts { break_at_pause: true, ..LayoutOpts::default() };
+        assert_eq!(layout(&score, 2400.0, 1.0, on).systems, [(0, 2), (2, 6)], "only the pause breaks");
+        assert_eq!(layout(&score, 2400.0, 1.0, LayoutOpts::default()).systems, [(0, 6)], "off: one row");
+        // A fixed number of bars per row: the row of four is cut where the pause is; the rows after it
+        // keep their places.
+        let fixed = LayoutOpts { bars_per_row: 4, break_at_pause: true, ..LayoutOpts::default() };
+        assert_eq!(layout(&score, W, 1.0, fixed).systems, [(0, 2), (2, 4), (4, 6)]);
+        // A pause at the end of the score adds no empty row.
+        score.rests.push(Rest { measure: 5, q: q(5, 0.0), dur_q: 4.0, up: true, whole_bar: true });
+        assert_eq!(layout(&score, 2400.0, 1.0, on).systems.last(), Some(&(2, 6)));
     }
 
     #[test]
