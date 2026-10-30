@@ -143,6 +143,7 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/v')
         with:
           files: dist/*
+          body: Roll Model is free for noncommercial use. If it helps your practice, you can [buy me a coffee](https://buymeacoffee.com/pkasprowicz).
           generate_release_notes: true
       # The same release is updated each time: its files are replaced and it
       # points at the newest preview commit.
