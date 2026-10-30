@@ -6,11 +6,19 @@ All notable changes are recorded here. The format follows [Keep a Changelog](htt
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-10-30
+
+A new audio engine: the click and the built-in drums start at an exact moment of one output stream that stays open, instead of at the next audio callback, so their timing no longer wobbles by up to 10 ms. **Run Settings → Timing → Calibrate again after updating.** Covered by unit tests (271), and measured by loopback recording on two Windows machines. Unplugging the output, a missing named output, changing the Windows default output and a long looping Listen with a tempo ramp (up to 300 %) were tried by hand; Listen was listened to on the new engine (the cymbals and the WAV override were not judged). Not tried: a real V31 and controllers, and audio output on Linux and macOS.
+
 ### Changed
-- **Clicks and the built-in drums start at an exact moment** (a new audio engine in place of rodio): sounds are handed to one output stream that stays open, about 30 ms ahead, and start at the very frame that matches their time instead of at the next audio callback. On the development machine (Windows 11, Realtek output) the onsets of a metronome at 240 BPM in sixteenths used to flip between two positions 10 ms apart and now stay within 0.1 ms, and the clicks are spaced evenly (62.5 ms) where they used to alternate between 60 and 70 ms. The sound output setting (`audio_output`) is unchanged; the first sound opens the output, later ones do not open it again. **Run Settings → Timing → Calibrate again**: the delay of the click changed with the engine.
+- **Clicks and the built-in drums start at an exact moment** (a new audio engine in place of rodio): sounds are handed to one output stream that stays open, about 30 ms ahead, and start at the very frame that matches their time instead of at the next audio callback. Measured by recording the output (WASAPI loopback): on the development machine (Windows 11, Realtek output) the onsets of a metronome at 240 BPM in sixteenths used to flip between two positions 10 ms apart and now stay put (0.04-0.06 ms per place in the bar, 1.1 ms at the very worst, which comes from the sound card's effects), and the clicks are spaced evenly (62.5 ms) where they used to alternate between 60 and 70 ms; on a second machine with a USB audio interface the widest spread is 0.02 ms. The average delay drops by about 5 ms (an estimate); the rest of the delay is the operating system's shared mode and is not in the program's hands. The sound output setting (`audio_output`) is unchanged; the first sound opens the output, later ones do not open it again. **Run Settings → Timing → Calibrate again**: the delay of the click changed with the engine.
 - **Settings → Sound shows the open output** (its name, rate, the delay the driver reports, and how many sounds came too late, by how much at worst, or were dropped) and says that Bluetooth audio cannot be used for timing.
 - **Settings → Timing says when the latency compensation is from an earlier audio engine** (new setting `latency_engine`, written by Calibrate and when the slider is moved), with a *Keep this value* button. A file from an earlier version has no engine recorded, so a calibrated latency shows the note once.
 - **The sound output library is cpal 0.17** (rodio is gone); a stream that fails (for example an unplugged device) is opened again at the next start, and so is the output when *System default* is chosen and the default output in Windows has changed since the last start.
+
+### Added
+- **The developer guide has a chapter on the audio system**: where audio latency comes from (constant delay against jitter), the time model, the threads and the data between them, one sound's path through the engine, and how the engine is tested and measured; the data flow figure and a thread inventory are new.
+- **`tools/audio_baseline.ps1` and `examples/audio_probe.rs`** measure the timing of the output from outside: they record the default output by loopback and report the spread of each sound start in a metronome bar.
 
 ## [0.7.3] - 2026-10-30
 
