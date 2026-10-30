@@ -377,3 +377,13 @@ fn copies_of_a_preset_never_overwrite() {
     assert_eq!(controller::custom_presets(&dir).len(), 2);
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+#[test]
+fn a_run_has_a_count_in_only_when_asked_for() {
+    let mut app = app_with_score();
+    app.cfg.count_in_bars = 1;
+    let beats = app.score.as_ref().unwrap().measures[0].beats;
+    assert_eq!(app.plan_run(true).unwrap().count_in_beats, beats);
+    assert_eq!(app.plan_run(false).unwrap().count_in_beats, 0, "this is what Listen asks for when its count-in is off");
+    assert!(app.cfg.listen_count_in, "Listen has one by default");
+}

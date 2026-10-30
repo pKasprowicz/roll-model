@@ -6,6 +6,9 @@ All notable changes are recorded here. The format follows [Keep a Changelog](htt
 
 ## [Unreleased]
 
+### Added
+- **Listen can start without the count-in**: the *in Listen* box next to *count-in bars* on the Score tab (setting `listen_count_in`, on by default). A recording always has the count-in.
+
 ### Changed
 - **The splash shows how long each start-up step took** (for example `Found 3 MIDI inputs and 2 MIDI outputs · 41 ms`), so slow drivers and devices can be seen at a glance.
 

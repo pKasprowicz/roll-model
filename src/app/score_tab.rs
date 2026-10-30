@@ -123,6 +123,8 @@ impl DrumApp {
             ui.checkbox(&mut self.playback.looping, "loop")
                 .on_hover_text("Repeat the selected measures in Listen until it is stopped. Switching it off lets the current round finish.");
             widgets::slider(ui, "count-in bars", &mut self.cfg.count_in_bars, 0..=2, "", 1.0);
+            ui.checkbox(&mut self.cfg.listen_count_in, "in Listen")
+                .on_hover_text("Start Listen with the count-in too. A recording always has one; switch this off to hear the music at once.");
         });
     }
 

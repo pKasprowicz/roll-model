@@ -47,6 +47,7 @@ fn roundtrip() {
         midi_in_port: "Roland V31 MIDI 1".into(),
         metronome_during_take: false,
         count_in_bars: 2,
+        listen_count_in: false,
         playback_audio: false,
         playback_volume: 0.25,
         playback_midi: true,

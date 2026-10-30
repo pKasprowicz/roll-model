@@ -185,6 +185,7 @@ cargo build --release --no-default-features          # without the sound card (d
 <tr><td><em>notes</em></td><td>Plays the notes of the score in Listen. Switch them off to use Listen as a click track of the selected bars.</td></tr>
 <tr><td><em>loop</em></td><td>Repeats the selected bars in Listen until you stop it. Unticking it lets the current round finish.</td></tr>
 <tr><td><em>count-in bars</em></td><td>0&ndash;2 bars of clicks before the music (and before recording).</td></tr>
+<tr><td><em>in Listen</em></td><td>Whether Listen starts with the count-in too. Switch it off to hear the music at once; a recording always has the count-in.</td></tr>
 </tbody></table>
 <p>Range and tempo are not saved; they start fresh with each score.</p>
 
@@ -579,7 +580,7 @@ ring  = tempo -&gt; cc 20 scale=127      # a plain value 0 to 127 instead of Mac
 <tbody>
 <tr><td><code>midi_in_port</code>, <code>midi_out_port</code></td><td>Part of the MIDI port names</td></tr>
 <tr><td><code>latency_ms</code>, <code>perfect_ms</code>, <code>good_ms</code>, <code>window_ms</code></td><td>Timing</td></tr>
-<tr><td><code>metronome_during_take</code>, <code>count_in_bars</code></td><td>Click switch and count-in</td></tr>
+<tr><td><code>metronome_during_take</code>, <code>count_in_bars</code>, <code>listen_count_in</code></td><td>Click switch, count-in, and whether Listen has the count-in</td></tr>
 <tr><td><code>click_audio</code>, <code>click_volume</code>, <code>click_midi</code>, <code>click_note</code>, <code>click_channel</code></td><td>Metronome click</td></tr>
 <tr><td><code>playback_audio</code>, <code>playback_volume</code>, <code>playback_midi</code>, <code>playback_channel</code></td><td>Listen</td></tr>
 <tr><td><code>audio_output</code></td><td>Sound device name (empty: system default)</td></tr>

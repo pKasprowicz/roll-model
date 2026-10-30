@@ -178,7 +178,7 @@ The Rudiments tab sits between Score and Metronome. `docs/rudiments.md` is the c
 - [ ] **FEAT-1** Tempo ramp (+x BPM every n bars) for Listen and the metronome.
 - [ ] **FEAT-2** Accent patterns and tap tempo for the free metronome.
 - [ ] **FEAT-3** Remember the layout per score.
-- [ ] **FEAT-4** A Listen without count-in setting of its own.
+- [x] **FEAT-4** A Listen without count-in setting of its own. **Done**: `listen_count_in` and the *in Listen* box.
 - The click is implemented twice (a sine blip in `metronome::click_audio`, used by takes and by the player) and `Metronome` (takes, calibration) and `Player` (Listen, metronome tab) are two threads with separate loops; this is task **CD-5** below.
 - [ ] **UI-3** Shortcuts (`R`, `L`, `K`, `M`, keyboard pads) are ignored while a widget has keyboard focus (after Tab); `Esc` clears it.
 

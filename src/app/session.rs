@@ -157,7 +157,7 @@ impl DrumApp {
     /// Plays the selected measures at the chosen tempo, with the count-in and
     /// click a take would have, so the drummer can hear them first.
     pub(super) fn start_listen(&mut self) {
-        self.begin_listen(true);
+        self.begin_listen(self.cfg.listen_count_in);
     }
 
     pub(super) fn begin_listen(&mut self, count_in: bool) {
