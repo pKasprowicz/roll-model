@@ -6,6 +6,9 @@ All notable changes are recorded here. The format follows [Keep a Changelog](htt
 
 ## [Unreleased]
 
+### Added
+- **Each score remembers its row layout** (bars per row and the bar that starts a row, in the Layout menu of the Score tab): open the score again and its rows are as you left them. The last 30 scores are kept; a score never laid out keeps the settings on screen.
+
 ## [0.7.1] - 2026-10-30
 
 A small release: Listen can start without the count-in, the shortcuts work again after Tab or a click on a button, the splash shows how long each start-up step took, and the code was restructured (no change in behaviour): the part that needs no window, MIDI port or sound card is now a crate of its own, `core/`. Covered by unit and integration tests (209); the shortcut fix and the splash times were not tried with a real keyboard or devices.

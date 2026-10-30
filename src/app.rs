@@ -21,7 +21,7 @@ use std::time::{Duration, Instant};
 use egui::RichText;
 
 use crate::analysis::{Expected, Hit, Report};
-use crate::config::{Config, Paths};
+use crate::config::{Config, Paths, RowLayout};
 use crate::control::Control;
 use crate::drums::Lane;
 use crate::loader::load_score;
@@ -485,6 +485,26 @@ impl DrumApp {
         }
     }
 
+    /// The file of the Score tab's score as the settings know it (an absolute path).
+    fn score_key(&self) -> Option<String> {
+        let path = self.main_path()?;
+        Some(std::path::absolute(&path).unwrap_or(path).to_string_lossy().into_owned())
+    }
+
+    /// Puts the row layout kept for the score on screen. A score never laid out keeps what is set.
+    fn restore_layout(&mut self) {
+        let Some(layout) = self.score_key().and_then(|k| self.cfg.layout_of(&k)) else { return };
+        self.cfg.bars_per_row = layout.bars_per_row;
+        self.cfg.layout_align_bar = layout.align_bar;
+    }
+
+    /// Keeps the row layout on screen for the score, after the user changed it.
+    fn keep_layout(&mut self) {
+        if let Some(key) = self.score_key() {
+            self.cfg.remember_layout(&key, RowLayout { bars_per_row: self.cfg.bars_per_row, align_bar: self.cfg.layout_align_bar });
+        }
+    }
+
     /// What the current practice is called: the score's title, or the rudiment and its repetitions.
     fn practice_label(&self) -> String {
         let Some(score) = self.score.as_ref() else { return String::new() };
@@ -514,6 +534,7 @@ impl DrumApp {
                 self.score_path = Some(path.to_path_buf());
                 let absolute = std::path::absolute(path).unwrap_or_else(|_| path.to_path_buf());
                 self.cfg.remember_recent(&absolute.to_string_lossy());
+                self.restore_layout();
                 self.take = None;
                 self.view.error = None;
                 self.score_gen += 1;
@@ -728,6 +749,26 @@ mod tests {
         let app = DrumApp::with_config(Config::default());
         assert!(app.view.tab == Tab::Home);
         assert!(app.score.is_none(), "so the Score tab is greyed out");
+    }
+
+    #[test]
+    fn a_score_gets_its_row_layout_back_when_it_is_opened_again() {
+        let mut app = DrumApp::with_config(Config::default());
+        app.open_file(&sample());
+        assert_eq!((app.cfg.bars_per_row, app.cfg.layout_align_bar), (0, 0), "a score never laid out keeps what is set");
+        app.cfg.bars_per_row = 3;
+        app.cfg.layout_align_bar = 2;
+        app.keep_layout();
+        // Another layout is on screen for another score; this one comes back on opening.
+        app.cfg.bars_per_row = 0;
+        app.cfg.layout_align_bar = 0;
+        app.open_file(&sample());
+        assert_eq!((app.cfg.bars_per_row, app.cfg.layout_align_bar), (3, 2));
+        // Back to automatic: forgotten, and a later score keeps what is on screen.
+        app.cfg.bars_per_row = 0;
+        app.cfg.layout_align_bar = 0;
+        app.keep_layout();
+        assert!(app.cfg.layouts.is_empty());
     }
 
     #[test]

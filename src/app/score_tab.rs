@@ -97,8 +97,11 @@ impl DrumApp {
             ui.checkbox(&mut self.follow, "follow");
             ui.menu_button("Layout", |ui| {
                 ui.set_min_width(320.0);
-                widgets::slider_with_zero(ui, "bars per row", &mut self.cfg.bars_per_row, 0..=8, "", 1.0, Some("auto"));
-                widgets::slider_with_zero(ui, "start a row at bar", &mut self.cfg.layout_align_bar, 0..=n_measures, "", 1.0, Some("off"));
+                let bars = widgets::slider_with_zero(ui, "bars per row", &mut self.cfg.bars_per_row, 0..=8, "", 1.0, Some("auto"));
+                let align = widgets::slider_with_zero(ui, "start a row at bar", &mut self.cfg.layout_align_bar, 0..=n_measures, "", 1.0, Some("off"));
+                if bars.changed() || align.changed() {
+                    self.keep_layout();
+                }
                 let printed = self
                     .score
                     .as_ref()
@@ -107,7 +110,7 @@ impl DrumApp {
                 if let Some(number) = printed {
                     widgets::hint(ui, format!("Bar {} of the score as shown, printed as bar {number} in the file.", self.cfg.layout_align_bar));
                 }
-                widgets::hint(ui, "With a fixed number of bars per row every bar has the same width and the zoom no longer matters.");
+                widgets::hint(ui, "With a fixed number of bars per row every bar has the same width and the zoom no longer matters. Each score keeps its own layout.");
             });
         });
     }

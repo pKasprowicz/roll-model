@@ -186,3 +186,33 @@ fn playback_settings_are_clamped_and_default_when_missing() {
     let old = Config::from_text("latency_ms = 5\n");
     assert_eq!((old.playback_audio, old.playback_midi, old.playback_channel), (true, false, 10));
 }
+
+#[test]
+fn a_score_keeps_its_row_layout() {
+    let mut c = Config::default();
+    let four = RowLayout { bars_per_row: 4, align_bar: 0 };
+    c.remember_layout("C:/Scores/My rock beat.musicxml", four);
+    c.remember_layout("D:/other.mxl", RowLayout { bars_per_row: 2, align_bar: 3 });
+    assert_eq!(c.layout_of("C:/Scores/My rock beat.musicxml"), Some(four));
+    assert_eq!(c.layouts[0].0, "D:/other.mxl", "the latest change is first");
+    // The file keeps both, also a path with spaces.
+    let back = Config::from_text(&c.to_text());
+    assert_eq!(back.layouts, c.layouts);
+    // The automatic layout is the default: it is forgotten, not kept.
+    c.remember_layout("D:/other.mxl", RowLayout::default());
+    assert_eq!(c.layout_of("D:/other.mxl"), None);
+    assert_eq!(c.layouts.len(), 1);
+    assert!(!Config::default().to_text().contains("layout ="), "nothing is written for a score never laid out");
+}
+
+#[test]
+fn bad_layout_lines_are_ignored_and_the_list_is_capped() {
+    let c = Config::from_text("layout = x 2 a.xml\nlayout = 3\nlayout = 3 4 \nlayout = 99 99999 big.xml\nlayout = 0 0 auto.xml\n");
+    assert_eq!(c.layouts, vec![("big.xml".to_string(), RowLayout { bars_per_row: 16, align_bar: 9999 })], "clamped; auto is not kept");
+    let mut c = Config::default();
+    for i in 0..MAX_LAYOUTS + 5 {
+        c.remember_layout(&format!("score{i}.xml"), RowLayout { bars_per_row: 2, align_bar: 0 });
+    }
+    assert_eq!(c.layouts.len(), MAX_LAYOUTS);
+    assert_eq!(c.layouts[0].0, format!("score{}.xml", MAX_LAYOUTS + 4), "the oldest ones go");
+}

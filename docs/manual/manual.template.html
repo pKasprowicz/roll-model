@@ -219,6 +219,7 @@ cargo build --release --no-default-features          # without the sound card (d
 <ul>
 <li><em>zoom</em> (0.5&ndash;3) scales the notation. <em>follow</em> scrolls the score along with the playhead during playback and recording.</li>
 <li><strong>Layout</strong> opens two settings. <em>Bars per row</em>: <em>auto</em> fits as many as the width allows; a fixed number (1&ndash;8) gives every bar the same width so barlines line up from row to row (and the zoom no longer matters). If that many bars do not fit, fewer are shown and a note says so. <em>Start a row at bar</em> forces a given bar to begin a row; with 4 bars per row and a row starting at bar 2 you get <code>[1] [2&ndash;5] [6&ndash;9] &hellip;</code>.</li>
+<li>Each score keeps its own layout: open it again and its rows come back (a score you never laid out keeps the settings on screen). The last 30 scores are remembered; the automatic layout is not stored.</li>
 <li>The bar number in these settings is the position in the score as shown. With repeats expanded, the numbers printed above the bars can repeat; the Layout menu shows the printed number of the chosen bar.</li>
 </ul>
 <div class="callout"><strong class="label">Notation</strong>The staff has proportional spacing and draws noteheads and stems only: no beams, flags, rests or tuplet brackets. It is made for judging timing, not for engraving.</div>
@@ -589,6 +590,7 @@ ring  = tempo -&gt; cc 20 scale=127      # a plain value 0 to 127 instead of Mac
 <tr><td><code>keyboard_input</code>, <code>zoom</code>, <code>expand_repeats</code></td><td>General</td></tr>
 <tr><td><code>bars_per_row</code>, <code>layout_align_bar</code></td><td>Score layout</td></tr>
 <tr><td><code>recent</code> (repeated)</td><td>Recent scores, newest first</td></tr>
+<tr><td><code>layout</code> (repeated)</td><td>Row layout of a score: bars per row, the bar that starts a row, and the file</td></tr>
 <tr><td><code>metro_bpm</code>, <code>metro_beats</code>, <code>metro_sub</code>, <code>metro_preview</code></td><td>Metronome tab</td></tr>
 <tr><td><code>controller_preset</code>, <code>controller_port</code></td><td>Control surface</td></tr>
 <tr><td><code>rudiment</code>, <code>rudiment_repeats</code>, <code>rudiment_nard_only</code>, <code>rudiment_ladder</code></td><td>Rudiments tab</td></tr>

@@ -177,7 +177,7 @@ The Rudiments tab sits between Score and Metronome. `docs/rudiments.md` is the c
 - [ ] **UI-2** The numbering mismatch is still there: bars drawn in the score show their printed number (repeated after unrolling repeats), while the Measures sliders and *start a row at bar* use the position. The Layout popup shows the printed number of the chosen bar; consider showing both on the bars, or making the sliders use printed numbers.
 - [ ] **FEAT-1** Tempo ramp (+x BPM every n bars) for Listen and the metronome.
 - [ ] **FEAT-2** Accent patterns and tap tempo for the free metronome.
-- [ ] **FEAT-3** Remember the layout per score.
+- [x] **FEAT-3** Remember the layout per score. **Done**: `Config.layouts` (`RowLayout`, `layout` lines in the settings file, 30 scores, keyed by the absolute path); `restore_layout` on opening and `keep_layout` when a Layout slider changes. The zoom is not per score.
 - [x] **FEAT-4** A Listen without count-in setting of its own. **Done**: `listen_count_in` and the *in Listen* box.
 - The click is implemented twice (a sine blip in `metronome::click_audio`, used by takes and by the player) and `Metronome` (takes, calibration) and `Player` (Listen, metronome tab) are two threads with separate loops; this is task **CD-5** below.
 - [x] **UI-3** Shortcuts (`R`, `L`, `K`, `M`, keyboard pads) were ignored while a widget had keyboard focus. **Done**: `widgets::typing(ctx)` is true only when the focused widget is a text edit (a slider's value box is one), and the shortcuts use it instead of `wants_keyboard_input()`; tested headlessly. Not tried with a real keyboard.
