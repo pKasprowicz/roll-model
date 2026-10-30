@@ -13,7 +13,7 @@ mod widgets;
 use std::path::PathBuf;
 
 // The pure modules live in the core crate; this keeps their `crate::name` paths working here.
-use roll_model_core::{analysis, config, controller, controller_layout, drums, loader, musicxml, rudiments, score, trigger};
+use roll_model_core::{analysis, config, controller, controller_layout, drums, loader, musicxml, notation, rudiments, score, trigger};
 
 fn main() -> eframe::Result<()> {
     // Optional: a MusicXML file to open on start-up.

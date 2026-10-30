@@ -6,6 +6,9 @@ All notable changes are recorded here. The format follows [Keep a Changelog](htt
 
 ## [Unreleased]
 
+### Added
+- **The score is drawn with beams, flags and tuplet brackets**: eighths and shorter notes of a beat are joined by beams (hands and feet separately, as two voices; a dotted quarter in 6/8, 9/8 and 12/8), a note alone on an off-beat has flags, and triplets, sextuplets and quintuplets have a bracket with its number. Everything is worked out from where the notes fall in the beat (`core/src/notation.rs`), because the score keeps no note lengths; so **rests are not drawn yet** and a note counts as lasting until the next one of its voice. The metronome's rolling staff has none of this. Not looked at in the running app yet.
+
 ## [0.7.2] - 2026-10-30
 
 Editing controller presets gets much further (layers, lights and rings, finding how an encoder counts), Listen and the metronome can ramp the tempo, each score remembers its row layout, and the playhead no longer jumps at a barline. Covered by unit and integration tests; the playhead fix was watched in the running app. The tempo ramp (not listened to), the layer, light and Detect editing (simulated messages only, no real controller) and the layouts were not tried on devices.

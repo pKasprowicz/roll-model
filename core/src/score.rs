@@ -53,6 +53,13 @@ pub struct ScoreNote {
     pub stem_up: Option<bool>,
 }
 
+impl ScoreNote {
+    /// Whether its stem points up: as the file says, else up for the hands and down for the feet.
+    pub fn stem_is_up(&self) -> bool {
+        self.stem_up.unwrap_or(!self.lane.is_foot())
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct Measure {
     /// Measure number as printed in the file.

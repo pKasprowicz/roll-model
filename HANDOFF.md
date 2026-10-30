@@ -71,7 +71,7 @@ The hardware tasks (HW-*) have a step-by-step plan in `docs/hardware-test-plan.m
 | **UI-1** | Try with a real mouse and wheel | device |
 | **UI-2** | The bar numbering mismatch (printed number against position) | decision, code |
 | **UI-3** | Shortcuts are ignored while a widget has the focus | code |
-| **UI-4** | Notation: beams, flags, rests and tuplet brackets | code |
+| **UI-4** | Notation: beams, flags, rests and tuplet brackets | code (rests left) |
 | **FEAT-1** | Tempo ramp for Listen and the metronome | code |
 | **FEAT-2** | Accent patterns and tap tempo for the free metronome | code |
 | **FEAT-3** | Remember the layout per score | code |
@@ -154,7 +154,7 @@ The Rudiments tab sits between Score and Metronome. `docs/rudiments.md` is the c
 - [ ] **RUD-6** User-defined rudiment files (like the controller presets).
 - [ ] **RUD-7** Practice sets and routines (a list of rudiment, repeats, BPM stepped through when a take is clean).
 - [ ] **RUD-8** A progress history beyond the best clean tempo (takes are only in memory today).
-- [ ] **UI-4** The score view draws no beams or tuplet brackets, so triplet and 32nd-note rudiments rely on proportional spacing and the beat grid.
+- [ ] **UI-4** Beams, flags and tuplet brackets are drawn on the Score tab (`core/src/notation.rs` works them out from the onsets; render.rs draws them) but have not been looked at in the running app. Left: rests (the parser drops them and keeps no note lengths or voices, so they need `dur_q` and a voice on `ScoreNote`), beams on the metronome's rolling staff, and ties.
 
 ### User manual
 

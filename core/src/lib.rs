@@ -14,6 +14,7 @@ pub mod controller_layout;
 pub mod drums;
 pub mod loader;
 pub mod musicxml;
+pub mod notation;
 pub mod rudiments;
 pub mod score;
 pub mod trigger;
