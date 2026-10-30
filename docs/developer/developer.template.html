@@ -79,11 +79,13 @@
 <p>You need a recent Rust toolchain (<a href="https://rustup.rs">rustup</a>; 1.99 is the tested version, 1.85 the oldest that can parse the dependencies). On Linux install <code>libasound2-dev</code> and <code>pkg-config</code> first.</p>
 <pre><code>cargo run --release                                  # start empty
 cargo run --release -- examples/basic_rock_beat.musicxml
-cargo test                                           # all unit tests (no devices needed)
+cargo test                                           # every test of both crates (no devices needed)
+cargo test -p roll-model-core                        # the core alone: builds no GUI, MIDI or audio crate
+cargo doc -p roll-model-core --no-deps --open        # rustdoc of the core
 cargo build --release --no-default-features          # without the sound card (no rodio/cpal)
 cargo check --no-default-features                    # quick check of the other feature set</code></pre>
 <ul>
-<li>It is a <strong>binary crate only</strong> (<code>src/main.rs</code> declares every module). Tests therefore run with <code>cargo test</code>, not <code>cargo test --lib</code>, and a single test with <code>cargo test the_hands_are</code>.</li>
+<li>It is a <strong>Cargo workspace of two crates</strong>: <code>roll-model</code> (the application: window, MIDI ports, sound; <code>src/</code>) and <code>roll-model-core</code> (everything that needs none of them; <code>core/</code>). <code>default-members</code> makes <code>cargo build</code> and <code>cargo test</code> cover both. A single test runs with <code>cargo test the_hands_are</code> (a test of the application is in the binary's test target, a test of the core in the library's). The application re-exports the core's modules at its root (<code>use roll_model_core::{analysis, config, &hellip;}</code> in <code>main.rs</code>), so its code writes <code>crate::analysis</code>.</li>
 <li>Use a <strong>release build</strong> for anything that depends on timing (recording takes, keyboard pads): debug frames are slow enough to make timestamps unreliable.</li>
 <li>The feature <code>audio</code> (default) pulls in <code>rodio</code>. Without it the click and Listen can still go to a MIDI output. Code that needs the sound card is behind <code>#[cfg(feature = "audio")]</code> with a stub for the other case.</li>
 </ul>
@@ -110,7 +112,7 @@ python3 tools/build_notices.py      # target/notices/THIRD_PARTY_NOTICES.txt</co
 <li><strong>No kit?</strong> Tick <em>Settings &rarr; General &rarr; Computer keyboard plays pads</em>. The keys call the same <code>handle_event</code> as a real MIDI hit (time-stamped at frame time).</li>
 <li><strong>Monitors.</strong> <em>Settings &rarr; MIDI input</em> shows every drum hit; <em>Settings &rarr; Controller</em> shows every controller message and what it is bound to.</li>
 <li><strong>Seeing a screen without clicking.</strong> There is no UI test harness, so to look at a tab temporarily set <code>app.tab</code> (and any state) at the end of <code>DrumApp::new</code>, build, start the program with <code>APPDATA</code> pointing at a scratch folder (so your settings are not touched) and screenshot its window. Remove the patch afterwards. Headless <code>egui::Context::run</code> tests cover that a screen draws without panicking.</li>
-<li><strong>A scratch settings folder.</strong> The settings and the controller presets live in <code>%APPDATA%\RollModel</code> (and equivalents). To try a preset or a setup without touching yours, start the program with <code>APPDATA</code> pointing at a scratch folder that holds a <code>config.txt</code> and a <code>controllers</code> folder. The tests never write to the real folder: the editor takes its folder from <code>EditorState.dir</code>, which tests set to a temporary one.</li>
+<li><strong>A scratch settings folder.</strong> The settings and the controller presets live in <code>%APPDATA%\RollModel</code> (and equivalents). To try a preset or a setup without touching yours, start the program with <code>APPDATA</code> pointing at a scratch folder that holds a <code>config.txt</code> and a <code>controllers</code> folder. The tests never touch the real folder: <code>DrumApp</code> holds a <code>Paths</code> (<code>config::Paths</code>: the settings, sounds and controllers folders). The program has <code>Paths::system()</code>; a <code>DrumApp</code> made for a test has <code>Paths::none()</code> (nothing is read, saving fails), or <code>Paths::in_dir(temporary folder)</code> when the test needs files.</li>
 <li><strong>Several windows.</strong> The splash and the Manage window are windows of their own, so a screenshot must pick the right one: capture each OS window by its title (on Windows <code>PrintWindow</code> on its handle), and give a click or key a moment to arrive (the program handles input once per frame).</li>
 <li><strong>Logging.</strong> There is no logging framework; use <code>dbg!</code>/<code>eprintln!</code> from a debug build (the Windows release build hides the console).</li>
 <li><strong>Sound.</strong> Nothing in the test suite hears anything. On Windows the per-application peak meter of the output device is the way to see that the program is silent or sounding (see <code>HANDOFF.md</code> &rarr; Testing).</li>
@@ -121,7 +123,7 @@ python3 tools/build_notices.py      # target/notices/THIRD_PARTY_NOTICES.txt</co
 <h2>3. Architecture</h2>
 
 <h3 id="layers">Layers</h3>
-<p>The program has three layers. Dependencies point downwards only: the UI knows the devices and the core; the devices know the core; the core knows nothing about either.</p>
+<p>The program has three layers. Dependencies point downwards only: the UI knows the devices and the core; the devices know the core; the core knows nothing about either. The lowest layer is a crate of its own, <code>core/</code>, whose manifest lists only <code>zip</code>: it <em>cannot</em> use the window, MIDI or audio crates, so the rule is enforced by the compiler instead of by review.</p>
 <figure>
 <svg viewBox="0 0 760 410" role="img" aria-label="Layers of the architecture" xmlns="http://www.w3.org/2000/svg" font-family="system-ui, sans-serif" font-size="13">
   <rect x="10" y="10" width="740" height="150" rx="8" fill="currentColor" opacity=".08"/>
@@ -242,7 +244,7 @@ python3 tools/build_notices.py      # target/notices/THIRD_PARTY_NOTICES.txt</co
 <ol class="steps">
 <li><strong><code>plan_run</code></strong> works out the range, tempo scale, count-in, time zero and the click track for the practice range. Takes and Listen share it, so what you hear is what a take asks for.</li>
 <li><strong><code>start_take</code></strong> expands the score into <code>Expected</code> notes (seconds, relative to the start of the range), starts a <code>Metronome</code> thread for the count-in and click, and stores a <code>Take</code> with an empty report.</li>
-<li><strong><code>drain_midi</code> and <code>handle_event</code></strong> (every frame) turn queued <code>RawEvent</code>s into <code>Hit</code>s: map the note to a lane, apply the hi-hat pedal, subtract the latency, and keep hits from three quarters of a count-in beat before zero on.</li>
+<li><strong><code>drain_midi</code> and <code>handle_event</code></strong> (every frame) turn queued <code>RawEvent</code>s into <code>Hit</code>s. <code>handle_event</code> is a sequence of named steps, each of which sees every event: <code>learn_note</code> (MIDI-learn of a pad), the monitor, <code>record_calibration_hit</code>, then the start trigger (the one step that can consume the event) and <code>record_take_hit</code>, which maps the note to a lane, applies the hi-hat pedal, subtracts the latency and keeps hits from three quarters of a count-in beat before zero on.</li>
 <li><strong><code>update_take</code></strong> re-analyses the whole take every frame (it is cheap) so the colours appear as you play; notes later than the elapsed time stay <code>Pending</code>.</li>
 <li><strong><code>stop_take</code></strong> freezes the report, pushes a <code>TakeSummary</code> to the history and, for a clean rudiment take, records the best tempo.</li>
 </ol>
@@ -299,16 +301,13 @@ python3 tools/build_notices.py      # target/notices/THIRD_PARTY_NOTICES.txt</co
 <ol class="steps">
 <li><strong>Start-up first:</strong> while <code>startup</code> is set, <code>run_startup</code> runs the next step and draws the splash; it answers with a <code>Flow</code> (see <a href="#startup">Start-up</a>). Until the steps are done the main window is an empty panel and the frame ends here.</li>
 <li>Handle dropped files.</li>
-<li><code>sync_source</code>: put the right practice source in place for the visible tab.</li>
-<li><code>drain_midi</code>, <code>update_controller</code>, <code>keyboard_pads</code>: input becomes state.</li>
-<li><code>sync_control</code>, <code>update_take</code>, <code>update_listen</code>, <code>update_metro</code>, <code>update_audition</code>, <code>update_calibration</code>, <code>show_sound_errors</code>: state advances, threads are steered and errors surface.</li>
-<li>Keyboard shortcuts (ignored while a widget has the focus, and in the frame in which a key closed the splash).</li>
-<li>Draw the panels; <code>sync_source</code> again after the top bar, because a tab clicked now needs its source before it is drawn.</li>
-<li>Draw the windows that float above: the controller help screen and the Manage window (<a href="#windows">Windows</a>).</li>
-<li>If <code>cfg != saved_cfg</code>, save the settings (so settings are persisted by <em>diffing</em>, not by event).</li>
-<li>Ask for a repaint: continuously while recording, listening or calibrating; otherwise every 50 ms so the MIDI monitor stays live.</li>
+<li><code>update_state</code> (before anything is drawn): <code>sync_source</code> puts the right practice source in place for the visible tab; <code>drain_midi</code>, <code>update_controller</code> and <code>keyboard_pads</code> turn input into state; <code>sync_control</code>, <code>update_take</code>, <code>update_listen</code>, <code>update_metro</code>, <code>update_audition</code>, <code>update_calibration</code> and <code>show_sound_errors</code> advance the state, steer the threads and surface errors.</li>
+<li><code>shortcut_keys</code>: <kbd>R</kbd>, <kbd>L</kbd>, <kbd>M</kbd>, <kbd>K</kbd>, <kbd>Esc</kbd>, unless a text box is being typed in (<code>widgets::typing</code>; a button or slider with the focus does not count) or a key closed the splash in this frame.</li>
+<li><code>draw</code>: the panels (<code>sync_source</code> again after the top bar, because a tab clicked now needs its source before it is drawn), then the windows that float above: the controller help screen and the Manage window (<a href="#windows">Windows</a>).</li>
+<li><code>save_settings_if_changed</code>: if <code>cfg != saved_cfg</code>, save the settings (so settings are persisted by <em>diffing</em>, not by event).</li>
+<li><code>schedule_repaint</code>: continuously while recording, listening or calibrating; otherwise every 50 ms so the MIDI monitor stays live.</li>
 </ol>
-<p><code>DrumApp</code> is a single large struct. Subsystems that grew large were moved to files under <code>src/app/</code> as additional <code>impl DrumApp</code> blocks with <code>pub(super)</code> methods: the Metronome tab, the mixer, the controller, the Rudiments tab, the start trigger, the splash and the controller help screen. The controller's own editor is one level deeper, <code>src/app/controls/editor.rs</code>, as a <em>child</em> module of <code>controls.rs</code>, so that it can read the private fields of <code>Controller</code> without making them public. That keeps one owner of the state while keeping files readable.</p>
+<p><code>DrumApp</code> is a single struct of about thirty fields, four of which are groups with an owner: <code>view</code> (<code>ViewState</code>: tab, Settings page, status line, error), <code>midi</code> (<code>MidiState</code>: ports, the drum input, the monitor, MIDI-learn), <code>playback</code> (<code>Playback</code>: Listen, its player and switches, the mixer's solo and audition) and <code>metro_run</code> (<code>MetroState</code>). Subsystems that grew large were moved to files under <code>src/app/</code> as additional <code>impl DrumApp</code> blocks with <code>pub(super)</code> methods: the tabs (<code>home.rs</code>, <code>score_tab.rs</code>, <code>results.rs</code>, <code>settings.rs</code>, <code>metro.rs</code>, <code>rudiment.rs</code>), the take, Listen, audition and calibration lifecycles (<code>session.rs</code>), the mixer, the controller, the start trigger, the splash and the controller help screen. A child module sees its parent's private fields, so none of this needs accessors. The controller's own editor is one level deeper, <code>src/app/controls/editor.rs</code>, as a <em>child</em> module of <code>controls.rs</code>, so that it can read the private fields of <code>Controller</code> without making them public. That keeps one owner of the state while keeping files readable.</p>
 <p>Visibility says who may call what: <code>pub(super)</code> inside <code>app/</code> files means "the <code>app</code> module", <code>pub(super)</code> inside <code>controls/editor.rs</code> means "<code>controls.rs</code> only", and the one method <code>app.rs</code> must call from there, <code>controller_editor_window</code>, is <code>pub(in crate::app)</code>.</p>
 
 <h3 id="startup">Start-up</h3>
@@ -490,8 +489,8 @@ ring  = tempo -&gt; cc 20 scale=127      # a plain value 0..scale instead</code>
 <li><code>Preset::assign</code> binds the action to the control. The control is <em>taken</em> from whatever it was bound to on that layer (returned, so the window can say so), and the action's old control of the <em>same kind</em> (note, cc, fader) is replaced, while one of another kind stays: an encoder and a fader may both set the tempo.</li>
 <li><code>clear</code> and <code>set_kind</code> (absolute or relative with an encoding) complete the set; <code>Action::sections()</code> lists every bindable action in the editor's order, a test checks that none is missing or doubled.</li>
 </ul>
-<p>The learn flow in <code>editor.rs</code> is a small state machine in <code>EditorState</code>: <code>learning</code> holds the action that waits; <code>learn_message</code> consumes the next message, saves, and (if <em>go on</em> is ticked) sets <code>learning</code> to the next action in the list. Choosing a preset (<code>select_preset</code>) clears the flow. A click on a preset in the list <em>chooses it as the one in use</em>, not merely shows it: learning needs that preset's connection, and the editor can only edit what the mapper runs.</p>
-<p><code>EditorState</code> has a <code>dir</code> field, the folder of the user's presets, which is <code>None</code> in the program (the settings folder) and a temporary folder in tests. That is the seam that lets tests run a full learn, save, rename, copy and delete cycle without touching a real settings folder.</p>
+<p>The learn flow in <code>editor.rs</code> is a small state machine in <code>EditorState</code> (what the window itself remembers, such as the open flag, the rename text and the layer shown, is a separate <code>ManageView</code> in <code>EditorState.view</code>): <code>learning</code> holds the action that waits; <code>learn_message</code> consumes the next message, saves, and (if <em>go on</em> is ticked) sets <code>learning</code> to the next action in the list. Choosing a preset (<code>select_preset</code>) clears the flow. A click on a preset in the list <em>chooses it as the one in use</em>, not merely shows it: learning needs that preset's connection, and the editor can only edit what the mapper runs.</p>
+<p>The folder of the user's presets comes from <code>DrumApp.paths</code> (<code>Paths::controllers_dir</code>): in the program the settings folder, in a test a temporary one. That is the seam that lets tests run a full learn, save, rename, copy and delete cycle without touching a real settings folder.</p>
 <h4>The Manage window</h4>
 <p>The window is one function tree: <code>controller_editor_window</code> shows it as an immediate viewport (or an embedded window), <code>manage_ui</code> splits it into a resizable left <code>SidePanel</code> and a central panel, <code>preset_list</code> draws all presets grouped by kind with Add, Copy and Delete… in a bottom panel (Delete asks a second time through the <code>confirm_delete</code> flag), and the central panel scrolls <code>preset_header</code> (the name and Rename) above <code>assignments_body</code> (the table). Clicks do not act while the panels are being drawn: they set an <code>Op</code>, which <code>run_op</code> applies after the layout is done, so no closure borrows <code>self</code> mutably while another still reads it. Rename checks the name (<code>check_preset_name</code>: no path characters, not a built-in name, not taken), renames the file (the file name is the preset's only name: <code>load_preset</code> ignores a file's <code>name</code> line, so nothing inside the file has to change).</p>
 {{code:src/app/controls/editor.rs::fn manage_ui}}
@@ -541,6 +540,7 @@ ring  = tempo -&gt; cc 20 scale=127      # a plain value 0..scale instead</code>
 <h2>9. Settings and persistence</h2>
 <p>Settings are a small <code>key = value</code> text file (<code>%APPDATA%\RollModel\config.txt</code> and equivalents). There is no serialisation framework: each one-line setting is a row of the <code>KEYS</code> table (key, field, kind of value) that both <code>Config::to_text</code> and <code>Config::from_text</code> use, which keeps the file stable, hand-editable and tolerant. Lists and maps are written and read by hand.</p>
 {{code:core/src/config.rs::const KEYS::12}}
+<p>Where the file lives is a value, not a global: <code>config::Paths</code> (<code>system()</code>, <code>in_dir()</code>, <code>none()</code>) names the settings, <code>sounds</code> and <code>controllers</code> folders, <code>Config::load_from(&amp;paths)</code> reads and <code>save(&amp;paths)</code> writes, and <code>DrumApp</code> holds the one it uses.</p>
 <ul>
 <li><strong>Tolerant loading.</strong> Unknown keys are ignored, an unreadable value keeps the default, numbers are clamped, so a settings file from any earlier version loads.</li>
 <li><strong>Defaults are not written</strong> where that avoids clutter (mixer gains, per-rudiment tempos never changed).</li>
@@ -574,15 +574,16 @@ ring  = tempo -&gt; cc 20 scale=127      # a plain value 0..scale instead</code>
 <h3>Const tables and <code>const fn</code></h3>
 <p>The rudiment catalogue is a <code>static</code> array of a fixed length (<code>[Rudiment; 40]</code>) built with a <code>const fn</code>; the compiler checks the count and the data costs no start-up work. <code>Lane::ALL</code> plays the same role, and <code>Control</code> sizes an atomic array from it with <code>[AtomicU32; Lane::ALL.len()]</code>.</p>
 <h3>Conditional compilation with a stub</h3>
-<p>Audio is an optional feature. Rather than sprinkling <code>cfg</code> through callers, the module offers two implementations with the same signature, so the rest of the code is feature-agnostic:</p>
+<p>Audio is an optional feature. Rather than sprinkling <code>cfg</code> through callers, the module offers two implementations with the same signature, so the rest of the code is feature-agnostic. Without the feature the output type is <code>Option&lt;Infallible&gt;</code>, a type with no value, so the stub returns <code>None</code> and no unit value is passed around (which clippy would flag):</p>
 {{code:src/metronome.rs::pub(crate) fn open_audio(_enabled}}
 <h3>Generics where they remove duplication</h3>
 <p><code>widgets::slider&lt;N: Numeric&gt;</code> serves integers and floats with one body. Elsewhere the code prefers plain functions over clever generics.</p>
 <h3>Iterators returning <code>impl Trait</code></h3>
 <p>Small, lazy filters are returned as iterators instead of allocated vectors, for example the cues of a playback pass:</p>
 {{code:src/playback.rs::fn pass_cues}}
-<h3>Errors are <code>Result&lt;T, String&gt;</code> at the edges</h3>
-<p>Importers and device connectors return a user-readable <code>String</code> error that is shown verbatim in the status bar. There is no error hierarchy because nothing branches on error kinds; the message <em>is</em> the product. Thread errors travel through an <code>ErrorLog</code> that the UI polls.</p>
+<h3>Errors are enums whose text is the message</h3>
+<p>Every fallible operation returns a typed error: <code>PresetError</code> and <code>LoadPresetError</code> (presets), <code>XmlError</code>, <code>ScoreError</code> and <code>LoadError</code> (scores), <code>MidiError</code> and <code>ConfigError</code>. Each implements <code>Display</code> with the sentence the user reads, so the UI turns an error into text only where it stores a message (<code>e.to_string()</code>), and a test can match on the variant instead of on wording. Errors from the sound threads travel through an <code>ErrorLog</code> that the UI polls.</p>
+{{code:core/src/xml.rs::pub enum XmlError::10}}
 <h3>Visibility as architecture</h3>
 <p><code>pub(super)</code> methods in <code>app/*.rs</code> expose a subsystem to <code>DrumApp</code> only; <code>pub(crate)</code> marks helpers shared between the two timing threads. Child modules (including <code>#[cfg(test)] mod tests</code>) can see their parent's private items, which is why tests can call private functions such as <code>plan_run</code>.</p>
 <h3>Closures with egui</h3>
@@ -591,17 +592,17 @@ ring  = tempo -&gt; cc 20 scale=127      # a plain value 0..scale instead</code>
 
 <section id="testing">
 <h2>11. Testing</h2>
-<p>All tests are unit tests inside the module they test (<code>#[cfg(test)] mod tests</code>), run by <code>cargo test</code> with no devices. Test names are sentences.</p>
+<p>Most tests are unit tests of the module they test, either inline (<code>#[cfg(test)] mod tests</code>) or, for the larger ones, in a sibling <code>tests.rs</code> (<code>controller/tests.rs</code>, <code>analysis/tests.rs</code>, <code>config/tests.rs</code>, <code>playback/tests.rs</code>, <code>app/controls/tests.rs</code>). <code>core/tests/</code> holds integration tests that use the core only through its public API, the way another front end would. They all run with <code>cargo test</code> and no devices. Test names are sentences.</p>
 <table>
 <thead><tr><th>Layer</th><th>How it is tested</th><th>Example</th></tr></thead>
 <tbody>
 <tr><td>Pure core</td><td>Direct calls with small fixtures; the sample score <code>examples/basic_rock_beat.musicxml</code> is embedded with <code>include_str!</code> (tests depend on its exact content)</td><td><code>analysis.rs</code>, <code>musicxml.rs</code>, <code>rudiments.rs</code></td></tr>
 <tr><td>Real-time core</td><td>A fake <code>Sink</code> records what would sound; times are given as numbers, no sleeping</td><td><code>playback.rs</code></td></tr>
 <tr><td>Controller</td><td>Messages in, commands and light bytes out; presets parsed from strings; the built-in presets are loaded and must have no warnings</td><td><code>controller/</code></td></tr>
-<tr><td>App logic</td><td><code>DrumApp::with_config(Config::default())</code> touches no devices; tests call <code>apply_command</code>, <code>sync_source</code>, <code>start_take</code> directly</td><td><code>app/controls.rs</code>, <code>app/rudiment.rs</code></td></tr>
+<tr><td>App logic</td><td><code>DrumApp::with_config(Config::default())</code> touches no devices and no files (<code>Paths::none()</code>); tests call <code>apply_command</code>, <code>sync_source</code>, <code>start_take</code> directly</td><td><code>app/controls.rs</code>, <code>app/rudiment.rs</code></td></tr>
 <tr><td>Presets and the editor</td><td>Presets parsed from strings and round-tripped; the editor runs on a temporary folder (<code>DrumApp.paths</code>, a <code>Paths::in_dir</code>) with real files</td><td><code>controller/</code>, <code>app/controls/editor.rs</code></td></tr>
 <tr><td>Pictures</td><td>Geometry invariants over every layout, drawn and generated; the help screen draws headlessly</td><td><code>controller_layout.rs</code>, <code>app/controller_help.rs</code></td></tr>
-<tr><td>Start-up</td><td>The whole sequence, frame by frame, with a fake settings loader and a channel instead of the sound scan</td><td><code>app/startup.rs</code></td></tr>
+<tr><td>Start-up</td><td>The whole sequence, frame by frame, with <code>Paths::none()</code> (no settings file) and a channel instead of the sound scan</td><td><code>app/startup.rs</code></td></tr>
 <tr><td>Screens</td><td>Headless <code>egui::Context::run</code> with default input: proves a screen draws without panicking; wheel tests feed <code>Event::MouseWheel</code></td><td><code>widgets.rs</code>, <code>the_tab_draws_for_every_rudiment</code></td></tr>
 <tr><td>Sound</td><td>Spectral guards on the synthesised kit (bounded, decaying, deterministic); the real outputs are <em>not</em> tested</td><td><code>synth.rs</code></td></tr>
 </tbody></table>
@@ -823,11 +824,11 @@ impl DrumApp {
 <ul>
 <li><strong>V31 and controllers are untested on hardware.</strong> The note map is the common Roland V-Drums factory map; the hi-hat pedal polarity (127 = closed) is the Roland convention; the Mackie presets are from the Mackie Control table and the four generic presets are from memory (a web search confirmed only a few of their numbers). Learning against a real device has not been tried.</li>
 <li><strong>The preset editor</strong> binds actions only: it cannot create layers or edit lights and rings, and editing rewrites the file without its comments. The generated help picture does not show where the controls are on the device.</li>
-<li><strong>Large files and structs.</strong> <code>app.rs</code> holds <code>DrumApp</code>, whose fields are grouped (<code>ViewState</code>, <code>MidiState</code>, <code>Playback</code>, <code>MetroState</code>, the rest still flat), and the MIDI, keyboard and file handling; the tabs and the take, Listen and calibration lifecycles are in <code>app/home.rs</code>, <code>score_tab.rs</code>, <code>results.rs</code>, <code>settings.rs</code> and <code>session.rs</code>. <code>HANDOFF.md</code> lists the review of them against clean-design rules.</li>
+<li><strong>Large files and structs.</strong> (Mostly done; see CD-14, CD-13 and CD-5 in <code>HANDOFF.md</code> for what is left.) <code>app.rs</code> holds <code>DrumApp</code>, whose fields are grouped (<code>ViewState</code>, <code>MidiState</code>, <code>Playback</code>, <code>MetroState</code>, the rest still flat), and the MIDI, keyboard and file handling; the tabs and the take, Listen and calibration lifecycles are in <code>app/home.rs</code>, <code>score_tab.rs</code>, <code>results.rs</code>, <code>settings.rs</code> and <code>session.rs</code>. <code>HANDOFF.md</code> lists the review of them against clean-design rules.</li>
 <li><strong>Nobody has listened to the synthesised kit</strong> (only spectral guards test it). The built-in sounds are intentionally simple.</li>
 <li><strong>Notation</strong>: proportional spacing, noteheads and stems only.</li>
 <li><strong>MusicXML</strong>: D.S./D.C./coda are not followed, <code>score-timewise</code> is rejected, only the first drum-looking part is used.</li>
-<li><strong>Two timing threads</strong> with duplicated click logic.</li>
+<li><strong>Two timing threads</strong> with duplicated click logic (task CD-5, to be done with a real take on a release build).</li>
 <li><strong>No persistence of takes</strong>; CSV export only.</li>
 <li><strong>Follow mode</strong> scrolls every frame while recording, so manual scrolling is impossible during a take.</li>
 <li>The weights of the overall score are first guesses and need tuning with real takes.</li>
@@ -851,7 +852,7 @@ impl DrumApp {
 <li>Practice fields are swapped only by <code>activate</code>; <code>open_file</code> activates the Score source.</li>
 <li>Rudiment scores are written at <code>BASE_BPM</code>, so the practice tempo in percent is the BPM.</li>
 <li>Listen and takes share <code>plan_run</code>; changing it changes both.</li>
-<li>Shortcuts are ignored while a widget has the keyboard focus, and in the frame in which a key closed the splash.</li>
+<li>Shortcuts are ignored while a text box is being typed in, and in the frame in which a key closed the splash.</li>
 <li><code>DrumApp::new</code> does no device or file work; it becomes a step in <code>app/startup.rs</code>.</li>
 <li>A controller preset file is the only storage of its assignments: the editor reads it, changes it, writes it and puts the result in the mapper. <code>to_text</code> and <code>parse</code> round-trip.</li>
 <li>A built-in preset is never written to; an editable preset is one whose name is not a built-in name and whose file is in the user's folder.</li>
