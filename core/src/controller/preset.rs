@@ -41,6 +41,14 @@ pub struct Light {
     pub scale: Option<u8>,
 }
 
+impl Light {
+    /// The usual light or ring for `action` on `layer`: set on the control `out`, channel 1,
+    /// 127 to light and 0 to darken, Mackie ring values.
+    pub fn new(layer: Option<&str>, action: Action, out: Out, ring: bool) -> Light {
+        Light { layer: layer.map(str::to_string), action, out, ring, channel: 1, on: 127, off: 0, scale: None }
+    }
+}
+
 /// What a preset's controller speaks: Mackie Control (layers, ring and light values as the
 /// Mackie table has them) or plain MIDI (notes, cc and pitch bend as the device sends them).
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord)]
@@ -334,6 +342,25 @@ impl Preset {
         self.binds.retain(|b| !(b.layer == layer && b.action == action && kind(b.input.src) == kind(found.input.src)));
         self.binds.push(Binding { layer, input: found.input, reading: found.reading, action });
         taken_from
+    }
+
+    /// The lights (`ring` false) or rings (`ring` true) of `action` on exactly `layer`.
+    pub fn lights_of(&self, layer: Option<&str>, action: Action, ring: bool) -> Option<&Light> {
+        self.lights.iter().find(|l| l.layer.as_deref() == layer && l.action == action && l.ring == ring)
+    }
+
+    /// Gives `action` the light or ring `light` on its layer, in place of the one it had.
+    pub fn set_light(&mut self, light: Light) {
+        let at = self.lights.iter().position(|l| l.layer == light.layer && l.action == light.action && l.ring == light.ring);
+        match at {
+            Some(i) => self.lights[i] = light,
+            None => self.lights.push(light),
+        }
+    }
+
+    /// Takes the light (`ring` false) or ring of `action` on `layer` away.
+    pub fn clear_light(&mut self, layer: Option<&str>, action: Action, ring: bool) {
+        self.lights.retain(|l| !(l.layer.as_deref() == layer && l.action == action && l.ring == ring));
     }
 
     /// Adds a layer called `name` that the control `src` switches to. The name is one word that is

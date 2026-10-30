@@ -7,6 +7,7 @@ All notable changes are recorded here. The format follows [Keep a Changelog](htt
 ## [Unreleased]
 
 ### Added
+- **Lights and rings can be added and edited in the Manage window**: the new *Lights and rings* section lists the actions that have a control; *Add light* / *Add ring* put one on that control, and the note or cc number and the on/off values can be changed (colours of a pad, for example).
 - **Layers can be created and deleted in the Manage window**: *Add layer…* asks for a name and the button of the device that switches to it (a button that already does something is refused), *Delete layer* removes a layer with what is assigned on it.
 - **A tempo ramp for Listen and the metronome**: with *loop* on, *ramp +* on the Score tab raises Listen's tempo by that many per cent of the written tempo every few passes; the Metronome tab's *faster by* does the same in BPM every few bars. Both stop at three times the starting tempo, are off by default, and take effect at the next start. The player squeezes the later passes in one go, without a gap; the playhead, the position label (which now shows the tempo in force), the beat lights and the rolling staff follow it.
 - **Each score remembers its row layout** (bars per row and the bar that starts a row, in the Layout menu of the Score tab): open the score again and its rows are as you left them. The last 30 scores are kept; a score never laid out keeps the settings on screen.
