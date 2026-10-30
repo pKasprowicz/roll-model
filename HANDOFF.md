@@ -104,15 +104,15 @@ The hardware tasks (HW-*) have a step-by-step plan in `docs/hardware-test-plan.m
 | **CD-28** | Split `app/controls.rs` (1,198 lines) | code |
 | **CD-29** | Drawing helpers as methods of `Canvas` | code |
 | **CD-21** to **CD-25** | Polish suggestions (see the review) | code |
-| **AUD-1** | Baseline: measure the onset spread of the current audio output | device |
-| **AUD-2** | Pure audio mixer with offline tests | code |
-| **AUD-3** | Audio clock (`Instant` to frame) and engine handle | code |
-| **AUD-4** | cpal backend for the engine | code, device |
-| **AUD-5** | Rate-aware kit and clicks | code |
-| **AUD-6** | Rewire Listen, metronome and calibration to the engine; remove rodio | code |
-| **AUD-7** | Audio settings, calibration signature, docs, 0.8.0 | code |
-| **AUD-8** | Hardware validation of the new engine | device |
-| **AUD-9** | Decide on and build the `IAudioClient3` backend (optional) | decision, device |
+| **AUD-1** [#38](https://github.com/pKasprowicz/roll-model/issues/38) | Baseline: measure the onset spread of the current audio output | device |
+| **AUD-2** [#39](https://github.com/pKasprowicz/roll-model/issues/39) | Pure audio mixer with offline tests | code |
+| **AUD-3** [#40](https://github.com/pKasprowicz/roll-model/issues/40) | Audio clock (`Instant` to frame) and engine handle | code |
+| **AUD-4** [#41](https://github.com/pKasprowicz/roll-model/issues/41) | cpal backend for the engine | code, device |
+| **AUD-5** [#42](https://github.com/pKasprowicz/roll-model/issues/42) | Rate-aware kit and clicks | code |
+| **AUD-6** [#43](https://github.com/pKasprowicz/roll-model/issues/43) | Rewire Listen, metronome and calibration to the engine; remove rodio | code |
+| **AUD-7** [#44](https://github.com/pKasprowicz/roll-model/issues/44) | Audio settings, calibration signature, docs, 0.8.0 | code |
+| **AUD-8** [#45](https://github.com/pKasprowicz/roll-model/issues/45) | Hardware validation of the new engine | device |
+| **AUD-9** [#46](https://github.com/pKasprowicz/roll-model/issues/46) | Decide on and build the `IAudioClient3` backend (optional) | decision, device |
 
 ### Done in 0.4.0 (released; the list of that time)
 
