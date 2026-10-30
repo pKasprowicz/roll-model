@@ -30,6 +30,10 @@ rfd = "0.15"
 hound = "3"
 rodio = { version = "0.19", default-features = false, optional = true }
 
+[[example]]
+name = "audio_probe"
+required-features = ["audio"]
+
 [profile.release]
 opt-level = 3
 lto = "thin"
