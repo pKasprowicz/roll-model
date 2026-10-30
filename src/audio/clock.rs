@@ -74,10 +74,6 @@ impl Shared {
         self.next_run.fetch_add(1, Ordering::Relaxed)
     }
 
-    pub fn origin(&self) -> Instant {
-        self.origin
-    }
-
     pub fn rate(&self) -> u32 {
         self.rate
     }
@@ -126,14 +122,6 @@ impl Shared {
         Some(((wall - self.intercept()) * self.rate as f64).round().max(0.0) as u64)
     }
 
-    /// When `frame` is rendered; `None` until the callback has run.
-    pub fn instant_of(&self, frame: u64) -> Option<Instant> {
-        if !self.is_ready() {
-            return None;
-        }
-        let wall = self.intercept() + frame as f64 / self.rate as f64;
-        self.origin.checked_add(Duration::from_secs_f64(wall.max(0.0)))
-    }
 }
 
 #[cfg(test)]
@@ -177,17 +165,13 @@ mod tests {
     }
 
     #[test]
-    fn frames_and_instants_map_back_and_forth() {
+    fn frames_are_told_from_instants_once_the_callback_has_run() {
         let origin = Instant::now();
         let shared = Shared::new(origin, 48_000);
         assert_eq!(shared.frame_at(origin), None);
-        assert_eq!(shared.instant_of(0), None);
         shared.publish(2.0, Counters::default());
         assert_eq!(shared.frame_at(origin + Duration::from_secs(3)), Some(48_000));
         assert_eq!(shared.frame_at(origin + Duration::from_secs(1)), Some(0), "before the first frame");
-        let at = shared.instant_of(96_000).unwrap();
-        assert_eq!(at.duration_since(origin), Duration::from_secs(4));
-        assert_eq!(shared.frame_at(at), Some(96_000));
     }
 
     #[test]

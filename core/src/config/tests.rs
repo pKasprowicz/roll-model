@@ -44,6 +44,7 @@ fn every_key_is_written_once_and_read_back() {
 fn roundtrip() {
     let mut c = Config {
         latency_ms: 12.5,
+        latency_engine: 2,
         midi_in_port: "Roland V31 MIDI 1".into(),
         metronome_during_take: false,
         count_in_bars: 2,
@@ -220,4 +221,18 @@ fn bad_layout_lines_are_ignored_and_the_list_is_capped() {
     }
     assert_eq!(c.layouts.len(), MAX_LAYOUTS);
     assert_eq!(c.layouts[0].0, format!("score{}.xml", MAX_LAYOUTS + 4), "the oldest ones go");
+}
+
+#[test]
+fn a_latency_set_with_another_engine_is_stale() {
+    let mut c = Config::default();
+    assert!(!c.latency_is_stale(2), "zero says nothing");
+    c.latency_ms = 24.0;
+    assert!(c.latency_is_stale(2), "an old file has no engine recorded");
+    c.latency_engine = 2;
+    assert!(!c.latency_is_stale(2));
+    assert!(c.latency_is_stale(3), "and a newer engine makes it stale again");
+    let old = Config::from_text("latency_ms = 5\n");
+    assert_eq!((old.latency_engine, old.latency_is_stale(2)), (0, true));
+    assert_eq!(Config::from_text(&c.to_text()).latency_engine, 2);
 }

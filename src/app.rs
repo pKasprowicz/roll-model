@@ -792,4 +792,22 @@ mod tests {
         assert!(app.score.is_some(), "the loaded score stays");
         assert_eq!(app.cfg.recent_files.len(), 1, "a failed file is not remembered");
     }
+
+    #[test]
+    fn the_timing_and_sound_pages_draw_with_a_stale_latency_and_no_open_output() {
+        let mut app = DrumApp::with_config(Config { latency_ms: 24.0, ..Config::default() });
+        assert!(app.cfg.latency_is_stale(crate::audio::ENGINE_GENERATION), "a latency from before the engine says is stale");
+        assert!(app.audio.info().is_none(), "no output is open until a sound starts");
+        let ctx = egui::Context::default();
+        for _ in 0..2 {
+            let _ = ctx.run(egui::RawInput::default(), |ctx| {
+                egui::CentralPanel::default().show(ctx, |ui| {
+                    app.settings_timing(ui);
+                    app.settings_sound(ui);
+                });
+            });
+        }
+        app.cfg.latency_engine = crate::audio::ENGINE_GENERATION;
+        assert!(!app.cfg.latency_is_stale(crate::audio::ENGINE_GENERATION));
+    }
 }

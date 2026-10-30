@@ -15,6 +15,16 @@ pub(super) struct AudioOutput {
     note: Option<String>,
 }
 
+/// What the Sound page shows about the open output.
+pub(super) struct AudioInfo {
+    pub device: String,
+    pub rate: u32,
+    /// What the driver reports between the callback and the sound leaving; `None` when it reports none.
+    pub latency_ms: Option<f64>,
+    pub late: u64,
+    pub dropped: u64,
+}
+
 impl AudioOutput {
     /// Opens an engine for `device` unless a working one is open already. Returns the message to
     /// show: a fallback to the default output, or that there is no output at all.
@@ -37,6 +47,21 @@ impl AudioOutput {
 
     pub(super) fn handle(&self) -> Option<EngineHandle> {
         self.engine.as_ref().map(|e| e.handle())
+    }
+
+    pub(super) fn info(&self) -> Option<AudioInfo> {
+        let engine = self.engine.as_ref()?;
+        let handle = engine.handle();
+        let shared = handle.shared();
+        let latency = shared.latency().as_secs_f64() * 1000.0;
+        let counters = shared.counters();
+        Some(AudioInfo {
+            device: engine.device().to_string(),
+            rate: shared.rate(),
+            latency_ms: (latency > 0.0).then_some(latency),
+            late: counters.late,
+            dropped: counters.dropped_pending + counters.dropped_voices,
+        })
     }
 
     /// Problems the stream reported since the last call.

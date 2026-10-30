@@ -18,6 +18,9 @@ pub struct Config {
     pub midi_out_port: String,
     /// Subtracted from every captured hit (input + monitoring latency).
     pub latency_ms: f64,
+    /// Which audio engine `latency_ms` was set with (calibrated, or moved by hand); 0 = before the
+    /// engines were told apart. The program compares it with its own to say when to calibrate again.
+    pub latency_engine: u32,
     pub tol: Tolerances,
     pub metronome_during_take: bool,
     pub count_in_bars: u32,
@@ -124,6 +127,7 @@ impl Default for Config {
             midi_in_port: "V31".into(),
             midi_out_port: "V31".into(),
             latency_ms: 0.0,
+            latency_engine: 0,
             tol: Tolerances::default(),
             metronome_during_take: true,
             count_in_bars: 1,
@@ -309,6 +313,7 @@ const KEYS: &[Key] = &[
     key!("midi_in_port", c.midi_in_port, Text),
     key!("midi_out_port", c.midi_out_port, Text),
     key!("latency_ms", c.latency_ms, number(f64::MIN, f64::MAX)),
+    key!("latency_engine", c.latency_engine, number(0, 9999)),
     key!("perfect_ms", c.tol.perfect_ms, number(f64::MIN, f64::MAX)),
     key!("good_ms", c.tol.good_ms, number(f64::MIN, f64::MAX)),
     key!("window_ms", c.tol.window_ms, number(f64::MIN, f64::MAX)),
@@ -408,6 +413,12 @@ impl Paths {
 }
 
 impl Config {
+    /// Whether the latency compensation was set with another audio engine than `engine` and is
+    /// therefore probably wrong now. A compensation of zero says nothing, so it is never stale.
+    pub fn latency_is_stale(&self, engine: u32) -> bool {
+        self.latency_ms != 0.0 && self.latency_engine != engine
+    }
+
     /// Volume of one instrument in Listen (1.0 unless changed).
     pub fn gain_of(&self, lane: Lane) -> f32 {
         self.lane_gain.get(&lane).copied().unwrap_or(1.0)

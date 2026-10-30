@@ -443,6 +443,7 @@ impl DrumApp {
         offsets.sort_by(|a, b| a.total_cmp(b));
         let median = offsets[offsets.len() / 2] * 1000.0;
         self.cfg.latency_ms = median.round();
+        self.cfg.latency_engine = crate::audio::ENGINE_GENERATION;
         self.view.status = format!("Latency calibrated: {:.0} ms ({} hits)", median, offsets.len());
     }
 

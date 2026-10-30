@@ -30,3 +30,8 @@ mod silent;
 pub use silent::{default_output_device, output_devices, Engine};
 
 pub use handle::EngineHandle;
+
+/// Which generation of audio engine this is. A latency compensation set with another one is
+/// probably wrong (`Config::latency_is_stale`): raise it when a change moves the click in time.
+/// 1 was rodio; 2 is this engine.
+pub const ENGINE_GENERATION: u32 = 2;

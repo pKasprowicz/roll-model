@@ -120,10 +120,12 @@ impl Mixer {
         self.counters
     }
 
+    #[cfg(test)]
     pub fn playing(&self) -> usize {
         self.voices.len()
     }
 
+    #[cfg(test)]
     pub fn waiting(&self) -> usize {
         self.pending.len()
     }
