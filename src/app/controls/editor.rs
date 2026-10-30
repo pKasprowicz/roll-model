@@ -27,12 +27,19 @@ pub(super) struct ManageView {
     pub(super) confirm_delete: bool,
     /// The Manage window is open.
     pub(super) open: bool,
+    /// A new layer is being set up: its name as typed so far.
+    pub(super) adding_layer: bool,
+    pub(super) new_layer: String,
+    /// "Delete layer" was clicked and waits for a second click.
+    pub(super) confirm_layer_delete: bool,
 }
 
 /// What the editor remembers between frames: the learn state machine and its choices.
 pub(super) struct EditorState {
     /// The action that waits for the next control the device sends.
     pub(super) learning: Option<Action>,
+    /// The layer that waits for the button that selects it (the name it will have).
+    pub(super) learning_layer: Option<String>,
     /// After a control is learned, wait for one for the next action in the list.
     pub(super) keep_going: bool,
     /// Limit a learned control to the MIDI channel it sent on.
@@ -53,11 +60,13 @@ impl EditorState {
     /// Waits for the next control the device sends, for `action`.
     pub(super) fn start_learning(&mut self, action: Action) {
         self.learning = Some(action);
+        self.learning_layer = None;
         self.notice.clear();
     }
 
     pub(super) fn stop_learning(&mut self) {
         self.learning = None;
+        self.learning_layer = None;
     }
 
     /// How a value's cc is read for `action` when nothing is bound yet: the choice made in the
@@ -72,8 +81,10 @@ impl EditorState {
 
     /// What the editor was doing belongs to the preset that was chosen: drop it when another is.
     pub(super) fn start_over(&mut self) {
-        self.learning = None;
+        self.stop_learning();
         self.view.confirm_delete = false;
+        self.view.confirm_layer_delete = false;
+        self.view.adding_layer = false;
         self.view.layer = 0;
         self.notice.clear();
     }
@@ -81,7 +92,7 @@ impl EditorState {
 
 impl Default for EditorState {
     fn default() -> EditorState {
-        EditorState { learning: None, keep_going: true, remember_channel: false, kinds: BTreeMap::new(), notice: String::new(), view: ManageView::default() }
+        EditorState { learning: None, learning_layer: None, keep_going: true, remember_channel: false, kinds: BTreeMap::new(), notice: String::new(), view: ManageView::default() }
     }
 }
 
@@ -96,6 +107,11 @@ enum Op {
     Rename,
     AskDelete(bool),
     Delete,
+    AddLayer,
+    CloseAddLayer,
+    LearnLayer,
+    AskDeleteLayer(bool),
+    DeleteLayer(String),
 }
 
 const KINDS: [Reading; 5] = [
@@ -178,6 +194,9 @@ impl DrumApp {
     /// (and never acts). True if the message was used up. A message that cannot be the control
     /// of that action (a release, a fader for a button) is used up and ignored.
     pub(super) fn learn_message(&mut self, msg: controller::Msg) -> bool {
+        if let Some(name) = self.controller.editor.learning_layer.clone() {
+            return self.learn_layer_button(&name, msg);
+        }
         let Some(action) = self.controller.editor.learning else { return false };
         let Some(preset) = self.preset_being_edited() else {
             self.controller.editor.stop_learning();
@@ -198,6 +217,30 @@ impl DrumApp {
         if editor.keep_going {
             let order = action_order();
             editor.learning = order.iter().position(|a| *a == action).and_then(|i| order.get(i + 1)).copied();
+        }
+        true
+    }
+
+    /// While a layer waits for its button: the next press from the device is the button that
+    /// selects it. True if the message was used up (releases and faders are, and ignored).
+    fn learn_layer_button(&mut self, name: &str, msg: controller::Msg) -> bool {
+        // Any button press will do; the action only decides what kind of message counts.
+        let Some(found) = controller::learn(msg, Action::Stop, Reading::Absolute, false) else { return true };
+        let src = found.input.src;
+        match self.edit_preset(|p| p.add_layer(name, src).map(|()| p.layers.len() - 1)) {
+            Some(Ok(index)) => {
+                let editor = &mut self.controller.editor;
+                editor.say(format!("Layer {name}: {}", src.text()));
+                editor.view.layer = index;
+                editor.view.adding_layer = false;
+                editor.view.new_layer.clear();
+                editor.stop_learning();
+            }
+            Some(Err(e)) => {
+                // The same layer waits for another press.
+                self.controller.editor.say(e.to_string());
+            }
+            None => self.controller.editor.stop_learning(),
         }
         true
     }
@@ -453,13 +496,49 @@ impl DrumApp {
         widgets::hint(ui, format!("Editing {}. Every change is saved at once.", path.display()));
         ui.checkbox(&mut self.controller.editor.keep_going, "After learning a control, go on to the next action");
         ui.checkbox(&mut self.controller.editor.remember_channel, "Limit a learned control to the MIDI channel it sends on");
-        if preset.layers.len() > 1 {
+        ui.horizontal(|ui| {
+            ui.label("Layer");
+            for (i, (name, _)) in preset.layers.iter().enumerate() {
+                ui.selectable_value(&mut self.controller.editor.view.layer, i, name.as_str());
+            }
+            if preset.layers.is_empty() {
+                ui.label(RichText::new("none: every control works on its own").weak());
+            }
+            if !self.controller.editor.view.adding_layer && ui.small_button("Add layer…").on_hover_text("A layer is a set of assignments that a button of the device switches to").clicked() {
+                op = Some(Op::AddLayer);
+            }
+            if let Some(name) = self.editor_layer(&preset) {
+                if self.controller.editor.view.confirm_layer_delete {
+                    if ui.small_button(format!("Really delete layer {name} and what it does?")).clicked() {
+                        op = Some(Op::DeleteLayer(name));
+                    }
+                    if ui.small_button("Keep").clicked() {
+                        op = Some(Op::AskDeleteLayer(false));
+                    }
+                } else if ui.small_button("Delete layer").clicked() {
+                    op = Some(Op::AskDeleteLayer(true));
+                }
+            }
+        });
+        if self.controller.editor.view.adding_layer {
             ui.horizontal(|ui| {
-                ui.label("Layer");
-                for (i, (name, _)) in preset.layers.iter().enumerate() {
-                    ui.selectable_value(&mut self.controller.editor.view.layer, i, name.as_str());
+                ui.label("New layer's name");
+                ui.add(egui::TextEdit::singleline(&mut self.controller.editor.view.new_layer).desired_width(80.0).char_limit(24));
+                let waiting = self.controller.editor.learning_layer.is_some();
+                if waiting {
+                    if ui.button("Cancel").clicked() {
+                        op = Some(Op::Cancel);
+                    }
+                } else if ui.add_enabled(connected && !self.controller.editor.view.new_layer.trim().is_empty(), egui::Button::new("Learn its button")).clicked() {
+                    op = Some(Op::LearnLayer);
+                }
+                if !waiting && ui.small_button("Close").clicked() {
+                    op = Some(Op::CloseAddLayer);
                 }
             });
+            if let Some(name) = self.controller.editor.learning_layer.clone() {
+                ui.label(RichText::new(format!("Press the button that selects layer \"{name}\" on the device…")).strong().color(render::ACCENT));
+            }
         }
         let layer = self.editor_layer(&preset);
         if !connected {
@@ -530,7 +609,31 @@ impl DrumApp {
                     self.controller.editor.start_learning(action);
                 }
             }
-            Op::Cancel => self.controller.editor.learning = None,
+            Op::Cancel => self.controller.editor.stop_learning(),
+            Op::AddLayer => {
+                self.controller.editor.view.adding_layer = true;
+                self.controller.editor.view.confirm_layer_delete = false;
+            }
+            Op::CloseAddLayer => self.controller.editor.view.adding_layer = false,
+            Op::LearnLayer => {
+                let name = self.controller.editor.view.new_layer.trim().to_string();
+                if !self.controller.is_connected() {
+                    self.controller.editor.say("Connect the controller first (Refresh and reconnect, above).");
+                } else {
+                    let editor = &mut self.controller.editor;
+                    editor.stop_learning();
+                    editor.notice.clear();
+                    editor.learning_layer = Some(name);
+                }
+            }
+            Op::AskDeleteLayer(ask) => self.controller.editor.view.confirm_layer_delete = ask,
+            Op::DeleteLayer(name) => {
+                self.edit_preset(|p| p.remove_layer(&name));
+                let editor = &mut self.controller.editor;
+                editor.view.confirm_layer_delete = false;
+                editor.view.layer = 0;
+                editor.say(format!("Layer {name} deleted."));
+            }
             Op::Clear(action) => {
                 if let Some(preset) = self.preset_being_edited() {
                     let layer = self.editor_layer(&preset);
@@ -621,6 +724,41 @@ mod tests {
 
     fn pressed(note: u8) -> controller::Msg {
         controller::Msg::NoteOn { ch: 1, note, vel: 100 }
+    }
+
+    #[test]
+    fn a_layer_is_added_by_pressing_its_button_and_removed_with_what_it_does() {
+        let dir = temp_dir("layers");
+        std::fs::write(dir.join("Pads.txt"), "name = Pads
+port = PADS
+bind = note 36 -> record
+").unwrap();
+        let mut app = DrumApp::with_config(Config { controller_preset: "Pads".into(), ..Config::default() });
+        app.paths = Paths::in_dir(dir.parent().unwrap().to_path_buf());
+        let saved = || controller::Preset::parse(&std::fs::read_to_string(dir.join("Pads.txt")).unwrap());
+
+        // The layer waits for a button: a release and a fader are used up and change nothing.
+        app.controller.editor.learning_layer = Some("B".into());
+        assert!(app.learn_message(controller::Msg::NoteOn { ch: 1, note: 85, vel: 0 }));
+        assert!(app.learn_message(controller::Msg::Bend { ch: 1, value: 100 }));
+        assert!(saved().layers.is_empty() && app.controller.editor.learning_layer.is_some());
+        // A button that does something cannot select a layer: it says why and waits for another.
+        assert!(app.learn_message(pressed(36)));
+        assert!(app.controller.editor.notice.contains("Record"), "{}", app.controller.editor.notice);
+        assert!(saved().layers.is_empty() && app.controller.editor.learning_layer.is_some());
+        // A free button does, and the new layer is the one shown.
+        assert!(app.learn_message(pressed(85)));
+        assert_eq!(saved().layers, vec![("B".to_string(), controller::Src::Note(85))]);
+        assert_eq!((app.controller.editor.learning_layer.clone(), app.controller.editor.view.layer), (None, 0));
+        // Bindings on the layer go with it.
+        app.controller.editor.learning = Some(Action::Stop);
+        assert!(app.learn_message(pressed(40)));
+        assert_eq!(saved().bindings_of(Some("B"), Action::Stop).len(), 1);
+        app.run_op(Some(Op::DeleteLayer("B".into())));
+        assert!(saved().layers.is_empty() && saved().bindings_of(Some("B"), Action::Stop).is_empty());
+        assert_eq!(saved().bindings_of(None, Action::Record).len(), 1, "what works on every layer stays");
+        assert!(saved().warnings.is_empty(), "{:?}", saved().warnings);
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
@@ -805,6 +943,16 @@ mod tests {
         app.midi.inputs = vec!["Some Pad Controller".into()];
         app.new_learned_preset();
         assert!(app.controller.editor.view.open, "a new preset opens the editor");
+        frame(&mut app);
+        // The layer rows draw while a layer is being added, waited for and deleted.
+        app.controller.editor.view.adding_layer = true;
+        app.controller.editor.view.new_layer = "B".into();
+        frame(&mut app);
+        app.controller.editor.learning_layer = Some("B".into());
+        frame(&mut app);
+        app.controller.editor.stop_learning();
+        app.edit_preset(|p| p.add_layer("B", controller::Src::Note(85)).unwrap());
+        app.controller.editor.view.confirm_layer_delete = true;
         frame(&mut app);
         let _ = std::fs::remove_dir_all(&dir);
     }

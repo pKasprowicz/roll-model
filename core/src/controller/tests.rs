@@ -611,3 +611,26 @@ fn every_action_has_a_name_a_title_and_an_explanation() {
         }
     }
 }
+
+#[test]
+fn layers_are_added_and_removed_with_what_belongs_to_them() {
+    let mut p = Preset::parse("name = T\nport = P\nbind = note 1 -> record\n");
+    assert_eq!(p.add_layer("A", Src::Note(84)), Ok(()));
+    assert_eq!(p.add_layer("B", Src::Note(85)), Ok(()));
+    assert_eq!(p.add_layer("A", Src::Note(86)), Err(LayerError::Taken("A".into())));
+    assert_eq!(p.add_layer("C", Src::Note(85)), Err(LayerError::ControlInUse("it selects layer B".into())));
+    assert!(matches!(p.add_layer("C", Src::Note(1)), Err(LayerError::ControlInUse(_))), "a control that does something cannot select a layer");
+    assert_eq!(p.add_layer("two words", Src::Note(9)), Err(LayerError::BadName));
+    assert_eq!(p.add_layer("", Src::Note(9)), Err(LayerError::BadName));
+    assert!(matches!(p.add_layer("Record", Src::Note(9)), Err(LayerError::Reserved(_))));
+    assert!(matches!(p.add_layer("note", Src::Note(9)), Err(LayerError::Reserved(_))));
+    // What is bound on a layer goes with it.
+    p.assign(Some("B"), Action::Stop, Learned { input: Input { src: Src::Note(2), channel: None }, reading: Reading::Absolute });
+    p.assign(Some("A"), Action::Listen, Learned { input: Input { src: Src::Note(2), channel: None }, reading: Reading::Absolute });
+    p.remove_layer("B");
+    assert_eq!(p.layers, vec![("A".to_string(), Src::Note(84))]);
+    assert!(p.binds.iter().all(|b| b.layer.as_deref() != Some("B")) && p.binds.iter().any(|b| b.action == Action::Listen));
+    // It survives the file.
+    let back = Preset::parse(&p.to_text());
+    assert_eq!((back.layers, back.warnings), (p.layers.clone(), Vec::<String>::new()));
+}

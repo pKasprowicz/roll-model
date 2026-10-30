@@ -62,6 +62,31 @@ impl std::fmt::Display for PresetError {
 
 impl std::error::Error for PresetError {}
 
+/// Why a layer cannot be added to a preset.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum LayerError {
+    /// No name, or one with spaces or a `#` in it.
+    BadName,
+    /// A word of the file format (`note`, `rel`, the name of an action, ...) cannot be a layer's name.
+    Reserved(String),
+    Taken(String),
+    /// The control that would select the layer already does something; the text says what.
+    ControlInUse(String),
+}
+
+impl std::fmt::Display for LayerError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            LayerError::BadName => write!(f, "A layer needs a name of one word, without spaces or #."),
+            LayerError::Reserved(word) => write!(f, "\"{word}\" is a word of the preset format; choose another name."),
+            LayerError::Taken(name) => write!(f, "There is a layer called \"{name}\" already."),
+            LayerError::ControlInUse(what) => write!(f, "That control already selects or does something ({what}); clear it first, or press another."),
+        }
+    }
+}
+
+impl std::error::Error for LayerError {}
+
 /// Why a preset cannot be loaded.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum LoadPresetError {

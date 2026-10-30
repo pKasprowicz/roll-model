@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 
 use super::action::ACTIONS;
 use super::mapper::Learned;
-use super::{Action, Encoding, LoadPresetError, Out, PresetError, Reading, Src};
+use super::{Action, Encoding, LayerError, LoadPresetError, Out, PresetError, Reading, Src};
 
 /// A control of the device: the message it sends, and the MIDI channel it is limited to (none: any).
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -334,6 +334,37 @@ impl Preset {
         self.binds.retain(|b| !(b.layer == layer && b.action == action && kind(b.input.src) == kind(found.input.src)));
         self.binds.push(Binding { layer, input: found.input, reading: found.reading, action });
         taken_from
+    }
+
+    /// Adds a layer called `name` that the control `src` switches to. The name is one word that is
+    /// no word of the file format, and the control must not be bound to anything.
+    pub fn add_layer(&mut self, name: &str, src: Src) -> Result<(), LayerError> {
+        if name.is_empty() || name.chars().any(|c| c.is_whitespace() || c == '#' || c == '=') {
+            return Err(LayerError::BadName);
+        }
+        let lower = name.to_ascii_lowercase();
+        let words = ["note", "cc", "bend", "ch", "rel", "abs", "on", "off", "scale", "mackie", "twos", "offset", "signbit2"];
+        if words.contains(&lower.as_str()) || ACTIONS.iter().any(|i| i.name == lower) || ["mute", "solo", "gain", "audition"].contains(&lower.as_str()) {
+            return Err(LayerError::Reserved(name.to_string()));
+        }
+        if self.layers.iter().any(|l| l.0 == name) {
+            return Err(LayerError::Taken(name.to_string()));
+        }
+        if let Some((other, _)) = self.layers.iter().find(|l| l.1 == src) {
+            return Err(LayerError::ControlInUse(format!("it selects layer {other}")));
+        }
+        if let Some(b) = self.binds.iter().find(|b| b.input.src == src) {
+            return Err(LayerError::ControlInUse(b.action.title()));
+        }
+        self.layers.push((name.to_string(), src));
+        Ok(())
+    }
+
+    /// Removes the layer called `name` with every binding, light and ring it has.
+    pub fn remove_layer(&mut self, name: &str) {
+        self.layers.retain(|l| l.0 != name);
+        self.binds.retain(|b| b.layer.as_deref() != Some(name));
+        self.lights.retain(|l| l.layer.as_deref() != Some(name));
     }
 
     /// Takes every control of `action` on `layer` away.
