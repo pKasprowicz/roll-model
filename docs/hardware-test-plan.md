@@ -334,6 +334,24 @@ get learned by mistake? Did one press learn twice?
 If you have a **generic controller** (any of the four), do D with one of its knobs using
 **absolute**, and with one of its endless encoders if it has any.
 
+### D2. Detect, layers, lights
+
+1. **Detect.** In the copy, find an endless encoder's action (Tempo). Click **Detect** next to its kind, turn the
+   encoder slowly four clicks to the **right**, then four to the **left**. Expected: a message "… counts relative, X"
+   and the kind changes. Compare X with the table in Appendix B. Then turn the encoder: the tempo goes up to the right.
+   Try it on an absolute knob: the message should say it could not tell and show the numbers.
+2. **Layers.** In the copy of the Mini, click **Add layer…**, type `C`, click **Learn its button** and press a free
+   button (not one that does something: the program refuses it and says why). The layer appears next to A and B.
+   Assign something on it with Learn, switch to it on the device, check it works. **Delete layer** (asks twice) removes
+   it with what was assigned on it.
+3. **Lights.** Open the **Lights and rings** section. For an action with a button (Stop, say) click **Add light**, then
+   press the program's own button for it and watch the device: does the LED follow? If not, change the number (the
+   note or cc the device wants) or the on/off values (some devices use them as colours). For an encoder click
+   **Add ring** and turn the encoder in the program's tempo; check the ring (on Mackie devices the ring cc is not the
+   encoder's cc: the Mini uses 48 to 55).
+
+Write down which numbers a light or ring needed.
+
 ### E. Remember the channel
 
 Tick **Limit a learned control to the MIDI channel it sends on** before learning and learn

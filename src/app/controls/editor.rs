@@ -34,10 +34,35 @@ pub(super) struct ManageView {
     pub(super) confirm_layer_delete: bool,
 }
 
+/// How many clicks to each side tell an encoder's encoding.
+const DETECT_CLICKS: usize = 4;
+
+/// The values an encoder sent while its encoding is being found out.
+pub(super) struct Detect {
+    pub(super) action: Action,
+    /// The cc and channel of the first message; others are ignored.
+    cc: Option<(u8, u8)>,
+    clockwise: Vec<u8>,
+    counter: Vec<u8>,
+}
+
+impl Detect {
+    /// Turn to the right first, then to the left.
+    fn prompt(&self) -> String {
+        if self.clockwise.len() < DETECT_CLICKS {
+            format!("Turn the encoder for \"{}\" slowly to the RIGHT, {} clicks ({} so far)…", self.action.title(), DETECT_CLICKS, self.clockwise.len())
+        } else {
+            format!("Now slowly to the LEFT, {} clicks ({} so far)…", DETECT_CLICKS, self.counter.len())
+        }
+    }
+}
+
 /// What the editor remembers between frames: the learn state machine and its choices.
 pub(super) struct EditorState {
     /// The action that waits for the next control the device sends.
     pub(super) learning: Option<Action>,
+    /// An encoder is being turned right and then left to find out how it counts.
+    pub(super) detecting: Option<Detect>,
     /// The layer that waits for the button that selects it (the name it will have).
     pub(super) learning_layer: Option<String>,
     /// After a control is learned, wait for one for the next action in the list.
@@ -61,12 +86,14 @@ impl EditorState {
     pub(super) fn start_learning(&mut self, action: Action) {
         self.learning = Some(action);
         self.learning_layer = None;
+        self.detecting = None;
         self.notice.clear();
     }
 
     pub(super) fn stop_learning(&mut self) {
         self.learning = None;
         self.learning_layer = None;
+        self.detecting = None;
     }
 
     /// How a value's cc is read for `action` when nothing is bound yet: the choice made in the
@@ -92,7 +119,7 @@ impl EditorState {
 
 impl Default for EditorState {
     fn default() -> EditorState {
-        EditorState { learning: None, learning_layer: None, keep_going: true, remember_channel: false, kinds: BTreeMap::new(), notice: String::new(), view: ManageView::default() }
+        EditorState { learning: None, detecting: None, learning_layer: None, keep_going: true, remember_channel: false, kinds: BTreeMap::new(), notice: String::new(), view: ManageView::default() }
     }
 }
 
@@ -111,6 +138,7 @@ enum Op {
     AddLight(Action, bool),
     SetLight(Light),
     ClearLight(Action, bool),
+    Detect(Action),
     AddLayer,
     CloseAddLayer,
     LearnLayer,
@@ -198,6 +226,9 @@ impl DrumApp {
     /// (and never acts). True if the message was used up. A message that cannot be the control
     /// of that action (a release, a fader for a button) is used up and ignored.
     pub(super) fn learn_message(&mut self, msg: controller::Msg) -> bool {
+        if self.controller.editor.detecting.is_some() {
+            return self.detect_message(msg);
+        }
         if let Some(name) = self.controller.editor.learning_layer.clone() {
             return self.learn_layer_button(&name, msg);
         }
@@ -221,6 +252,46 @@ impl DrumApp {
         if editor.keep_going {
             let order = action_order();
             editor.learning = order.iter().position(|a| *a == action).and_then(|i| order.get(i + 1)).copied();
+        }
+        true
+    }
+
+    /// While an encoder is being turned right and then left: collects its values (the first cc
+    /// that arrives is the encoder, other messages are used up and ignored), and when there are
+    /// enough in both directions sets the kind of the action to the encoding that fits.
+    fn detect_message(&mut self, msg: controller::Msg) -> bool {
+        let controller::Msg::Cc { ch, cc, val } = msg else { return true };
+        let Some(d) = self.controller.editor.detecting.as_mut() else { return false };
+        if *d.cc.get_or_insert((cc, ch)) != (cc, ch) || val == 0 {
+            return true;
+        }
+        if d.clockwise.len() < DETECT_CLICKS {
+            d.clockwise.push(val);
+        } else {
+            d.counter.push(val);
+        }
+        if d.counter.len() < DETECT_CLICKS {
+            return true;
+        }
+        let Some(d) = self.controller.editor.detecting.take() else { return true };
+        match Encoding::guess(&d.clockwise, &d.counter) {
+            Some(encoding) => {
+                let reading = Reading::Relative(encoding);
+                self.controller.editor.choose_kind(d.action, reading);
+                if let Some(preset) = self.preset_being_edited() {
+                    let layer = self.editor_layer(&preset);
+                    self.edit_preset(|p| p.set_reading(layer.as_deref(), d.action, reading));
+                }
+                self.controller.editor.say(format!("{} counts {}.", d.action.title(), kind_text(reading)));
+            }
+            None => {
+                let seen = |v: &[u8]| v.iter().map(u8::to_string).collect::<Vec<_>>().join(" ");
+                self.controller.editor.say(format!(
+                    "Could not tell how it counts (right: {}; left: {}). Is it a knob that sends positions? Choose absolute then.",
+                    seen(&d.clockwise),
+                    seen(&d.counter)
+                ));
+            }
         }
         true
     }
@@ -548,7 +619,9 @@ impl DrumApp {
         if !connected {
             ui.label(RichText::new("The controller is not connected: connect it to learn controls.").small().color(render::AMBER));
         }
-        if let Some(action) = self.controller.editor.learning {
+        if let Some(d) = self.controller.editor.detecting.as_ref() {
+            ui.label(RichText::new(d.prompt()).strong().color(render::ACCENT));
+        } else if let Some(action) = self.controller.editor.learning {
             ui.label(RichText::new(format!("Press or turn the control for \"{}\" on the device…", action.title())).strong().color(render::ACCENT));
         } else if !self.controller.editor.notice.is_empty() {
             ui.label(RichText::new(self.controller.editor.notice.clone()).small());
@@ -570,14 +643,19 @@ impl DrumApp {
                                 .find(|b| matches!(b.input.src, controller::Src::Cc(_)))
                                 .map(|b| b.reading)
                                 .unwrap_or_else(|| self.controller.editor.chosen_kind(action));
-                            egui::ComboBox::from_id_salt(("controller_kind", action.text())).selected_text(kind_text(current)).width(150.0).show_ui(ui, |ui| {
-                                for reading in KINDS {
-                                    if action.is_browse() && !reading.is_relative() {
-                                        continue;
+                            ui.horizontal(|ui| {
+                                egui::ComboBox::from_id_salt(("controller_kind", action.text())).selected_text(kind_text(current)).width(150.0).show_ui(ui, |ui| {
+                                    for reading in KINDS {
+                                        if action.is_browse() && !reading.is_relative() {
+                                            continue;
+                                        }
+                                        if ui.selectable_label(current == reading, kind_text(reading)).clicked() {
+                                            op = Some(Op::Kind(action, reading));
+                                        }
                                     }
-                                    if ui.selectable_label(current == reading, kind_text(reading)).clicked() {
-                                        op = Some(Op::Kind(action, reading));
-                                    }
+                                });
+                                if ui.small_button("Detect").on_hover_text("Turn the encoder to the right and then to the left to find out how it counts").clicked() {
+                                    op = Some(Op::Detect(action));
                                 }
                             });
                         } else {
@@ -634,6 +712,16 @@ impl DrumApp {
                 }
             }
             Op::Cancel => self.controller.editor.stop_learning(),
+            Op::Detect(action) => {
+                if !self.controller.is_connected() {
+                    self.controller.editor.say("Connect the controller first (Refresh and reconnect, above).");
+                } else {
+                    let editor = &mut self.controller.editor;
+                    editor.stop_learning();
+                    editor.notice.clear();
+                    editor.detecting = Some(Detect { action, cc: None, clockwise: Vec::new(), counter: Vec::new() });
+                }
+            }
             Op::AddLight(action, ring) => {
                 let Some(preset) = self.preset_being_edited() else { return };
                 let layer = self.editor_layer(&preset);
@@ -867,6 +955,53 @@ bind = cc 13 abs -> tempo
         let ctx = egui::Context::default();
         app.controller.editor.view.open = true;
         let _ = ctx.run(egui::RawInput::default(), |ctx| app.controller_editor_window(ctx));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn an_encoder_is_turned_right_and_left_to_find_out_how_it_counts() {
+        let dir = temp_dir("detect");
+        std::fs::write(dir.join("Pads.txt"), "name = Pads
+port = PADS
+kind = midi
+bind = cc 13 rel -> tempo
+").unwrap();
+        let mut app = DrumApp::with_config(Config { controller_preset: "Pads".into(), ..Config::default() });
+        app.paths = Paths::in_dir(dir.parent().unwrap().to_path_buf());
+        let saved = || controller::Preset::parse(&std::fs::read_to_string(dir.join("Pads.txt")).unwrap());
+        let cc = |cc: u8, val: u8| controller::Msg::Cc { ch: 1, cc, val };
+        let start = |app: &mut DrumApp| app.controller.editor.detecting = Some(Detect { action: Action::Tempo, cc: None, clockwise: Vec::new(), counter: Vec::new() });
+
+        start(&mut app);
+        assert!(app.controller.editor.detecting.as_ref().unwrap().prompt().contains("RIGHT"));
+        // Other controls are used up and ignored, also the first cc that fixed the encoder.
+        assert!(app.learn_message(pressed(36)));
+        for v in [1, 1, 2] {
+            assert!(app.learn_message(cc(13, v)));
+        }
+        assert!(app.learn_message(cc(14, 99)), "another knob does not count");
+        assert!(app.learn_message(cc(13, 1)));
+        assert!(app.controller.editor.detecting.as_ref().unwrap().prompt().contains("LEFT"));
+        for v in [127, 127, 126, 127] {
+            assert!(app.learn_message(cc(13, v)));
+        }
+        assert!(app.controller.editor.detecting.is_none());
+        assert_eq!(saved().binds[0].reading, Reading::Relative(Encoding::Twos));
+        assert_eq!(app.controller.editor.chosen_kind(Action::Tempo), Reading::Relative(Encoding::Twos));
+        assert!(app.controller.editor.notice.contains("twos"), "{}", app.controller.editor.notice);
+
+        // A knob that sends positions is not guessed at: nothing changes, and the numbers are shown.
+        start(&mut app);
+        for v in [10, 40, 90, 100, 80, 20, 5, 60] {
+            app.learn_message(cc(13, v));
+        }
+        assert!(app.controller.editor.detecting.is_none());
+        assert_eq!(saved().binds[0].reading, Reading::Relative(Encoding::Twos));
+        assert!(app.controller.editor.notice.contains("Could not tell") && app.controller.editor.notice.contains("10 40 90 100"), "{}", app.controller.editor.notice);
+        // Cancelling stops it.
+        start(&mut app);
+        app.run_op(Some(Op::Cancel));
+        assert!(app.controller.editor.detecting.is_none());
         let _ = std::fs::remove_dir_all(&dir);
     }
 

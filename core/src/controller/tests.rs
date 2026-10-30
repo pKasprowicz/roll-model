@@ -659,3 +659,18 @@ fn lights_and_rings_are_set_replaced_and_cleared_per_layer() {
     assert_eq!(back.lights, p.lights);
     assert!(back.warnings.is_empty(), "{:?}", back.warnings);
 }
+
+#[test]
+fn an_encoding_is_guessed_from_a_few_clicks_each_way() {
+    use Encoding::*;
+    assert_eq!(Encoding::guess(&[1, 1, 2], &[65, 65, 66]), Some(Mackie));
+    assert_eq!(Encoding::guess(&[1, 1, 1], &[127, 127, 126]), Some(Twos));
+    assert_eq!(Encoding::guess(&[65, 66, 65], &[63, 63, 62]), Some(Offset));
+    assert_eq!(Encoding::guess(&[65, 65, 66], &[1, 1, 2]), Some(SignBit2), "the opposite sign bit of Mackie's");
+    // Nothing to go on, or a knob that sends positions.
+    assert_eq!(Encoding::guess(&[], &[65]), None);
+    assert_eq!(Encoding::guess(&[1], &[]), None);
+    assert_eq!(Encoding::guess(&[10, 40, 90], &[80, 20, 5]), None);
+    // Turning the other way round first reads as the opposite encoding, which is why the order is asked for.
+    assert_ne!(Encoding::guess(&[65, 65], &[1, 1]), Encoding::guess(&[1, 1], &[65, 65]));
+}
