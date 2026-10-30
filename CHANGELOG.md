@@ -26,6 +26,7 @@ A small release: Listen can start without the count-in, the shortcuts work again
 ### Changed
 - **The splash shows how long each start-up step took** (for example `Found 3 MIDI inputs and 2 MIDI outputs · 41 ms`), so slow drivers and devices can be seen at a glance.
 - **For developers: the code is split into two crates** in a Cargo workspace (`roll-model`, the application, and `roll-model-core` in `core/`, with the scores, grading, rudiments, controller presets and settings), the large files `app.rs`, `controller.rs` and `app/controls.rs` are folders of smaller modules, errors are typed, the settings keys and the controller actions are tables, and the settings folder is an injected value so no test can touch a user's files. `cargo build` and `cargo test` cover both crates. The developer guide is brought up to date.
+- **A funding link**: the repository has a *Sponsor* button (`.github/FUNDING.yml`) and a README section, and the notes of a `vX.Y.Z` release carry the link too. The program itself is unchanged by it.
 
 ## [0.7.0] - 2026-10-29
 
