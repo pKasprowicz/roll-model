@@ -1,0 +1,48 @@
+name: CI
+
+on:
+  push:
+    branches: [develop]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+# The tests on every push to develop, so a broken commit shows before a release.
+# There is no pull_request trigger: the repository takes no outside pull requests,
+# and nothing an outsider does should start a job here. GitHub-hosted runners only,
+# with the toolchains the release builds use.
+jobs:
+  test:
+    name: Test (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            toolchain: stable
+          - os: windows-latest
+            toolchain: stable-x86_64-pc-windows-gnu
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install system dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libasound2-dev pkg-config
+      - name: Install Rust
+        shell: bash
+        run: |
+          rustup toolchain install ${{ matrix.toolchain }} --profile minimal
+          rustup default ${{ matrix.toolchain }}
+          rustc -vV
+      - uses: Swatinem/rust-cache@v2
+      # Release mode, like release.yml: the timing tests are unreliable in a debug build.
+      - name: Test
+        run: cargo test --release --locked
+      - name: Check without the sound card
+        run: cargo check --locked --no-default-features

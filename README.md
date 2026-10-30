@@ -31,7 +31,7 @@ If a refactoring renames an item the guide shows, that command fails and names t
 
 ## Build and run
 
-Install a recent Rust from <https://rustup.rs> (tested with 1.99; 1.82 is too old for the dependencies), then:
+Ready-made Windows and Linux archives (the program, the manual and the licences) are attached to each [release](https://github.com/pKasprowicz/roll-model/releases). To build it yourself, install a recent Rust from <https://rustup.rs> (tested with 1.99; 1.82 is too old for the dependencies), then:
 
 ```sh
 cargo run --release                                 # start empty
@@ -195,6 +195,10 @@ The program is built from open-source libraries and fonts under their own licenc
 ## Support
 
 Roll Model is free for noncommercial use and developed in spare time. If it helps your practice, you can [buy me a coffee](https://buymeacoffee.com/pkasprowicz). Donations are optional and don't change the licence or buy any features.
+
+## Feedback
+
+Roll Model is written by its author alone, so pull requests are not accepted (see [CONTRIBUTING.md](CONTRIBUTING.md)). Bug reports and results from real hardware (the V31 note map and the controller presets are the least tested parts) are welcome as issues. Security problems are reported as described in [SECURITY.md](SECURITY.md), not in a public issue.
 
 ## Versioning
 

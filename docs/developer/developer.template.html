@@ -58,7 +58,7 @@
 </div>
 <p>{{STATS}}</p>
 <h3>Licence</h3>
-<p>The project is under the <strong>PolyForm Noncommercial License 1.0.0</strong> (file <code>LICENSE</code>): you may read, study, change and share it for any noncommercial purpose, not make money from it. Libraries and fonts it uses are under their own licences (<code>THIRD_PARTY_NOTICES.txt</code>). Contributions are accepted under the same terms.</p>
+<p>The project is under the <strong>PolyForm Noncommercial License 1.0.0</strong> (file <code>LICENSE</code>): you may read, study, change and share it for any noncommercial purpose, not make money from it. Libraries and fonts it uses are under their own licences (<code>THIRD_PARTY_NOTICES.txt</code>). The author makes all changes; pull requests are not accepted.</p>
 <h3>Where the other documents are</h3>
 <table class="compact">
 <tbody>
@@ -809,9 +809,10 @@ impl DrumApp {
 <ol class="steps">
 <li><strong>plan</strong> decides whether to build at all (a branch push of a commit that also carries a release tag is covered by the tag run).</li>
 <li><strong>manual</strong> (Ubuntu) runs the three Python tools: the user manual, the developer guide and the third-party notices, and uploads them as one artifact.</li>
-<li><strong>build-linux</strong> and <strong>build-windows</strong> (self-hosted) run <code>cargo test --release</code>, <code>cargo build --release</code> and package the binary with <code>README.md</code>, <code>CHANGELOG.md</code>, <code>LICENSE</code>, the manual, the developer guide, the notices and <code>examples/</code>.</li>
+<li><strong>build-linux</strong> and <strong>build-windows</strong> (both on GitHub-hosted runners; Windows uses the GNU toolchain, <code>x86_64-pc-windows-gnu</code>, so the program needs no Visual C++ runtime) run<code>cargo test --release</code>, <code>cargo build --release</code> and package the binary with <code>README.md</code>, <code>CHANGELOG.md</code>, <code>LICENSE</code>, the manual, the developer guide, the notices and <code>examples/</code>.</li>
 <li><strong>publish</strong> attaches everything to a GitHub release (a normal one for <code>v*.*.*</code>, a replaced pre-release for <code>preview</code>).</li>
 </ol>
+<p><code>.github/workflows/ci.yml</code> runs <code>cargo test --release</code> on every push to <code>develop</code>, on hosted Ubuntu and Windows with the same toolchains. It has no <code>pull_request</code> trigger on purpose: the repository takes no outside pull requests, and no workflow may use a self-hosted runner.</p>
 <h3>Making a release</h3>
 <ol class="steps">
 <li>On <code>develop</code>: move <code>[Unreleased]</code> in the changelog under the new version and date; bump <code>version</code> in <code>Cargo.toml</code>, <code>core/Cargo.toml</code> and <code>Cargo.lock</code>; commit <code>chore: release X.Y.Z</code>.</li>
@@ -841,7 +842,7 @@ impl DrumApp {
 
 <section id="invariants">
 <h2>16. Invariants checklist</h2>
-<p>Before you open a pull request, check you did not break one of these.</p>
+<p>Before you commit, check you did not break one of these.</p>
 <ul>
 <li>Score positions are quarter notes; seconds only through <code>TempoMap</code>.</li>
 <li>Take time zero is the start of the first measure of the range; <code>start_take</code> adds 0.5 s lead plus the count-in.</li>

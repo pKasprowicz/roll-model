@@ -4,6 +4,9 @@ version = "0.7.2"
 edition = "2021"
 description = "Load MusicXML drum scores, capture MIDI from a Roland V31 and grade the performance"
 license = "PolyForm-Noncommercial-1.0.0"
+repository = "https://github.com/pKasprowicz/roll-model"
+readme = "README.md"
+publish = false
 
 [workspace]
 members = ["core"]

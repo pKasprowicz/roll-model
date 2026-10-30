@@ -1,0 +1,52 @@
+name: Bug report
+description: Something does not work as the manual or the README says
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting. For a security problem do not use this form; see SECURITY.md.
+        Results from real hardware (a drum module, a controller) are welcome here too, working or not.
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: Shown on the start-up screen, and in the name of the release archive.
+      placeholder: "0.7.2"
+    validations:
+      required: true
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating system
+      options:
+        - Windows
+        - macOS
+        - Linux
+        - Other
+    validations:
+      required: true
+  - type: input
+    id: hardware
+    attributes:
+      label: Drum module or controller
+      description: Make and model, and how it is connected (USB, MIDI interface). Leave empty if none is involved.
+      placeholder: "Roland V31 over USB"
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: And what you expected instead.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: For a score that does not load, say which program exported it, or attach the file if you may share it.
+  - type: textarea
+    id: monitor
+    attributes:
+      label: MIDI monitor output
+      description: For anything about hits, notes or a controller, paste what the monitor on Settings → MIDI input or Settings → Controller shows.
+      render: text

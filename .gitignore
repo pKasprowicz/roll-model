@@ -1,1 +1,8 @@
 /target
+
+# Local editor, OS and assistant files
+.claude/settings.local.json
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db

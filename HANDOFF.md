@@ -78,6 +78,7 @@ The hardware tasks (HW-*) have a step-by-step plan in `docs/hardware-test-plan.m
 | **FEAT-4** | A Listen without count-in setting of its own | code |
 | **NAME-1** | Check the name (GitHub, web, trademark, domain) | decision |
 | **NAME-2** | Rename the local folder `D:\projects\DrumTutor` | decision |
+| **PUB-1** | Make the repository public and set the GitHub options (see "Going public") | decision |
 | **CD-1** | Split `app.rs` and `DrumApp` | code |
 | **CD-2** | Split `controller.rs` into a folder of modules | code |
 | **CD-3** | One table for actions (shotgun surgery) | code |
@@ -168,6 +169,16 @@ The Rudiments tab sits between Score and Metronome. `docs/rudiments.md` is the c
 
 `LICENSE` is PolyForm Noncommercial 1.0.0 (copyright notice line on top). A copyright review on 2026-10-26 found no infringement: no binary assets, synthesised sounds, an original sample score, dependencies all permissive (no GPL/MPL), PAS rudiments used as facts with own wording. `tools/build_notices.py` makes `THIRD_PARTY_NOTICES.txt` for the archives (run by the `manual` job). After adding a dependency nothing needs doing: the file is rebuilt from `cargo metadata`. Not done: the product names are unchecked as trademarks ("Roll Model" included).
 
+### Going public
+
+Checked on 2026-10-30, while the repository was still private. Every commit and the working tree hold no secrets, keys, binaries, private paths or third-party content; the only personal data is the author's name and email in the `LICENSE` copyright line (and so in the commit metadata), and the donation handle. The 464 dependencies are all permissive (`r-efi` lists MIT among its choices). The remote has `main`, `develop` and the release tags only. Added: `CONTRIBUTING.md` (**no pull requests are accepted, the author makes every change**; bug reports and hardware results are welcome as issues), `SECURITY.md`, the bug report form in `.github/ISSUE_TEMPLATE/`, `.github/workflows/ci.yml` (tests on GitHub-hosted Ubuntu and Windows on pushes to `develop`; it has no `pull_request` trigger on purpose), `repository` in both manifests and `publish = false` for the app crate. The Windows job of `release.yml` moved from the self-hosted runner to `windows-latest` with the GNU toolchain (`x86_64-pc-windows-gnu`, what every Windows release has been built with; MSVC would need the Visual C++ runtime on the user's machine). **That job and `ci.yml` have not run on GitHub yet**: put the `preview` tag on a `develop` commit to try the Windows build before the next `vX.Y.Z`; if the hosted image lacks a MinGW `gcc`, install one in that job. Decided by the owner: the name stays as it is for now (NAME-1 stays open), the old MIT tags `v0.1.0` to `v0.5.0` may become visible with the history, and the author's email stays in the commit metadata.
+
+- [ ] **PUB-1** Left for the owner, on GitHub:
+  - Settings → General → Danger Zone → change visibility. Nothing was pushed or changed there.
+  - Settings → Code security: private vulnerability reporting (`SECURITY.md` points to it), secret scanning with push protection.
+  - Branch protection for `main`: no force-push or deletion.
+  - Settings → General → Features: add a description and topics; decide on Wiki, Projects, Discussions and Issues, and look for a way to restrict pull requests to collaborators (otherwise outside ones are only closed).
+
 ### Still open
 
 - [ ] **SND-1** **Listen to the new cymbals and the rest of the kit.** Nobody has heard them; only their spectra are tested (centroid, share below 2 kHz, lone low partials). Tune `Cymbal` parameters in `synth.rs` by ear, then adjust the guard bands if needed. The hi-hats are untouched and still very bright (spectral centroid about 13 kHz).
@@ -255,7 +266,7 @@ Severity: **High** = a structural problem that makes changes costly or risky; **
 
 The application was renamed from "Drum Tutor" to **Roll Model** (crate and binary `roll-model`). The settings folder moved to `RollModel` / `roll-model` with a one-time copy from the old one (`Config::migrate`, tested). The brainstorm is kept in [`docs/name-ideas.md`](docs/name-ideas.md).
 
-- [ ] **NAME-1** Check the name (GitHub, web, trademark, domain) before shipping it widely.
+- [ ] **NAME-1** Check the name (GitHub, web, trademark, domain) before shipping it widely. A web search on 2026-10-30 found no drum or music software called Roll Model, but **THE ROLL MODEL** is a registered US trademark of Tune Up Fitness Worldwide, Inc. (Jill Miller's book and the Roll Model® Method of self-massage fitness; classes 28 and 41 according to directory sites, not checked at the USPTO). A different field, but the class 41 (education) overlap is the thing to look at. Nothing was checked in the EU or elsewhere.
 - [ ] **NAME-2** Rename the local folder `D:\projects\DrumTutor` if wanted (the GitHub repository is already `roll-model`).
 - [x] Released as 0.6.0 (the rename, rudiments, controller, licence and docs): see `CHANGELOG.md`.
 
