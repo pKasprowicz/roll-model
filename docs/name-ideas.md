@@ -65,7 +65,7 @@ Not decided by the user yet. Add notes and the verdict below.
 - `src/main.rs`: the window title and the app name given to `eframe::run_native`.
 - `src/app.rs`: the heading on the welcome panel.
 - `src/midi.rs`: the MIDI client names (`drum-tutor`, `drum-tutor-in`, `drum-tutor-out`, `drum-tutor-list`), which show up in other MIDI software.
-- `src/config.rs`: the settings folder (`%APPDATA%\DrumTutor`, `~/Library/Application Support/DrumTutor`, `~/.config/drum-tutor`), its doc comment and the first line of the file.
+- `core/src/config.rs`: the settings folder (`%APPDATA%\DrumTutor`, `~/Library/Application Support/DrumTutor`, `~/.config/drum-tutor`), its doc comment and the first line of the file.
   - **Migration:** on first start, if the new folder does not exist but the old one does, copy the old `config.txt` across, or users lose their settings and recent-scores list. Add a test.
 - `README.md`, `HANDOFF.md`, `CLAUDE.md`, `CHANGELOG.md`: titles and mentions.
 - Outside the repo: the folder name (`D:\projects\DrumTutor`) and, if there is one, the remote repository.

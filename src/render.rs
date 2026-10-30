@@ -226,73 +226,6 @@ fn y_of(step: i32, staff_bottom: f32) -> f32 {
     staff_bottom - step as f32 * STEP
 }
 
-fn draw_head(p: &Painter, c: Pos2, head: NoteHead, color: Color32, scale: f32) {
-    let rx = 5.0 * scale;
-    let ry = 3.6 * scale;
-    let stroke = Stroke::new(1.6 * scale.max(0.8), color);
-    match head {
-        NoteHead::Normal => {
-            let (s, co) = (-0.35f32).sin_cos();
-            let pts: Vec<Pos2> = (0..16)
-                .map(|k| {
-                    let a = k as f32 / 16.0 * std::f32::consts::TAU;
-                    let (x, y) = (rx * a.cos(), ry * a.sin());
-                    pos2(c.x + x * co - y * s, c.y + x * s + y * co)
-                })
-                .collect();
-            p.add(Shape::convex_polygon(pts, color, Stroke::NONE));
-        }
-        NoteHead::X => {
-            p.line_segment([c + vec2(-rx * 0.8, -ry), c + vec2(rx * 0.8, ry)], stroke);
-            p.line_segment([c + vec2(-rx * 0.8, ry), c + vec2(rx * 0.8, -ry)], stroke);
-        }
-        NoteHead::CircleX => {
-            p.circle_stroke(c, rx * 0.95, Stroke::new(1.2 * scale.max(0.8), color));
-            let d = rx * 0.6;
-            p.line_segment([c + vec2(-d, -d), c + vec2(d, d)], stroke);
-            p.line_segment([c + vec2(-d, d), c + vec2(d, -d)], stroke);
-        }
-        NoteHead::Diamond => {
-            let pts = vec![c + vec2(0.0, -ry * 1.3), c + vec2(rx, 0.0), c + vec2(0.0, ry * 1.3), c + vec2(-rx, 0.0)];
-            p.add(Shape::convex_polygon(pts, color, Stroke::NONE));
-        }
-        NoteHead::Triangle => {
-            let pts = vec![c + vec2(0.0, -ry * 1.3), c + vec2(rx, ry), c + vec2(-rx, ry)];
-            p.add(Shape::convex_polygon(pts, color, Stroke::NONE));
-        }
-    }
-}
-
-fn draw_ledgers(p: &Painter, x: f32, step: i32, staff_bottom: f32, color: Color32) {
-    let stroke = Stroke::new(1.0_f32, color);
-    let mut s = 10;
-    while s <= step {
-        let y = y_of(s, staff_bottom);
-        p.line_segment([pos2(x - 8.0, y), pos2(x + 8.0, y)], stroke);
-        s += 2;
-    }
-    let mut s = -2;
-    while s >= step {
-        let y = y_of(s, staff_bottom);
-        p.line_segment([pos2(x - 8.0, y), pos2(x + 8.0, y)], stroke);
-        s -= 2;
-    }
-}
-
-fn draw_staff(p: &Painter, x0: f32, x1: f32, top: f32, color: Color32) {
-    for k in 0..5 {
-        let y = top + k as f32 * LS;
-        p.line_segment([pos2(x0, y), pos2(x1, y)], Stroke::new(1.0_f32, color));
-    }
-}
-
-fn draw_clef(p: &Painter, x: f32, top: f32, color: Color32) {
-    let r1 = Rect::from_min_max(pos2(x, top + LS), pos2(x + 3.0, top + 3.0 * LS));
-    let r2 = Rect::from_min_max(pos2(x + 6.0, top + LS), pos2(x + 9.0, top + 3.0 * LS));
-    p.rect_filled(r1, 0.0, color);
-    p.rect_filled(r2, 0.0, color);
-}
-
 /// How far left of its main note a grace note is drawn.
 fn grace_dx(n: &ScoreNote) -> f32 {
     if n.grace {
@@ -300,19 +233,6 @@ fn grace_dx(n: &ScoreNote) -> f32 {
     } else {
         0.0
     }
-}
-
-/// The letter of the hand that plays a note, under it (the grace notes' ones are small): right
-/// in the text colour, left in the accent colour.
-fn draw_hand(p: &Painter, x: f32, y: f32, n: &ScoreNote, text: Color32) {
-    let Some(hand) = n.hand else { return };
-    let (size, color) = match (n.grace, hand) {
-        (true, _) => (8.0, text.gamma_multiply(0.6)),
-        (false, Hand::Right) => (11.0, text),
-        (false, Hand::Left) => (11.0, ACCENT),
-    };
-    let letter = if n.grace { hand.letter().to_lowercase() } else { hand.letter().to_string() };
-    p.text(pos2(x, y), Align2::CENTER_CENTER, letter, FontId::proportional(size), color);
 }
 
 /// A single staff that scrolls past a fixed "now" line, for playing along
@@ -363,10 +283,12 @@ pub fn rolling(ui: &mut Ui, view: &RollingView) {
     let top = rect.top() + EXP_TOP;
     let bot = rect.top() + EXP_BOT;
 
-    draw_staff(&painter, rect.left() + 4.0, rect.right(), top, line_col);
-    draw_clef(&painter, rect.left() + 8.0, top, text);
+    let canvas = Canvas { painter: &painter, text, weak, line: line_col, grid: grid_col };
+    canvas.staff(rect.left() + 4.0, rect.right(), top);
+    canvas.clef(rect.left() + 8.0, top, text);
     // Notes are only drawn right of the clef.
     let clipped = painter.with_clip_rect(Rect::from_min_max(pos2(x_min, rect.top()), pos2(x_max, rect.bottom())));
+    let notes = Canvas { painter: &clipped, text, weak, line: line_col, grid: grid_col };
 
     for k in loop_repeats(start, end, left_q, right_q) {
         let shift = k as f64 * len;
@@ -388,30 +310,215 @@ pub fn rolling(ui: &mut Ui, view: &RollingView) {
             if x < x_min - 12.0 || x > x_max + 12.0 {
                 continue;
             }
-            let y = y_of(n.staff_step, bot);
             let col = if x < now_x - 4.0 { weak } else { text };
-            let scale = if n.grace { 0.65 } else { 1.0 };
-            draw_ledgers(&clipped, x, n.staff_step, bot, line_col);
-            draw_head(&clipped, pos2(x, y), n.head, col, scale);
-            draw_hand(&clipped, x, bot + 16.0, n, col);
-            let up = n.stem_up.unwrap_or(!n.lane.is_foot());
-            let rx = 5.0 * scale;
-            let sx = if up { x + rx - 0.5 } else { x - rx + 0.5 };
-            let sy = if up { y - STEM * scale } else { y + STEM * scale };
-            clipped.line_segment([pos2(sx, y), pos2(sx, sy)], Stroke::new(1.0_f32, col));
-            if n.ghost {
-                clipped.text(pos2(x - 8.0, y), Align2::CENTER_CENTER, "(", FontId::proportional(11.0), col);
-                clipped.text(pos2(x + 8.0, y), Align2::CENTER_CENTER, ")", FontId::proportional(11.0), col);
-            }
-            if n.accent {
-                let ay = if up { rect.top() + 28.0 } else { bot + STEM + 10.0 };
-                let s = Stroke::new(1.4_f32, col);
-                clipped.line_segment([pos2(x - 4.0, ay - 3.0), pos2(x + 4.0, ay)], s);
-                clipped.line_segment([pos2(x + 4.0, ay), pos2(x - 4.0, ay + 3.0)], s);
-            }
+            notes.written_note(n, x, bot, rect.top() + 28.0, Ink { note: col, hand: col, hand_dy: 16.0 });
         }
     }
     painter.line_segment([pos2(now_x, rect.top() + 12.0), pos2(now_x, bot + STEM + 4.0)], Stroke::new(2.0_f32, ACCENT));
+}
+
+/// The painter and the colours a score is drawn with.
+struct Canvas<'a> {
+    painter: &'a Painter,
+    text: Color32,
+    weak: Color32,
+    line: Color32,
+    grid: Color32,
+}
+
+/// What colours a written note is drawn in, and how far under the staff its hand letter goes.
+struct Ink {
+    note: Color32,
+    hand: Color32,
+    hand_dy: f32,
+}
+
+impl Canvas<'_> {
+    fn head(&self, c: Pos2, head: NoteHead, color: Color32, scale: f32) {
+        let p = self.painter;
+        let rx = 5.0 * scale;
+        let ry = 3.6 * scale;
+        let stroke = Stroke::new(1.6 * scale.max(0.8), color);
+        match head {
+            NoteHead::Normal => {
+                let (s, co) = (-0.35f32).sin_cos();
+                let pts: Vec<Pos2> = (0..16)
+                    .map(|k| {
+                        let a = k as f32 / 16.0 * std::f32::consts::TAU;
+                        let (x, y) = (rx * a.cos(), ry * a.sin());
+                        pos2(c.x + x * co - y * s, c.y + x * s + y * co)
+                    })
+                    .collect();
+                p.add(Shape::convex_polygon(pts, color, Stroke::NONE));
+            }
+            NoteHead::X => {
+                p.line_segment([c + vec2(-rx * 0.8, -ry), c + vec2(rx * 0.8, ry)], stroke);
+                p.line_segment([c + vec2(-rx * 0.8, ry), c + vec2(rx * 0.8, -ry)], stroke);
+            }
+            NoteHead::CircleX => {
+                p.circle_stroke(c, rx * 0.95, Stroke::new(1.2 * scale.max(0.8), color));
+                let d = rx * 0.6;
+                p.line_segment([c + vec2(-d, -d), c + vec2(d, d)], stroke);
+                p.line_segment([c + vec2(-d, d), c + vec2(d, -d)], stroke);
+            }
+            NoteHead::Diamond => {
+                let pts = vec![c + vec2(0.0, -ry * 1.3), c + vec2(rx, 0.0), c + vec2(0.0, ry * 1.3), c + vec2(-rx, 0.0)];
+                p.add(Shape::convex_polygon(pts, color, Stroke::NONE));
+            }
+            NoteHead::Triangle => {
+                let pts = vec![c + vec2(0.0, -ry * 1.3), c + vec2(rx, ry), c + vec2(-rx, ry)];
+                p.add(Shape::convex_polygon(pts, color, Stroke::NONE));
+            }
+        }
+    }
+
+    /// Ledger lines for a head at `step` of the staff that ends at `staff_bottom`.
+    fn ledgers(&self, x: f32, step: i32, staff_bottom: f32) {
+        let p = self.painter;
+        let stroke = Stroke::new(1.0_f32, self.line);
+        let mut s = 10;
+        while s <= step {
+            let y = y_of(s, staff_bottom);
+            p.line_segment([pos2(x - 8.0, y), pos2(x + 8.0, y)], stroke);
+            s += 2;
+        }
+        let mut s = -2;
+        while s >= step {
+            let y = y_of(s, staff_bottom);
+            p.line_segment([pos2(x - 8.0, y), pos2(x + 8.0, y)], stroke);
+            s -= 2;
+        }
+    }
+
+    fn staff(&self, x0: f32, x1: f32, top: f32) {
+        let (p, color) = (self.painter, self.line);
+        for k in 0..5 {
+            let y = top + k as f32 * LS;
+            p.line_segment([pos2(x0, y), pos2(x1, y)], Stroke::new(1.0_f32, color));
+        }
+    }
+
+    fn clef(&self, x: f32, top: f32, color: Color32) {
+        let p = self.painter;
+        let r1 = Rect::from_min_max(pos2(x, top + LS), pos2(x + 3.0, top + 3.0 * LS));
+        let r2 = Rect::from_min_max(pos2(x + 6.0, top + LS), pos2(x + 9.0, top + 3.0 * LS));
+        p.rect_filled(r1, 0.0, color);
+        p.rect_filled(r2, 0.0, color);
+    }
+
+    /// The letter of the hand that plays a note, under it (the grace notes' ones are small): right
+    /// in the text colour, left in the accent colour.
+    fn hand(&self, x: f32, y: f32, n: &ScoreNote, text: Color32) {
+        let p = self.painter;
+        let Some(hand) = n.hand else { return };
+        let (size, color) = match (n.grace, hand) {
+            (true, _) => (8.0, text.gamma_multiply(0.6)),
+            (false, Hand::Right) => (11.0, text),
+            (false, Hand::Left) => (11.0, ACCENT),
+        };
+        let letter = if n.grace { hand.letter().to_lowercase() } else { hand.letter().to_string() };
+        p.text(pos2(x, y), Align2::CENTER_CENTER, letter, FontId::proportional(size), color);
+    }
+
+    /// A written note: head, ledger lines, hand letter, stem, ghost brackets and accent. `x` already
+    /// includes the grace offset; `accent_up_y` is where the accent goes above a stem that points up.
+    fn written_note(&self, n: &ScoreNote, x: f32, staff_bottom: f32, accent_up_y: f32, ink: Ink) {
+        let p = self.painter;
+        let (col, scale) = (ink.note, if n.grace { 0.65 } else { 1.0 });
+        let y = y_of(n.staff_step, staff_bottom);
+        self.ledgers(x, n.staff_step, staff_bottom);
+        self.head(pos2(x, y), n.head, col, scale);
+        self.hand(x, staff_bottom + ink.hand_dy, n, ink.hand);
+        let up = n.stem_up.unwrap_or(!n.lane.is_foot());
+        let rx = 5.0 * scale;
+        let sx = if up { x + rx - 0.5 } else { x - rx + 0.5 };
+        let sy = if up { y - STEM * scale } else { y + STEM * scale };
+        p.line_segment([pos2(sx, y), pos2(sx, sy)], Stroke::new(1.0_f32, col));
+        if n.ghost {
+            p.text(pos2(x - 8.0, y), Align2::CENTER_CENTER, "(", FontId::proportional(11.0), col);
+            p.text(pos2(x + 8.0, y), Align2::CENTER_CENTER, ")", FontId::proportional(11.0), col);
+        }
+        if n.accent {
+            let ay = if up { accent_up_y } else { staff_bottom + STEM + 10.0 };
+            let s = Stroke::new(1.4_f32, col);
+            p.line_segment([pos2(x - 4.0, ay - 3.0), pos2(x + 4.0, ay)], s);
+            p.line_segment([pos2(x + 4.0, ay), pos2(x - 4.0, ay + 3.0)], s);
+        }
+    }
+}
+
+/// What the drawing of the systems needs to know about the score being shown.
+struct Frame<'a> {
+    view: &'a ScoreView<'a>,
+    lay: &'a Layout,
+    cv: Canvas<'a>,
+    /// Top left corner of the first system.
+    origin: Pos2,
+    hover: Option<Pos2>,
+    /// Staff position and head of each instrument, in the order of `Lane::ALL`: where the played
+    /// notes go, the same as the score draws each lane.
+    lane_staff: Vec<(i32, NoteHead)>,
+    notes_by_measure: Vec<Vec<usize>>,
+    played_by_measure: Vec<Vec<usize>>,
+}
+
+impl Frame<'_> {
+    fn x_of(&self, measure: usize, q: f64) -> f32 {
+        self.origin.x + self.lay.x_of(self.view.score, measure, q)
+    }
+}
+
+/// The vertical positions of the rows of the system that starts at `y0`.
+struct Rows {
+    y0: f32,
+    exp_top: f32,
+    exp_bot: f32,
+    play_top: f32,
+    play_bot: f32,
+    vel_base: f32,
+}
+
+impl Rows {
+    fn at(y0: f32) -> Rows {
+        Rows { y0, exp_top: y0 + EXP_TOP, exp_bot: y0 + EXP_BOT, play_top: y0 + PLAY_TOP, play_bot: y0 + PLAY_BOT, vel_base: y0 + VEL_BASE }
+    }
+}
+
+/// The played notes of each measure (one played before the start belongs to the first, one long
+/// after the end to none).
+fn played_by_measure(score: &Score, played: &[PlayedNote]) -> Vec<Vec<usize>> {
+    let mut by_measure: Vec<Vec<usize>> = vec![Vec::new(); score.measures.len()];
+    for (i, pn) in played.iter().enumerate() {
+        if let Some(mi) = score.measure_at(pn.q) {
+            let m = &score.measures[mi];
+            if pn.q < m.end_q() + m.len_q * 0.5 || mi + 1 < score.measures.len() {
+                by_measure[mi].push(i);
+            }
+        } else if pn.q < 0.0 {
+            by_measure[0].push(i);
+        }
+    }
+    by_measure
+}
+
+fn notes_by_measure(score: &Score) -> Vec<Vec<usize>> {
+    let mut by_measure: Vec<Vec<usize>> = vec![Vec::new(); score.measures.len()];
+    for (i, n) in score.notes.iter().enumerate() {
+        if n.measure < by_measure.len() {
+            by_measure[n.measure].push(i);
+        }
+    }
+    by_measure
+}
+
+/// Whether the playhead is in the system of measures `first..end` (the first system also holds it
+/// during the count-in, the last one a little after the end).
+fn holds_playhead(view: &ScoreView, system: usize, first: usize, end: usize) -> bool {
+    let Some(q) = view.playhead_q else { return false };
+    let score = view.score;
+    let (first, last) = (&score.measures[first], &score.measures[end - 1]);
+    let inside = q >= first.start_q && (q < last.end_q() || end == score.measures.len() && q < last.end_q() + 8.0);
+    inside || (system == 0 && q < first.start_q)
 }
 
 pub fn show(ui: &mut Ui, view: &ScoreView) -> ViewOutput {
@@ -426,197 +533,44 @@ pub fn show(ui: &mut Ui, view: &ScoreView) -> ViewOutput {
     out.fit_bars = lay.fit_bars;
     let total_h = lay.systems.len() as f32 * SYS_H + 10.0;
     let (response, painter) = ui.allocate_painter(vec2(width, total_h), Sense::click());
-    let origin = response.rect.min;
-    let clip = painter.clip_rect();
-
-    let text = ui.visuals().text_color();
     let weak = ui.visuals().weak_text_color();
-    let line_col = ui.visuals().widgets.noninteractive.fg_stroke.color.gamma_multiply(0.7);
-    let grid_col = weak.gamma_multiply(0.25);
-    let range_bg = ACCENT.gamma_multiply(0.08);
-
-    // Staff positions for played notes: same as the score draws each lane.
-    let lane_staff: Vec<(i32, NoteHead)> = Lane::ALL.iter().map(|l| score.staff_for_lane(*l)).collect();
-    let lane_idx = |l: Lane| Lane::ALL.iter().position(|x| *x == l).unwrap_or(0);
-
-    let hover = response.hover_pos();
+    let frame = Frame {
+        view,
+        lay: &lay,
+        cv: Canvas {
+            painter: &painter,
+            text: ui.visuals().text_color(),
+            weak,
+            line: ui.visuals().widgets.noninteractive.fg_stroke.color.gamma_multiply(0.7),
+            grid: weak.gamma_multiply(0.25),
+        },
+        origin: response.rect.min,
+        hover: response.hover_pos(),
+        lane_staff: Lane::ALL.iter().map(|l| score.staff_for_lane(*l)).collect(),
+        notes_by_measure: notes_by_measure(score),
+        played_by_measure: played_by_measure(score, view.played),
+    };
+    let clip = painter.clip_rect();
     let mut hover_text: Option<String> = None;
     let mut playhead_rect: Option<Rect> = None;
 
-    // Played notes bucketed by measure.
-    let mut played_by_measure: Vec<Vec<usize>> = vec![Vec::new(); score.measures.len()];
-    for (i, pn) in view.played.iter().enumerate() {
-        if let Some(mi) = score.measure_at(pn.q) {
-            let m = &score.measures[mi];
-            if pn.q < m.end_q() + m.len_q * 0.5 || mi + 1 < score.measures.len() {
-                played_by_measure[mi].push(i);
-            }
-        } else if pn.q < 0.0 {
-            played_by_measure[0].push(i);
-        }
-    }
-    // Notes bucketed by measure.
-    let mut notes_by_measure: Vec<Vec<usize>> = vec![Vec::new(); score.measures.len()];
-    for (i, n) in score.notes.iter().enumerate() {
-        if n.measure < notes_by_measure.len() {
-            notes_by_measure[n.measure].push(i);
-        }
-    }
-
     for (si, &(a, b)) in lay.systems.iter().enumerate() {
-        let y0 = origin.y + si as f32 * SYS_H;
-        let sys_rect = Rect::from_min_max(pos2(origin.x, y0), pos2(origin.x + width, y0 + SYS_H));
-        let x_end = origin.x + lay.measures[b - 1].x0 + lay.measures[b - 1].w;
-        if let Some(q) = view.playhead_q {
-            let first = &score.measures[a];
-            let last = &score.measures[b - 1];
-            if q >= first.start_q && (q < last.end_q() || b == score.measures.len() && q < last.end_q() + 8.0) {
-                playhead_rect = Some(sys_rect);
-            }
-            if si == 0 && q < first.start_q {
-                playhead_rect = Some(sys_rect);
-            }
+        let rows = Rows::at(frame.origin.y + si as f32 * SYS_H);
+        let sys_rect = Rect::from_min_max(pos2(frame.origin.x, rows.y0), pos2(frame.origin.x + width, rows.y0 + SYS_H));
+        if holds_playhead(view, si, a, b) {
+            playhead_rect = Some(sys_rect);
         }
         if !sys_rect.intersects(clip) {
             continue;
         }
-        let exp_top = y0 + EXP_TOP;
-        let exp_bot = y0 + EXP_BOT;
-        let play_top = y0 + PLAY_TOP;
-        let play_bot = y0 + PLAY_BOT;
-        let vel_base = y0 + VEL_BASE;
-
-        // Practice range highlight
-        for mi in a..b {
-            if mi >= view.range.0 && mi <= view.range.1 {
-                let mp = &lay.measures[mi];
-                let r = Rect::from_min_max(
-                    pos2(origin.x + mp.x0, y0 + 14.0),
-                    pos2(origin.x + mp.x0 + mp.w, vel_base + 4.0),
-                );
-                painter.rect_filled(r, 0.0, range_bg);
-            }
-        }
-
-        draw_staff(&painter, origin.x + LEFT - 22.0, x_end, exp_top, line_col);
-        draw_staff(&painter, origin.x + LEFT - 22.0, x_end, play_top, line_col);
-        draw_clef(&painter, origin.x + LEFT - 18.0, exp_top, text);
-        draw_clef(&painter, origin.x + LEFT - 18.0, play_top, weak);
-        painter.text(pos2(origin.x + 2.0, exp_top + 2.0 * LS), Align2::LEFT_CENTER, "Score", FontId::proportional(11.0), weak);
-        painter.text(pos2(origin.x + 2.0, play_top + 2.0 * LS), Align2::LEFT_CENTER, "You", FontId::proportional(11.0), ACCENT);
-        painter.text(pos2(origin.x + 2.0, vel_base - 6.0), Align2::LEFT_CENTER, "vel", FontId::proportional(9.0), weak);
-
-        for mi in a..b {
-            let m = &score.measures[mi];
-            let mp = &lay.measures[mi];
-            let mx0 = origin.x + mp.x0;
-            let mx1 = mx0 + mp.w;
-            let note_x = |q: f64| origin.x + lay.x_of(score, mi, q);
-
-            // measure number
-            painter.text(pos2(mx0 + 2.0, y0 + 14.0), Align2::LEFT_TOP, &m.number, FontId::proportional(9.0), weak);
-            if mi == 0 || score.measures[mi - 1].beats != m.beats || score.measures[mi - 1].beat_type != m.beat_type {
-                painter.text(
-                    pos2(mx0 + 14.0, y0 + 14.0),
-                    Align2::LEFT_TOP,
-                    format!("{}/{}", m.beats, m.beat_type),
-                    FontId::proportional(9.0),
-                    weak,
-                );
-            }
-            // barlines
-            let thick = mi + 1 == score.measures.len();
-            for (top, bot) in [(exp_top, exp_bot), (play_top, play_bot)] {
-                painter.line_segment([pos2(mx1, top), pos2(mx1, bot)], Stroke::new(if thick { 3.0_f32 } else { 1.0 }, line_col));
-            }
-            // beat grid under the played staff (where timing is judged)
-            let beat_q = m.beat_q();
-            let mut bq = 0.0;
-            while bq < m.len_q - 1e-6 {
-                let x = note_x(m.start_q + bq);
-                painter.line_segment([pos2(x, play_top - 6.0), pos2(x, vel_base)], Stroke::new(1.0_f32, grid_col));
-                bq += beat_q;
-            }
-
-            // expected notes
-            for &ni in &notes_by_measure[mi] {
-                let n = &score.notes[ni];
-                let x = note_x(n.q) + grace_dx(n);
-                let y = y_of(n.staff_step, exp_bot);
-                let col = view.grades.get(ni).copied().flatten().map(|g| grade_color(g, text)).unwrap_or(text);
-                let scale = if n.grace { 0.65 } else { 1.0 };
-                draw_ledgers(&painter, x, n.staff_step, exp_bot, line_col);
-                draw_head(&painter, pos2(x, y), n.head, col, scale);
-                draw_hand(&painter, x, exp_bot + 18.0, n, text);
-                let up = n.stem_up.unwrap_or(!n.lane.is_foot());
-                let rx = 5.0 * scale;
-                if up {
-                    painter.line_segment([pos2(x + rx - 0.5, y), pos2(x + rx - 0.5, y - STEM * scale)], Stroke::new(1.0_f32, col));
-                } else {
-                    painter.line_segment([pos2(x - rx + 0.5, y), pos2(x - rx + 0.5, y + STEM * scale)], Stroke::new(1.0_f32, col));
-                }
-                if n.ghost {
-                    painter.text(pos2(x - 8.0, y), Align2::CENTER_CENTER, "(", FontId::proportional(11.0), col);
-                    painter.text(pos2(x + 8.0, y), Align2::CENTER_CENTER, ")", FontId::proportional(11.0), col);
-                }
-                if n.accent {
-                    let ay = if up { y0 + 28.0 } else { exp_bot + STEM + 10.0 };
-                    let s = Stroke::new(1.4_f32, col);
-                    painter.line_segment([pos2(x - 4.0, ay - 3.0), pos2(x + 4.0, ay)], s);
-                    painter.line_segment([pos2(x + 4.0, ay), pos2(x - 4.0, ay + 3.0)], s);
-                }
-            }
-
-            // played notes
-            for &pi in &played_by_measure[mi] {
-                let pn = &view.played[pi];
-                let x = note_x(pn.q);
-                if x < origin.x + LEFT - 20.0 {
-                    continue;
-                }
-                let (step, head) = lane_staff[lane_idx(pn.lane)];
-                let y = y_of(step, play_bot);
-                let col = status_color(pn.status, ACCENT);
-                draw_ledgers(&painter, x, step, play_bot, line_col);
-                draw_head(&painter, pos2(x, y), head, col, 1.0);
-                let h = 16.0 * pn.velocity as f32 / 127.0;
-                painter.rect_filled(
-                    Rect::from_min_max(pos2(x - 1.5, vel_base - h), pos2(x + 1.5, vel_base)),
-                    0.0,
-                    col,
-                );
-                if let Some(hp) = hover {
-                    if (hp - pos2(x, y)).length() < 7.0 {
-                        let timing = match pn.dt_ms {
-                            Some(d) if d >= 0.5 => format!("{d:.0} ms late"),
-                            Some(d) if d <= -0.5 => format!("{:.0} ms early", -d),
-                            Some(_) => "on time".to_string(),
-                            None => match pn.status {
-                                HitStatus::Extra => "extra hit".to_string(),
-                                _ => String::new(),
-                            },
-                        };
-                        hover_text = Some(format!("{} · velocity {} · {}", pn.lane.label(), pn.velocity, timing));
+        draw_system(&frame, &rows, (a, b), &mut hover_text);
+        if response.clicked() {
+            if let Some(pp) = response.interact_pointer_pos() {
+                if pp.y >= rows.y0 && pp.y < rows.y0 + SYS_H {
+                    let at = (a..b).find(|&mi| pp.x >= frame.origin.x + lay.measures[mi].x0 && pp.x < frame.origin.x + lay.measures[mi].x0 + lay.measures[mi].w);
+                    if let Some(mi) = at {
+                        out.clicked_measure = Some((mi, ui.input(|i| i.modifiers.shift)));
                     }
-                }
-            }
-
-            if response.clicked() {
-                if let Some(pp) = response.interact_pointer_pos() {
-                    if pp.x >= mx0 && pp.x < mx1 && pp.y >= y0 && pp.y < y0 + SYS_H {
-                        let shift = ui.input(|i| i.modifiers.shift);
-                        out.clicked_measure = Some((mi, shift));
-                    }
-                }
-            }
-        }
-
-        // playhead
-        if let Some(q) = view.playhead_q {
-            if let Some(mi) = score.measure_at(q.max(0.0)) {
-                if mi >= a && mi < b && q >= 0.0 {
-                    let x = origin.x + lay.x_of(score, mi, q);
-                    painter.line_segment([pos2(x, y0 + 12.0), pos2(x, vel_base + 2.0)], Stroke::new(2.0_f32, ACCENT));
                 }
             }
         }
@@ -631,6 +585,123 @@ pub fn show(ui: &mut Ui, view: &ScoreView) -> ViewOutput {
         }
     }
     out
+}
+
+/// One system: the range highlight, both staves, the measures `bars.0..bars.1` and the playhead.
+fn draw_system(f: &Frame, rows: &Rows, bars: (usize, usize), hover_text: &mut Option<String>) {
+    let (a, b) = bars;
+    let (cv, view, lay) = (&f.cv, f.view, f.lay);
+    let painter = cv.painter;
+    let x_end = f.origin.x + lay.measures[b - 1].x0 + lay.measures[b - 1].w;
+
+    // Practice range highlight
+    for mi in a..b {
+        if mi >= view.range.0 && mi <= view.range.1 {
+            let mp = &lay.measures[mi];
+            let r = Rect::from_min_max(pos2(f.origin.x + mp.x0, rows.y0 + 14.0), pos2(f.origin.x + mp.x0 + mp.w, rows.vel_base + 4.0));
+            painter.rect_filled(r, 0.0, ACCENT.gamma_multiply(0.08));
+        }
+    }
+
+    cv.staff(f.origin.x + LEFT - 22.0, x_end, rows.exp_top);
+    cv.staff(f.origin.x + LEFT - 22.0, x_end, rows.play_top);
+    cv.clef(f.origin.x + LEFT - 18.0, rows.exp_top, cv.text);
+    cv.clef(f.origin.x + LEFT - 18.0, rows.play_top, cv.weak);
+    painter.text(pos2(f.origin.x + 2.0, rows.exp_top + 2.0 * LS), Align2::LEFT_CENTER, "Score", FontId::proportional(11.0), cv.weak);
+    painter.text(pos2(f.origin.x + 2.0, rows.play_top + 2.0 * LS), Align2::LEFT_CENTER, "You", FontId::proportional(11.0), ACCENT);
+    painter.text(pos2(f.origin.x + 2.0, rows.vel_base - 6.0), Align2::LEFT_CENTER, "vel", FontId::proportional(9.0), cv.weak);
+
+    for mi in a..b {
+        draw_measure_marks(f, rows, mi);
+        for &ni in &f.notes_by_measure[mi] {
+            draw_score_note(f, rows, mi, ni);
+        }
+        for &pi in &f.played_by_measure[mi] {
+            draw_played_note(f, rows, mi, pi, hover_text);
+        }
+    }
+
+    // playhead
+    if let Some(q) = view.playhead_q {
+        if let Some(mi) = view.score.measure_at(q.max(0.0)) {
+            if mi >= a && mi < b && q >= 0.0 {
+                let x = f.x_of(mi, q);
+                painter.line_segment([pos2(x, rows.y0 + 12.0), pos2(x, rows.vel_base + 2.0)], Stroke::new(2.0_f32, ACCENT));
+            }
+        }
+    }
+}
+
+/// The measure number, a changed time signature, the barline and the beat grid of measure `mi`.
+fn draw_measure_marks(f: &Frame, rows: &Rows, mi: usize) {
+    let (cv, score) = (&f.cv, f.view.score);
+    let painter = cv.painter;
+    let m = &score.measures[mi];
+    let mp = &f.lay.measures[mi];
+    let mx0 = f.origin.x + mp.x0;
+    let mx1 = mx0 + mp.w;
+
+    painter.text(pos2(mx0 + 2.0, rows.y0 + 14.0), Align2::LEFT_TOP, &m.number, FontId::proportional(9.0), cv.weak);
+    if mi == 0 || score.measures[mi - 1].beats != m.beats || score.measures[mi - 1].beat_type != m.beat_type {
+        painter.text(pos2(mx0 + 14.0, rows.y0 + 14.0), Align2::LEFT_TOP, format!("{}/{}", m.beats, m.beat_type), FontId::proportional(9.0), cv.weak);
+    }
+    // barlines
+    let thick = mi + 1 == score.measures.len();
+    for (top, bot) in [(rows.exp_top, rows.exp_bot), (rows.play_top, rows.play_bot)] {
+        painter.line_segment([pos2(mx1, top), pos2(mx1, bot)], Stroke::new(if thick { 3.0_f32 } else { 1.0 }, cv.line));
+    }
+    // beat grid under the played staff (where timing is judged)
+    let beat_q = m.beat_q();
+    let mut bq = 0.0;
+    while bq < m.len_q - 1e-6 {
+        let x = f.x_of(mi, m.start_q + bq);
+        painter.line_segment([pos2(x, rows.play_top - 6.0), pos2(x, rows.vel_base)], Stroke::new(1.0_f32, cv.grid));
+        bq += beat_q;
+    }
+}
+
+/// An expected note (`score.notes[ni]` of measure `mi`): head, ledger lines, hand letter, stem,
+/// ghost brackets and accent, in the colour of its grade.
+fn draw_score_note(f: &Frame, rows: &Rows, mi: usize, ni: usize) {
+    let (cv, view) = (&f.cv, f.view);
+    let n = &view.score.notes[ni];
+    let x = f.x_of(mi, n.q) + grace_dx(n);
+    let col = view.grades.get(ni).copied().flatten().map(|g| grade_color(g, cv.text)).unwrap_or(cv.text);
+    cv.written_note(n, x, rows.exp_bot, rows.y0 + 28.0, Ink { note: col, hand: cv.text, hand_dy: 18.0 });
+}
+
+/// A played note (`view.played[pi]` of measure `mi`) on the lower staff, with its velocity bar;
+/// the text for the tooltip goes into `hover_text` when the pointer is on it.
+fn draw_played_note(f: &Frame, rows: &Rows, mi: usize, pi: usize, hover_text: &mut Option<String>) {
+    let (cv, view) = (&f.cv, f.view);
+    let painter = cv.painter;
+    let pn = &view.played[pi];
+    let x = f.x_of(mi, pn.q);
+    if x < f.origin.x + LEFT - 20.0 {
+        return;
+    }
+    let lane = Lane::ALL.iter().position(|x| *x == pn.lane).unwrap_or(0);
+    let (step, head) = f.lane_staff[lane];
+    let y = y_of(step, rows.play_bot);
+    let col = status_color(pn.status, ACCENT);
+    cv.ledgers(x, step, rows.play_bot);
+    cv.head(pos2(x, y), head, col, 1.0);
+    let h = 16.0 * pn.velocity as f32 / 127.0;
+    painter.rect_filled(Rect::from_min_max(pos2(x - 1.5, rows.vel_base - h), pos2(x + 1.5, rows.vel_base)), 0.0, col);
+    if let Some(hp) = f.hover {
+        if (hp - pos2(x, y)).length() < 7.0 {
+            let timing = match pn.dt_ms {
+                Some(d) if d >= 0.5 => format!("{d:.0} ms late"),
+                Some(d) if d <= -0.5 => format!("{:.0} ms early", -d),
+                Some(_) => "on time".to_string(),
+                None => match pn.status {
+                    HitStatus::Extra => "extra hit".to_string(),
+                    _ => String::new(),
+                },
+            };
+            *hover_text = Some(format!("{} · velocity {} · {}", pn.lane.label(), pn.velocity, timing));
+        }
+    }
 }
 
 #[cfg(test)]

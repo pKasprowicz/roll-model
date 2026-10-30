@@ -4,7 +4,7 @@
     python3 tools/build_manual.py [--label LABEL] [--out FILE]
 
 It fills docs/manual/manual.template.html with the version from Cargo.toml and
-generates the rudiment reference from the patterns in src/rudiments.rs, so the
+generates the rudiment reference from the patterns in core/src/rudiments.rs, so the
 manual cannot drift from what the program offers. Standard library only.
 """
 import argparse
@@ -58,10 +58,10 @@ def beats(unit: float, pattern: str) -> int:
 
 
 def rudiment_tables() -> str:
-    source = (ROOT / "src" / "rudiments.rs").read_text(encoding="utf-8")
+    source = (ROOT / "core" / "src" / "rudiments.rs").read_text(encoding="utf-8")
     found = RUD.findall(source)
     if len(found) != 40:
-        sys.exit(f"expected 40 rudiments in src/rudiments.rs, found {len(found)}")
+        sys.exit(f"expected 40 rudiments in core/src/rudiments.rs, found {len(found)}")
     parts = []
     for family, title in FAMILIES.items():
         rows = []

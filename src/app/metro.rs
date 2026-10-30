@@ -55,7 +55,7 @@ impl DrumApp {
         self.stop_metro();
         let opts = self.metro_options();
         if !opts.click_audio && !opts.click_midi {
-            self.error = Some(if HAS_AUDIO {
+            self.view.error = Some(if HAS_AUDIO {
                 "The click is switched off: enable it under Metronome on the Sound page of Settings.".into()
             } else {
                 "This build has no sound output: send the click to a MIDI output on the Sound page of Settings.".into()
@@ -68,23 +68,23 @@ impl DrumApp {
         self.sync_control();
         // Half a second of lead: the sound device needs time to open.
         let zero = Instant::now() + Duration::from_millis(500);
-        self.metro_player = Some(Player::start(zero, cues, bar_len, opts, self.metro_control.clone()));
-        self.metro = Some(Run { zero, beat_sec: 60.0 / bpm, signature: self.metro_signature(), pending: None });
-        self.status = format!("Metronome: {bpm:.0} BPM, {} beats per bar", self.cfg.metro_beats);
+        self.metro_run.player = Some(Player::start(zero, cues, bar_len, opts, self.metro_run.control.clone()));
+        self.metro_run.run = Some(Run { zero, beat_sec: 60.0 / bpm, signature: self.metro_signature(), pending: None });
+        self.view.status = format!("Metronome: {bpm:.0} BPM, {} beats per bar", self.cfg.metro_beats);
     }
 
     pub(super) fn stop_metro(&mut self) {
-        if let Some(mut p) = self.metro_player.take() {
+        if let Some(mut p) = self.metro_run.player.take() {
             p.stop();
         }
-        self.metro = None;
+        self.metro_run.run = None;
     }
 
     /// Restarts a running metronome once a changed tempo, bar length or subdivision has settled.
     pub(super) fn update_metro(&mut self) {
         let now_signature = self.metro_signature();
         let mut restart = false;
-        if let Some(run) = self.metro.as_mut() {
+        if let Some(run) = self.metro_run.run.as_mut() {
             if run.signature == now_signature {
                 run.pending = None;
             } else {
@@ -97,13 +97,13 @@ impl DrumApp {
         if restart {
             self.start_metro();
         }
-        if let Some(p) = self.metro_player.as_ref() {
+        if let Some(p) = self.metro_run.player.as_ref() {
             if let Some(e) = p.take_errors().into_iter().next() {
-                self.error = Some(e);
+                self.view.error = Some(e);
             }
             if p.is_finished() {
-                self.metro_player = None;
-                self.metro = None;
+                self.metro_run.player = None;
+                self.metro_run.run = None;
             }
         }
     }
@@ -119,7 +119,7 @@ impl DrumApp {
         ui.add_space(8.0);
         ui.scope(|ui| {
             widgets::roomy(ui);
-            let running = self.metro.is_some();
+            let running = self.metro_run.run.is_some();
             let label = if running { "⏹ Stop (M)" } else { "⏵ Start (M)" };
             if ui.button(RichText::new(label).strong().size(22.0)).clicked() {
                 if running {
@@ -153,7 +153,7 @@ impl DrumApp {
     /// Where the rolling preview is, in quarters from the start of the score: the
     /// practice range repeats, and the metronome's first beat is its first note.
     fn metro_preview_pos(&self, start_q: f64, len_q: f64) -> f64 {
-        let Some(run) = self.metro.as_ref() else { return start_q };
+        let Some(run) = self.metro_run.run.as_ref() else { return start_q };
         let now = Instant::now();
         let elapsed = match now.checked_duration_since(run.zero) {
             Some(d) => d.as_secs_f64(),
@@ -190,7 +190,7 @@ impl DrumApp {
         ui.horizontal(|ui| {
             ui.checkbox(&mut self.cfg.metro_preview, "Show the notes");
             if self.cfg.metro_preview {
-                ui.label(RichText::new(description).small().weak());
+                widgets::hint(ui, description);
                 if has_score {
                     match_score = ui
                         .button("Match score tempo and bar")
@@ -230,7 +230,7 @@ impl DrumApp {
         let size = vec2(2.0 * margin + beats as f32 * (2.0 * radius + gap), 2.0 * radius + 8.0);
         let (rect, _) = ui.allocate_exact_size(size, Sense::hover());
         let painter = ui.painter_at(rect);
-        let current = self.metro.as_ref().and_then(|run| {
+        let current = self.metro_run.run.as_ref().and_then(|run| {
             let elapsed = Instant::now().checked_duration_since(run.zero)?.as_secs_f64();
             let beat = elapsed / run.beat_sec;
             Some((beat.floor() as u64 % beats as u64, 1.0 - beat.fract() as f32))

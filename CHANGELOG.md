@@ -6,6 +6,20 @@ All notable changes are recorded here. The format follows [Keep a Changelog](htt
 
 ## [Unreleased]
 
+## [0.7.1] - 2026-10-30
+
+A small release: Listen can start without the count-in, the shortcuts work again after Tab or a click on a button, the splash shows how long each start-up step took, and the code was restructured (no change in behaviour): the part that needs no window, MIDI port or sound card is now a crate of its own, `core/`. Covered by unit and integration tests (209); the shortcut fix and the splash times were not tried with a real keyboard or devices.
+
+### Added
+- **Listen can start without the count-in**: the *in Listen* box next to *count-in bars* on the Score tab (setting `listen_count_in`, on by default). A recording always has the count-in.
+
+### Fixed
+- **Shortcuts work after Tab or a click on a button or slider**: `R`, `L`, `K`, `M`, `Esc` and the keyboard pads were ignored while any widget had the keyboard focus; now only typing in a text box (or a slider's value box) stops them.
+
+### Changed
+- **The splash shows how long each start-up step took** (for example `Found 3 MIDI inputs and 2 MIDI outputs · 41 ms`), so slow drivers and devices can be seen at a glance.
+- **For developers: the code is split into two crates** in a Cargo workspace (`roll-model`, the application, and `roll-model-core` in `core/`, with the scores, grading, rudiments, controller presets and settings), the large files `app.rs`, `controller.rs` and `app/controls.rs` are folders of smaller modules, errors are typed, the settings keys and the controller actions are tables, and the settings folder is an injected value so no test can touch a user's files. `cargo build` and `cargo test` cover both crates. The developer guide is brought up to date.
+
 ## [0.7.0] - 2026-10-29
 
 A start-up splash, a start trigger, help pictures of controllers, presets for four more MIDI controllers, and a window for managing controller presets and teaching a controller by pressing its controls. The default controller is now the X-Touch Mini, and the presets of both X-Touch controllers changed (see below). Covered by unit tests (201); the splash, the help pictures and the Manage window were looked at in the running app. Not yet tried with a real V31, a real controller (Mackie or generic: the generic presets are from memory), or by ear.

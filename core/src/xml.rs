@@ -88,7 +88,49 @@ fn collect_text(e: &Element, out: &mut String) {
     }
 }
 
-pub fn parse(input: &str) -> Result<Element, String> {
+/// Why a document is not well-formed XML (as far as this small parser can tell).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum XmlError {
+    UnterminatedInstruction,
+    UnterminatedComment,
+    UnterminatedCdata,
+    UnterminatedEndTag,
+    UnexpectedEndTag(String),
+    Mismatched { open: String, close: String },
+    Unclosed(String),
+    NoRoot,
+    UnterminatedDeclaration,
+    InvalidTag(usize),
+    UnterminatedTag(String),
+    BadAttribute(String),
+    UnquotedAttribute { key: String, tag: String },
+    UnterminatedAttributeValue,
+}
+
+impl std::fmt::Display for XmlError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            XmlError::UnterminatedInstruction => write!(f, "unterminated processing instruction"),
+            XmlError::UnterminatedComment => write!(f, "unterminated comment"),
+            XmlError::UnterminatedCdata => write!(f, "unterminated CDATA"),
+            XmlError::UnterminatedEndTag => write!(f, "unterminated end tag"),
+            XmlError::UnexpectedEndTag(name) => write!(f, "unexpected </{name}>"),
+            XmlError::Mismatched { open, close } => write!(f, "mismatched tag: <{open}> closed by </{close}>"),
+            XmlError::Unclosed(name) => write!(f, "unclosed element <{name}>"),
+            XmlError::NoRoot => write!(f, "document has no root element"),
+            XmlError::UnterminatedDeclaration => write!(f, "unterminated <! declaration"),
+            XmlError::InvalidTag(at) => write!(f, "invalid tag at byte {at}"),
+            XmlError::UnterminatedTag(name) => write!(f, "unterminated tag <{name}>"),
+            XmlError::BadAttribute(tag) => write!(f, "bad attribute in <{tag}>"),
+            XmlError::UnquotedAttribute { key, tag } => write!(f, "unquoted attribute {key} in <{tag}>"),
+            XmlError::UnterminatedAttributeValue => write!(f, "unterminated attribute value"),
+        }
+    }
+}
+
+impl std::error::Error for XmlError {}
+
+pub fn parse(input: &str) -> Result<Element, XmlError> {
     let s = input.strip_prefix('\u{feff}').unwrap_or(input);
     let b = s.as_bytes();
     let mut i = 0usize;
@@ -98,11 +140,11 @@ pub fn parse(input: &str) -> Result<Element, String> {
     while i < b.len() {
         if b[i] == b'<' {
             if s[i..].starts_with("<?") {
-                i = find_from(s, i + 2, "?>").ok_or("unterminated processing instruction")? + 2;
+                i = find_from(s, i + 2, "?>").ok_or(XmlError::UnterminatedInstruction)? + 2;
             } else if s[i..].starts_with("<!--") {
-                i = find_from(s, i + 4, "-->").ok_or("unterminated comment")? + 3;
+                i = find_from(s, i + 4, "-->").ok_or(XmlError::UnterminatedComment)? + 3;
             } else if s[i..].starts_with("<![CDATA[") {
-                let end = find_from(s, i + 9, "]]>").ok_or("unterminated CDATA")?;
+                let end = find_from(s, i + 9, "]]>").ok_or(XmlError::UnterminatedCdata)?;
                 if let Some(top) = stack.last_mut() {
                     top.children.push(Node::Text(s[i + 9..end].to_string()));
                 }
@@ -110,11 +152,11 @@ pub fn parse(input: &str) -> Result<Element, String> {
             } else if s[i..].starts_with("<!") {
                 i = skip_declaration(b, i)?;
             } else if s[i..].starts_with("</") {
-                let end = find_from(s, i, ">").ok_or("unterminated end tag")?;
+                let end = find_from(s, i, ">").ok_or(XmlError::UnterminatedEndTag)?;
                 let name = s[i + 2..end].trim();
-                let el = stack.pop().ok_or_else(|| format!("unexpected </{name}>"))?;
+                let el = stack.pop().ok_or_else(|| XmlError::UnexpectedEndTag(name.to_string()))?;
                 if el.name != name {
-                    return Err(format!("mismatched tag: <{}> closed by </{}>", el.name, name));
+                    return Err(XmlError::Mismatched { open: el.name, close: name.to_string() });
                 }
                 attach(&mut stack, &mut root, el);
                 i = end + 1;
@@ -139,9 +181,9 @@ pub fn parse(input: &str) -> Result<Element, String> {
         }
     }
     if let Some(open) = stack.last() {
-        return Err(format!("unclosed element <{}>", open.name));
+        return Err(XmlError::Unclosed(open.name.clone()));
     }
-    root.ok_or_else(|| "document has no root element".to_string())
+    root.ok_or(XmlError::NoRoot)
 }
 
 fn attach(stack: &mut [Element], root: &mut Option<Element>, el: Element) {
@@ -160,7 +202,7 @@ fn find_from(s: &str, from: usize, pat: &str) -> Option<usize> {
 }
 
 /// Skips `<!DOCTYPE ...>` including an optional `[...]` internal subset.
-fn skip_declaration(b: &[u8], start: usize) -> Result<usize, String> {
+fn skip_declaration(b: &[u8], start: usize) -> Result<usize, XmlError> {
     let mut depth = 0i32;
     let mut quote: Option<u8> = None;
     let mut i = start + 2;
@@ -179,14 +221,14 @@ fn skip_declaration(b: &[u8], start: usize) -> Result<usize, String> {
         }
         i += 1;
     }
-    Err("unterminated <! declaration".into())
+    Err(XmlError::UnterminatedDeclaration)
 }
 
 fn is_name_char(c: u8) -> bool {
     c.is_ascii_alphanumeric() || matches!(c, b'_' | b'-' | b'.' | b':') || c >= 0x80
 }
 
-fn parse_start_tag(s: &str, start: usize) -> Result<(Element, bool, usize), String> {
+fn parse_start_tag(s: &str, start: usize) -> Result<(Element, bool, usize), XmlError> {
     let b = s.as_bytes();
     let mut i = start + 1;
     let name_start = i;
@@ -194,7 +236,7 @@ fn parse_start_tag(s: &str, start: usize) -> Result<(Element, bool, usize), Stri
         i += 1;
     }
     if i == name_start {
-        return Err(format!("invalid tag at byte {start}"));
+        return Err(XmlError::InvalidTag(start));
     }
     let mut el = Element {
         name: s[name_start..i].to_string(),
@@ -205,7 +247,7 @@ fn parse_start_tag(s: &str, start: usize) -> Result<(Element, bool, usize), Stri
             i += 1;
         }
         if i >= b.len() {
-            return Err(format!("unterminated tag <{}>", el.name));
+            return Err(XmlError::UnterminatedTag(el.name));
         }
         if b[i] == b'>' {
             return Ok((el, false, i + 1));
@@ -218,7 +260,7 @@ fn parse_start_tag(s: &str, start: usize) -> Result<(Element, bool, usize), Stri
             i += 1;
         }
         if i == an_start {
-            return Err(format!("bad attribute in <{}>", el.name));
+            return Err(XmlError::BadAttribute(el.name));
         }
         let key = s[an_start..i].to_string();
         while i < b.len() && b[i].is_ascii_whitespace() {
@@ -234,14 +276,14 @@ fn parse_start_tag(s: &str, start: usize) -> Result<(Element, bool, usize), Stri
             i += 1;
         }
         if i >= b.len() || (b[i] != b'"' && b[i] != b'\'') {
-            return Err(format!("unquoted attribute {key} in <{}>", el.name));
+            return Err(XmlError::UnquotedAttribute { key, tag: el.name });
         }
         let q = b[i];
         let v_start = i + 1;
         let v_end = s[v_start..]
             .find(q as char)
             .map(|p| p + v_start)
-            .ok_or("unterminated attribute value")?;
+            .ok_or(XmlError::UnterminatedAttributeValue)?;
         el.attrs.push((key, decode_entities(&s[v_start..v_end])));
         i = v_end + 1;
     }
@@ -316,5 +358,13 @@ mod tests {
     fn rejects_mismatched_tags() {
         assert!(parse("<a><b></a></b>").is_err());
         assert!(parse("<a>").is_err());
+    }
+
+    #[test]
+    fn errors_are_variants_with_readable_text() {
+        let e = parse("<a><b></a></b>").unwrap_err();
+        assert_eq!(e, XmlError::Mismatched { open: "b".into(), close: "a".into() });
+        assert_eq!(e.to_string(), "mismatched tag: <b> closed by </a>");
+        assert_eq!(parse("<a>").unwrap_err().to_string(), "unclosed element <a>");
     }
 }

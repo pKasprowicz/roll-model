@@ -10,22 +10,16 @@ use std::path::PathBuf;
 
 use egui::{RichText, ViewportBuilder, ViewportClass, ViewportId};
 
+use super::page::copy_preset;
 use super::*;
-use crate::controller::{Binding, Encoding, Preset};
+use crate::controller::{Binding, Encoding, Preset, Reading};
+use crate::widgets;
 
-/// What the editor remembers between frames.
-pub(super) struct EditorState {
-    /// The action that waits for the next control the device sends.
-    pub(super) learning: Option<Action>,
+/// What the Manage window remembers between frames: widget state, not behaviour.
+#[derive(Default)]
+pub(super) struct ManageView {
     /// The layer being edited (an index of the preset's layers).
     pub(super) layer: usize,
-    /// After a control is learned, wait for one for the next action in the list.
-    pub(super) keep_going: bool,
-    /// Limit a learned control to the MIDI channel it sent on.
-    pub(super) remember_channel: bool,
-    /// How a value's cc is read, chosen before it is learned (by the action's name).
-    pub(super) kinds: BTreeMap<String, (bool, Encoding)>,
-    pub(super) notice: String,
     /// The new name typed for the chosen preset, and the preset it was typed for.
     pub(super) rename_to: String,
     pub(super) rename_for: String,
@@ -33,13 +27,61 @@ pub(super) struct EditorState {
     pub(super) confirm_delete: bool,
     /// The Manage window is open.
     pub(super) open: bool,
-    /// The folder of the user's presets; `None`: the settings folder (tests use another).
-    pub(super) dir: Option<PathBuf>,
+}
+
+/// What the editor remembers between frames: the learn state machine and its choices.
+pub(super) struct EditorState {
+    /// The action that waits for the next control the device sends.
+    pub(super) learning: Option<Action>,
+    /// After a control is learned, wait for one for the next action in the list.
+    pub(super) keep_going: bool,
+    /// Limit a learned control to the MIDI channel it sent on.
+    pub(super) remember_channel: bool,
+    /// How a value's cc is read, chosen before it is learned (by the action's name).
+    pub(super) kinds: BTreeMap<String, Reading>,
+    pub(super) notice: String,
+    /// What the Manage window remembers about itself.
+    pub(super) view: ManageView,
+}
+
+impl EditorState {
+    /// Says something to the user in the window.
+    pub(super) fn say(&mut self, text: impl Into<String>) {
+        self.notice = text.into();
+    }
+
+    /// Waits for the next control the device sends, for `action`.
+    pub(super) fn start_learning(&mut self, action: Action) {
+        self.learning = Some(action);
+        self.notice.clear();
+    }
+
+    pub(super) fn stop_learning(&mut self) {
+        self.learning = None;
+    }
+
+    /// How a value's cc is read for `action` when nothing is bound yet: the choice made in the
+    /// table, or (absolute, except for the lists, which are only turned).
+    pub(super) fn chosen_kind(&self, action: Action) -> Reading {
+        self.kinds.get(&action.text()).copied().unwrap_or(if action.is_browse() { Reading::Relative(Encoding::Mackie) } else { Reading::Absolute })
+    }
+
+    pub(super) fn choose_kind(&mut self, action: Action, reading: Reading) {
+        self.kinds.insert(action.text(), reading);
+    }
+
+    /// What the editor was doing belongs to the preset that was chosen: drop it when another is.
+    pub(super) fn start_over(&mut self) {
+        self.learning = None;
+        self.view.confirm_delete = false;
+        self.view.layer = 0;
+        self.notice.clear();
+    }
 }
 
 impl Default for EditorState {
     fn default() -> EditorState {
-        EditorState { learning: None, layer: 0, keep_going: true, remember_channel: false, kinds: BTreeMap::new(), notice: String::new(), rename_to: String::new(), rename_for: String::new(), confirm_delete: false, open: false, dir: None }
+        EditorState { learning: None, keep_going: true, remember_channel: false, kinds: BTreeMap::new(), notice: String::new(), view: ManageView::default() }
     }
 }
 
@@ -48,7 +90,7 @@ enum Op {
     Learn(Action),
     Cancel,
     Clear(Action),
-    Kind(Action, bool, Encoding),
+    Kind(Action, Reading),
     NewPreset,
     CopyToEdit,
     Rename,
@@ -56,26 +98,25 @@ enum Op {
     Delete,
 }
 
-const KINDS: [(bool, Encoding); 5] = [
-    (false, Encoding::Mackie),
-    (true, Encoding::Mackie),
-    (true, Encoding::Twos),
-    (true, Encoding::Offset),
-    (true, Encoding::SignBit2),
+const KINDS: [Reading; 5] = [
+    Reading::Absolute,
+    Reading::Relative(Encoding::Mackie),
+    Reading::Relative(Encoding::Twos),
+    Reading::Relative(Encoding::Offset),
+    Reading::Relative(Encoding::SignBit2),
 ];
 
-fn kind_text(relative: bool, encoding: Encoding) -> String {
-    if relative {
-        format!("relative, {}", encoding.word())
-    } else {
-        "absolute".to_string()
+fn kind_text(reading: Reading) -> String {
+    match reading {
+        Reading::Relative(encoding) => format!("relative, {}", encoding.word()),
+        Reading::Absolute => "absolute".to_string(),
     }
 }
 
 fn control_text(b: &Binding) -> String {
-    match b.channel {
-        Some(ch) => format!("{} ch {ch}", b.src.text()),
-        None => b.src.text(),
+    match b.input.channel {
+        Some(ch) => format!("{} ch {ch}", b.input.src.text()),
+        None => b.input.src.text(),
     }
 }
 
@@ -86,17 +127,16 @@ fn action_order() -> Vec<Action> {
 
 impl DrumApp {
     fn preset_dir(&self) -> Option<PathBuf> {
-        self.controller.editor.dir.clone().or_else(Config::controllers_dir)
+        self.paths.controllers_dir()
     }
 
     /// The file of the chosen preset if it is one the user may edit: not a built-in one.
     pub(super) fn editable_path(&self) -> Option<PathBuf> {
-        let name = &self.cfg.controller_preset;
-        if name.is_empty() || controller::builtin_text(name).is_some() {
-            return None;
-        }
         let dir = self.preset_dir()?;
-        controller::custom_presets(&dir).into_iter().find(|(n, _)| n == name).map(|(_, path)| path)
+        match controller::preset_source(&self.cfg.controller_preset, Some(&dir))? {
+            controller::PresetSource::File(path) => Some(path),
+            controller::PresetSource::BuiltIn(_) => None,
+        }
     }
 
     /// The chosen preset as it is now, for the table: the one in use, or its file.
@@ -116,24 +156,22 @@ impl DrumApp {
         let mut preset = match controller::load_preset(&self.cfg.controller_preset, Some(&dir)) {
             Ok(p) => p,
             Err(e) => {
-                self.error = Some(e);
+                self.view.error = Some(e.to_string());
                 return None;
             }
         };
         let result = change(&mut preset);
         if let Err(e) = std::fs::write(&path, preset.to_text()) {
-            self.error = Some(format!("Could not save {}: {e}", path.display()));
+            self.view.error = Some(format!("Could not save {}: {e}", path.display()));
             return None;
         }
-        if let Some(link) = self.controller.link.as_mut() {
-            link.mapper.replace_preset(preset);
-        }
+        self.controller.replace_preset(preset);
         Some(result)
     }
 
     /// The layer the table edits: `None` for a preset without layers.
     fn editor_layer(&self, preset: &Preset) -> Option<String> {
-        preset.layers.get(self.controller.editor.layer).map(|l| l.0.clone())
+        preset.layers.get(self.controller.editor.view.layer).map(|l| l.0.clone())
     }
 
     /// While an action waits for its control, the next message from the device is taken for it
@@ -142,15 +180,15 @@ impl DrumApp {
     pub(super) fn learn_message(&mut self, msg: controller::Msg) -> bool {
         let Some(action) = self.controller.editor.learning else { return false };
         let Some(preset) = self.preset_being_edited() else {
-            self.controller.editor.learning = None;
+            self.controller.editor.stop_learning();
             return false;
         };
         let layer = self.editor_layer(&preset);
-        let existing = preset.bindings_of(layer.as_deref(), action).into_iter().find(|b| matches!(b.src, controller::Src::Cc(_))).map(|b| (b.relative, b.encoding));
-        let (relative, encoding) = existing.or_else(|| self.controller.editor.kinds.get(&action.text()).copied()).unwrap_or((action.is_browse(), Encoding::Mackie));
-        let Some(found) = controller::learn(msg, action, relative, encoding, self.controller.editor.remember_channel) else { return true };
+        let existing = preset.bindings_of(layer.as_deref(), action).into_iter().find(|b| matches!(b.input.src, controller::Src::Cc(_))).map(|b| b.reading);
+        let reading = existing.unwrap_or_else(|| self.controller.editor.chosen_kind(action));
+        let Some(found) = controller::learn(msg, action, reading, self.controller.editor.remember_channel) else { return true };
         let taken_from = self.edit_preset(|p| p.assign(layer.as_deref(), action, found)).flatten();
-        let mut notice = format!("{}: {}", action.title(), control_text(&Binding { layer: None, src: found.src, channel: found.channel, relative: found.relative, encoding: found.encoding, action }));
+        let mut notice = format!("{}: {}", action.title(), control_text(&Binding { layer: None, input: found.input, reading: found.reading, action }));
         if let Some(other) = taken_from {
             notice.push_str(&format!(" (it was {})", other.title()));
         }
@@ -166,24 +204,24 @@ impl DrumApp {
 
     /// A new, empty preset for the chosen port, to be taught by pressing the controls.
     fn new_learned_preset(&mut self) {
-        let drum = self.midi_in.as_ref().map(|h| h.port_name.clone());
+        let drum = self.midi.input.as_ref().map(|h| h.port_name.clone());
         let port = if !self.cfg.controller_port.is_empty() {
             Some(self.cfg.controller_port.clone())
         } else {
-            self.midi_inputs.iter().find(|p| Some(*p) != drum.as_ref()).cloned()
+            self.midi.inputs.iter().find(|p| Some(*p) != drum.as_ref()).cloned()
         };
         let Some(port) = port else {
-            self.controller.editor.notice = "No MIDI input to use. Plug the controller in, then use Refresh and reconnect.".into();
+            self.controller.editor.say("No MIDI input to use. Plug the controller in, then use Refresh and reconnect.");
             return;
         };
         let Some(dir) = self.preset_dir() else {
-            self.error = Some("No settings folder is available on this system.".into());
+            self.view.error = Some("No settings folder is available on this system.".into());
             return;
         };
         let text = format!("name = My controller\nport = {port}\n");
         match unused_path(&dir, "My controller").and_then(|path| std::fs::write(&path, text).map(|_| path)) {
             Ok(path) => self.use_new_preset(&path, &format!("Saved {}", path.display())),
-            Err(e) => self.error = Some(format!("Could not create the preset: {e}")),
+            Err(e) => self.view.error = Some(format!("Could not create the preset: {e}")),
         }
     }
 
@@ -191,22 +229,21 @@ impl DrumApp {
     fn copy_to_edit(&mut self) {
         let name = self.cfg.controller_preset.clone();
         let Some(dir) = self.preset_dir() else {
-            self.error = Some("No settings folder is available on this system.".into());
+            self.view.error = Some("No settings folder is available on this system.".into());
             return;
         };
-        let text = match controller::builtin_text(&name) {
-            Some(text) => text.to_string(),
-            None => match controller::custom_presets(&dir).into_iter().find(|(n, _)| *n == name).map(|(_, p)| std::fs::read_to_string(p)) {
-                Some(Ok(text)) => text,
-                _ => {
-                    self.error = Some(format!("Could not read the preset \"{name}\"."));
-                    return;
-                }
-            },
+        let text = match controller::preset_source(&name, Some(&dir)) {
+            Some(controller::PresetSource::BuiltIn(text)) => Ok(text.to_string()),
+            Some(controller::PresetSource::File(path)) => std::fs::read_to_string(path),
+            None => Err(std::io::Error::new(std::io::ErrorKind::NotFound, "no such preset")),
+        };
+        let Ok(text) = text else {
+            self.view.error = Some(format!("Could not read the preset \"{name}\"."));
+            return;
         };
         match copy_preset(&dir, &name, &text) {
             Ok(path) => self.use_new_preset(&path, &format!("Copied to {}", path.display())),
-            Err(e) => self.error = Some(format!("Could not copy the preset: {e}")),
+            Err(e) => self.view.error = Some(format!("Could not copy the preset: {e}")),
         }
     }
 
@@ -214,19 +251,16 @@ impl DrumApp {
     fn use_new_preset(&mut self, path: &std::path::Path, status: &str) {
         self.refresh_controllers();
         if let Some(stem) = path.file_stem() {
-            self.cfg.controller_preset = stem.to_string_lossy().into_owned();
-            self.cfg.controller_port.clear();
+            self.select_preset(stem.to_string_lossy().into_owned());
         }
-        self.status = status.to_string();
-        let dir = self.controller.editor.dir.take();
-        self.controller.editor = EditorState { dir, open: true, ..EditorState::default() };
-        self.connect_controller();
+        self.view.status = status.to_string();
+        self.controller.editor.view.open = true;
     }
 
     /// The editor window, while it is open: a window of its own (inside the main window where the
     /// platform has no second window).
     pub(in crate::app) fn controller_editor_window(&mut self, ctx: &egui::Context) {
-        if !self.controller.editor.open {
+        if !self.controller.editor.view.open {
             return;
         }
         let title = "Manage controller presets".to_string();
@@ -242,8 +276,8 @@ impl DrumApp {
             }
         });
         if closed {
-            self.controller.editor.open = false;
-            self.controller.editor.learning = None;
+            self.controller.editor.view.open = false;
+            self.controller.editor.stop_learning();
         }
     }
 
@@ -259,18 +293,6 @@ impl DrumApp {
         });
     }
 
-    /// Chooses a preset (`""`: none) as the one in use and shows it in the editor.
-    pub(super) fn select_preset(&mut self, name: String) {
-        self.cfg.controller_preset = name;
-        self.cfg.controller_port.clear();
-        let editor = &mut self.controller.editor;
-        editor.learning = None;
-        editor.confirm_delete = false;
-        editor.layer = 0;
-        editor.notice.clear();
-        self.connect_controller();
-    }
-
     /// All presets, grouped by what they speak, with Add, Copy and Delete under the list.
     fn preset_list(&mut self, ui: &mut egui::Ui) {
         let chosen = self.cfg.controller_preset.clone();
@@ -279,7 +301,7 @@ impl DrumApp {
         let mut choose: Option<String> = None;
         egui::TopBottomPanel::bottom("controller_preset_buttons").show_inside(ui, |ui| {
             ui.add_space(4.0);
-            if self.controller.editor.confirm_delete {
+            if self.controller.editor.view.confirm_delete {
                 ui.label(RichText::new(format!("Delete \"{chosen}\"? Its file is removed.")).color(render::AMBER));
                 ui.horizontal(|ui| {
                     if ui.button("Delete").clicked() {
@@ -310,7 +332,7 @@ impl DrumApp {
                     choose = Some(String::new());
                 }
                 for kind in [controller::PresetKind::Mackie, controller::PresetKind::Midi] {
-                    let of_kind: Vec<&String> = self.controller.presets.iter().filter(|n| self.controller.kinds.get(*n).copied().unwrap_or_default() == kind).collect();
+                    let of_kind: Vec<&String> = self.controller.presets.iter().filter(|n| self.controller.kind_of(n).unwrap_or_default() == kind).collect();
                     if of_kind.is_empty() {
                         continue;
                     }
@@ -336,9 +358,9 @@ impl DrumApp {
     /// The chosen preset's name and type, renaming it, and what cannot be done with a built-in one.
     fn preset_header(&mut self, ui: &mut egui::Ui) {
         let chosen = self.cfg.controller_preset.clone();
-        if self.controller.editor.rename_for != chosen {
-            self.controller.editor.rename_for = chosen.clone();
-            self.controller.editor.rename_to = chosen.clone();
+        if self.controller.editor.view.rename_for != chosen {
+            self.controller.editor.view.rename_for = chosen.clone();
+            self.controller.editor.view.rename_to = chosen.clone();
         }
         if chosen.is_empty() {
             ui.label(RichText::new("No preset is chosen. Pick one in the list, or Add a new one.").weak());
@@ -348,22 +370,22 @@ impl DrumApp {
         let mut op: Option<Op> = None;
         ui.horizontal(|ui| {
             ui.heading(chosen.as_str());
-            if let Some(kind) = self.controller.kinds.get(&chosen) {
-                ui.label(RichText::new(format!("{}{}", kind.label(), if custom { "" } else { ", built in" })).small().weak());
+            if let Some(kind) = self.controller.kind_of(&chosen) {
+                widgets::hint(ui, format!("{}{}", kind.label(), if custom { "" } else { ", built in" }));
             }
         });
         if custom {
             ui.horizontal(|ui| {
                 ui.label("Name");
-                ui.add(egui::TextEdit::singleline(&mut self.controller.editor.rename_to).desired_width(240.0));
+                ui.add(egui::TextEdit::singleline(&mut self.controller.editor.view.rename_to).desired_width(240.0));
                 if ui.button("Rename").clicked() {
                     op = Some(Op::Rename);
                 }
             });
         } else {
-            ui.label(RichText::new("A built-in preset cannot be renamed, deleted or changed. Copy it to make one of your own.").small().weak());
+            widgets::hint(ui, "A built-in preset cannot be renamed, deleted or changed. Copy it to make one of your own.");
             if let Some(dir) = self.preset_dir() {
-                ui.label(RichText::new(format!("Your presets are text files in {} (any name ending in .txt).", dir.display())).small().weak());
+                widgets::hint(ui, format!("Your presets are text files in {} (any name ending in .txt).", dir.display()));
             }
         }
         if !custom && !self.controller.editor.notice.is_empty() {
@@ -375,48 +397,45 @@ impl DrumApp {
     /// A new name for the chosen preset of the user's: its file is renamed and the `name` line changed.
     fn rename_preset(&mut self) {
         let Some(old) = self.editable_path() else { return };
-        let new = self.controller.editor.rename_to.trim().to_string();
+        let new = self.controller.editor.view.rename_to.trim().to_string();
         let notice = match check_preset_name(&new) {
             _ if new == self.cfg.controller_preset => Some("It already has that name.".to_string()),
             Err(why) => Some(why.to_string()),
             Ok(()) => None,
         };
         if let Some(notice) = notice {
-            self.controller.editor.notice = notice;
+            self.controller.editor.say(notice);
             return;
         }
         let Some(dir) = self.preset_dir() else { return };
         let target = dir.join(format!("{new}.txt"));
         if target.exists() {
-            self.controller.editor.notice = "A preset with that name exists already.".into();
+            self.controller.editor.say("A preset with that name exists already.");
             return;
         }
-        let result = std::fs::read_to_string(&old).and_then(|text| std::fs::write(&target, with_name(&text, &new))).and_then(|_| std::fs::remove_file(&old));
+        let result = std::fs::rename(&old, &target);
         match result {
             Ok(()) => {
-                self.cfg.controller_preset = new.clone();
                 self.refresh_controllers();
-                self.connect_controller();
-                self.controller.editor.notice = format!("Renamed to {new}.");
+                self.choose_preset(new.clone(), true);
+                self.controller.editor.say(format!("Renamed to {new}."));
             }
-            Err(e) => self.error = Some(format!("Could not rename the preset: {e}")),
+            Err(e) => self.view.error = Some(format!("Could not rename the preset: {e}")),
         }
     }
 
     /// Deletes the chosen preset of the user's (its file).
     fn delete_preset(&mut self) {
-        self.controller.editor.confirm_delete = false;
+        self.controller.editor.view.confirm_delete = false;
         let Some(path) = self.editable_path() else { return };
         let name = self.cfg.controller_preset.clone();
         match std::fs::remove_file(&path) {
             Ok(()) => {
-                self.cfg.controller_preset.clear();
-                self.cfg.controller_port.clear();
                 self.refresh_controllers();
-                self.connect_controller();
-                self.controller.editor.notice = format!("Deleted {name}.");
+                self.select_preset(String::new());
+                self.controller.editor.say(format!("Deleted {name}."));
             }
-            Err(e) => self.error = Some(format!("Could not delete {}: {e}", path.display())),
+            Err(e) => self.view.error = Some(format!("Could not delete {}: {e}", path.display())),
         }
     }
 
@@ -425,20 +444,20 @@ impl DrumApp {
         let mut op: Option<Op> = None;
         let Some(path) = self.editable_path() else {
             ui.separator();
-            ui.label(RichText::new("Nothing to edit: a built-in preset cannot be changed. Copy it above, or start a new preset, then teach it your controls by pressing them.").small().weak());
+            widgets::hint(ui, "Nothing to edit: a built-in preset cannot be changed. Copy it above, or start a new preset, then teach it your controls by pressing them.");
             return;
         };
         let Some(preset) = self.preset_being_edited() else { return };
         ui.separator();
-        let connected = self.controller.link.is_some();
-        ui.label(RichText::new(format!("Editing {}. Every change is saved at once.", path.display())).small().weak());
+        let connected = self.controller.is_connected();
+        widgets::hint(ui, format!("Editing {}. Every change is saved at once.", path.display()));
         ui.checkbox(&mut self.controller.editor.keep_going, "After learning a control, go on to the next action");
         ui.checkbox(&mut self.controller.editor.remember_channel, "Limit a learned control to the MIDI channel it sends on");
         if preset.layers.len() > 1 {
             ui.horizontal(|ui| {
                 ui.label("Layer");
                 for (i, (name, _)) in preset.layers.iter().enumerate() {
-                    ui.selectable_value(&mut self.controller.editor.layer, i, name.as_str());
+                    ui.selectable_value(&mut self.controller.editor.view.layer, i, name.as_str());
                 }
             });
         }
@@ -465,17 +484,16 @@ impl DrumApp {
                         if action.is_level() || action.is_browse() {
                             let current = bound
                                 .iter()
-                                .find(|b| matches!(b.src, controller::Src::Cc(_)))
-                                .map(|b| (b.relative, b.encoding))
-                                .or_else(|| self.controller.editor.kinds.get(&action.text()).copied())
-                                .unwrap_or((action.is_browse(), Encoding::Mackie));
-                            egui::ComboBox::from_id_salt(("controller_kind", action.text())).selected_text(kind_text(current.0, current.1)).width(150.0).show_ui(ui, |ui| {
-                                for (relative, encoding) in KINDS {
-                                    if action.is_browse() && !relative {
+                                .find(|b| matches!(b.input.src, controller::Src::Cc(_)))
+                                .map(|b| b.reading)
+                                .unwrap_or_else(|| self.controller.editor.chosen_kind(action));
+                            egui::ComboBox::from_id_salt(("controller_kind", action.text())).selected_text(kind_text(current)).width(150.0).show_ui(ui, |ui| {
+                                for reading in KINDS {
+                                    if action.is_browse() && !reading.is_relative() {
                                         continue;
                                     }
-                                    if ui.selectable_label(current == (relative, encoding), kind_text(relative, encoding)).clicked() {
-                                        op = Some(Op::Kind(action, relative, encoding));
+                                    if ui.selectable_label(current == reading, kind_text(reading)).clicked() {
+                                        op = Some(Op::Kind(action, reading));
                                     }
                                 }
                             });
@@ -506,11 +524,10 @@ impl DrumApp {
         let Some(op) = op else { return };
         match op {
             Op::Learn(action) => {
-                if self.controller.link.is_none() {
-                    self.controller.editor.notice = "Connect the controller first (Refresh and reconnect, above).".into();
+                if !self.controller.is_connected() {
+                    self.controller.editor.say("Connect the controller first (Refresh and reconnect, above).");
                 } else {
-                    self.controller.editor.learning = Some(action);
-                    self.controller.editor.notice.clear();
+                    self.controller.editor.start_learning(action);
                 }
             }
             Op::Cancel => self.controller.editor.learning = None,
@@ -520,17 +537,17 @@ impl DrumApp {
                     self.edit_preset(|p| p.clear(layer.as_deref(), action));
                 }
             }
-            Op::Kind(action, relative, encoding) => {
-                self.controller.editor.kinds.insert(action.text(), (relative, encoding));
+            Op::Kind(action, reading) => {
+                self.controller.editor.choose_kind(action, reading);
                 if let Some(preset) = self.preset_being_edited() {
                     let layer = self.editor_layer(&preset);
-                    self.edit_preset(|p| p.set_kind(layer.as_deref(), action, relative, encoding));
+                    self.edit_preset(|p| p.set_reading(layer.as_deref(), action, reading));
                 }
             }
             Op::NewPreset => self.new_learned_preset(),
             Op::CopyToEdit => self.copy_to_edit(),
             Op::Rename => self.rename_preset(),
-            Op::AskDelete(ask) => self.controller.editor.confirm_delete = ask,
+            Op::AskDelete(ask) => self.controller.editor.view.confirm_delete = ask,
             Op::Delete => self.delete_preset(),
         }
     }
@@ -549,27 +566,6 @@ fn check_preset_name(name: &str) -> Result<(), &'static str> {
     }
 }
 
-/// `text` (a preset file) with its `name` line set to `name`, or one added at the top.
-fn with_name(text: &str, name: &str) -> String {
-    let mut done = false;
-    let mut lines: Vec<String> = text
-        .lines()
-        .map(|line| {
-            let key = line.split('#').next().and_then(|l| l.split_once('=')).map(|(k, _)| k.trim());
-            if !done && key == Some("name") {
-                done = true;
-                format!("name = {name}")
-            } else {
-                line.to_string()
-            }
-        })
-        .collect();
-    if !done {
-        lines.insert(0, format!("name = {name}"));
-    }
-    lines.join("\n") + "\n"
-}
-
 /// "NAME.txt" in `dir`, or "NAME 2.txt", … if that exists; the folder is created.
 fn unused_path(dir: &std::path::Path, name: &str) -> std::io::Result<PathBuf> {
     std::fs::create_dir_all(dir)?;
@@ -585,6 +581,7 @@ fn unused_path(dir: &std::path::Path, name: &str) -> std::io::Result<PathBuf> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::config::{Config, Paths};
 
     #[test]
     fn new_presets_never_overwrite() {
@@ -600,9 +597,9 @@ mod tests {
 
     #[test]
     fn kinds_are_named_and_the_lists_have_no_absolute_kind() {
-        assert_eq!(kind_text(false, Encoding::Mackie), "absolute");
-        assert_eq!(kind_text(true, Encoding::Twos), "relative, twos");
-        assert_eq!(KINDS.iter().filter(|(relative, _)| !relative).count(), 1);
+        assert_eq!(kind_text(Reading::Absolute), "absolute");
+        assert_eq!(kind_text(Reading::Relative(Encoding::Twos)), "relative, twos");
+        assert_eq!(KINDS.iter().filter(|r| !r.is_relative()).count(), 1);
     }
 
     #[test]
@@ -616,8 +613,10 @@ mod tests {
     fn temp_dir(tag: &str) -> PathBuf {
         let dir = std::env::temp_dir().join(format!("roll-model-editor-{tag}-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
-        std::fs::create_dir_all(&dir).unwrap();
-        dir
+        let dir = dir.join("settings");
+        let controllers = dir.join("controllers");
+        std::fs::create_dir_all(&controllers).unwrap();
+        controllers
     }
 
     fn pressed(note: u8) -> controller::Msg {
@@ -629,7 +628,7 @@ mod tests {
         let dir = temp_dir("learn");
         std::fs::write(dir.join("Pads.txt"), "name = Pads\nport = PADS\n").unwrap();
         let mut app = DrumApp::with_config(Config { controller_preset: "Pads".into(), ..Config::default() });
-        app.controller.editor.dir = Some(dir.clone());
+        app.paths = Paths::in_dir(dir.parent().unwrap().to_path_buf());
         assert!(app.editable_path().is_some());
         let saved = || controller::Preset::parse(&std::fs::read_to_string(dir.join("Pads.txt")).unwrap());
 
@@ -639,12 +638,12 @@ mod tests {
         app.controller.editor.learning = Some(Action::Record);
         assert!(app.learn_message(pressed(36)));
         assert_eq!(app.controller.editor.learning, Some(Action::Listen));
-        assert_eq!(saved().bindings_of(None, Action::Record)[0].src, controller::Src::Note(36));
+        assert_eq!(saved().bindings_of(None, Action::Record)[0].input.src, controller::Src::Note(36));
         // A release is used up and changes nothing; the next press binds Listen.
         assert!(app.learn_message(controller::Msg::NoteOn { ch: 1, note: 36, vel: 0 }));
         assert_eq!(app.controller.editor.learning, Some(Action::Listen));
         assert!(app.learn_message(pressed(37)));
-        assert_eq!(saved().bindings_of(None, Action::Listen)[0].src, controller::Src::Note(37));
+        assert_eq!(saved().bindings_of(None, Action::Listen)[0].input.src, controller::Src::Note(37));
         // Pressing a used pad takes it from its action, and says so.
         app.controller.editor.learning = Some(Action::Stop);
         assert!(app.learn_message(pressed(36)));
@@ -656,14 +655,14 @@ mod tests {
         assert!(app.learn_message(controller::Msg::Cc { ch: 2, cc: 13, val: 40 }));
         assert_eq!(app.controller.editor.learning, None);
         let tempo = saved().binds.iter().find(|b| b.action == Action::Tempo).cloned().unwrap();
-        assert_eq!((tempo.src, tempo.channel, tempo.relative), (controller::Src::Cc(13), None, false));
+        assert_eq!((tempo.input.src, tempo.input.channel, tempo.reading), (controller::Src::Cc(13), None, Reading::Absolute));
         // The channel is remembered when asked for, and a relative choice is kept for the knob.
         app.controller.editor.remember_channel = true;
-        app.controller.editor.kinds.insert(Action::RangeFrom.text(), (true, Encoding::Twos));
+        app.controller.editor.kinds.insert(Action::RangeFrom.text(), Reading::Relative(Encoding::Twos));
         app.controller.editor.learning = Some(Action::RangeFrom);
         assert!(app.learn_message(controller::Msg::Cc { ch: 2, cc: 14, val: 1 }));
         let from = saved().binds.iter().find(|b| b.action == Action::RangeFrom).cloned().unwrap();
-        assert_eq!((from.channel, from.relative, from.encoding), (Some(2), true, Encoding::Twos));
+        assert_eq!((from.input.channel, from.reading), (Some(2), Reading::Relative(Encoding::Twos)));
         // The file is a normal preset: it parses without complaint and says what was learned.
         assert!(saved().warnings.is_empty(), "{:?}", saved().warnings);
         assert_eq!(saved().port, "PADS");
@@ -674,15 +673,15 @@ mod tests {
     fn a_new_preset_is_made_for_a_port_and_a_built_in_one_is_copied_to_be_edited() {
         let dir = temp_dir("new");
         let mut app = DrumApp::with_config(Config { controller_preset: "Behringer X-Touch Mini".into(), ..Config::default() });
-        app.controller.editor.dir = Some(dir.clone());
-        app.midi_inputs = vec!["Some Pad Controller".into()];
+        app.paths = Paths::in_dir(dir.parent().unwrap().to_path_buf());
+        app.midi.inputs = vec!["Some Pad Controller".into()];
         assert!(app.editable_path().is_none(), "a built-in preset is not edited");
         app.new_learned_preset();
         assert_eq!(app.cfg.controller_preset, "My controller");
         let text = std::fs::read_to_string(dir.join("My controller.txt")).unwrap();
         assert!(text.contains("port = Some Pad Controller"), "{text}");
         assert!(app.editable_path().is_some());
-        assert_eq!(app.controller.editor.dir, Some(dir.clone()), "the folder is kept");
+        assert_eq!(app.paths.controllers_dir(), Some(dir.clone()), "the folder is kept");
         // A copy of a built-in preset has all its assignments and is editable.
         app.cfg.controller_preset = "Korg nanoKONTROL2".into();
         app.copy_to_edit();
@@ -693,21 +692,18 @@ mod tests {
         app.controller.editor.learning = Some(Action::Record);
         app.learn_message(controller::Msg::Cc { ch: 1, cc: 99, val: 127 });
         let edited = controller::Preset::parse(&std::fs::read_to_string(dir.join("Korg nanoKONTROL2 (copy).txt")).unwrap());
-        assert_eq!(edited.bindings_of(None, Action::Record)[0].src, controller::Src::Cc(99));
+        assert_eq!(edited.bindings_of(None, Action::Record)[0].input.src, controller::Src::Cc(99));
         let original = controller::Preset::parse(controller::builtin_text("Korg nanoKONTROL2").unwrap());
-        assert_eq!(original.bindings_of(None, Action::Record)[0].src, controller::Src::Cc(45), "the built-in one is untouched");
+        assert_eq!(original.bindings_of(None, Action::Record)[0].input.src, controller::Src::Cc(45), "the built-in one is untouched");
         let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
-    fn names_are_checked_and_the_name_line_is_set() {
+    fn names_are_checked() {
         assert!(check_preset_name("My pads 2").is_ok());
         for bad in ["", "a/b", "a\\b", "what?", "a:b", ".hidden", "dot.", "Korg nanoKONTROL2", "x\ty"] {
             assert!(check_preset_name(bad).is_err(), "{bad:?}");
         }
-        assert_eq!(with_name("# c\nname = Old\nport = P\n", "New"), "# c\nname = New\nport = P\n");
-        assert_eq!(with_name("port = P\n", "New"), "name = New\nport = P\n");
-        assert_eq!(with_name("name=Old # x\nbind = note 1 -> record\n", "N"), "name = N\nbind = note 1 -> record\n");
     }
 
     #[test]
@@ -715,35 +711,36 @@ mod tests {
         let dir = temp_dir("rename");
         std::fs::write(dir.join("Pads.txt"), "# my notes\nname = Pads\nport = PADS\nbind = note 1 -> record\n").unwrap();
         let mut app = DrumApp::with_config(Config { controller_preset: "Pads".into(), ..Config::default() });
-        app.controller.editor.dir = Some(dir.clone());
+        app.paths = Paths::in_dir(dir.parent().unwrap().to_path_buf());
         // A bad name changes nothing and says why.
-        app.controller.editor.rename_to = "a/b".into();
+        app.controller.editor.view.rename_to = "a/b".into();
         app.rename_preset();
         assert!(dir.join("Pads.txt").exists() && app.controller.editor.notice.contains("cannot contain"), "{}", app.controller.editor.notice);
-        app.controller.editor.rename_to = "Pads".into();
+        app.controller.editor.view.rename_to = "Pads".into();
         app.rename_preset();
         assert!(app.controller.editor.notice.contains("already"));
         // A name in use is refused.
         std::fs::write(dir.join("Other.txt"), "name = Other\n").unwrap();
-        app.controller.editor.rename_to = "Other".into();
+        app.controller.editor.view.rename_to = "Other".into();
         app.rename_preset();
         assert!(app.controller.editor.notice.contains("exists"));
         // A good name renames the file, keeps the content and the comments, and follows the choice.
-        app.controller.editor.rename_to = "Stage pads".into();
+        app.controller.editor.view.rename_to = "Stage pads".into();
         app.rename_preset();
         assert!(!dir.join("Pads.txt").exists() && dir.join("Stage pads.txt").exists());
         assert_eq!(app.cfg.controller_preset, "Stage pads");
         let text = std::fs::read_to_string(dir.join("Stage pads.txt")).unwrap();
-        assert!(text.contains("# my notes") && text.contains("name = Stage pads") && text.contains("bind = note 1 -> record"), "{text}");
+        assert!(text.contains("# my notes") && text.contains("bind = note 1 -> record"), "the file is moved as it is: {text}");
+        assert_eq!(controller::load_preset("Stage pads", Some(&dir)).unwrap().name, "Stage pads", "and is known by its new name");
         // Deleting asks first in the window (a flag), then removes the file and the choice.
-        app.controller.editor.confirm_delete = true;
+        app.controller.editor.view.confirm_delete = true;
         app.delete_preset();
         assert!(!dir.join("Stage pads.txt").exists() && dir.join("Other.txt").exists());
         assert_eq!(app.cfg.controller_preset, "");
-        assert!(!app.controller.editor.confirm_delete);
+        assert!(!app.controller.editor.view.confirm_delete);
         // A built-in preset is neither renamed nor deleted.
         app.cfg.controller_preset = "Korg nanoKONTROL2".into();
-        app.controller.editor.rename_to = "Mine".into();
+        app.controller.editor.view.rename_to = "Mine".into();
         app.rename_preset();
         app.delete_preset();
         assert_eq!(app.cfg.controller_preset, "Korg nanoKONTROL2");
@@ -755,13 +752,13 @@ mod tests {
         let dir = temp_dir("choose");
         std::fs::write(dir.join("Pads.txt"), "name = Pads\nport = PADS\nbind = note 1 -> record\n").unwrap();
         let mut app = DrumApp::with_config(Config { controller_preset: "Korg nanoKONTROL2".into(), controller_port: "X".into(), ..Config::default() });
-        app.controller.editor.dir = Some(dir.clone());
+        app.paths = Paths::in_dir(dir.parent().unwrap().to_path_buf());
         app.controller.editor.learning = Some(Action::Record);
-        app.controller.editor.confirm_delete = true;
+        app.controller.editor.view.confirm_delete = true;
         app.select_preset("Pads".into());
         assert_eq!(app.cfg.controller_preset, "Pads");
         assert!(app.cfg.controller_port.is_empty(), "the preset's own port is used");
-        assert!(app.controller.editor.learning.is_none() && !app.controller.editor.confirm_delete);
+        assert!(app.controller.editor.learning.is_none() && !app.controller.editor.view.confirm_delete);
         assert!(app.editable_path().is_some(), "and it is one that can be edited");
         // The window draws with the list on the left for a built-in and for an own preset, and for none.
         app.refresh_controllers();
@@ -781,7 +778,7 @@ mod tests {
     fn a_new_preset_needs_a_port() {
         let dir = temp_dir("noport");
         let mut app = DrumApp::with_config(Config::default());
-        app.controller.editor.dir = Some(dir.clone());
+        app.paths = Paths::in_dir(dir.parent().unwrap().to_path_buf());
         app.new_learned_preset();
         assert!(app.controller.editor.notice.contains("No MIDI input"), "{}", app.controller.editor.notice);
         assert!(std::fs::read_dir(&dir).unwrap().next().is_none(), "nothing was written");
@@ -796,18 +793,18 @@ mod tests {
             let _ = ctx.run(egui::RawInput::default(), |ctx| app.controller_editor_window(ctx));
         };
         frame(&mut app);
-        assert!(!app.controller.editor.open, "closed until asked for");
-        app.controller.editor.open = true;
+        assert!(!app.controller.editor.view.open, "closed until asked for");
+        app.controller.editor.view.open = true;
         frame(&mut app);
         frame(&mut app);
-        assert!(app.controller.editor.open, "it stays open");
+        assert!(app.controller.editor.view.open, "it stays open");
         // Making a preset opens the editor on it.
         let dir = temp_dir("window");
-        app.controller.editor.open = false;
-        app.controller.editor.dir = Some(dir.clone());
-        app.midi_inputs = vec!["Some Pad Controller".into()];
+        app.controller.editor.view.open = false;
+        app.paths = Paths::in_dir(dir.parent().unwrap().to_path_buf());
+        app.midi.inputs = vec!["Some Pad Controller".into()];
         app.new_learned_preset();
-        assert!(app.controller.editor.open, "a new preset opens the editor");
+        assert!(app.controller.editor.view.open, "a new preset opens the editor");
         frame(&mut app);
         let _ = std::fs::remove_dir_all(&dir);
     }

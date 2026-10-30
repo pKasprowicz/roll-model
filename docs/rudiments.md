@@ -2,7 +2,7 @@
 
 > **Made with AI.** This catalogue was compiled and transcribed by an AI model (Anthropic's Claude) from the PAS chart and other sources, and has not been checked by a drum teacher. Rows marked ⚑ are known to be uncertain; compare with the PAS chart before relying on it.
 
-The catalogue behind the **Rudiments** tab: what it offers and how each rudiment is built from strokes. `src/rudiments.rs` holds the same data as patterns, and its tests check them against the sticking, accents, grace notes and lengths listed here. Rows marked ⚑ have note values that still have to be compared with the PAS chart.
+The catalogue behind the **Rudiments** tab: what it offers and how each rudiment is built from strokes. `core/src/rudiments.rs` holds the same data as patterns, and its tests check them against the sticking, accents, grace notes and lengths listed here. Rows marked ⚑ have note values that still have to be compared with the PAS chart.
 
 ## Source and how it was checked
 

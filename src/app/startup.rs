@@ -17,6 +17,7 @@ use crate::config::Config;
 use crate::metronome::{self, HAS_AUDIO};
 use crate::midi;
 use crate::render;
+use crate::widgets;
 
 const COPYRIGHT: &str = "Copyright © 2026 Piotr Kasprowicz";
 const LICENCE: &str = "Licensed under the PolyForm Noncommercial License 1.0.0";
@@ -77,9 +78,10 @@ pub(super) struct Startup {
     /// What the step in progress is doing, in words.
     label: String,
     log: Vec<Line>,
+    /// When the step in progress was first run; its line says how long it took.
+    began: Option<Instant>,
     sound: Receiver<SoundScan>,
     file: Option<PathBuf>,
-    load_settings: fn() -> Config,
     finished_at: Option<Instant>,
     frames: u32,
     /// Where the splash opens: the middle of the main window, worked out once.
@@ -87,7 +89,7 @@ pub(super) struct Startup {
 }
 
 impl Startup {
-    pub(super) fn new(file: Option<PathBuf>, sound: Receiver<SoundScan>, load_settings: fn() -> Config) -> Startup {
+    pub(super) fn new(file: Option<PathBuf>, sound: Receiver<SoundScan>) -> Startup {
         let mut steps = vec![
             Step::Settings,
             Step::MidiPorts,
@@ -100,7 +102,7 @@ impl Startup {
             steps.push(Step::Score);
         }
         let label = label(steps[0], &Config::default(), file.as_deref());
-        Startup { steps, next: 0, drawn: false, label, log: Vec::new(), sound, file, load_settings, finished_at: None, frames: 0, position: None }
+        Startup { steps, next: 0, drawn: false, label, log: Vec::new(), began: None, sound, file, finished_at: None, frames: 0, position: None }
     }
 
     fn current(&self) -> Option<Step> {
@@ -174,7 +176,10 @@ impl DrumApp {
         let Some(mut st) = self.startup.take() else { return Flow::Go };
         let was_finished = st.is_finished();
         if let Some(step) = st.due() {
-            if let Some(line) = self.run_step(step, &mut st) {
+            let began = *st.began.get_or_insert_with(Instant::now);
+            if let Some(mut line) = self.run_step(step, &mut st) {
+                line.text = format!("{} · {} ms", line.text, began.elapsed().as_millis());
+                st.began = None;
                 st.finish(line);
                 if let Some(next) = st.current() {
                     st.label = label(next, &self.cfg, st.file.as_deref());
@@ -207,19 +212,19 @@ impl DrumApp {
     fn run_step(&mut self, step: Step, st: &mut Startup) -> Option<Line> {
         Some(match step {
             Step::Settings => {
-                let cfg = (st.load_settings)();
+                let cfg = Config::load_from(&self.paths);
                 self.saved_cfg = cfg.clone();
                 self.cfg = cfg;
-                match Config::path().filter(|p| p.is_file()) {
+                match self.paths.config_file().filter(|p| p.is_file()) {
                     Some(p) => Line { text: format!("Settings read from {}", p.display()), ok: true },
                     None => Line { text: "No settings file yet, starting with the defaults".into(), ok: true },
                 }
             }
             Step::MidiPorts => {
-                self.midi_inputs = midi::list_inputs().unwrap_or_default();
-                self.midi_outputs = midi::list_outputs().unwrap_or_default();
+                self.midi.inputs = midi::list_inputs().unwrap_or_default();
+                self.midi.outputs = midi::list_outputs().unwrap_or_default();
                 Line {
-                    text: format!("Found {} and {}", count(self.midi_inputs.len(), "MIDI input"), count(self.midi_outputs.len(), "MIDI output")),
+                    text: format!("Found {} and {}", count(self.midi.inputs.len(), "MIDI input"), count(self.midi.outputs.len(), "MIDI output")),
                     ok: true,
                 }
             }
@@ -227,7 +232,7 @@ impl DrumApp {
                 let chosen = !self.cfg.midi_in_port.trim().is_empty();
                 self.connect_midi(None);
                 if chosen {
-                    Line { text: self.status.clone(), ok: self.midi_in.is_some() }
+                    Line { text: self.view.status.clone(), ok: self.midi.input.is_some() }
                 } else {
                     Line { text: "No drum module chosen yet: choose its port in Settings".into(), ok: false }
                 }
@@ -259,9 +264,9 @@ impl DrumApp {
                 if let Some(path) = st.file.clone() {
                     self.open_file(&path);
                 }
-                match &self.error {
+                match &self.view.error {
                     Some(e) => Line { text: e.clone(), ok: false },
-                    None => Line { text: self.status.clone(), ok: true },
+                    None => Line { text: self.view.status.clone(), ok: true },
                 }
             }
         })
@@ -329,17 +334,13 @@ fn contents(ui: &mut egui::Ui, st: &Startup) {
         }
         ui.add_space((ui.available_height() - 48.0).max(8.0));
         ui.label(RichText::new(COPYRIGHT).weak());
-        ui.label(RichText::new(LICENCE).small().weak());
+        widgets::hint(ui, LICENCE);
     });
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    fn defaults() -> Config {
-        Config::default()
-    }
 
     fn sample() -> PathBuf {
         Path::new(env!("CARGO_MANIFEST_DIR")).join("examples").join("basic_rock_beat.musicxml")
@@ -349,7 +350,7 @@ mod tests {
         let (tx, rx) = mpsc::channel();
         tx.send((vec!["Speakers".to_string()], Some("Speakers".to_string()))).unwrap();
         let mut app = DrumApp::with_config(Config::default());
-        app.startup = Some(Startup::new(file, rx, defaults));
+        app.startup = Some(Startup::new(file, rx));
         app
     }
 
@@ -390,11 +391,11 @@ mod tests {
     #[test]
     fn the_steps_are_the_same_for_every_start_but_a_score_is_opened_last() {
         let (_tx, rx) = mpsc::channel();
-        let plain = Startup::new(None, rx, defaults);
+        let plain = Startup::new(None, rx);
         assert_eq!(plain.steps.first(), Some(&Step::Settings), "the others need the settings");
         assert!(!plain.steps.contains(&Step::Score));
         let (_tx, rx) = mpsc::channel();
-        let with_file = Startup::new(Some(sample()), rx, defaults);
+        let with_file = Startup::new(Some(sample()), rx);
         assert_eq!(with_file.steps.last(), Some(&Step::Score));
         assert_eq!(with_file.steps.len(), plain.steps.len() + 1);
     }
@@ -402,7 +403,7 @@ mod tests {
     #[test]
     fn a_step_runs_only_after_the_splash_that_names_it_was_drawn() {
         let (_tx, rx) = mpsc::channel();
-        let mut st = Startup::new(None, rx, defaults);
+        let mut st = Startup::new(None, rx);
         assert_eq!(st.due(), None, "nothing is shown yet");
         st.drawn = true;
         assert_eq!(st.due(), Some(Step::Settings));
@@ -436,7 +437,7 @@ mod tests {
         assert_eq!(starting, 7, "one frame to show each of the 7 steps");
         assert!(app.startup.as_ref().is_some_and(|s| s.is_finished()), "the splash is still there to be read");
         assert!(app.score.is_some(), "the score given on the command line is open");
-        assert!(app.tab == super::super::Tab::Score);
+        assert!(app.view.tab == super::super::Tab::Score);
         assert_eq!(app.audio_devices, ["Speakers"]);
         assert_eq!(app.startup.as_ref().unwrap().log.len(), 7, "every step left a line");
     }
@@ -446,7 +447,7 @@ mod tests {
         let ctx = egui::Context::default();
         let (tx, rx) = mpsc::channel();
         let mut app = DrumApp::with_config(Config::default());
-        app.startup = Some(Startup::new(None, rx, defaults));
+        app.startup = Some(Startup::new(None, rx));
         for _ in 0..12 {
             assert_eq!(frame(&mut app, &ctx), Flow::Starting, "waiting for the sound outputs");
         }

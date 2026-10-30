@@ -185,6 +185,7 @@ cargo build --release --no-default-features          # without the sound card (d
 <tr><td><em>notes</em></td><td>Plays the notes of the score in Listen. Switch them off to use Listen as a click track of the selected bars.</td></tr>
 <tr><td><em>loop</em></td><td>Repeats the selected bars in Listen until you stop it. Unticking it lets the current round finish.</td></tr>
 <tr><td><em>count-in bars</em></td><td>0&ndash;2 bars of clicks before the music (and before recording).</td></tr>
+<tr><td><em>in Listen</em></td><td>Whether Listen starts with the count-in too. Switch it off to hear the music at once; a recording always has the count-in.</td></tr>
 </tbody></table>
 <p>Range and tempo are not saved; they start fresh with each score.</p>
 
@@ -559,7 +560,7 @@ ring  = tempo -&gt; cc 20 scale=127      # a plain value 0 to 127 instead of Mac
 <tr><td><kbd>Esc</kbd></td><td>Stop recording, listening and the metronome</td></tr>
 <tr><td><kbd>Z X G C V B A S D F Q W E</kbd></td><td>Pads, when <em>Computer keyboard plays pads</em> is on</td></tr>
 </tbody></table>
-<p>The shortcuts are ignored while a widget has the keyboard focus (for example after pressing <kbd>Tab</kbd>, or while typing in the search box). <kbd>Esc</kbd> clears the focus.</p>
+<p>The shortcuts are ignored only while you type in a text box (or in the value box of a slider); a button or slider that has the focus after <kbd>Tab</kbd> or a click does not stop them.</p>
 </section>
 
 <section id="files">
@@ -579,7 +580,7 @@ ring  = tempo -&gt; cc 20 scale=127      # a plain value 0 to 127 instead of Mac
 <tbody>
 <tr><td><code>midi_in_port</code>, <code>midi_out_port</code></td><td>Part of the MIDI port names</td></tr>
 <tr><td><code>latency_ms</code>, <code>perfect_ms</code>, <code>good_ms</code>, <code>window_ms</code></td><td>Timing</td></tr>
-<tr><td><code>metronome_during_take</code>, <code>count_in_bars</code></td><td>Click switch and count-in</td></tr>
+<tr><td><code>metronome_during_take</code>, <code>count_in_bars</code>, <code>listen_count_in</code></td><td>Click switch, count-in, and whether Listen has the count-in</td></tr>
 <tr><td><code>click_audio</code>, <code>click_volume</code>, <code>click_midi</code>, <code>click_note</code>, <code>click_channel</code></td><td>Metronome click</td></tr>
 <tr><td><code>playback_audio</code>, <code>playback_volume</code>, <code>playback_midi</code>, <code>playback_channel</code></td><td>Listen</td></tr>
 <tr><td><code>audio_output</code></td><td>Sound device name (empty: system default)</td></tr>
@@ -616,7 +617,7 @@ ring  = tempo -&gt; cc 20 scale=127      # a plain value 0 to 127 instead of Mac
 <tr><td>A turn of an encoder goes the wrong way or is ignored</td><td>The preset reads it with another encoding. In the Manage window change <em>absolute</em> or <em>relative</em> and the encoding for that action, and watch the monitor.</td></tr>
 <tr><td>The splash stays for a long time while starting</td><td>It lists the step it is waiting for, usually opening a MIDI port or listing the sound outputs. A device that is plugged in but not responding can hold it up; unplug it, or close the program that has its port.</td></tr>
 <tr><td>The score scrolls and I cannot scroll back during a take</td><td>Untick <em>follow</em>.</td></tr>
-<tr><td>Shortcuts do not work</td><td>A widget has the keyboard focus. Press <kbd>Esc</kbd> or click an empty area.</td></tr>
+<tr><td>Shortcuts do not work</td><td>You are typing in a text box or a value box. Press <kbd>Enter</kbd> or <kbd>Esc</kbd>, or click an empty area.</td></tr>
 </tbody></table>
 </section>
 
