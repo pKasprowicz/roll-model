@@ -176,7 +176,7 @@ The Rudiments tab sits between Score and Metronome. `docs/rudiments.md` is the c
 
 ### Developer guide
 
-`docs/developer/developer.template.html` + `tools/build_devguide.py`, same style as the manual (`docs/style.css` is shared). Placeholders `{{code:PATH::TEXT}}` pull the Rust item whose first line contains TEXT (with doc comments and attributes, highlighted) so excerpts never go stale; the module table, test counts, dependency table and the rudiment pattern language are generated. **A refactoring that renames or moves a shown item fails the guide build** (and the release): change the TEXT in the template. The prose is hand-written; update it when architecture changes (sections: layers, threads, practice sources, controller, rudiments, invariants, tutorials).
+`docs/developer/developer.template.html` + `tools/build_devguide.py`, same style as the manual (`docs/style.css` is shared). Placeholders `{{code:PATH::TEXT}}` pull the Rust item whose first line contains TEXT (with doc comments and attributes, highlighted) so excerpts never go stale; the module table, test counts, dependency table and the rudiment pattern language are generated. **A refactoring that renames or moves a shown item fails the guide build** (and the release): change the TEXT in the template. The prose is hand-written; update it when architecture changes (sections: layers, data flow, the thread inventory, the audio system with where latency comes from and one sound's path through the engine, practice sources, controller, rudiments, invariants, tutorials).
 
 ### Licence
 
