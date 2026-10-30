@@ -5,6 +5,13 @@ use std::ops::RangeInclusive;
 use egui::emath::Numeric;
 use egui::{vec2, Response, RichText, Ui, Vec2};
 
+/// Whether a text field (also a slider's value box) is being typed in. Not the same as
+/// `ctx.wants_keyboard_input()`, which is also true while a button or slider has the focus (after
+/// Tab or a click): the shortcuts must still work then.
+pub fn typing(ctx: &egui::Context) -> bool {
+    ctx.memory(|m| m.focused()).is_some_and(|id| egui::TextEdit::load_state(ctx, id).is_some())
+}
+
 /// A line of grey helper text (the "small" style): how every page explains itself.
 pub fn hint(ui: &mut Ui, text: impl Into<String>) -> Response {
     ui.label(RichText::new(text).small().weak())
@@ -201,5 +208,32 @@ mod tests {
         frame(&ctx, wheel_at(Pos2::new(450.0, 400.0), -1.0), |ui| offset = page(ui, &mut v).1);
         assert!(offset > 0.0, "page offset {offset}");
         assert_eq!(v, 9);
+    }
+
+    /// Runs one frame with a text box and a button, giving the focus to the one in `focus`.
+    fn typing_with_focus_on(focus: &str) -> bool {
+        let ctx = egui::Context::default();
+        let mut text = String::new();
+        for _ in 0..2 {
+            let _ = ctx.run(egui::RawInput::default(), |ctx| {
+                egui::CentralPanel::default().show(ctx, |ui| {
+                    let edit = ui.text_edit_singleline(&mut text);
+                    let button = ui.button("Record");
+                    match focus {
+                        "text" => edit.request_focus(),
+                        "button" => button.request_focus(),
+                        _ => {}
+                    }
+                });
+            });
+        }
+        typing(&ctx)
+    }
+
+    #[test]
+    fn only_a_text_box_counts_as_typing() {
+        assert!(typing_with_focus_on("text"));
+        assert!(!typing_with_focus_on("button"), "a button with the focus does not stop the shortcuts");
+        assert!(!typing_with_focus_on("nothing"));
     }
 }

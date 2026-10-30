@@ -180,7 +180,7 @@ The Rudiments tab sits between Score and Metronome. `docs/rudiments.md` is the c
 - [ ] **FEAT-3** Remember the layout per score.
 - [x] **FEAT-4** A Listen without count-in setting of its own. **Done**: `listen_count_in` and the *in Listen* box.
 - The click is implemented twice (a sine blip in `metronome::click_audio`, used by takes and by the player) and `Metronome` (takes, calibration) and `Player` (Listen, metronome tab) are two threads with separate loops; this is task **CD-5** below.
-- [ ] **UI-3** Shortcuts (`R`, `L`, `K`, `M`, keyboard pads) are ignored while a widget has keyboard focus (after Tab); `Esc` clears it.
+- [x] **UI-3** Shortcuts (`R`, `L`, `K`, `M`, keyboard pads) were ignored while a widget had keyboard focus. **Done**: `widgets::typing(ctx)` is true only when the focused widget is a text edit (a slider's value box is one), and the shortcuts use it instead of `wants_keyboard_input()`; tested headlessly. Not tried with a real keyboard.
 
 ### Clean-design review (2026-10-29)
 

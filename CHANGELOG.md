@@ -9,6 +9,9 @@ All notable changes are recorded here. The format follows [Keep a Changelog](htt
 ### Added
 - **Listen can start without the count-in**: the *in Listen* box next to *count-in bars* on the Score tab (setting `listen_count_in`, on by default). A recording always has the count-in.
 
+### Fixed
+- **Shortcuts work after Tab or a click on a button or slider**: `R`, `L`, `K`, `M`, `Esc` and the keyboard pads were ignored while any widget had the keyboard focus; now only typing in a text box (or a slider's value box) stops them.
+
 ### Changed
 - **The splash shows how long each start-up step took** (for example `Found 3 MIDI inputs and 2 MIDI outputs · 41 ms`), so slow drivers and devices can be seen at a glance.
 

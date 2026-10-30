@@ -31,6 +31,7 @@ use crate::musicxml::ParseOptions;
 use crate::playback::Player;
 use crate::render::{self};
 use crate::score::Score;
+use crate::widgets;
 use session::signed_secs;
 use settings::SettingsPage;
 
@@ -423,7 +424,7 @@ impl DrumApp {
     }
 
     fn keyboard_pads(&mut self, ctx: &egui::Context) {
-        if !self.cfg.keyboard_input || ctx.wants_keyboard_input() {
+        if !self.cfg.keyboard_input || widgets::typing(ctx) {
             return;
         }
         let pressed: Vec<Lane> = ctx.input(|i| {
@@ -596,7 +597,7 @@ impl eframe::App for DrumApp {
         }
 
         self.update_state(ctx, key_taken);
-        if !ctx.wants_keyboard_input() && !key_taken {
+        if !widgets::typing(ctx) && !key_taken {
             self.shortcut_keys(ctx);
         }
         self.draw(ctx);
