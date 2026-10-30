@@ -23,6 +23,10 @@ pub struct Config {
     pub count_in_bars: u32,
     /// Listen starts with the count-in too (a take always does).
     pub listen_count_in: bool,
+    /// Listen with the loop on raises the tempo by `ramp_percent` (points of the written tempo,
+    /// 0 = off) every `ramp_passes` passes.
+    pub ramp_percent: u32,
+    pub ramp_passes: usize,
     pub click_audio: bool,
     pub click_volume: f32,
     pub click_midi: bool,
@@ -43,6 +47,9 @@ pub struct Config {
     pub expand_repeats: bool,
     /// Scores opened before, most recent first (absolute paths).
     pub recent_files: Vec<String>,
+    /// How the rows of a score were laid out the last time it was open (bars per row, the bar that
+    /// starts a row), most recently changed first. Only scores that differ from "auto, off".
+    pub layouts: Vec<(String, RowLayout)>,
     /// Sound output device by name; empty = the system default.
     pub audio_output: String,
     /// Bars per row of the score; 0 = as many as fit.
@@ -59,6 +66,9 @@ pub struct Config {
     pub metro_sub: usize,
     /// Show the loaded score rolling by on the Metronome tab.
     pub metro_preview: bool,
+    /// The free metronome gets faster by `metro_ramp_bpm` (0 = off) every `metro_ramp_bars` bars.
+    pub metro_ramp_bpm: u32,
+    pub metro_ramp_bars: usize,
     /// Hardware controller: a built-in preset's name or the name of a file in the
     /// controllers folder; empty = none.
     pub controller_preset: String,
@@ -82,6 +92,25 @@ pub struct Config {
 
 /// How many scores the welcome panel remembers.
 pub const MAX_RECENT: usize = 10;
+/// How many scores keep their row layout.
+pub const MAX_LAYOUTS: usize = 30;
+
+/// How the bars of a score are split into rows: the same two numbers as `LayoutOpts` of the
+/// renderer, without a dependency on it. 0 means "auto" and "off".
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct RowLayout {
+    pub bars_per_row: usize,
+    pub align_bar: usize,
+}
+
+/// Whether two file paths name the same file (they compare case-insensitively on Windows).
+fn same_path(a: &str, b: &str) -> bool {
+    if cfg!(windows) {
+        a.eq_ignore_ascii_case(b)
+    } else {
+        a == b
+    }
+}
 /// The controller preset used until another is chosen (or "none": an empty name).
 pub const DEFAULT_CONTROLLER: &str = "Behringer X-Touch Mini";
 /// Loudest instrument gain the mixer allows.
@@ -97,6 +126,8 @@ impl Default for Config {
             metronome_during_take: true,
             count_in_bars: 1,
             listen_count_in: true,
+            ramp_percent: 0,
+            ramp_passes: 2,
             click_audio: true,
             click_volume: 0.5,
             click_midi: false,
@@ -112,6 +143,7 @@ impl Default for Config {
             zoom: 1.0,
             expand_repeats: true,
             recent_files: Vec::new(),
+            layouts: Vec::new(),
             audio_output: String::new(),
             bars_per_row: 0,
             layout_align_bar: 0,
@@ -121,6 +153,8 @@ impl Default for Config {
             metro_beats: 4,
             metro_sub: 0,
             metro_preview: true,
+            metro_ramp_bpm: 0,
+            metro_ramp_bars: 4,
             controller_preset: DEFAULT_CONTROLLER.to_string(),
             controller_port: String::new(),
             rudiment: 1,
@@ -278,6 +312,8 @@ const KEYS: &[Key] = &[
     key!("metronome_during_take", c.metronome_during_take, Flag),
     key!("count_in_bars", c.count_in_bars, number(0, 4)),
     key!("listen_count_in", c.listen_count_in, Flag),
+    key!("ramp_percent", c.ramp_percent, number(0, 50)),
+    key!("ramp_passes", c.ramp_passes, number(1, 32)),
     key!("click_audio", c.click_audio, Flag),
     key!("click_volume", c.click_volume, number(f32::MIN, f32::MAX)),
     key!("click_midi", c.click_midi, Flag),
@@ -298,6 +334,8 @@ const KEYS: &[Key] = &[
     key!("metro_beats", c.metro_beats, number(1, 12)),
     key!("metro_sub", c.metro_sub, number(0, 3)),
     key!("metro_preview", c.metro_preview, Flag),
+    key!("metro_ramp_bpm", c.metro_ramp_bpm, number(0, 60)),
+    key!("metro_ramp_bars", c.metro_ramp_bars, number(1, 64)),
     key!("controller_preset", c.controller_preset, Text),
     key!("controller_port", c.controller_port, Text),
     key!("trigger_enabled", c.trigger_enabled, Flag),
@@ -385,10 +423,23 @@ impl Config {
     /// Puts `path` at the top of the recent list (without duplicates; paths
     /// compare case-insensitively on Windows) and trims the list.
     pub fn remember_recent(&mut self, path: &str) {
-        let same = |a: &str, b: &str| if cfg!(windows) { a.eq_ignore_ascii_case(b) } else { a == b };
-        self.recent_files.retain(|p| !same(p, path));
+        self.recent_files.retain(|p| !same_path(p, path));
         self.recent_files.insert(0, path.to_string());
         self.recent_files.truncate(MAX_RECENT);
+    }
+
+    /// The row layout kept for the score at `path`, if it has one.
+    pub fn layout_of(&self, path: &str) -> Option<RowLayout> {
+        self.layouts.iter().find(|(p, _)| same_path(p, path)).map(|(_, l)| *l)
+    }
+
+    /// Keeps `layout` for the score at `path`. The automatic layout is the default and is not kept.
+    pub fn remember_layout(&mut self, path: &str, layout: RowLayout) {
+        self.layouts.retain(|(p, _)| !same_path(p, path));
+        if layout != RowLayout::default() {
+            self.layouts.insert(0, (path.to_string(), layout));
+            self.layouts.truncate(MAX_LAYOUTS);
+        }
     }
 
     /// Copies the settings folder (settings, sounds) of the old name to the new
@@ -444,6 +495,9 @@ impl Config {
         for path in &self.recent_files {
             kv("recent", path.clone());
         }
+        for (path, l) in &self.layouts {
+            kv("layout", format!("{} {} {path}", l.bars_per_row, l.align_bar));
+        }
         for (n, bpm) in &self.rudiment_bpm {
             kv(&format!("rudiment_bpm.{n}"), bpm.to_string());
         }
@@ -481,6 +535,18 @@ impl Config {
                 continue;
             }
             match k {
+                "layout" => {
+                    // "bars align path"; the path may hold spaces.
+                    let mut parts = v.splitn(3, ' ');
+                    if let (Some(bars), Some(align), Some(path)) = (parts.next(), parts.next(), parts.next()) {
+                        if let (Ok(bars), Ok(align)) = (bars.parse::<usize>(), align.parse::<usize>()) {
+                            let layout = RowLayout { bars_per_row: bars.min(16), align_bar: align.min(9999) };
+                            if !path.is_empty() && c.layouts.len() < MAX_LAYOUTS && c.layout_of(path).is_none() && layout != RowLayout::default() {
+                                c.layouts.push((path.to_string(), layout));
+                            }
+                        }
+                    }
+                }
                 "recent" => {
                     if !v.is_empty() && c.recent_files.len() < MAX_RECENT && !c.recent_files.iter().any(|p| p == v) {
                         c.recent_files.push(v.to_string());

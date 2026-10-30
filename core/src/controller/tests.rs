@@ -611,3 +611,66 @@ fn every_action_has_a_name_a_title_and_an_explanation() {
         }
     }
 }
+
+#[test]
+fn layers_are_added_and_removed_with_what_belongs_to_them() {
+    let mut p = Preset::parse("name = T\nport = P\nbind = note 1 -> record\n");
+    assert_eq!(p.add_layer("A", Src::Note(84)), Ok(()));
+    assert_eq!(p.add_layer("B", Src::Note(85)), Ok(()));
+    assert_eq!(p.add_layer("A", Src::Note(86)), Err(LayerError::Taken("A".into())));
+    assert_eq!(p.add_layer("C", Src::Note(85)), Err(LayerError::ControlInUse("it selects layer B".into())));
+    assert!(matches!(p.add_layer("C", Src::Note(1)), Err(LayerError::ControlInUse(_))), "a control that does something cannot select a layer");
+    assert_eq!(p.add_layer("two words", Src::Note(9)), Err(LayerError::BadName));
+    assert_eq!(p.add_layer("", Src::Note(9)), Err(LayerError::BadName));
+    assert!(matches!(p.add_layer("Record", Src::Note(9)), Err(LayerError::Reserved(_))));
+    assert!(matches!(p.add_layer("note", Src::Note(9)), Err(LayerError::Reserved(_))));
+    // What is bound on a layer goes with it.
+    p.assign(Some("B"), Action::Stop, Learned { input: Input { src: Src::Note(2), channel: None }, reading: Reading::Absolute });
+    p.assign(Some("A"), Action::Listen, Learned { input: Input { src: Src::Note(2), channel: None }, reading: Reading::Absolute });
+    p.remove_layer("B");
+    assert_eq!(p.layers, vec![("A".to_string(), Src::Note(84))]);
+    assert!(p.binds.iter().all(|b| b.layer.as_deref() != Some("B")) && p.binds.iter().any(|b| b.action == Action::Listen));
+    // It survives the file.
+    let back = Preset::parse(&p.to_text());
+    assert_eq!((back.layers, back.warnings), (p.layers.clone(), Vec::<String>::new()));
+}
+
+#[test]
+fn lights_and_rings_are_set_replaced_and_cleared_per_layer() {
+    let mut p = Preset::parse("name = T\nport = P\nlayer = A note 84\n");
+    p.set_light(Light::new(Some("A"), Action::Record, Out::Note(95), false));
+    p.set_light(Light::new(Some("A"), Action::Tempo, Out::Cc(48), true));
+    p.set_light(Light::new(None, Action::Record, Out::Note(1), false));
+    assert_eq!(p.lights.len(), 3);
+    // Setting again replaces: the old light of that layer, action and kind goes.
+    let mut louder = Light::new(Some("A"), Action::Record, Out::Note(96), false);
+    louder.on = 60;
+    louder.off = 5;
+    p.set_light(louder);
+    assert_eq!(p.lights.len(), 3);
+    let kept = p.lights_of(Some("A"), Action::Record, false).unwrap();
+    assert_eq!((kept.out, kept.on, kept.off), (Out::Note(96), 60, 5));
+    assert!(p.lights_of(Some("A"), Action::Record, true).is_none(), "a ring is not a light");
+    p.clear_light(Some("A"), Action::Record, false);
+    assert!(p.lights_of(Some("A"), Action::Record, false).is_none());
+    assert!(p.lights_of(None, Action::Record, false).is_some(), "the light for every layer stays");
+    // What was set is in the file, and reads back.
+    let back = Preset::parse(&p.to_text());
+    assert_eq!(back.lights, p.lights);
+    assert!(back.warnings.is_empty(), "{:?}", back.warnings);
+}
+
+#[test]
+fn an_encoding_is_guessed_from_a_few_clicks_each_way() {
+    use Encoding::*;
+    assert_eq!(Encoding::guess(&[1, 1, 2], &[65, 65, 66]), Some(Mackie));
+    assert_eq!(Encoding::guess(&[1, 1, 1], &[127, 127, 126]), Some(Twos));
+    assert_eq!(Encoding::guess(&[65, 66, 65], &[63, 63, 62]), Some(Offset));
+    assert_eq!(Encoding::guess(&[65, 65, 66], &[1, 1, 2]), Some(SignBit2), "the opposite sign bit of Mackie's");
+    // Nothing to go on, or a knob that sends positions.
+    assert_eq!(Encoding::guess(&[], &[65]), None);
+    assert_eq!(Encoding::guess(&[1], &[]), None);
+    assert_eq!(Encoding::guess(&[10, 40, 90], &[80, 20, 5]), None);
+    // Turning the other way round first reads as the opposite encoding, which is why the order is asked for.
+    assert_ne!(Encoding::guess(&[65, 65], &[1, 1]), Encoding::guess(&[1, 1], &[65, 65]));
+}

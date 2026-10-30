@@ -33,11 +33,11 @@ mod preset;
 mod tests;
 
 pub use action::{Action, Out, Src, State};
-pub use error::{LoadPresetError, PresetError};
+pub use error::{LayerError, LoadPresetError, PresetError};
 pub use mapper::{learn, Command, Mapper};
 pub use message::{parse, Encoding, Msg, Reading};
 pub use preset::{
-    builtin_text, custom_presets, load_preset, preset_source, Binding, Input, Preset, PresetKind, PresetSource, BUILTIN,
+    builtin_text, custom_presets, load_preset, preset_source, Binding, Input, Light, Preset, PresetKind, PresetSource, BUILTIN,
 };
 
 use crate::drums::Lane;

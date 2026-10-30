@@ -286,6 +286,8 @@ python3 tools/build_notices.py      # target/notices/THIRD_PARTY_NOTICES.txt</co
 {{code:src/control.rs::fn store(}}
 <p>Every frame <code>sync_control</code> copies the relevant settings (and the effective gain, with mute and solo applied) into the <code>Control</code>s. There are three: one for takes and Listen, one for the free metronome and one for the audition button, so the audition never disturbs Listen.</p>
 
+<h3 id="ramp">Tempo ramp</h3>
+<p>A looping run can speed up: <code>PlayOptions.ramp</code> is a <code>Ramp { every, step }</code>. The cues of a pass are always given for the starting tempo; <code>run_with</code> squeezes pass <em>p</em> by <code>1 / factor(p)</code> and starts it where the shorter earlier passes ended (<code>start_of</code>), so there is no gap and no new cue list. Everything that shows where the music is (Listen's playhead and label, the metronome's beat lights and rolling staff) asks <code>Ramp::locate</code> or <code>base_seconds</code> to turn real seconds into seconds at the starting tempo, and then works as before. The count-in is never squeezed. The test with the fake sink measures the gaps between cues.</p>
 <h3 id="sink">The Sink seam</h3>
 <p>What a cue <em>sounds like</em> is decided in one pure function, <code>dispatch</code>, which talks to a trait. The real implementation drives the devices; tests pass a fake that records calls.</p>
 {{code:src/playback.rs::pub trait Sink}}
@@ -632,7 +634,7 @@ ring  = tempo -&gt; cc 20 scale=127      # a plain value 0..scale instead</code>
 <tr><td>New controller action or preset</td><td><span class="pill easy">small</span></td><td><code>controller/</code>, <code>app/controls/apply.rs</code>, <code>presets/</code></td><td><a href="#t-action">Tutorial 4</a>. Another Mackie surface is a new preset file.</td></tr>
 <tr><td>A preset for another controller</td><td><span class="pill easy">small</span></td><td><code>presets/</code>, <code>BUILTIN</code></td><td><a href="#t-controller">Tutorial 8</a>; or let the user teach it in the Manage window. A picture is generated.</td></tr>
 <tr><td>A drawn picture of a controller</td><td><span class="pill">medium</span></td><td><code>controller_layout.rs</code>, <code>for_preset</code></td><td>Measure it on a photograph; the geometry tests say what is wrong.</td></tr>
-<tr><td>Creating layers, editing lights and rings in the Manage window</td><td><span class="pill">medium</span></td><td><code>controls/editor.rs</code>, <code>Preset</code></td><td>The model (<code>Preset</code>, <code>to_text</code>) already holds them; the window only edits bindings today.</td></tr>
+
 <tr><td>Guessing a relative encoding while learning</td><td><span class="pill easy">small</span></td><td><code>controller::learn</code>, <code>editor.rs</code></td><td>Turn a knob a few clicks: the first message after a stop and its sign tell the encoding.</td></tr>
 <tr><td>Connect-time system-exclusive messages for a controller</td><td><span class="pill">medium</span></td><td><code>midi::connect_controller</code>, preset format</td><td>Some controllers need a message to enter a mode; an <code>init</code> line was planned in the concept.</td></tr>
 <tr><td>New step at start-up</td><td><span class="pill easy">small</span></td><td><code>app/startup.rs</code></td><td><a href="#t-startup">Tutorial 9</a>.</td></tr>
@@ -823,7 +825,7 @@ impl DrumApp {
 <h2>15. Known gaps and roadmap</h2>
 <ul>
 <li><strong>V31 and controllers are untested on hardware.</strong> The note map is the common Roland V-Drums factory map; the hi-hat pedal polarity (127 = closed) is the Roland convention; the Mackie presets are from the Mackie Control table and the four generic presets are from memory (a web search confirmed only a few of their numbers). Learning against a real device has not been tried.</li>
-<li><strong>The preset editor</strong> binds actions only: it cannot create layers or edit lights and rings, and editing rewrites the file without its comments. The generated help picture does not show where the controls are on the device.</li>
+<li><strong>The preset editor</strong> binds actions, creates and deletes layers and gives actions lights and rings (all with the same defaults: the control the action is bound to), and editing rewrites the file without its comments. The generated help picture does not show where the controls are on the device.</li>
 <li><strong>Large files and structs.</strong> (Mostly done; see CD-14, CD-13 and CD-5 in <code>HANDOFF.md</code> for what is left.) <code>app.rs</code> holds <code>DrumApp</code>, whose fields are grouped (<code>ViewState</code>, <code>MidiState</code>, <code>Playback</code>, <code>MetroState</code>, the rest still flat), and the MIDI, keyboard and file handling; the tabs and the take, Listen and calibration lifecycles are in <code>app/home.rs</code>, <code>score_tab.rs</code>, <code>results.rs</code>, <code>settings.rs</code> and <code>session.rs</code>. <code>HANDOFF.md</code> lists the review of them against clean-design rules.</li>
 <li><strong>Nobody has listened to the synthesised kit</strong> (only spectral guards test it). The built-in sounds are intentionally simple.</li>
 <li><strong>Notation</strong>: proportional spacing, noteheads and stems only.</li>

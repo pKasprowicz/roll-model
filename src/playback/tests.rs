@@ -48,6 +48,7 @@ fn opts() -> PlayOptions {
         click_note: 76,
         click_channel: 10,
         drum_notes: [(Lane::Kick, 36), (Lane::Snare, 38)].into_iter().collect(),
+        ramp: Ramp::default(),
     }
 }
 
@@ -315,4 +316,64 @@ fn accents_are_louder_than_ghost_notes() {
     let soft = mix(&cues(&[ghost], &[]), 0.0, 1.0);
     let peak = |v: &[f32]| v.iter().fold(0.0_f32, |m, s| m.max(s.abs()));
     assert!(peak(&loud) > 2.0 * peak(&soft), "{} vs {}", peak(&loud), peak(&soft));
+}
+
+#[test]
+fn a_ramp_makes_every_few_passes_faster_up_to_a_limit() {
+    let r = Ramp { every: 2, step: 0.5 };
+    assert_eq!((r.factor(0), r.factor(1), r.factor(2), r.factor(3), r.factor(4)), (1.0, 1.0, 1.5, 1.5, 2.0));
+    assert_eq!(r.factor(1000), Ramp::MAX_FACTOR, "capped");
+    assert_eq!(Ramp::default().factor(50), 1.0, "no ramp, no change");
+    assert_eq!(Ramp { every: 2, step: 0.0 }.factor(50), 1.0);
+
+    // Passes of 4 s: two at the start tempo, then 4/1.5 s each.
+    let (pass, into) = r.locate(4.0, 8.0 + 1.0);
+    assert_eq!(pass, 2);
+    assert!((into - 1.5).abs() < 1e-9, "1 s real at 1.5 times is 1.5 s of music: {into}");
+    assert!((r.base_seconds(4.0, 9.0) - 9.5).abs() < 1e-9);
+    assert_eq!(r.base_seconds(4.0, -1.5), -1.5, "the count-in is not squeezed");
+    // The limit: passes of 3 s at 3 times are 1 s long, however far on.
+    let fast = Ramp { every: 1, step: 2.0 };
+    let (pass, into) = fast.locate(3.0, 3.0 + 1.0 + 10.5);
+    assert_eq!(pass, 2 + 10);
+    assert!((into - 1.5).abs() < 1e-9, "{into}");
+    // Without a ramp it is plain division.
+    assert_eq!(Ramp::default().locate(4.0, 9.0), (2, 1.0));
+    assert_eq!(Ramp::default().base_seconds(4.0, 9.0), 9.0);
+}
+
+struct Stamps(Vec<Instant>);
+
+impl Sink for Stamps {
+    fn audio_click(&mut self, _: ClickLevel, _: f32) {}
+    fn midi_click(&mut self, _: ClickLevel) {}
+    fn audio_drum(&mut self, _: Lane, _: f32) {}
+    fn midi_drum(&mut self, _: u8, _: u8) {
+        self.0.push(Instant::now());
+    }
+}
+
+#[test]
+fn the_player_squeezes_the_later_passes_of_a_ramp() {
+    let c = Control::new();
+    c.set_looping(true);
+    let off = {
+        let c = c.clone();
+        std::thread::spawn(move || {
+            std::thread::sleep(Duration::from_millis(330));
+            c.set_looping(false);
+        })
+    };
+    let mut o = opts();
+    // Passes of 100 ms, 50 ms, then 33 ms (the limit of three times).
+    o.ramp = Ramp { every: 1, step: 1.0 };
+    let mut sink = Stamps(Vec::new());
+    let zero = Instant::now() + Duration::from_millis(40);
+    run_with(zero, &[drum(Lane::Kick, 0.0)], 0.10, &o, &c, &AtomicBool::new(false), &mut sink, Duration::ZERO);
+    off.join().unwrap();
+    let gaps: Vec<f64> = sink.0.windows(2).map(|w| (w[1] - w[0]).as_secs_f64()).collect();
+    assert!(gaps.len() >= 4, "{gaps:?}");
+    assert!(gaps[1] < gaps[0] * 0.75, "the second pass is shorter than the first: {gaps:?}");
+    assert!(gaps[2] < gaps[1] * 0.9, "and the third shorter again: {gaps:?}");
+    assert!((gaps[3] - gaps[2]).abs() < 0.012, "at the limit the passes stop getting shorter: {gaps:?}");
 }

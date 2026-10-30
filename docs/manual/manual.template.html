@@ -184,6 +184,7 @@ cargo build --release --no-default-features          # without the sound card (d
 <tr><td><em>click (K)</em></td><td>Switches the metronome on or off at any moment, also while playing or recording. The count-in always sounds.</td></tr>
 <tr><td><em>notes</em></td><td>Plays the notes of the score in Listen. Switch them off to use Listen as a click track of the selected bars.</td></tr>
 <tr><td><em>loop</em></td><td>Repeats the selected bars in Listen until you stop it. Unticking it lets the current round finish.</td></tr>
+<tr><td><em>ramp +</em></td><td>A tempo ramp for Listen with <em>loop</em> on: the tempo rises by this many per cent of the written tempo every <em>every</em> passes (2 passes at 80 %, then 85 %, and so on), up to three times the starting tempo. The label next to the Listen button shows the tempo in force. Set at the next start of Listen; <em>off</em> by default.</td></tr>
 <tr><td><em>count-in bars</em></td><td>0&ndash;2 bars of clicks before the music (and before recording).</td></tr>
 <tr><td><em>in Listen</em></td><td>Whether Listen starts with the count-in too. Switch it off to hear the music at once; a recording always has the count-in.</td></tr>
 </tbody></table>
@@ -219,6 +220,7 @@ cargo build --release --no-default-features          # without the sound card (d
 <ul>
 <li><em>zoom</em> (0.5&ndash;3) scales the notation. <em>follow</em> scrolls the score along with the playhead during playback and recording.</li>
 <li><strong>Layout</strong> opens two settings. <em>Bars per row</em>: <em>auto</em> fits as many as the width allows; a fixed number (1&ndash;8) gives every bar the same width so barlines line up from row to row (and the zoom no longer matters). If that many bars do not fit, fewer are shown and a note says so. <em>Start a row at bar</em> forces a given bar to begin a row; with 4 bars per row and a row starting at bar 2 you get <code>[1] [2&ndash;5] [6&ndash;9] &hellip;</code>.</li>
+<li>Each score keeps its own layout: open it again and its rows come back (a score you never laid out keeps the settings on screen). The last 30 scores are remembered; the automatic layout is not stored.</li>
 <li>The bar number in these settings is the position in the score as shown. With repeats expanded, the numbers printed above the bars can repeat; the Layout menu shows the printed number of the chosen bar.</li>
 </ul>
 <div class="callout"><strong class="label">Notation</strong>The staff has proportional spacing and draws noteheads and stems only: no beams, flags, rests or tuplet brackets. It is made for judging timing, not for engraving.</div>
@@ -284,6 +286,7 @@ cargo build --release --no-default-features          # without the sound card (d
 <p>A click track that needs no score. Press <em>Start</em> (or <kbd>M</kbd>) and set:</p>
 <ul>
 <li><em>tempo</em> 20&ndash;300 BPM, <em>beats per bar</em> 1&ndash;12, and the <em>subdivision</em>: none, eighths, triplets or sixteenths; <em>volume</em>.</li>
+<li><em>faster by</em> (off by default) and <em>every</em>: a tempo ramp, +1 to +20 BPM every 1 to 32 bars, up to three times the starting tempo. It runs from the next start, and the beat lights and the rolling staff follow it.</li>
 <li>The first beat of each bar is accented and subdivisions are softer. One circle per beat lights up as it sounds (the first in red).</li>
 <li>Changes while it runs take effect after a moment.</li>
 </ul>
@@ -401,8 +404,10 @@ cargo build --release --no-default-features          # without the sound card (d
 <p>On the right, the preset's name (type <em>Rename</em> and click the button) and a table of the program's actions: transport and practice, the values (knobs, encoders, faders) and the mixer. Each row shows the control bound to it, and:</p>
 <ul>
 <li><strong>Learn:</strong> click it, then press or turn the control on the device. The program binds the next message it receives. By default it then waits for the control of the next action in the list; untick <em>After learning a control, go on to the next action</em> to learn one at a time. Learning needs the controller to be connected, and while a control is being learned nothing else happens when you touch the device.</li>
+<li><strong>Layers:</strong> above the table, <em>Add layer&hellip;</em> asks for a name of one word and then for the button of the device that switches to it (press it; a button that already does something is refused with the reason). The layer is then shown in the table, ready for its own assignments. <em>Delete layer</em> asks twice and removes the layer with everything assigned on it; what works on every layer stays.</li>
+<li><strong>Lights and rings:</strong> the section under the table lists the actions that have a control. <em>Add light</em> makes the button light up on the same note or cc it sends, <em>Add ring</em> makes an LED ring on the same cc as the knob; change the number if your device uses another (the Mackie ring of an encoder is a different cc), and for a light the values that light it and darken it (often the colour). Whether the device does it is something only the device can tell: press the button, and watch.</li>
 <li><strong>Clear</strong> takes the control away. A control that already belonged to another action is taken from it, and the window says so.</li>
-<li><strong>Kind</strong> (for values): <em>absolute</em> for a knob or fader that sends its position, or <em>relative</em> for an endless encoder with the way it counts: <em>mackie</em> (1 to 63 clockwise, 65 to 127 counter-clockwise), <em>twos</em> (two's complement), <em>offset</em> (64 is no turn) or <em>signbit2</em> (the opposite sign bit to Mackie). If a turn goes the wrong way or does nothing, try another; the monitor shows the numbers. The recent scores and the rudiments are only turned, so they are always relative.</li>
+<li><strong>Kind</strong> (for values): <em>absolute</em> for a knob or fader that sends its position, or <em>relative</em> for an endless encoder with the way it counts: <em>mackie</em> (1 to 63 clockwise, 65 to 127 counter-clockwise), <em>twos</em> (two's complement), <em>offset</em> (64 is no turn) or <em>signbit2</em> (the opposite sign bit to Mackie). If a turn goes the wrong way or does nothing, try another, or click <em>Detect</em> next to the kind: turn the encoder slowly four clicks to the right, then four to the left, and the program chooses the encoding that fits (it says so, or says that it could not tell, for example for a knob that sends positions). The monitor shows the numbers. The recent scores and the rudiments are only turned, so they are always relative.</li>
 <li><strong>Limit a learned control to the MIDI channel it sends on</strong> (a tick box) is for controllers whose pads and knobs share numbers on different channels.</li>
 </ul>
 <p>Every change is written to the preset file at once and takes effect without reconnecting. Editing writes the file afresh, so the comments of a copied preset are lost. A preset with layers has a layer selector at the top of the table. Not available in the window yet: creating layers, and editing button lights and LED rings (change the file by hand, see <a href="#ctl-custom">The preset file</a>).</p>
@@ -589,7 +594,9 @@ ring  = tempo -&gt; cc 20 scale=127      # a plain value 0 to 127 instead of Mac
 <tr><td><code>keyboard_input</code>, <code>zoom</code>, <code>expand_repeats</code></td><td>General</td></tr>
 <tr><td><code>bars_per_row</code>, <code>layout_align_bar</code></td><td>Score layout</td></tr>
 <tr><td><code>recent</code> (repeated)</td><td>Recent scores, newest first</td></tr>
-<tr><td><code>metro_bpm</code>, <code>metro_beats</code>, <code>metro_sub</code>, <code>metro_preview</code></td><td>Metronome tab</td></tr>
+<tr><td><code>layout</code> (repeated)</td><td>Row layout of a score: bars per row, the bar that starts a row, and the file</td></tr>
+<tr><td><code>metro_bpm</code>, <code>metro_beats</code>, <code>metro_sub</code>, <code>metro_preview</code>, <code>metro_ramp_bpm</code>, <code>metro_ramp_bars</code></td><td>Metronome tab</td></tr>
+<tr><td><code>ramp_percent</code>, <code>ramp_passes</code></td><td>Tempo ramp of Listen</td></tr>
 <tr><td><code>controller_preset</code>, <code>controller_port</code></td><td>Control surface</td></tr>
 <tr><td><code>rudiment</code>, <code>rudiment_repeats</code>, <code>rudiment_nard_only</code>, <code>rudiment_ladder</code></td><td>Rudiments tab</td></tr>
 <tr><td><code>rudiment_bpm.N</code>, <code>rudiment_best.N</code></td><td>Tempo last used and best clean tempo of rudiment N</td></tr>

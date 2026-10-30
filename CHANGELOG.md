@@ -6,6 +6,20 @@ All notable changes are recorded here. The format follows [Keep a Changelog](htt
 
 ## [Unreleased]
 
+## [0.7.2] - 2026-10-30
+
+Editing controller presets gets much further (layers, lights and rings, finding how an encoder counts), Listen and the metronome can ramp the tempo, each score remembers its row layout, and the playhead no longer jumps at a barline. Covered by unit and integration tests; the playhead fix was watched in the running app. The tempo ramp (not listened to), the layer, light and Detect editing (simulated messages only, no real controller) and the layouts were not tried on devices.
+
+### Fixed
+- **The playhead of the score no longer jumps over a barline**: each bar has a padding at both ends, so the first note of the next bar is about 24 pixels further on than the end of the bar before; the playhead used to cover that distance in one step at the barline. It now speeds up during the last stretch of the bar and arrives at the next bar's first note on time. (Only where the next bar is in the same row.)
+
+### Added
+- **The Manage window can find out how an endless encoder counts**: *Detect* next to the kind of a value (turn the encoder four clicks to the right, then four to the left) chooses *mackie*, *twos*, *offset* or *signbit2* by itself, or says that it could not tell.
+- **Lights and rings can be added and edited in the Manage window**: the new *Lights and rings* section lists the actions that have a control; *Add light* / *Add ring* put one on that control, and the note or cc number and the on/off values can be changed (colours of a pad, for example).
+- **Layers can be created and deleted in the Manage window**: *Add layer…* asks for a name and the button of the device that switches to it (a button that already does something is refused), *Delete layer* removes a layer with what is assigned on it.
+- **A tempo ramp for Listen and the metronome**: with *loop* on, *ramp +* on the Score tab raises Listen's tempo by that many per cent of the written tempo every few passes; the Metronome tab's *faster by* does the same in BPM every few bars. Both stop at three times the starting tempo, are off by default, and take effect at the next start. The player squeezes the later passes in one go, without a gap; the playhead, the position label (which now shows the tempo in force), the beat lights and the rolling staff follow it.
+- **Each score remembers its row layout** (bars per row and the bar that starts a row, in the Layout menu of the Score tab): open the score again and its rows are as you left them. The last 30 scores are kept; a score never laid out keeps the settings on screen.
+
 ## [0.7.1] - 2026-10-30
 
 A small release: Listen can start without the count-in, the shortcuts work again after Tab or a click on a button, the splash shows how long each start-up step took, and the code was restructured (no change in behaviour): the part that needs no window, MIDI port or sound card is now a crate of its own, `core/`. Covered by unit and integration tests (209); the shortcut fix and the splash times were not tried with a real keyboard or devices.
@@ -19,6 +33,7 @@ A small release: Listen can start without the count-in, the shortcuts work again
 ### Changed
 - **The splash shows how long each start-up step took** (for example `Found 3 MIDI inputs and 2 MIDI outputs · 41 ms`), so slow drivers and devices can be seen at a glance.
 - **For developers: the code is split into two crates** in a Cargo workspace (`roll-model`, the application, and `roll-model-core` in `core/`, with the scores, grading, rudiments, controller presets and settings), the large files `app.rs`, `controller.rs` and `app/controls.rs` are folders of smaller modules, errors are typed, the settings keys and the controller actions are tables, and the settings folder is an injected value so no test can touch a user's files. `cargo build` and `cargo test` cover both crates. The developer guide is brought up to date.
+- **A funding link**: the repository has a *Sponsor* button (`.github/FUNDING.yml`) and a README section, and the notes of a `vX.Y.Z` release carry the link too. The program itself is unchanged by it.
 
 ## [0.7.0] - 2026-10-29
 

@@ -74,6 +74,21 @@ impl Encoding {
         }
     }
 
+    /// The encoding that fits what an encoder sent for a few clicks to the right (`clockwise`) and
+    /// a few clicks to the left (`counter`): each clockwise value must mean a few steps up and
+    /// each counter-clockwise value a few steps down. `None` if nothing was sent in one of the
+    /// directions or no encoding fits (a knob that sends positions, say).
+    pub fn guess(clockwise: &[u8], counter: &[u8]) -> Option<Encoding> {
+        // A quick turn sends a few steps at once; more than this is a position, not a turn.
+        const MOST_STEPS: i32 = 12;
+        if clockwise.is_empty() || counter.is_empty() {
+            return None;
+        }
+        [Encoding::Mackie, Encoding::Twos, Encoding::Offset, Encoding::SignBit2].into_iter().find(|e| {
+            clockwise.iter().all(|v| (1..=MOST_STEPS).contains(&e.decode(*v))) && counter.iter().all(|v| (-MOST_STEPS..=-1).contains(&e.decode(*v)))
+        })
+    }
+
     /// The signed number of steps a cc value means.
     pub fn decode(self, val: u8) -> i32 {
         let val = val & 0x7F;

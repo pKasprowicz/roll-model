@@ -6,7 +6,7 @@ use std::time::{Duration, Instant};
 use crate::analysis::{analyze_with, expected_notes, Grade};
 use crate::drums::Lane;
 use crate::metronome::{ClickOptions, Metronome, HAS_AUDIO};
-use crate::playback::{self, PlayOptions, Player};
+use crate::playback::{self, PlayOptions, Player, Ramp};
 use crate::render::{HitStatus, PlayedNote};
 use crate::score::Score;
 
@@ -139,7 +139,17 @@ impl DrumApp {
             click_note: c.click_note,
             click_channel: c.click_channel,
             drum_notes: Lane::ALL.iter().filter_map(|l| c.note_map.playback_note(*l).map(|n| (*l, n))).collect(),
+            ramp: self.listen_ramp(),
         }
+    }
+
+    /// The tempo ramp of Listen: `ramp_percent` points of the written tempo every `ramp_passes` passes.
+    pub(super) fn listen_ramp(&self) -> Ramp {
+        let c = &self.cfg;
+        if c.ramp_percent == 0 || self.tempo_pct <= 0.0 {
+            return Ramp::default();
+        }
+        Ramp { every: c.ramp_passes, step: c.ramp_percent as f64 / self.tempo_pct as f64 }
     }
 
     /// The message to show when no output could possibly make a sound.
@@ -170,6 +180,7 @@ impl DrumApp {
             self.view.error = Some(message);
             return;
         }
+        let ramp = opts.ramp;
         self.sync_control();
         let Some(plan) = self.plan_run(count_in) else { return };
         let Some(score) = self.score.as_ref() else { return };
@@ -193,6 +204,7 @@ impl DrumApp {
             end_sec: plan.end_sec,
             beat_sec: plan.beat_sec,
             count_in_beats: plan.count_in_beats,
+            ramp,
             from: plan.from,
             to: plan.to,
             tempo_pct: self.tempo_pct.round() as i32,
@@ -265,11 +277,15 @@ impl DrumApp {
             let left = (-elapsed / l.beat_sec).ceil() as u32;
             return Some(if left > l.count_in_beats { "starting…".into() } else { format!("count-in {left}") });
         }
-        let e = if elapsed >= l.end_sec { elapsed.rem_euclid(l.end_sec) } else { elapsed };
+        let (pass, e) = l.ramp.locate(l.end_sec, elapsed);
         let q = score.tempo.sec_to_q(e + l.t0, l.tempo_scale);
         let m = &score.measures[score.measure_at(q)?];
         let beat = (((q - m.start_q) / m.beat_q()).floor() as u32 + 1).min(m.beats);
-        Some(format!("bar {} · beat {}", m.number, beat))
+        let mut text = format!("bar {} · beat {}", m.number, beat);
+        if l.ramp.every > 0 {
+            text.push_str(&format!(" · {:.0} %", l.tempo_pct as f64 * l.ramp.factor(pass)));
+        }
+        Some(text)
     }
 
     /// The playhead of Listen, in quarter notes; it wraps around while looping.
@@ -277,7 +293,7 @@ impl DrumApp {
         let l = self.playback.listen.as_ref()?;
         let score = self.score.as_ref()?;
         let elapsed = signed_secs(Instant::now(), l.zero);
-        let e = if elapsed >= l.end_sec { elapsed.rem_euclid(l.end_sec) } else { elapsed };
+        let (_, e) = l.ramp.locate(l.end_sec, elapsed);
         Some(score.tempo.sec_to_q(e + l.t0, l.tempo_scale))
     }
 

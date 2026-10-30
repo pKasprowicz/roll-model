@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 
 use super::action::ACTIONS;
 use super::mapper::Learned;
-use super::{Action, Encoding, LoadPresetError, Out, PresetError, Reading, Src};
+use super::{Action, Encoding, LayerError, LoadPresetError, Out, PresetError, Reading, Src};
 
 /// A control of the device: the message it sends, and the MIDI channel it is limited to (none: any).
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -39,6 +39,14 @@ pub struct Light {
     pub off: u8,
     /// A ring shows its level as a plain value 0..=scale; `None`: Mackie ring values.
     pub scale: Option<u8>,
+}
+
+impl Light {
+    /// The usual light or ring for `action` on `layer`: set on the control `out`, channel 1,
+    /// 127 to light and 0 to darken, Mackie ring values.
+    pub fn new(layer: Option<&str>, action: Action, out: Out, ring: bool) -> Light {
+        Light { layer: layer.map(str::to_string), action, out, ring, channel: 1, on: 127, off: 0, scale: None }
+    }
 }
 
 /// What a preset's controller speaks: Mackie Control (layers, ring and light values as the
@@ -334,6 +342,56 @@ impl Preset {
         self.binds.retain(|b| !(b.layer == layer && b.action == action && kind(b.input.src) == kind(found.input.src)));
         self.binds.push(Binding { layer, input: found.input, reading: found.reading, action });
         taken_from
+    }
+
+    /// The lights (`ring` false) or rings (`ring` true) of `action` on exactly `layer`.
+    pub fn lights_of(&self, layer: Option<&str>, action: Action, ring: bool) -> Option<&Light> {
+        self.lights.iter().find(|l| l.layer.as_deref() == layer && l.action == action && l.ring == ring)
+    }
+
+    /// Gives `action` the light or ring `light` on its layer, in place of the one it had.
+    pub fn set_light(&mut self, light: Light) {
+        let at = self.lights.iter().position(|l| l.layer == light.layer && l.action == light.action && l.ring == light.ring);
+        match at {
+            Some(i) => self.lights[i] = light,
+            None => self.lights.push(light),
+        }
+    }
+
+    /// Takes the light (`ring` false) or ring of `action` on `layer` away.
+    pub fn clear_light(&mut self, layer: Option<&str>, action: Action, ring: bool) {
+        self.lights.retain(|l| !(l.layer.as_deref() == layer && l.action == action && l.ring == ring));
+    }
+
+    /// Adds a layer called `name` that the control `src` switches to. The name is one word that is
+    /// no word of the file format, and the control must not be bound to anything.
+    pub fn add_layer(&mut self, name: &str, src: Src) -> Result<(), LayerError> {
+        if name.is_empty() || name.chars().any(|c| c.is_whitespace() || c == '#' || c == '=') {
+            return Err(LayerError::BadName);
+        }
+        let lower = name.to_ascii_lowercase();
+        let words = ["note", "cc", "bend", "ch", "rel", "abs", "on", "off", "scale", "mackie", "twos", "offset", "signbit2"];
+        if words.contains(&lower.as_str()) || ACTIONS.iter().any(|i| i.name == lower) || ["mute", "solo", "gain", "audition"].contains(&lower.as_str()) {
+            return Err(LayerError::Reserved(name.to_string()));
+        }
+        if self.layers.iter().any(|l| l.0 == name) {
+            return Err(LayerError::Taken(name.to_string()));
+        }
+        if let Some((other, _)) = self.layers.iter().find(|l| l.1 == src) {
+            return Err(LayerError::ControlInUse(format!("it selects layer {other}")));
+        }
+        if let Some(b) = self.binds.iter().find(|b| b.input.src == src) {
+            return Err(LayerError::ControlInUse(b.action.title()));
+        }
+        self.layers.push((name.to_string(), src));
+        Ok(())
+    }
+
+    /// Removes the layer called `name` with every binding, light and ring it has.
+    pub fn remove_layer(&mut self, name: &str) {
+        self.layers.retain(|l| l.0 != name);
+        self.binds.retain(|b| b.layer.as_deref() != Some(name));
+        self.lights.retain(|l| l.layer.as_deref() != Some(name));
     }
 
     /// Takes every control of `action` on `layer` away.
