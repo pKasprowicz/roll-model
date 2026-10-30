@@ -3,7 +3,7 @@
 //! device in the settings changes or the stream has failed.
 
 use super::DrumApp;
-use crate::audio::{Engine, EngineHandle};
+use crate::audio::{default_output_device, Engine, EngineHandle};
 use crate::metronome::HAS_AUDIO;
 
 #[derive(Default)]
@@ -27,12 +27,25 @@ pub(super) struct AudioInfo {
     pub dropped: u64,
 }
 
+/// Whether the open engine has to be replaced: its stream failed, it was opened for another
+/// setting, or the setting is "System default" and the default has moved to another output since.
+/// `default_now` is the system's default output, read only when the setting asks for it; `None`
+/// when it was not read or is unknown, which never forces a new engine.
+fn must_reopen(opened_for: &str, wanted: &str, open_device: &str, failed: bool, default_now: Option<&str>) -> bool {
+    failed || opened_for != wanted || default_now.is_some_and(|now| now != open_device)
+}
+
 impl AudioOutput {
     /// Opens an engine for `device` unless a working one is open already. Returns the message to
     /// show: a fallback to the default output, or that there is no output at all.
     fn ensure(&mut self, device: &str) -> Option<String> {
-        if self.engine.as_ref().is_some_and(|e| self.device == device && !e.has_failed()) {
-            return self.note.clone();
+        if let Some(engine) = &self.engine {
+            // Windows leaves a running stream on the output it opened when only the default moves,
+            // so the default is looked at again at each start.
+            let default_now = if device.trim().is_empty() { default_output_device() } else { None };
+            if !must_reopen(&self.device, device, engine.device(), engine.has_failed(), default_now.as_deref()) {
+                return self.note.clone();
+            }
         }
         // The old stream goes first: the device is not opened twice.
         self.engine = None;
@@ -83,5 +96,40 @@ impl DrumApp {
         if let Some(message) = self.audio.ensure(&self.cfg.audio_output) {
             self.view.error = Some(message);
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::must_reopen;
+
+    #[test]
+    fn a_working_engine_for_the_same_setting_and_default_is_kept() {
+        assert!(!must_reopen("", "", "Speakers", false, Some("Speakers")));
+        assert!(!must_reopen("Headphones", "Headphones", "Headphones", false, None));
+    }
+
+    #[test]
+    fn a_move_of_the_system_default_opens_the_new_output() {
+        // The stream is still alive on the old output: nothing failed, only the default changed.
+        assert!(must_reopen("", "", "Speakers", false, Some("Headphones")));
+    }
+
+    #[test]
+    fn a_named_output_does_not_follow_the_default() {
+        // `default_now` is not read for a named output.
+        assert!(!must_reopen("Headphones", "Headphones", "Headphones", false, None));
+    }
+
+    #[test]
+    fn an_unknown_default_does_not_force_a_new_engine() {
+        assert!(!must_reopen("", "", "Speakers", false, None));
+    }
+
+    #[test]
+    fn a_failed_stream_or_another_setting_opens_a_new_engine() {
+        assert!(must_reopen("", "", "Speakers", true, Some("Speakers")));
+        assert!(must_reopen("", "Headphones", "Speakers", false, None));
+        assert!(must_reopen("Headphones", "", "Headphones", false, Some("Headphones")));
     }
 }
