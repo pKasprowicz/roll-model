@@ -2,6 +2,9 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod app;
+// Nothing calls the engine until the switch-over (AUD-6); then this `allow` goes.
+#[allow(dead_code)]
+mod audio;
 mod control;
 mod metronome;
 mod midi;
