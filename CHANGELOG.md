@@ -6,6 +6,10 @@ All notable changes are recorded here. The format follows [Keep a Changelog](htt
 
 ## [Unreleased]
 
+## [0.7.3] - 2026-10-30
+
+The score is drawn like a drum part: beams, flags, tuplet brackets and the rests a file prints. A bar that ends with a pause now ends its row. Covered by unit and integration tests (231); the notation, the rests, the row breaks and the zoom slider were looked at in the running app with the sample and with a real score. The manual and the developer guide are published online with this release (the first deployment of the GitHub Pages workflow). Nothing in the controller, tempo ramp and layer work of 0.7.2 has been tried on a device yet.
+
 ### Changed
 - **The zoom slider is greyed out while *bars per row* is fixed**, with a hint on hover: with a fixed count the bars fill the width, so the zoom had no effect and the slider looked broken. Set *bars per row* to *auto* to use it.
 

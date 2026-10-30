@@ -12,7 +12,7 @@ A Rust desktop app that:
 2. captures MIDI from a **Roland V31** drum module and draws the hits as notes directly under the score notes, on the same time axis;
 3. compares the captured hits with the score and grades the drummer.
 
-All three are implemented. User-facing documentation is in `README.md`. A fourth part, the **Rudiments** tab (the 40 PAS rudiments practised like a score), is released too (0.6.0). Since 0.6.0 (now 0.7.2): the start-up splash, the start trigger, controller help pictures, generic MIDI controllers and the Manage window (0.7.0); the count-in switch of Listen, the shortcut fix and the `roll-model-core` crate (0.7.1); layers, lights and rings, Detect, the tempo ramp, per-score layouts and the playhead fix (0.7.2). On `develop`, not released yet: beams, flags, tuplet brackets and rests on the Score tab, the row break after a pause, and the greyed-out zoom slider; see `CHANGELOG.md`.
+All three are implemented. User-facing documentation is in `README.md`. A fourth part, the **Rudiments** tab (the 40 PAS rudiments practised like a score), is released too (0.6.0). Since 0.6.0 (now 0.7.3): the start-up splash, the start trigger, controller help pictures, generic MIDI controllers and the Manage window (0.7.0); the count-in switch of Listen, the shortcut fix and the `roll-model-core` crate (0.7.1); layers, lights and rings, Detect, the tempo ramp, per-score layouts and the playhead fix (0.7.2); beams, flags, tuplet brackets and rests on the Score tab, the row break after a pause and the greyed-out zoom slider (0.7.3); see `CHANGELOG.md`.
 
 ## Status: builds, tests pass, UI smoke-tested; V31 never connected
 
@@ -22,7 +22,7 @@ First real build and smoke test done on 2026-10-24 (Windows 11, `x86_64-pc-windo
 
 | Part | Verified how | Confidence |
 |---|---|---|
-| `xml.rs`, `drums.rs`, `score.rs`, `musicxml.rs`, `notation.rs`, `analysis.rs`, `config.rs` | Unit tests (231 in all on `develop`: 119 in the app crate, 109 in `core/`, 3 integration tests) | High |
+| `xml.rs`, `drums.rs`, `score.rs`, `musicxml.rs`, `notation.rs`, `analysis.rs`, `config.rs` | Unit tests (231 in all at 0.7.3: 119 in the app crate, 109 in `core/`, 3 integration tests) | High |
 | `app.rs`, `render.rs`, `loader.rs`, `main.rs` | Ran the app: sample loads, both staves line up, take lifecycle (count-in, record, auto-stop), per-note colours, Results and Settings tabs, error banner | Medium-high |
 | Keyboard pads (`app.rs::keyboard_pads`) | Scripted take with synthetic key presses: 20 perfect / 12 good / 1 ok / 11 missed / 1 extra as expected | Medium (frame-time stamps, see below) |
 | `midi.rs` | Compiles. The test machine had no MIDI ports, so capture and port selection were not exercised | Low |
@@ -188,7 +188,7 @@ Checked on 2026-10-30, while the repository was still private. Every commit and 
 - [ ] **FEAT-2** ([#32](https://github.com/pKasprowicz/roll-model/issues/32)) Accent patterns and tap tempo for the free metronome.
 - [x] **FEAT-3** Remember the layout per score. **Done**: `Config.layouts` (`RowLayout`, `layout` lines in the settings file, 30 scores, keyed by the absolute path); `restore_layout` on opening and `keep_layout` when a Layout slider changes. The zoom is not per score.
 - [x] **FEAT-4** A Listen without count-in setting of its own. **Done**: `listen_count_in` and the *in Listen* box.
-- [x] **FEAT-5** A bar that ends with a pause ends its row. **Done**, on `develop`: `notation::pause_bars` (a rest runs to the barline and no note in any voice starts during it; a run of empty bars counts once, at its last bar), `LayoutOpts.break_at_pause` and `render::fixed_rows`, setting `break_at_pause` (on by default) and the *new row after a pause* box in the Layout menu. The break wins over *bars per row*: a pause starts a row and the bars after it are counted from there; *start a row at bar* applies to the part of the score it falls in. The zoom slider is greyed out while *bars per row* is fixed (the bars fill the width then). Looked at with a real score.
+- [x] **FEAT-5** A bar that ends with a pause ends its row. **Done** (0.7.3): `notation::pause_bars` (a rest runs to the barline and no note in any voice starts during it; a run of empty bars counts once, at its last bar), `LayoutOpts.break_at_pause` and `render::fixed_rows`, setting `break_at_pause` (on by default) and the *new row after a pause* box in the Layout menu. The break wins over *bars per row*: a pause starts a row and the bars after it are counted from there; *start a row at bar* applies to the part of the score it falls in. The zoom slider is greyed out while *bars per row* is fixed (the bars fill the width then). Looked at with a real score.
 - The click is implemented twice (a sine blip in `metronome::click_audio`, used by takes and by the player) and `Metronome` (takes, calibration) and `Player` (Listen, metronome tab) are two threads with separate loops; this is task **CD-5** below.
 - [x] **UI-3** Shortcuts (`R`, `L`, `K`, `M`, keyboard pads) were ignored while a widget had keyboard focus. **Done**: `widgets::typing(ctx)` is true only when the focused widget is a text edit (a slider's value box is one), and the shortcuts use it instead of `wants_keyboard_input()`; tested headlessly. Not tried with a real keyboard.
 

@@ -1,6 +1,6 @@
 [package]
 name = "roll-model"
-version = "0.7.2"
+version = "0.7.3"
 edition = "2021"
 description = "Load MusicXML drum scores, capture MIDI from a Roland V31 and grade the performance"
 license = "PolyForm-Noncommercial-1.0.0"
