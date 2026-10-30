@@ -8,7 +8,7 @@ All notable changes are recorded here. The format follows [Keep a Changelog](htt
 
 ### Added
 - **The score is drawn with beams, flags and tuplet brackets**: eighths and shorter notes of a beat are joined by beams (hands and feet separately, as two voices; a dotted quarter in 6/8, 9/8 and 12/8), a note alone on an off-beat has flags, and triplets, sextuplets and quintuplets have a bracket with its number. Everything is worked out from where the notes fall in the beat (`core/src/notation.rs`), because the score keeps no note lengths: a note counts as lasting until the next one of its voice. The metronome's rolling staff has none of this. Looked at in the running app (beams, flags, brackets).
-- **Rests the file prints are drawn** on the Score tab: the hands' voice high and the feet's low when the score has both, else in the middle; a bar's rest is a whole rest in the middle of the bar; rests the file hides are not drawn. Rests were not looked at in the running app yet, and scores made by the program (rudiments) have none.
+- **Rests the file prints are drawn** on the Score tab: the hands' voice high and the feet's low when the score has both, else in the middle; a bar's rest is a whole rest in the middle of the bar; a rest that would sit on a note head moves away from the middle of the staff until it is clear; rests the file hides are not drawn. Rests were not looked at in the running app yet, and scores made by the program (rudiments) have none.
 
 ## [0.7.2] - 2026-10-30
 

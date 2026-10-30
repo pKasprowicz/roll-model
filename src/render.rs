@@ -608,6 +608,16 @@ impl Frame<'_> {
     fn x_of(&self, measure: usize, q: f64) -> f32 {
         self.origin.x + self.lay.x_of(self.view.score, measure, q)
     }
+
+    /// Whether a note head of measure `mi` is within a head's reach of the box that starts at `x`
+    /// and spans `y0..y1` (the staff ends at `staff_bottom`).
+    fn head_near(&self, mi: usize, x: f32, y0: f32, y1: f32, staff_bottom: f32, notes: &[ScoreNote]) -> bool {
+        self.notes_by_measure[mi].iter().any(|&i| {
+            let n = &notes[i];
+            let (nx, ny) = (self.x_of(mi, n.q) + grace_dx(n), y_of(n.staff_step, staff_bottom));
+            (nx - x).abs() < 9.0 && ny + 4.5 > y0 && ny - 4.5 < y1
+        })
+    }
 }
 
 /// The vertical positions of the rows of the system that starts at `y0`.
@@ -864,16 +874,34 @@ fn draw_score_note(f: &Frame, rows: &Rows, mi: usize, ni: usize) {
 }
 
 /// The rests of measure `mi` on the expected staff: those of the hands high and those of the feet
-/// low when the score has both, else in the middle.
+/// low when the score has both, else in the middle. A rest that would sit on a note head moves
+/// away from the middle of the staff, two steps at a time, until it is clear.
 fn draw_rests(f: &Frame, rows: &Rows, mi: usize) {
     let mp = &f.lay.measures[mi];
+    let notes = &f.view.score.notes;
     for (up, g) in &f.rests_by_measure[mi] {
-        let step = match (f.two_voices, up) {
+        let mut step = match (f.two_voices, up) {
             (false, _) => 4,
             (true, true) => 6,
             (true, false) => 2,
         };
         let x = if g.bar { f.origin.x + mp.x0 + mp.w / 2.0 } else { f.x_of(mi, g.q) };
+        let (top, bottom) = match g.kind {
+            RestKind::Whole => (0.0, 3.5),
+            RestKind::Half => (-3.5, 0.0),
+            RestKind::Quarter => (-8.0, 8.0),
+            RestKind::Flagged(n) => (-5.0, 4.0 * f32::from(n) + 1.0),
+        };
+        let clear = |step: i32| {
+            let y = y_of(step, rows.exp_bot);
+            !f.head_near(mi, x, y + top, y + bottom, rows.exp_bot, notes)
+        };
+        for _ in 0..4 {
+            if clear(step) {
+                break;
+            }
+            step += if *up { 2 } else { -2 };
+        }
         f.cv.rest(x, y_of(step, rows.exp_bot), g, f.cv.weak);
     }
 }
