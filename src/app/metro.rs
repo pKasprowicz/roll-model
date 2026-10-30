@@ -48,7 +48,7 @@ impl DrumApp {
         let c = &self.cfg;
         PlayOptions {
             audio: false,
-            audio_device: c.audio_output.clone(),
+            engine: self.audio.handle(),
             sounds_dir: None,
             click_audio: c.click_audio && HAS_AUDIO,
             midi_port: c.click_midi.then(|| c.midi_out_port.clone()),
@@ -66,6 +66,7 @@ impl DrumApp {
         self.stop_take(false);
         self.stop_listen();
         self.stop_metro();
+        self.ensure_audio();
         let opts = self.metro_options();
         if !opts.click_audio && !opts.click_midi {
             self.view.error = Some(if HAS_AUDIO {

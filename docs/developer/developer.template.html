@@ -21,7 +21,9 @@
     <li><a href="#concepts">Core concepts</a>
       <ol><li><a href="#time">Time</a></li><li><a href="#model">The score model</a></li><li><a href="#kit">The kit: lanes and note maps</a></li><li><a href="#take">The life of a take</a></li><li><a href="#grading">Matching and grading</a></li></ol></li>
     <li><a href="#realtime">Threads and real time</a>
-      <ol><li><a href="#midi-in">MIDI input</a></li><li><a href="#timing">The timing threads</a></li><li><a href="#control">Shared live settings</a></li><li><a href="#sink">The Sink seam</a></li></ol></li>
+      <ol><li><a href="#threads">The threads at a glance</a></li><li><a href="#midi-in">MIDI input</a></li><li><a href="#timing">The timing threads</a></li><li><a href="#control">Shared live settings</a></li><li><a href="#sink">The Sink seam</a></li></ol></li>
+    <li><a href="#audio">The audio system</a>
+      <ol><li><a href="#aud-problem">The problem</a></li><li><a href="#aud-chain">Where the delay comes from</a></li><li><a href="#aud-model">The time model</a></li><li><a href="#aud-parts">The parts</a></li><li><a href="#aud-flow">One sound, end to end</a></li><li><a href="#aud-clock">The clock</a></li><li><a href="#aud-rt">What the callback may do</a></li><li><a href="#aud-runs">Runs and choking</a></li><li><a href="#aud-midi">MIDI beside audio</a></li><li><a href="#aud-life">The lifetime of the stream</a></li><li><a href="#aud-calib">Calibration</a></li><li><a href="#aud-measure">Measuring</a></li><li><a href="#aud-limits">What cannot be improved</a></li><li><a href="#aud-test">Testing</a></li></ol></li>
     <li><a href="#ui">The user interface</a>
       <ol><li><a href="#frame">One frame</a></li><li><a href="#sources">Practice sources</a></li><li><a href="#render">The score renderer</a></li><li><a href="#widgets">Widgets and style</a></li><li><a href="#startup">Start-up</a></li><li><a href="#windows">Windows</a></li></ol></li>
     <li><a href="#controller">The controller subsystem</a>
@@ -67,7 +69,7 @@
 <tr><td><code>CHANGELOG.md</code></td><td>User-visible changes per release (Keep a Changelog)</td></tr>
 <tr><td><code>CLAUDE.md</code></td><td>Short instructions for AI coding assistants working on the repository</td></tr>
 <tr><td><code>docs/rudiments.md</code></td><td>The rudiment catalogue and where it comes from</td></tr>
-<tr><td><code>docs/generic-midi-controller-concept.md</code></td><td>The plan for generic MIDI controller support (phases 1 to 3 are built; see <a href="#controller">chapter 7</a>)</td></tr>
+<tr><td><code>docs/generic-midi-controller-concept.md</code></td><td>The plan for generic MIDI controller support (phases 1 to 3 are built; see <a href="#controller">chapter 8</a>)</td></tr>
 <tr><td>User manual</td><td>Built from <code>docs/manual</code>; this guide is built from <code>docs/developer</code></td></tr>
 </tbody></table>
 </section>
@@ -82,12 +84,12 @@ cargo run --release -- examples/basic_rock_beat.musicxml
 cargo test                                           # every test of both crates (no devices needed)
 cargo test -p roll-model-core                        # the core alone: builds no GUI, MIDI or audio crate
 cargo doc -p roll-model-core --no-deps --open        # rustdoc of the core
-cargo build --release --no-default-features          # without the sound card (no rodio/cpal)
+cargo build --release --no-default-features          # without the sound card (no cpal)
 cargo check --no-default-features                    # quick check of the other feature set</code></pre>
 <ul>
 <li>It is a <strong>Cargo workspace of two crates</strong>: <code>roll-model</code> (the application: window, MIDI ports, sound; <code>src/</code>) and <code>roll-model-core</code> (everything that needs none of them; <code>core/</code>). <code>default-members</code> makes <code>cargo build</code> and <code>cargo test</code> cover both. A single test runs with <code>cargo test the_hands_are</code> (a test of the application is in the binary's test target, a test of the core in the library's). The application re-exports the core's modules at its root (<code>use roll_model_core::{analysis, config, &hellip;}</code> in <code>main.rs</code>), so its code writes <code>crate::analysis</code>.</li>
 <li>Use a <strong>release build</strong> for anything that depends on timing (recording takes, keyboard pads): debug frames are slow enough to make timestamps unreliable.</li>
-<li>The feature <code>audio</code> (default) pulls in <code>rodio</code>. Without it the click and Listen can still go to a MIDI output. Code that needs the sound card is behind <code>#[cfg(feature = "audio")]</code> with a stub for the other case.</li>
+<li>The feature <code>audio</code> (default) pulls in <code>cpal</code>. Without it the click and Listen can still go to a MIDI output. Code that needs the sound card is behind <code>#[cfg(feature = "audio")]</code> with a stub for the other case.</li>
 </ul>
 <h4>Building the documentation</h4>
 <pre><code>python3 tools/build_manual.py       # target/manual/roll-model-manual.html
@@ -170,33 +172,45 @@ python3 tools/build_notices.py      # target/notices/THIRD_PARTY_NOTICES.txt</co
 
 <h3 id="deps">Dependencies</h3>
 {{DEPENDENCIES}}
-<p>Dependency versions are deliberately old (eframe 0.29, rodio 0.19, zip 2) because those APIs were known. Upgrading eframe means at least handling <code>rect_stroke</code> gaining a <code>StrokeKind</code> and <code>Rounding</code> becoming <code>CornerRadius</code>. The XML parser is hand-written (<code>xml.rs</code>) because MusicXML is namespace-free and a dependency would be heavier than the 300 lines.</p>
+<p>Dependency versions are deliberately old (eframe 0.29, cpal 0.17, zip 2) because those APIs were known. cpal 0.18 cannot be used next to eframe 0.29 (they need different versions of <code>objc2-encode</code>), so it waits for the eframe upgrade. Upgrading eframe means at least handling <code>rect_stroke</code> gaining a <code>StrokeKind</code> and <code>Rounding</code> becoming <code>CornerRadius</code>. The XML parser is hand-written (<code>xml.rs</code>) because MusicXML is namespace-free and a dependency would be heavier than the 300 lines.</p>
 
 <h3 id="dataflow">Data flow</h3>
 <figure>
-<svg viewBox="0 0 760 330" role="img" aria-label="Data flow between threads" xmlns="http://www.w3.org/2000/svg" font-family="system-ui, sans-serif" font-size="13">
+<svg viewBox="0 0 760 340" role="img" aria-label="Data flow between threads" xmlns="http://www.w3.org/2000/svg" font-family="system-ui, sans-serif" font-size="13">
   <defs><marker id="ar" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="currentColor"/></marker></defs>
   <g fill="none" stroke="currentColor">
-    <rect x="10" y="20" width="150" height="48" rx="6"/><rect x="10" y="130" width="150" height="48" rx="6"/><rect x="10" y="240" width="150" height="48" rx="6"/>
-    <rect x="300" y="110" width="170" height="90" rx="8" stroke-width="2"/>
-    <rect x="600" y="20" width="150" height="48" rx="6"/><rect x="600" y="130" width="150" height="48" rx="6"/><rect x="600" y="240" width="150" height="48" rx="6"/>
-    <path d="M160 44 L300 130" marker-end="url(#ar)"/><path d="M160 154 L300 154" marker-end="url(#ar)"/><path d="M300 180 L160 262" marker-end="url(#ar)"/>
-    <path d="M470 130 L600 44" marker-end="url(#ar)"/><path d="M470 160 L600 154" marker-end="url(#ar)"/><path d="M470 190 L600 264" marker-end="url(#ar)"/>
+    <rect x="10" y="20" width="140" height="48" rx="6"/><rect x="10" y="120" width="140" height="48" rx="6"/><rect x="10" y="220" width="140" height="48" rx="6"/>
+    <rect x="195" y="95" width="160" height="100" rx="8" stroke-width="2"/>
+    <rect x="195" y="260" width="160" height="48" rx="6"/>
+    <rect x="395" y="20" width="140" height="48" rx="6"/><rect x="395" y="120" width="140" height="48" rx="6"/>
+    <rect x="595" y="20" width="155" height="150" rx="8" stroke-width="2"/>
+    <rect x="595" y="190" width="155" height="48" rx="6"/><rect x="595" y="256" width="155" height="52" rx="6"/>
+    <path d="M150 44 L195 115" marker-end="url(#ar)"/><path d="M150 144 L195 144" marker-end="url(#ar)"/><path d="M150 244 L195 180" marker-end="url(#ar)"/>
+    <path d="M275 195 L275 260" marker-end="url(#ar)"/>
+    <path d="M355 115 L395 50" marker-end="url(#ar)"/><path d="M355 150 L395 144" marker-end="url(#ar)"/>
+    <path d="M535 44 L595 60" marker-end="url(#ar)"/><path d="M535 136 L595 112" marker-end="url(#ar)"/><path d="M535 156 L595 214" marker-end="url(#ar)"/>
+    <path d="M672 170 L672 190" marker-end="url(#ar)"/>
+    <path d="M610 170 C 590 215, 440 225, 355 188" stroke-dasharray="5 4" marker-end="url(#ar)"/>
   </g>
-  <text x="22" y="40">Drum module</text><text x="22" y="58" opacity=".7">midir callback thread</text>
-  <text x="22" y="150">Control surface</text><text x="22" y="168" opacity=".7">midir callback thread</text>
-  <text x="22" y="260">Score file / rudiment</text><text x="22" y="278" opacity=".7">loader, musicxml, rudiments</text>
-  <text x="318" y="140" font-weight="700">DrumApp</text><text x="318" y="160">UI thread, one frame at a time</text><text x="318" y="180" opacity=".7">state, take, config</text>
-  <text x="612" y="40">Metronome thread</text><text x="612" y="58" opacity=".7">count-in + click of a take</text>
-  <text x="612" y="150">Player threads</text><text x="612" y="168" opacity=".7">Listen, metronome tab, audition</text>
-  <text x="612" y="260">Screen</text><text x="612" y="278" opacity=".7">render.rs paints the staves</text>
-  <text x="172" y="78" opacity=".8">RawEvent queue</text><text x="172" y="146" opacity=".8">bytes queue</text><text x="172" y="238" opacity=".8">Score</text>
-  <text x="480" y="78" opacity=".8">clicks, Control</text><text x="480" y="150" opacity=".8">cues, Control</text><text x="480" y="242" opacity=".8">ScoreView</text>
+  <text x="20" y="40">Drum module</text><text x="20" y="58" opacity=".7">midir callback thread</text>
+  <text x="20" y="140">Control surface</text><text x="20" y="158" opacity=".7">midir callback thread</text>
+  <text x="20" y="240">Score / rudiment</text><text x="20" y="258" opacity=".7">loader, musicxml</text>
+  <text x="207" y="125" font-weight="700">DrumApp</text><text x="207" y="145">UI thread, one frame</text><text x="207" y="165" opacity=".7">state, take, config,</text><text x="207" y="182" opacity=".7">owns the audio stream</text>
+  <text x="207" y="280">Screen</text><text x="207" y="297" opacity=".7">render.rs</text>
+  <text x="405" y="40">Metronome thread</text><text x="405" y="58" opacity=".7">take, calibration</text>
+  <text x="405" y="140">Player thread</text><text x="405" y="158" opacity=".7">Listen, metronome</text>
+  <text x="607" y="42" font-weight="700">Audio engine</text><text x="607" y="62" opacity=".7">queue, then the cpal</text><text x="607" y="80" opacity=".7">callback thread:</text><text x="607" y="98" opacity=".7">clock estimate, mixer,</text><text x="607" y="116" opacity=".7">fixed voice pool</text>
+  <text x="607" y="214">Sound card</text><text x="607" y="276">MIDI output</text><text x="607" y="294" opacity=".7">click and drums</text>
+  <text x="22" y="86" opacity=".8">RawEvent queue</text><text x="22" y="186" opacity=".8">bytes queue</text>
+  <text x="238" y="88" opacity=".8" font-size="11">starts, stops, Control</text>
+  <text x="545" y="44" opacity=".8" font-size="11">play(T)</text><text x="548" y="196" opacity=".8" font-size="11">MIDI</text>
+  <text x="420" y="236" opacity=".8" font-size="11">counters, atomics</text>
 </svg>
-<figcaption>Devices put messages in queues; the UI thread drains them once per frame. The UI starts the sound threads and steers them through atomics.</figcaption>
+<figcaption>Devices put messages in queues; the UI thread drains them once per frame. The UI starts the sound threads and steers them through atomics. The sound threads do not make sound themselves: they tell the audio engine at which moment each sound starts, and the engine's own thread (created by cpal for the stream, woken by the operating system's audio engine) mixes them (<a href="#audio">chapter 6</a>). MIDI output is the exception: it is sent from the sound thread, at the exact moment.</figcaption>
 </figure>
 <p>Besides the queues, two paths are worth knowing. <strong>Start-up</strong> is not a data path but a sequence: the program builds itself in small steps over the first frames, one device at a time, so the window can show what it is doing (<a href="#startup">Start-up</a>). <strong>Editing a controller preset</strong> writes a text file and swaps the running mapper's preset; nothing is reconnected (<a href="#ctl-editing">Editing presets</a>).</p>
-<p>Two rules keep this simple. <strong>Callback threads only append to a <code>Mutex&lt;Vec&gt;</code></strong>; they never touch application state. <strong>The sound threads never block on the UI</strong>: they read atomics and plain data they were given at start. The UI thread alone owns <code>DrumApp</code>.</p>
+<p>Three rules keep this simple. <strong>Callback threads only append to a <code>Mutex&lt;Vec&gt;</code></strong> (MIDI) <strong>or read a wait-free queue</strong> (audio); they never touch application state. <strong>The sound threads never block on the UI</strong>: they read atomics and plain data they were given at start. <strong>The audio callback never locks, allocates or frees</strong>, because it has about ten milliseconds to fill a buffer and a late buffer is a click you can hear. The UI thread alone owns <code>DrumApp</code>.</p>
+<p>The next chapters follow the same data: <a href="#realtime">chapter 5</a> lists every thread and what it owns, and <a href="#audio">chapter 6</a> follows one sound from the moment the score says "now" to the moment the sound card plays it, including where the delay comes from.</p>
 </section>
 
 <section id="concepts">
@@ -268,6 +282,29 @@ python3 tools/build_notices.py      # target/notices/THIRD_PARTY_NOTICES.txt</co
 <h2>5. Threads and real time</h2>
 <p>Drum timing is judged in tens of milliseconds, so the parts that touch the clock are small, isolated and boring.</p>
 
+<h3 id="threads">The threads at a glance</h3>
+<p>Every thread the program creates, who starts it, how long it lives, what it owns and how it talks to the rest. Anything not in the table runs on the UI thread.</p>
+<table class="compact">
+<tr><th>Thread</th><th>Started by</th><th>Lives</th><th>Owns</th><th>Talks to the rest through</th></tr>
+<tr><td><strong>UI</strong> (the program's main thread)</td><td><code>main</code> / eframe</td><td>the whole run</td><td><code>DrumApp</code> and everything in it, including the <code>cpal::Stream</code> (<code>AudioOutput</code>)</td><td>Takes the MIDI queues once per frame; starts and stops the sound threads; writes <code>Control</code> atomics; reads engine counters</td></tr>
+<tr><td><strong>MIDI input: drum module</strong></td><td><code>midir</code>, from <code>midi::connect_input</code></td><td>while the port is open</td><td>nothing but its closure (the last hi-hat pedal value)</td><td>Pushes <code>RawEvent</code>s into <code>Arc&lt;Mutex&lt;Vec&gt;&gt;</code></td></tr>
+<tr><td><strong>MIDI input: controller</strong></td><td><code>midir</code>, from <code>midi::connect_controller</code></td><td>while the port is open</td><td>nothing</td><td>Pushes raw bytes into a second queue; the UI thread parses them</td></tr>
+<tr><td><strong><code>metronome</code></strong></td><td><code>Metronome::start</code> (a take, a calibration)</td><td>count-in and clicks of one take</td><td>Its list of clicks, an optional MIDI output connection</td><td>Hands each click to the engine (<code>EngineHandle::play</code>); reads <code>Control</code>; an <code>AtomicBool</code> stops it</td></tr>
+<tr><td><strong><code>playback</code></strong></td><td><code>Player::start</code> (Listen, the metronome tab, an audition)</td><td>one run, plus up to 2.2 s of tail</td><td>Its cue list, a MIDI output connection, a <code>DeviceSink</code> with the kit at the stream's rate</td><td>Hands sounds to the engine, sends MIDI at the exact moment, reads <code>Control</code>; an <code>AtomicBool</code> stops it</td></tr>
+<tr><td><strong>Audio callback</strong> (named by cpal)</td><td><code>cpal</code>, when the stream is built (<code>Engine::open</code>)</td><td>while the engine is open; ends on a stream error</td><td>The <code>Callback</code>: the queue's consumer end, the <code>Mixer</code>, the clock <code>Estimator</code></td><td>Reads the command queue, publishes the clock estimate and counters in <code>Shared</code> (atomics), puts finished samples in the graveyard queue</td></tr>
+<tr><td><strong>Sound-output scan</strong></td><td><code>app/startup.rs</code></td><td>a few hundred milliseconds at start-up</td><td>nothing</td><td>One <code>mpsc</code> message with the device names</td></tr>
+</table>
+<p>At most one <code>metronome</code> and one <code>playback</code> thread per purpose exist at a time (Listen, the metronome tab and the audition button each have their own <code>Player</code> and <code>Control</code>), but they can overlap, which is why the engine accepts commands from several threads. Starting a take, a calibration or opening a file stops the others.</p>
+<p>The three kinds of boundary the data crosses:</p>
+<table class="compact">
+<tr><th>Boundary</th><th>Mechanism</th><th>May it block?</th></tr>
+<tr><td>MIDI callback &rarr; UI</td><td><code>Mutex&lt;Vec&gt;</code> that the callback appends to and the UI takes whole</td><td>Both sides lock briefly; the callback does nothing else while it holds it</td></tr>
+<tr><td>UI &rarr; sound threads</td><td>Atomics (<code>Control</code>), an <code>AtomicBool</code> for stop, data moved in at start</td><td>Never</td></tr>
+<tr><td>Sound threads &rarr; audio callback</td><td>A bounded wait-free queue (<code>rtrb</code>) whose producer end sits behind a <code>Mutex</code> shared by the sound threads</td><td>The sound threads may wait for each other; <strong>the callback never waits</strong>, it only pops</td></tr>
+<tr><td>Audio callback &rarr; everyone</td><td>Atomics in <code>Shared</code> (clock estimate, counters) and a second wait-free queue (the graveyard)</td><td>Never</td></tr>
+</table>
+
+
 <h3 id="midi-in">MIDI input</h3>
 <p><code>midir</code> calls a closure on its own thread for every message. The closure takes <code>Instant::now()</code> first, remembers the last hi-hat pedal value, and for a note-on pushes a <code>RawEvent</code> into <code>Arc&lt;Mutex&lt;Vec&lt;RawEvent&gt;&gt;&gt;</code>. The UI thread <code>std::mem::take</code>s the vector once per frame.</p>
 {{code:src/midi.rs::pub fn connect_input::40}}
@@ -276,8 +313,9 @@ python3 tools/build_notices.py      # target/notices/THIRD_PARTY_NOTICES.txt</co
 <h3 id="timing">The timing threads</h3>
 <p>Two kinds of thread schedule sounds: <code>Metronome</code> (the count-in and click of a take, and the calibration clicks) and <code>Player</code> (Listen, the free metronome, the audition button). Both walk a sorted list of (time, what) and wait for each target with the same helper: sleep coarsely, then spin for the last 1.5 ms.</p>
 {{code:src/metronome.rs::pub(crate) fn wait_until}}
-<p>A <code>Player</code> owns one audio stream and one MIDI connection so that the click and the drums can share a MIDI port (Windows ports are exclusive). Cues that are more than 250 ms late are dropped rather than played as a burst. <code>stop()</code> sets an <code>AtomicBool</code> and joins the thread; <code>Drop</code> calls <code>stop()</code>, so letting a handle go out of scope cannot leak a thread.</p>
+<p>A <code>Player</code> owns one MIDI connection so that the click and the drums can share a MIDI port (Windows ports are exclusive); its sound goes to the audio engine (below). Cues that are more than 250 ms late are dropped rather than played as a burst. <code>stop()</code> sets an <code>AtomicBool</code> and joins the thread; <code>Drop</code> calls <code>stop()</code>, so letting a handle go out of scope cannot leak a thread.</p>
 {{code:src/playback.rs::impl Drop for Player}}
+<p>The sound itself is made by the <strong>audio engine</strong> (<code>src/audio/</code>), which is the subject of <a href="#audio">chapter 6</a>. What matters for the scheduler threads is this: they do not make sound, they tell the engine <em>when</em> each sound should start, as an <code>Instant</code>, about 30 ms ahead (<code>AUDIO_LOOKAHEAD</code>), and the engine starts it at the exact frame of its output stream. MIDI, which has no buffer to place a sound in, is held back to its exact time instead.</p>
 <p><code>DrumApp.listen</code> exists only while the playhead runs; the <code>player</code> may outlive it by up to 2.2 seconds so the last cymbal rings out.</p>
 
 <h3 id="control">Shared live settings</h3>
@@ -295,8 +333,211 @@ python3 tools/build_notices.py      # target/notices/THIRD_PARTY_NOTICES.txt</co
 <p>That is why the click switch, the count-in exemption, per-instrument gain, mute, MIDI routing, looping and late-cue dropping are all unit-tested although no test ever opens a sound card (<a href="#t-sink">tutorial 7</a>).</p>
 </section>
 
+<section id="audio">
+<h2>6. The audio system</h2>
+<p>This chapter explains how a sound gets from the score to the speaker, why that takes time, which part of that time the program can influence, and how the engine in <code>src/audio/</code> is arranged to remove the part that matters most. It is the longest chapter on purpose: the engine is small, but every piece of it exists because of a property of audio hardware that is easy to forget. The history and the measurements are in <code>docs/audio-engine-plan.md</code>; this chapter is the explanation.</p>
+
+<h3 id="aud-problem">The problem: constant delay is harmless, jitter is not</h3>
+<p>The program plays a click or a drum sound and judges the drummer's hits against the same clock. Two different things can go wrong with the sound:</p>
+<ul>
+<li><strong>A constant delay</strong>: every sound comes out, say, 30 ms after the program asked for it. The drummer plays to what they hear, so every hit arrives 30 ms after the program's idea of the beat. That is a fixed offset, and <strong>Calibrate</strong> measures it and subtracts it (<code>latency_ms</code>, applied in one place, <code>record_take_hit</code>). After calibration a constant delay costs nothing in grading.</li>
+<li><strong>Jitter</strong>: the delay is different for each sound. Calibration cannot remove it, because there is no single number to subtract. It also blurs the calibration itself, since the median of a wobbling delay is only a middle value.</li>
+</ul>
+<p>The scale matters. A hit counts as <em>perfect</em> within 20 ms and <em>good</em> within 45 ms of its note, and a sixteenth note at 240 BPM is only 62.5 ms long. A jitter of 10 ms eats half of the perfect window before the drummer has done anything. So the aim of the engine is <strong>steady timing first, low delay second</strong>: the second is nice to have, the first is what makes grading fair.</p>
+<p>There is also a second sound path that does not suffer from any of this: the click and the drums can be sent over MIDI to the drum module, which makes the sound itself. A MIDI note is a few bytes sent at an exact moment; the module's own latency is small and constant. The audio engine exists for the case where the sound has to come out of the computer.</p>
+
+<h3 id="aud-chain">Where the delay comes from</h3>
+<p>From "the score says now" to "the air moves" there are several stages. Some belong to the program, some to the operating system, some to the hardware. The figure follows one sound.</p>
+<figure>
+<svg viewBox="0 0 760 310" role="img" aria-label="The stages between the score and the speaker" xmlns="http://www.w3.org/2000/svg" font-family="system-ui, sans-serif" font-size="12">
+  <defs><marker id="ar3" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="currentColor"/></marker></defs>
+  <rect x="6" y="10" width="496" height="24" rx="5" fill="currentColor" opacity=".10"/><text x="16" y="27" font-weight="700">the program</text>
+  <rect x="506" y="10" width="124" height="24" rx="5" fill="currentColor" opacity=".18"/><text x="516" y="27" font-weight="700">operating system</text>
+  <rect x="634" y="10" width="120" height="24" rx="5" fill="currentColor" opacity=".26"/><text x="644" y="27" font-weight="700">hardware, air</text>
+  <g fill="none" stroke="currentColor">
+    <rect x="6" y="48" width="118" height="64" rx="6"/><rect x="132" y="48" width="118" height="64" rx="6"/><rect x="258" y="48" width="118" height="64" rx="6"/><rect x="384" y="48" width="118" height="64" rx="6"/><rect x="510" y="48" width="118" height="64" rx="6"/><rect x="636" y="48" width="118" height="64" rx="6"/>
+    <path d="M124 80 L132 80" marker-end="url(#ar3)"/><path d="M250 80 L258 80" marker-end="url(#ar3)"/><path d="M376 80 L384 80" marker-end="url(#ar3)"/><path d="M502 80 L510 80" marker-end="url(#ar3)"/><path d="M628 80 L636 80" marker-end="url(#ar3)"/>
+  </g>
+  <g font-weight="700"><text x="14" y="70">1 Scheduler</text><text x="140" y="70">2 Hand-over</text><text x="266" y="70">3 Callback</text><text x="392" y="70">4 Render</text><text x="518" y="70">5 Audio stack</text><text x="644" y="70">6 Converter</text></g>
+  <g opacity=".8"><text x="14" y="88">sleep, then spin</text><text x="14" y="104">to the target</text>
+  <text x="140" y="88">play(T) 30 ms</text><text x="140" y="104">ahead, queued</text>
+  <text x="266" y="88">wait for the</text><text x="266" y="104">next buffer</text>
+  <text x="392" y="88">mix into the</text><text x="392" y="104">buffer</text>
+  <text x="518" y="88">shared-mode</text><text x="518" y="104">engine, driver</text>
+  <text x="644" y="88">DAC, USB, radio,</text><text x="644" y="104">cable, speaker</text></g>
+  <text x="6" y="146" font-weight="700">How long, and does it vary?</text>
+  <g>
+    <text x="14" y="170">small, varies</text><text x="14" y="186" opacity=".8">absorbed by the</text><text x="14" y="202" opacity=".8">look-ahead</text>
+    <text x="140" y="170">not a delay</text><text x="140" y="186" opacity=".8">the sound is placed</text><text x="140" y="202" opacity=".8">at its exact frame</text>
+    <text x="266" y="170">0 to 10 ms before,</text><text x="266" y="186" opacity=".8">about 0.1 ms now</text><text x="266" y="202" opacity=".8">(measured)</text>
+    <text x="392" y="170">microseconds</text><text x="392" y="186" opacity=".8">fixed work, no locks</text>
+    <text x="518" y="170">constant:</text><text x="518" y="186" opacity=".8">one 10 ms period at</text><text x="518" y="202" opacity=".8">least, see below</text>
+    <text x="644" y="170">device dependent</text><text x="644" y="186" opacity=".8">Bluetooth adds</text><text x="644" y="202" opacity=".8">100-200 ms or more</text>
+  </g>
+  <rect x="6" y="226" width="496" height="70" rx="6" fill="none" stroke="currentColor" stroke-dasharray="4 3"/>
+  <text x="16" y="246" font-weight="700">Stages 1 to 4: the program's part</text>
+  <text x="16" y="264" opacity=".85">stage 3 is where the old design added up to 10 ms of jitter,</text>
+  <text x="16" y="280" opacity=".85">and where the new one adds none</text>
+  <rect x="510" y="226" width="244" height="70" rx="6" fill="none" stroke="currentColor" stroke-dasharray="4 3"/>
+  <text x="518" y="246" font-weight="700">Stages 5 and 6: not its hands</text>
+  <text x="518" y="264" opacity=".85">constant per device: Calibrate</text>
+  <text x="518" y="280" opacity=".85">absorbs them with the MIDI input</text>
+</svg>
+<figcaption>The path of one sound. Typical figures for stage 5 (about 20-30 ms in all on a shared-mode output) are assumptions, not measurements of this program: a loopback recording sees the mix before the driver.</figcaption>
+</figure>
+
+<p><strong>1 and 2. The scheduler.</strong> A thread (<code>Player</code> or <code>Metronome</code>) knows when a sound should start, as an <code>Instant</code>. An operating system does not wake a sleeping thread at an exact moment, so the helper <code>wait_until</code> sleeps in coarse steps and spins for the last 1.5 ms. Even so a wake-up can be a little late. The design answer is not to try to be exact there, but to wake <em>early</em> and say <em>when</em> instead of <em>now</em>: the thread wakes 30 ms before the target and hands the sound over together with the target instant.</p>
+<p><strong>3. The callback.</strong> A sound card does not take one sample at a time. The operating system's audio engine asks the program for a block of samples, a <em>buffer</em>, at regular intervals, by calling a function, the <em>callback</em>. On the Windows shared-mode outputs measured so far the block is 480 frames at 48 kHz, which is <strong>exactly 10.00 ms</strong>, so the callback runs 100 times a second. The old design (rodio) put a new sound in a queue and the sound began in the <em>next</em> block: between 0 and 10 ms after the program asked, a different amount for each sound, depending on where in the block it happened to be asked. That is the jitter. A metronome click that was due 62.5 ms after the last one landed 60 ms or 70 ms after it, depending on the luck of the phase. The recording in the baseline showed exactly this: places in the bar that jumped between two positions 10.02 ms apart.</p>
+<p><strong>4. Render.</strong> The callback fills the buffer. What it puts in is the mix of every sound that is playing. The work is short, but it must be <em>predictable</em>: the buffer is due when it is due, whatever the program was doing.</p>
+<p><strong>5. The audio stack.</strong> In WASAPI shared mode the program does not talk to the sound card. It talks to the Windows audio engine, which mixes every program's sound and sends the sum to the driver. The engine works in periods (the 10 ms above) and keeps a little buffering to stay ahead of the hardware; the driver and the device add theirs. This part is the same for every sound, so it is a constant, and it is by far the largest. It cannot be influenced from a shared-mode program. The exclusive mode of WASAPI, ASIO and WDM-KS would remove most of it, and are <strong>out of scope by decision of the owner</strong>. The smaller-period call of shared mode, <code>IAudioClient3</code>, was studied and is a no-go on the outputs measured (see <a href="#aud-limits">What cannot be improved</a>).</p>
+<p><strong>6. Beyond the driver.</strong> The converter, a USB link, a Bluetooth radio, the cable. Bluetooth is the extreme: its codecs and buffers add 100-200 ms or more, which no program can hide. The manual says a Bluetooth output cannot be used for timing.</p>
+<p><strong>The input side</strong> has a delay of its own, which the clock cannot see either: from the stick hitting the pad through the module, the USB-MIDI link and the operating system to the moment midir's callback runs and the program reads <code>Instant::now()</code>. It is small and fairly steady, and calibration absorbs it as well: <strong>Calibrate measures the sum</strong> (output delay + input delay + the player's habit of anticipating the click), which is exactly what grading has to subtract.</p>
+
+<h3 id="aud-model">The time model</h3>
+<p>The engine makes one decision about time, and everything else follows from it. <strong>A sound meant for time <em>T</em> is rendered at the frame of the stream that the sound card renders at <em>T</em>, and is heard one device latency later.</strong> It does not try to make the sound <em>arrive</em> at <em>T</em>. That is the same as it always was, and it is why calibration still works and why the playhead on screen runs a little ahead of what you hear (a known gap). The alternative, rendering at <em>T</em> minus the latency so that the sound is heard on the grid, needs a latency figure that can be trusted, and the one cpal gives is not that (see below).</p>
+<p>The consequence is that the engine has to answer one question precisely: <em>which frame of the stream is being rendered at the instant <em>T</em> of the program's clock?</em> Everything in the engine is arranged around answering it without ever blocking the callback.</p>
+
+<h3 id="aud-parts">The parts and what each one owns</h3>
+<table class="compact">
+<tr><th>Part</th><th>File</th><th>Runs on</th><th>Job</th></tr>
+<tr><td><code>AudioOutput</code></td><td><code>app/audio_output.rs</code></td><td>UI thread</td><td>Owns the <code>Engine</code> (and so the stream). Opens it when a sound is first needed, opens it again when it failed, when the setting changed or when the system default moved; builds the Sound page's readout.</td></tr>
+<tr><td><code>Engine</code> and the backend</td><td><code>audio/backend.rs</code> (<code>audio/silent.rs</code> without the <code>audio</code> feature)</td><td>UI thread; the closure it builds runs on the audio thread</td><td>Opens the cpal output stream on a device, converts the mixer's <code>f32</code> to whatever sample format the device wants, reads the clock at the top of the callback, reports stream errors.</td></tr>
+<tr><td><code>EngineHandle</code></td><td><code>audio/handle.rs</code></td><td>any thread; cloneable</td><td>The scheduler's end: <code>play(run, instant, sample, gain, group, chokes)</code>, <code>cancel_run</code>, <code>new_run</code>, <code>wait_ready</code>. Turns an <code>Instant</code> into a frame and pushes a command.</td></tr>
+<tr><td><code>Callback</code></td><td><code>audio/handle.rs</code></td><td>audio thread</td><td>The whole callback: feed the clock estimator, publish, take the commands, render. Never waits.</td></tr>
+<tr><td><code>Estimator</code> and <code>Shared</code></td><td><code>audio/clock.rs</code></td><td>audio thread writes, any thread reads</td><td>The instant-to-frame mapping, the reported latency and the counters, all atomics.</td></tr>
+<tr><td><code>Mixer</code></td><td><code>audio/mixer.rs</code></td><td>audio thread</td><td>The waiting list, the voice pool, choke groups, fades, the frame counter, the counters of lateness and overload.</td></tr>
+<tr><td><code>resample</code>, <code>ClickBank</code></td><td><code>audio/resample.rs</code>, <code>audio/click.rs</code></td><td>the scheduler thread, once per run</td><td>The sounds at the stream's sample rate. The kit is made at 44.1 kHz and the card usually runs at 48 kHz, so a windowed-sinc converter makes each lane's sample once, off the audio thread; the clicks are generated at the stream's rate.</td></tr>
+<tr><td><code>DeviceSink</code></td><td><code>playback.rs</code></td><td><code>playback</code> thread</td><td>The <code>Sink</code> that sends audio to the engine and MIDI to the port; holds MIDI back to its exact time.</td></tr>
+</table>
+
+<h3 id="aud-flow">One sound, end to end</h3>
+<p>Take a snare hit in Listen, due at <em>T</em> = <code>zero</code> + <em>t</em>. The figure shows the stream's buffers as boxes, 10 ms each, with the callbacks at their edges.</p>
+<figure>
+<svg viewBox="0 0 760 330" role="img" aria-label="Timeline of one sound through the engine" xmlns="http://www.w3.org/2000/svg" font-family="system-ui, sans-serif" font-size="12">
+  <defs><marker id="ar4" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="currentColor"/></marker></defs>
+  <text x="14" y="22" font-weight="700">The scheduler thread (playback)</text>
+  <line x1="190" y1="44" x2="190" y2="112" stroke="currentColor" stroke-dasharray="3 3"/>
+  <circle cx="190" cy="44" r="4" fill="currentColor"/>
+  <text x="198" y="48">wakes at T - 30 ms, calls <tspan font-family="ui-monospace, Consolas, monospace">play(T)</tspan>:</text>
+  <text x="198" y="64" opacity=".85">frame = (T - origin - intercept) x rate;</text>
+  <text x="198" y="80" opacity=".85">the command goes in the queue</text>
+  <circle cx="490" cy="44" r="4" fill="none" stroke="currentColor"/>
+  <text x="498" y="48" opacity=".9">T, when the sound should start</text>
+  <line x1="490" y1="50" x2="490" y2="154" stroke="currentColor" stroke-dasharray="3 3"/>
+  <path d="M192 108 L488 108" stroke="currentColor" fill="none" marker-end="url(#ar4)"/><path d="M488 108 L192 108" stroke="currentColor" fill="none" marker-end="url(#ar4)"/>
+  <text x="236" y="102" opacity=".85">look-ahead, 30 ms: more than a buffer plus a late wake-up</text>
+
+  <text x="14" y="128" font-weight="700">The audio thread (cpal callback)</text>
+  <g fill="none" stroke="currentColor">
+    <rect x="30" y="140" width="100" height="40"/><rect x="130" y="140" width="100" height="40"/><rect x="230" y="140" width="100" height="40"/><rect x="330" y="140" width="100" height="40"/><rect x="430" y="140" width="100" height="40" stroke-width="2"/><rect x="530" y="140" width="100" height="40"/><rect x="630" y="140" width="100" height="40"/>
+  </g>
+  <g opacity=".7"><text x="62" y="164">block 0</text><text x="162" y="164">block 1</text><text x="262" y="164">block 2</text><text x="362" y="164">block 3</text><text x="562" y="164">block 5</text><text x="662" y="164">block 6</text></g>
+  <text x="446" y="160" font-weight="700">block 4</text><text x="440" y="174" font-size="11">frames 1920-2399</text>
+  <g font-size="11" opacity=".85"><text x="22" y="200">0</text><text x="116" y="200">10</text><text x="216" y="200">20</text><text x="316" y="200">30</text><text x="416" y="200">40</text><text x="516" y="200">50</text><text x="616" y="200">60</text><text x="716" y="200">ms</text></g>
+  <path d="M430 214 L430 184" stroke="currentColor" fill="none" marker-end="url(#ar4)"/>
+  <text x="300" y="228" font-size="11">callback 4 runs: takes the command from the queue,</text>
+  <text x="300" y="242" font-size="11">puts the sound on the waiting list, renders block 4</text>
+  <path d="M490 256 L490 184" stroke="currentColor" fill="none" marker-end="url(#ar4)"/>
+  <text x="498" y="262" font-size="11">the sound's first sample is written at frame 2208,</text>
+  <text x="498" y="276" font-size="11">288 frames (6 ms) into block 4: exactly T</text>
+
+  <g opacity=".85">
+    <text x="14" y="302" font-weight="700">The old design</text>
+    <text x="14" y="318">The sound was handed over at T and began at the next callback, 50 ms: 4 ms late here, 0 to 10 ms for other sounds.</text>
+  </g>
+</svg>
+<figcaption>Block 4 covers T. Its callback runs at the start of the block, <em>before</em> T, so the command has to be in the queue by then: that is why the sound is handed over early, and why 30 ms is enough (a 10 ms block plus a late wake-up of the scheduler).</figcaption>
+</figure>
+<ol class="steps">
+<li><strong>Cue to sink.</strong> <code>run_with</code> (<code>playback.rs</code>) walks the sorted cue list. For each cue it computes the target instant (<code>zero</code> + <em>t</em>, squeezed by the tempo ramp), waits until target minus the sink's <code>lookahead()</code>, and calls the pure function <code>dispatch</code>, which decides <em>what</em> sounds (the click switch, notes, the instrument's gain and mute, MIDI or audio) and calls the <code>Sink</code> with the target instant as <code>when</code>.</li>
+<li><strong>Sink to engine.</strong> <code>DeviceSink::audio_drum</code> looks up the lane's sample (already at the stream's rate), its choke group, and calls <code>EngineHandle::play</code>. <code>play</code> asks <code>Shared::frame_at(T)</code> for the frame and pushes <code>Command::Play(Trigger)</code> into the queue. It does not wait for the sound.</li>
+<li><strong>Callback.</strong> The backend's closure reads the clock first (<code>origin.elapsed()</code>, as early as it can, because its own lateness is what the estimate measures), then <code>Callback::render</code> feeds the estimator, publishes the new estimate, pops every command into the mixer, and renders.</li>
+<li><strong>Mixer.</strong> A <code>Trigger</code> waits on a fixed-size list until the frame counter reaches its <code>start_frame</code>. Inside <code>render</code> the check is made frame by frame, so a sound whose frame lies in the middle of a block starts <em>in the middle of the block</em>: 288 frames in, in the example. That is the property the whole engine is for.</li>
+<li><strong>Out.</strong> The mono mix is clamped to &plusmn;1, copied to every channel, converted to the device's sample format and handed back to cpal; the stream sends it on to Windows.</li>
+</ol>
+{{code:src/playback.rs::fn run_with::34}}
+{{code:src/audio/handle.rs::pub fn play(}}
+
+<h3 id="aud-clock">The clock: from an instant to a frame</h3>
+<p>The scheduler thinks in <code>Instant</code>s; the mixer thinks in frames. <code>Shared::frame_at</code> converts: frame <em>f</em> is rendered at about <code>intercept</code> + <em>f</em> / rate seconds after the engine's origin, so <em>T</em> maps to <code>(T - origin - intercept) * rate</code>. The only unknown is the <code>intercept</code>, the moment the stream's frame 0 was rendered. The callback can observe it: it knows when it ran (<code>wall</code>) and which frame it started on, so <code>wall - frame / rate</code> is the intercept <em>plus how late this callback ran</em>.</p>
+<p>That lateness is the enemy. Windows wakes the callback through several layers, and it can be a millisecond late or ten. If the engine used each callback's <code>wall</code> as it came, the scheduler's sounds would move by exactly the amount the callbacks do, and the jitter would be back. But a callback can be late and <strong>never early</strong>, so the best estimate of the intercept is the <em>smallest</em> value seen over the last 128 callbacks (about 1.3 s): the late ones fall away. A stall of a few callbacks is shrugged off; a sound card clock that runs a little fast or slow (tens of parts per million) is followed, because the window moves on.</p>
+{{code:src/audio/clock.rs::pub fn observe}}
+<p>The estimate is published <em>before</em> the commands are taken, so a sound queued a moment ago is placed with the latest numbers. Until the first callback has run there is no estimate and <code>play</code> returns <code>NotReady</code>; <code>wait_ready</code> lets a run wait up to half a second for the stream to start, and says so in the error bar if it did not.</p>
+{{code:src/audio/clock.rs::pub fn frame_at}}
+<p>What the backend feeds the estimator is the program's own <code>Instant</code>, read at the top of the callback. cpal also gives a timestamp from the device clock; it is used only for the reported latency (below), because the estimator needs the callback's lateness measured on the same clock the scheduler uses.</p>
+{{code:src/audio/backend.rs::fn build<T>(::34}}
+
+<h3 id="aud-rt">What the callback may and may not do</h3>
+<p>The callback has about ten milliseconds to fill a buffer. A late buffer is not a slow response but an audible click, so the code that runs in it follows rules that the rest of the program does not:</p>
+<ul>
+<li><strong>No allocation.</strong> The voice pool (<code>MAX_VOICES</code> = 64) and the waiting list (<code>MAX_PENDING</code> = 256) are <code>Vec</code>s created at full capacity. A sound that does not fit is <em>dropped and counted</em> (<code>dropped_voices</code>, <code>dropped_pending</code>); it is never allocated for.</li>
+<li><strong>No locks.</strong> Commands arrive through a bounded single-producer queue (<code>rtrb</code>, <code>QUEUE</code> = 1024). The producer end is behind a <code>Mutex</code> so that several scheduler threads can take turns, but only <em>they</em> lock it; the callback only pops. A full queue is reported to the caller as <code>PlayError::QueueFull</code>.</li>
+<li><strong>No frees.</strong> A sample is an <code>Arc&lt;[f32]&gt;</code>. When a voice ends the callback must not drop the last reference, because freeing memory can take long enough to be heard; so it pushes the <code>Arc</code> into a second queue, the <em>graveyard</em> (<code>GRAVEYARD</code> = 256), and any later call to the handle empties it on the scheduler's side. A test checks the reference count before and after.</li>
+<li><strong>No waiting for time.</strong> Everything the callback reads is an atomic or comes out of a queue. It publishes the clock estimate and the counters with relaxed stores; the <code>ready</code> flag uses release and acquire.</li>
+<li><strong>Late sounds are played, not skipped.</strong> A sound whose frame has already passed when the block starts begins at the block's first frame, and is counted (<code>late</code>, and <code>worst_late</code> in frames). A scheduler that wakes later than 250 ms after a target (<code>MAX_LATE</code>) drops the cue instead of playing a burst.</li>
+</ul>
+{{code:src/audio/handle.rs::pub fn render}}
+{{code:src/audio/mixer.rs::fn start_due}}
+
+<h3 id="aud-runs">Runs, cancelling and choking</h3>
+<p>The stream outlives every run, and several runs can overlap (a Listen and an audition), so the engine needs to end <em>one</em> run's sounds without touching another's. Each Listen, take or audition takes a number from <code>EngineHandle::new_run</code> and every <code>Trigger</code> carries it. <code>cancel_run</code> drops the run's waiting sounds and fades out the playing ones over <code>FADE_FRAMES</code> = 256 frames (5.3 ms at 48 kHz) so there is no click. <code>DeviceSink</code> does this in its <code>Drop</code>, which is why stopping a Listen is just letting the sink go.</p>
+<p>A closed hi-hat or the pedal cuts an open hi-hat that is still ringing. In a mixer that must not allocate, that is a bit mask, not a list of objects: a trigger has a <code>group</code> (the bit number a later sound can choke it by, or <code>NO_GROUP</code>) and a <code>chokes</code> mask (the groups it chokes when it starts). When a sound starts, the voices whose group is in its mask begin the same 256-frame fade. <code>choke_groups(lane)</code> in <code>playback.rs</code> derives both from <code>Lane::can_be_choked</code> and <code>Lane::chokes</code>.</p>
+
+<h3 id="aud-midi">MIDI beside the audio</h3>
+<p>MIDI has no buffer to place a sound in: a note is sent and the module plays it at once. So <code>DeviceSink</code> treats the two differently. Audio is handed over 30 ms early, with its instant. MIDI is <strong>held back</strong> (<code>HeldNote</code>, <code>held</code>) until its exact time, and <code>flush</code> sends what has come due; <code>wait_for</code> wakes up for the earliest held note on its way to the next cue. The sink reports <code>next_due()</code> so the wait loop knows. When the sink has no engine its look-ahead is zero and MIDI goes out at once, as it did before the engine existed.</p>
+{{code:src/playback.rs::impl Sink for DeviceSink::30}}
+<p>The difference between the two paths is the point of the "send the click to the V31" advice in the manual: the MIDI path has no stage 5 of the figure, so the click comes out of the module with only the module's own delay.</p>
+
+<h3 id="aud-life">The lifetime of the stream</h3>
+<ul>
+<li><strong>Opened on first use, never at start-up.</strong> <code>DrumApp::new</code> does no device work (an invariant), so the output opens when the first sound starts: <code>ensure_audio</code> runs before every take, Listen, audition, calibration and metronome start. The first sound after a start therefore comes after a short pause while the device opens; a listening test found this acceptable, so no start-up step opens the device early.</li>
+<li><strong>Kept open.</strong> Opening a stream per start, as the old design did, cost time on the sound thread and dropped early clicks on a slow device. The engine stays open until something changes. The price is that the program shows in the Windows mixer and wakes every 10 ms while it is open.</li>
+<li><strong>Opened again</strong> by <code>AudioOutput::ensure</code> when the stream failed (an unplugged device sets <code>failed</code> from cpal's error callback; the render thread ends after one <code>DeviceNotAvailable</code>), when the device in the settings changed, or when the setting is <em>System default</em> and Windows' default output is no longer the open one. The last case needs its own check: a stream stays on the output it opened when only the default moves, and raises no error, so <code>ensure</code> compares the default's name with the open device at each start (<code>must_reopen</code>, a pure function with tests). It looks at each <em>start</em>, not while something plays, so a running Listen stays on the output it began on.</li>
+<li><strong>Errors</strong> reach the error bar through <code>ErrorLog</code> (<code>show_sound_errors</code>): the stream's own, the engine's "did not start in time", a missing device. A named output that is gone falls back to the default with a message.</li>
+</ul>
+{{code:src/app/audio_output.rs::fn must_reopen}}
+<p><strong>Settings &rarr; Sound</strong> reads the open engine: its device name, the rate, the reported latency, and the counters. <em>Too late</em> counts sounds that were handed over after their frame; if it rises, the computer is too busy or a scheduler is not waking early enough. <em>Dropped</em> counts sounds that did not fit the pool or the queue. After a long Listen with the tempo ramp up to 300% the page showed neither.</p>
+<div class="callout warn"><strong class="label">The latency readout is a lower bound</strong>The "driver reports about N ms" figure is <code>playback - callback</code> from cpal's timestamp. On Windows cpal computes it from the free space of the buffer being filled, so it is about the length of one block, and does not include the Windows audio engine, the driver or the hardware. The real delay is longer. That is why the program does not use the figure to move sounds in time (the time model above), and why Calibrate, which measures the whole thing, is the only trustworthy number.</div>
+
+<h3 id="aud-calib">Calibration and a stale latency</h3>
+<p>The stored <code>latency_ms</code> was measured with one engine: its callback period, its alignment, its device. A different engine or a different device changes it. The engine generation (<code>ENGINE_GENERATION</code>, 2 = this engine, 1 was rodio) is stored next to it in <code>latency_engine</code>, written by Calibrate and when the slider is moved. When they differ, Settings &rarr; Timing shows an amber note and a <em>Keep this value</em> button. There is deliberately no per-device map of latencies: one value, one warning.</p>
+<p>Calibration is not a pure measurement of the output delay: it includes the input delay and how the player anticipates the click. For grading that is correct, because the same two things are present in every take.</p>
+
+<h3 id="aud-measure">Measuring it</h3>
+<p>Nothing in the test suite hears anything, and the real delay cannot be tested; the <em>timing</em> of the program's part can be measured from outside. <code>tools/audio_baseline.ps1</code> starts the release build with its own settings folder, starts the metronome (240 BPM, sixteenths) by sending keys, records the default output by WASAPI loopback and runs <code>examples/audio_probe.rs</code>, which finds the sound starts, folds them over one bar, and reports the spread per place in the bar and the spacing of the clicks. It needs a quiet machine and the keyboard focus for about a minute. It also takes <code>-SoakMinutes</code> and <code>-LoadThreads</code> (busy-loop processes while recording).</p>
+<table class="compact">
+<tr><th></th><th>old engine (rodio, v0.7.3)</th><th>this engine, first machine</th><th>this engine, second machine</th></tr>
+<tr><td>Widest spread of a sound start</td><td>10.02 ms</td><td>1.14 ms (mostly 0.04-0.06)</td><td>0.02 ms</td></tr>
+<tr><td>Click spacing, 240 BPM sixteenths</td><td>60 and 70 ms alternating</td><td>exactly 62.5 ms</td><td>exactly 62.5 ms</td></tr>
+<tr><td>Late sounds in a 3-minute soak, 90 s of it under full CPU load</td><td>not counted (the old engine has no counter)</td><td>0 (185 before the looped-pass fix below)</td><td>not run</td></tr>
+</table>
+<p>What the loopback sees, and what it does not: it records the mix <em>before</em> the driver, so it measures the callback timing, not the hardware delay. The sound card's effects can double a click into two sound starts (the first machine shows twenty places for sixteen clicks), and that is why a "deviation from the ideal grid" metric is not used: the spread per place and the click spacing are. The estimated gain in latency is about 5 ms on average (0-10 ms per sound), an estimate from the callback period and not an end-to-end measurement.</p>
+<p>A soak run found a real bug that 30-second recordings could not: the first click of every looped pass was handed over with no look-ahead (the scheduler waited for the end of the pass before starting the next), so one click in sixteen was late. <code>run_with</code> now ends that wait one look-ahead early; a test covers it. The lesson: <em>look at the engine's counters after a long run</em>.</p>
+
+<h3 id="aud-limits">What cannot be improved from here</h3>
+<ul>
+<li><strong>The shared-mode period.</strong> Every output measured (eight, on two machines: Realtek, Bluetooth, a USB audio interface, AMD HD Audio and Steam's virtual devices) reports a shared-mode period range of exactly 480 frames, 10 ms, for <code>IAudioClient3</code> as well. It has nothing smaller to offer, so a backend that asked for one would change nothing. The decision is <strong>no-go</strong> (task AUD-9); it would be worth revisiting only for a professional interface whose driver offers a range.</li>
+<li><strong>Exclusive mode, ASIO, WDM-KS</strong> are out of scope by the owner's decision.</li>
+<li><strong>Bluetooth.</strong> 100-200 ms and more; use a wired output or send the click to the V31.</li>
+<li><strong>The playhead runs ahead of the sound</strong> by the device's delay, and with audio and MIDI on at once the MIDI note comes out of the module before the computer's sound is heard. Rendering at <em>T</em> minus the latency would fix both, but needs a trustworthy latency figure (see the callout above).</li>
+<li><strong>Live switches lag</strong> by up to the look-ahead: the click switch, notes and the mixer act on sounds that are handed over after the change, so a sound already in the queue still plays.</li>
+</ul>
+
+<h3 id="aud-test">Testing the engine without a sound card</h3>
+<p>Every part is pure, so the real-time claims are tested by <em>simulating the callback</em>:</p>
+<ul>
+<li><strong><code>mixer.rs</code></strong>: onset at the exact frame, mid-block start, choke fade, pool and waiting-list exhaustion with counters, cancel, and that rendering does not allocate.</li>
+<li><strong><code>clock.rs</code></strong>: the estimate on synthetic callbacks with random lateness and occasional long stalls, and with a sound card clock 100 ppm fast or slow.</li>
+<li><strong><code>handle.rs</code></strong>: <code>NotReady</code> before the first callback, a full queue, cancel reaching the mixer, the graveyard releasing the last reference, and the end-to-end test: sounds scheduled on the program's clock start within 0.5 ms of the frame the card's clock names, with callbacks up to 4 ms late, 9 ms stalls and &plusmn;80 ppm drift (it measures about 0.16 ms), where the old design jumped by 10 ms.</li>
+<li><strong><code>playback/tests.rs</code></strong>: <code>dispatch</code> and <code>run_with</code> against a fake <code>Sink</code>, including looping, the ramp, late cues and that the first cue of a looped pass is handed over ahead of its time.</li>
+<li><strong><code>app/audio_output.rs</code></strong>: <code>must_reopen</code>, as a pure function of five values.</li>
+</ul>
+<p>Never open real audio in a unit test: set <code>click_audio</code> and <code>playback_audio</code> to false. What no test can check is that a real device makes the right sound at the right moment; for that, listen, run the loopback tool, and read the Sound page's counters afterwards.</p>
+<div class="callout tip"><strong class="label">When you change the engine</strong>Run <code>cargo test</code>, then <code>tools/audio_baseline.ps1</code> before and after on the same machine (the numbers depend on the machine), then a soak with a load, and read Settings &rarr; Sound afterwards. A change that moves the click in time should raise <code>ENGINE_GENERATION</code>, so that users are told to calibrate again.</div>
+</section>
+
 <section id="ui">
-<h2>6. The user interface</h2>
+<h2>7. The user interface</h2>
 
 <h3 id="frame">One frame</h3>
 <p><code>egui</code> is <em>immediate mode</em>: there is no widget tree to keep in sync. Each frame the program runs <code>update</code>, which reads state, draws widgets and writes state back in the same calls. The order inside <code>update</code> matters:</p>
@@ -385,7 +626,7 @@ python3 tools/build_notices.py      # target/notices/THIRD_PARTY_NOTICES.txt</co
 </section>
 
 <section id="controller">
-<h2>7. The controller subsystem</h2>
+<h2>8. The controller subsystem</h2>
 <p>A control surface is a set of controls that each send a MIDI message: a note, a controller number (cc) with a value, or a pitch-bend value. The subsystem turns those messages into actions of the program and the program's state into lights, and it can be taught a new device without writing code. It has an impure half that owns the MIDI port and a pure half that decides what everything means. The pure half is large (<code>controller/</code>, <code>controller_layout.rs</code>) and fully tested without a device.</p>
 
 <h3 id="ctl-overview">Overview</h3>
@@ -521,7 +762,7 @@ ring  = tempo -&gt; cc 20 scale=127      # a plain value 0..scale instead</code>
 </section>
 
 <section id="rudiments">
-<h2>8. The rudiment subsystem</h2>
+<h2>9. The rudiment subsystem</h2>
 <p><code>rudiments.rs</code> is a pure module with two jobs: hold the 40 PAS rudiments as data, and build a <code>Score</code> from one. The data is written in a tiny pattern language so each rudiment is one readable line that can be checked against the chart:</p>
 {{RUDIMENT_DSL}}
 {{code:core/src/rudiments.rs::static CATALOGUE::6}}
@@ -540,7 +781,7 @@ ring  = tempo -&gt; cc 20 scale=127      # a plain value 0..scale instead</code>
 </section>
 
 <section id="config">
-<h2>9. Settings and persistence</h2>
+<h2>10. Settings and persistence</h2>
 <p>Settings are a small <code>key = value</code> text file (<code>%APPDATA%\RollModel\config.txt</code> and equivalents). There is no serialisation framework: each one-line setting is a row of the <code>KEYS</code> table (key, field, kind of value) that both <code>Config::to_text</code> and <code>Config::from_text</code> use, which keeps the file stable, hand-editable and tolerant. Lists and maps are written and read by hand.</p>
 {{code:core/src/config.rs::const KEYS::12}}
 <p>Where the file lives is a value, not a global: <code>config::Paths</code> (<code>system()</code>, <code>in_dir()</code>, <code>none()</code>) names the settings, <code>sounds</code> and <code>controllers</code> folders, <code>Config::load_from(&amp;paths)</code> reads and <code>save(&amp;paths)</code> writes, and <code>DrumApp</code> holds the one it uses.</p>
@@ -557,7 +798,7 @@ ring  = tempo -&gt; cc 20 scale=127      # a plain value 0..scale instead</code>
 </section>
 
 <section id="rust">
-<h2>10. Rust constructs that carry the design</h2>
+<h2>11. Rust constructs that carry the design</h2>
 <p>None of this is exotic Rust. The design leans on a handful of constructs used consistently. Each appears below with the real code.</p>
 
 <h3>Enums with data and exhaustive <code>match</code></h3>
@@ -577,8 +818,8 @@ ring  = tempo -&gt; cc 20 scale=127      # a plain value 0..scale instead</code>
 <h3>Const tables and <code>const fn</code></h3>
 <p>The rudiment catalogue is a <code>static</code> array of a fixed length (<code>[Rudiment; 40]</code>) built with a <code>const fn</code>; the compiler checks the count and the data costs no start-up work. <code>Lane::ALL</code> plays the same role, and <code>Control</code> sizes an atomic array from it with <code>[AtomicU32; Lane::ALL.len()]</code>.</p>
 <h3>Conditional compilation with a stub</h3>
-<p>Audio is an optional feature. Rather than sprinkling <code>cfg</code> through callers, the module offers two implementations with the same signature, so the rest of the code is feature-agnostic. Without the feature the output type is <code>Option&lt;Infallible&gt;</code>, a type with no value, so the stub returns <code>None</code> and no unit value is passed around (which clippy would flag):</p>
-{{code:src/metronome.rs::pub(crate) fn open_audio(_enabled}}
+<p>Audio is an optional feature. Rather than sprinkling <code>cfg</code> through callers, <code>audio.rs</code> re-exports either the real backend or <code>silent.rs</code> under the same names, so the rest of the code is feature-agnostic. Without the feature <code>Engine</code> is an enum with no variants: it can never be opened, so the stub methods are <code>match *self {}</code> and no unit value is passed around (which clippy would flag):</p>
+{{code:src/audio/silent.rs::pub enum Engine}}
 <h3>Generics where they remove duplication</h3>
 <p><code>widgets::slider&lt;N: Numeric&gt;</code> serves integers and floats with one body. Elsewhere the code prefers plain functions over clever generics.</p>
 <h3>Iterators returning <code>impl Trait</code></h3>
@@ -594,13 +835,14 @@ ring  = tempo -&gt; cc 20 scale=127      # a plain value 0..scale instead</code>
 </section>
 
 <section id="testing">
-<h2>11. Testing</h2>
+<h2>12. Testing</h2>
 <p>Most tests are unit tests of the module they test, either inline (<code>#[cfg(test)] mod tests</code>) or, for the larger ones, in a sibling <code>tests.rs</code> (<code>controller/tests.rs</code>, <code>analysis/tests.rs</code>, <code>config/tests.rs</code>, <code>playback/tests.rs</code>, <code>app/controls/tests.rs</code>). <code>core/tests/</code> holds integration tests that use the core only through its public API, the way another front end would. They all run with <code>cargo test</code> and no devices. Test names are sentences.</p>
 <table>
 <thead><tr><th>Layer</th><th>How it is tested</th><th>Example</th></tr></thead>
 <tbody>
 <tr><td>Pure core</td><td>Direct calls with small fixtures; the sample score <code>examples/basic_rock_beat.musicxml</code> is embedded with <code>include_str!</code> (tests depend on its exact content)</td><td><code>analysis.rs</code>, <code>musicxml.rs</code>, <code>rudiments.rs</code></td></tr>
 <tr><td>Real-time core</td><td>A fake <code>Sink</code> records what would sound; times are given as numbers, no sleeping</td><td><code>playback.rs</code></td></tr>
+<tr><td>Audio engine</td><td>Simulated callbacks: onset at the exact frame, a clock estimate under late callbacks and a drifting card, the full path from <code>EngineHandle::play</code> to the rendered block; <code>must_reopen</code> as a pure function</td><td><code>audio/mixer.rs</code>, <code>clock.rs</code>, <code>handle.rs</code>, <code>app/audio_output.rs</code></td></tr>
 <tr><td>Controller</td><td>Messages in, commands and light bytes out; presets parsed from strings; the built-in presets are loaded and must have no warnings</td><td><code>controller/</code></td></tr>
 <tr><td>App logic</td><td><code>DrumApp::with_config(Config::default())</code> touches no devices and no files (<code>Paths::none()</code>); tests call <code>apply_command</code>, <code>sync_source</code>, <code>start_take</code> directly</td><td><code>app/controls.rs</code>, <code>app/rudiment.rs</code></td></tr>
 <tr><td>Presets and the editor</td><td>Presets parsed from strings and round-tripped; the editor runs on a temporary folder (<code>DrumApp.paths</code>, a <code>Paths::in_dir</code>) with real files</td><td><code>controller/</code>, <code>app/controls/editor.rs</code></td></tr>
@@ -624,7 +866,7 @@ ring  = tempo -&gt; cc 20 scale=127      # a plain value 0..scale instead</code>
 </section>
 
 <section id="extend">
-<h2>12. Extension points</h2>
+<h2>13. Extension points</h2>
 <p>Where the design has room to grow, roughly by effort. <span class="pill easy">small</span> is an afternoon, <span class="pill">medium</span> a few days, <span class="pill hard">large</span> needs design.</p>
 <table>
 <thead><tr><th>Feature</th><th>Effort</th><th>Where</th><th>Notes</th></tr></thead>
@@ -650,7 +892,7 @@ ring  = tempo -&gt; cc 20 scale=127      # a plain value 0..scale instead</code>
 <tr><td>Orchestrating a rudiment around the kit</td><td><span class="pill">medium</span></td><td><code>Rudiment::build</code></td><td>Give <code>build</code> a map from hand or stroke index to <code>Lane</code>; the grader already matches by lane and the renderer already uses the lane's staff position.</td></tr>
 <tr><td>Ties, beams on the metronome's staff, rests in program-made scores</td><td><span class="pill">medium</span></td><td><code>notation.rs</code>, <code>render.rs</code>, <code>rudiments.rs</code></td><td>Beams, flags, tuplets and printed rests are done; what is left needs note lengths on <code>ScoreNote</code> (the importer drops the tied notes now) or the rolling strip going through <code>notation::analyse</code>.</td></tr>
 <tr><td>Following D.S./D.C./coda jumps</td><td><span class="pill">medium</span></td><td><code>musicxml.rs</code> (<code>playback_order</code>)</td><td>The importer already unrolls repeats and voltas.</td></tr>
-<tr><td>Merging the two timing threads</td><td><span class="pill hard">large</span></td><td><code>metronome.rs</code>, <code>playback.rs</code></td><td>Duplicated click and loop logic; touching it risks take timing, which works today.</td></tr>
+<tr><td>Merging the two timing threads</td><td><span class="pill hard">large</span></td><td><code>metronome.rs</code>, <code>playback.rs</code></td><td>The click sound is shared now (<code>audio/click.rs</code>); what is left is two loops that sleep, click and check stop. Touching them risks take timing, which works today.</td></tr>
 <tr><td>A command-line tool on the core (grade a MIDI file against a score)</td><td><span class="pill">medium</span></td><td><code>core/</code>, a new member of the workspace</td><td>The core crate has no GUI, MIDI or audio dependency, so a tool can depend on it alone; <code>core/tests/practice_session.rs</code> shows the calls.</td></tr>
 <tr><td>UI language, themes, accessibility</td><td><span class="pill hard">large</span></td><td>all UI strings</td><td>Strings are literals in the UI code; a string table is needed first.</td></tr>
 <tr><td>Hand-aware input hardware</td><td><span class="pill hard">large</span></td><td><code>midi.rs</code>, <code>analysis.rs</code></td><td>Some practice pads or sensors can report the hand; <code>Hand</code> on notes and hits would turn the Hands table from inferred into measured.</td></tr>
@@ -658,7 +900,7 @@ ring  = tempo -&gt; cc 20 scale=127      # a plain value 0..scale instead</code>
 </section>
 
 <section id="tutorials">
-<h2>13. Tutorials</h2>
+<h2>14. Tutorials</h2>
 <p>Each tutorial changes the real program and ends with tests. The code shown is what you type; names of existing items are real (look them up with the excerpts above). Create a branch first: <code>git switch -c feature/&lt;name&gt; develop</code>.</p>
 
 <h3 id="t-rudiment">Tutorial 1: add a rudiment</h3>
@@ -781,7 +1023,7 @@ impl DrumApp {
 <li><strong>Write yours the same way:</strong> build the <code>Control</code> and cues, call <code>play(&amp;cue, &amp;opts(), &amp;control)</code>, assert on the returned events. Run it with <code>cargo test click_switch</code>. Change one thing (for example a second <code>Control</code> with <code>set_notes(false)</code>) to see the test fail for the right reason.</li>
 <li><strong>Time-dependent behaviour</strong> (looping, stopping, late cues) goes through <code>run_with</code>, which takes the zero instant, the cues, a stop flag and the sink, with a short <code>tail</code>, so a test can run a real pass in a few milliseconds. Look at <code>looping_repeats_until_switched_off_and_finishes_the_pass</code>.</li>
 </ol>
-<div class="callout"><strong class="label">What cannot be tested</strong>That a real device makes the right sound at the right moment. Check it by ear and, on Windows, with the per-application peak meter, and record the result in <code>HANDOFF.md</code>.</div>
+<div class="callout"><strong class="label">What cannot be tested</strong>That a real device makes the right sound at the right moment. Check it by ear and, on Windows, with the per-application peak meter, and record the result in <code>HANDOFF.md</code>. The timing of the engine <em>can</em> be measured from outside, by loopback recording (<a href="#aud-measure">Measuring it</a>).</div>
 <h3 id="t-controller">Tutorial 8: support another controller</h3>
 <p>Goal: a preset for a pad controller, then (optionally) a drawn picture.</p>
 <ol class="steps">
@@ -805,7 +1047,7 @@ impl DrumApp {
 </section>
 
 <section id="release">
-<h2>14. Releases and CI</h2>
+<h2>15. Releases and CI</h2>
 <p><code>.github/workflows/release.yml</code> builds on pushes to <code>main</code>, on tags <code>vX.Y.Z</code> and on the <code>preview</code> tag (only when its commit is on <code>develop</code>).</p>
 <ol class="steps">
 <li><strong>plan</strong> decides whether to build at all (a branch push of a commit that also carries a release tag is covered by the tag run).</li>
@@ -825,7 +1067,7 @@ impl DrumApp {
 </section>
 
 <section id="gaps">
-<h2>15. Known gaps and roadmap</h2>
+<h2>16. Known gaps and roadmap</h2>
 <ul>
 <li><strong>V31 and controllers are untested on hardware.</strong> The note map is the common Roland V-Drums factory map; the hi-hat pedal polarity (127 = closed) is the Roland convention; the Mackie presets are from the Mackie Control table and the four generic presets are from memory (a web search confirmed only a few of their numbers). Learning against a real device has not been tried.</li>
 <li><strong>The preset editor</strong> binds actions, creates and deletes layers and gives actions lights and rings (all with the same defaults: the control the action is bound to), and editing rewrites the file without its comments. The generated help picture does not show where the controls are on the device.</li>
@@ -833,6 +1075,7 @@ impl DrumApp {
 <li><strong>Nobody has listened to the synthesised kit</strong> (only spectral guards test it). The built-in sounds are intentionally simple.</li>
 <li><strong>Notation</strong>: proportional spacing; beams, flags, tuplet brackets and rests are worked out from the onsets (no note lengths in the score), so ties are not drawn, a rest the file does not print is not drawn, and the Metronome tab's staff has no beams.</li>
 <li><strong>MusicXML</strong>: D.S./D.C./coda are not followed, <code>score-timewise</code> is rejected, only the first drum-looking part is used.</li>
+<li><strong>Audio delay.</strong> The engine removes the jitter, not the constant delay of the operating system's shared mode (one 10 ms period at least on every output measured). The latency figure of the Sound page is a lower bound, the playhead runs ahead of the sound by the device delay, and a Bluetooth output is unusable for timing. See <a href="#aud-limits">What cannot be improved</a>; <code>HANDOFF.md</code> has the open study.</li>
 <li><strong>Two timing threads</strong> with duplicated click logic (task CD-5, to be done with a real take on a release build).</li>
 <li><strong>No persistence of takes</strong>; CSV export only.</li>
 <li><strong>Follow mode</strong> scrolls every frame while recording, so manual scrolling is impossible during a take.</li>
@@ -843,7 +1086,7 @@ impl DrumApp {
 </section>
 
 <section id="invariants">
-<h2>16. Invariants checklist</h2>
+<h2>17. Invariants checklist</h2>
 <p>Before you commit, check you did not break one of these.</p>
 <ul>
 <li>Score positions are quarter notes; seconds only through <code>TempoMap</code>.</li>
@@ -853,6 +1096,8 @@ impl DrumApp {
 <li>Matching is greedy, one-to-one, cheapest first; grace notes are optional; later notes stay pending.</li>
 <li>The pure modules do not import GUI, MIDI or audio code.</li>
 <li>Callbacks only push to queues; sound threads never block on the UI; the UI thread owns <code>DrumApp</code>.</li>
+<li>The audio callback never allocates, locks or frees: fixed pools, a wait-free queue in, a graveyard queue out, atomics for everything it publishes. A sound is told to the engine with the instant it should start, about 30 ms ahead; MIDI is held back to its time.</li>
+<li>A change that moves the click in time raises <code>audio::ENGINE_GENERATION</code>, so that a stored latency is flagged as stale. The output opens at the first sound, never in <code>DrumApp::new</code>.</li>
 <li>Every slider goes through <code>widgets::slider</code>; new settings go on their page and into <code>config.rs</code> with a round-trip test.</li>
 <li>Practice fields are swapped only by <code>activate</code>; <code>open_file</code> activates the Score source.</li>
 <li>Rudiment scores are written at <code>BASE_BPM</code>, so the practice tempo in percent is the BPM.</li>

@@ -1,5 +1,6 @@
 //! Application state and UI (Score / Metronome / Results / Settings tabs).
 
+mod audio_output;
 mod controller_help;
 mod controls;
 mod home;
@@ -25,7 +26,7 @@ use crate::config::{Config, Paths, RowLayout};
 use crate::control::Control;
 use crate::drums::Lane;
 use crate::loader::load_score;
-use crate::metronome::{self, Metronome};
+use crate::metronome::Metronome;
 use crate::midi::{self, EventQueue, InputHandle, RawEvent};
 use crate::musicxml::ParseOptions;
 use crate::playback::{Player, Ramp};
@@ -252,6 +253,8 @@ pub struct DrumApp {
     audio_devices: Vec<String>,
     /// Name of the system's default sound output, for the settings page.
     audio_default: Option<String>,
+    /// The open sound output (see `audio_output.rs`).
+    audio: audio_output::AudioOutput,
 
     /// The free metronome tab.
     metro_run: MetroState,
@@ -343,6 +346,7 @@ impl DrumApp {
             },
             audio_devices: Vec::new(),
             audio_default: None,
+            audio: audio_output::AudioOutput::default(),
             metro_run: MetroState { run: None, player: None, control: Control::new() },
             controller: controls::Controller::new(),
             controller_help: None,
@@ -355,8 +359,8 @@ impl DrumApp {
     fn refresh_ports(&mut self) {
         self.midi.inputs = midi::list_inputs().unwrap_or_default();
         self.midi.outputs = midi::list_outputs().unwrap_or_default();
-        self.audio_devices = metronome::output_devices();
-        self.audio_default = metronome::default_output_device();
+        self.audio_devices = crate::audio::output_devices();
+        self.audio_default = crate::audio::default_output_device();
     }
 
     fn connect_midi(&mut self, name: Option<String>) {
@@ -787,5 +791,23 @@ mod tests {
         assert!(app.view.tab == Tab::Home, "a failed open does not leave Home");
         assert!(app.score.is_some(), "the loaded score stays");
         assert_eq!(app.cfg.recent_files.len(), 1, "a failed file is not remembered");
+    }
+
+    #[test]
+    fn the_timing_and_sound_pages_draw_with_a_stale_latency_and_no_open_output() {
+        let mut app = DrumApp::with_config(Config { latency_ms: 24.0, ..Config::default() });
+        assert!(app.cfg.latency_is_stale(crate::audio::ENGINE_GENERATION), "a latency from before the engine says is stale");
+        assert!(app.audio.info().is_none(), "no output is open until a sound starts");
+        let ctx = egui::Context::default();
+        for _ in 0..2 {
+            let _ = ctx.run(egui::RawInput::default(), |ctx| {
+                egui::CentralPanel::default().show(ctx, |ui| {
+                    app.settings_timing(ui);
+                    app.settings_sound(ui);
+                });
+            });
+        }
+        app.cfg.latency_engine = crate::audio::ENGINE_GENERATION;
+        assert!(!app.cfg.latency_is_stale(crate::audio::ENGINE_GENERATION));
     }
 }

@@ -14,7 +14,7 @@ use egui::{RichText, ViewportBuilder, ViewportClass, ViewportId};
 
 use super::DrumApp;
 use crate::config::Config;
-use crate::metronome::{self, HAS_AUDIO};
+use crate::metronome::HAS_AUDIO;
 use crate::midi;
 use crate::render;
 use crate::widgets;
@@ -53,7 +53,7 @@ type SoundScan = (Vec<String>, Option<String>);
 pub(super) fn scan_sound_outputs() -> Receiver<SoundScan> {
     let (tx, rx) = mpsc::channel();
     std::thread::spawn(move || {
-        let _ = tx.send((metronome::output_devices(), metronome::default_output_device()));
+        let _ = tx.send((crate::audio::output_devices(), crate::audio::default_output_device()));
     });
     rx
 }

@@ -22,8 +22,12 @@ use midir::MidiOutputConnection;
 use crate::analysis::Expected;
 use crate::control::{ClickLevel, Control, ErrorLog};
 use crate::drums::Lane;
-use crate::metronome::{at, click_audio, open_audio, wait_until, Audio};
-use crate::synth::{velocity_gain, Kit};
+use crate::audio::click::ClickBank;
+use crate::audio::mixer::NO_GROUP;
+use crate::audio::resample::resample;
+use crate::audio::EngineHandle;
+use crate::metronome::{at, wait_until, AUDIO_LOOKAHEAD};
+use crate::synth::{velocity_gain, Kit, SAMPLE_RATE};
 
 /// A cue whose turn comes later than this (the thread stalled, or the sound
 /// device took long to open) is dropped instead of being played as a burst.
@@ -117,8 +121,8 @@ impl Ramp {
 pub struct PlayOptions {
     /// Play the drums through the sound card.
     pub audio: bool,
-    /// Sound output device by name; empty = the system default.
-    pub audio_device: String,
+    /// The open sound output; `None` when there is none to play through.
+    pub engine: Option<EngineHandle>,
     /// Folder with WAV files that replace built-in instrument sounds.
     pub sounds_dir: Option<PathBuf>,
     pub click_audio: bool,
@@ -222,18 +226,33 @@ pub fn metronome_cues(bpm: f64, beats: u32, sub: Subdivision) -> (Vec<Cue>, f64)
     (v, beats.max(1) as f64 * beat_sec)
 }
 
-/// Where the sound goes. The real one drives the devices; tests record calls.
+/// Where the sound goes. The real one drives the devices; tests record calls. `when` is the moment
+/// the sound is meant to start: the sink may be told earlier than that (see [`Sink::lookahead`]).
 pub trait Sink {
-    fn audio_click(&mut self, level: ClickLevel, volume: f32);
-    fn midi_click(&mut self, level: ClickLevel);
+    fn audio_click(&mut self, level: ClickLevel, volume: f32, when: Instant);
+    fn midi_click(&mut self, level: ClickLevel, when: Instant);
     /// `gain` includes the master volume, the instrument gain and the velocity.
-    fn audio_drum(&mut self, lane: Lane, gain: f32);
-    fn midi_drum(&mut self, note: u8, velocity: u8);
+    fn audio_drum(&mut self, lane: Lane, gain: f32, when: Instant);
+    fn midi_drum(&mut self, note: u8, velocity: u8, when: Instant);
+
+    /// How long before its time a cue is handed to the sink: the audio engine places a sound at an
+    /// exact frame only if it is told ahead. Zero when nothing needs that.
+    fn lookahead(&self) -> Duration {
+        Duration::ZERO
+    }
+
+    /// When the sink next has something of its own to send (MIDI that was held back to its time).
+    fn next_due(&self) -> Option<Instant> {
+        None
+    }
+
+    /// Sends what has come due at `now`.
+    fn flush(&mut self, _now: Instant) {}
 }
 
-/// Decides what a cue sounds like right now, from the options and the live
-/// controls, and hands it to the sink.
-fn dispatch(cue: &Cue, opts: &PlayOptions, control: &Control, sink: &mut dyn Sink) {
+/// Decides what a cue sounds like, from the options and the live controls, and hands it to the
+/// sink to start at `when`.
+fn dispatch(cue: &Cue, when: Instant, opts: &PlayOptions, control: &Control, sink: &mut dyn Sink) {
     match cue.sound {
         Sound::Click { level } => {
             // The count-in (before zero) always sounds; the click during the music can be switched off.
@@ -241,10 +260,10 @@ fn dispatch(cue: &Cue, opts: &PlayOptions, control: &Control, sink: &mut dyn Sin
                 return;
             }
             if opts.click_midi {
-                sink.midi_click(level);
+                sink.midi_click(level, when);
             }
             if opts.click_audio {
-                sink.audio_click(level, control.click_volume());
+                sink.audio_click(level, control.click_volume(), when);
             }
         }
         Sound::Drum { lane, velocity } => {
@@ -254,11 +273,11 @@ fn dispatch(cue: &Cue, opts: &PlayOptions, control: &Control, sink: &mut dyn Sin
             }
             if opts.midi_drums {
                 if let Some(note) = opts.drum_notes.get(&lane) {
-                    sink.midi_drum(*note, (velocity as f32 * gain).round().clamp(1.0, 127.0) as u8);
+                    sink.midi_drum(*note, (velocity as f32 * gain).round().clamp(1.0, 127.0) as u8, when);
                 }
             }
             if opts.audio {
-                sink.audio_drum(lane, control.volume() * gain * velocity_gain(velocity));
+                sink.audio_drum(lane, control.volume() * gain * velocity_gain(velocity), when);
             }
         }
     }
@@ -267,6 +286,21 @@ fn dispatch(cue: &Cue, opts: &PlayOptions, control: &Control, sink: &mut dyn Sin
 /// The cues of one pass. Only the first pass has the count-in.
 fn pass_cues(cues: &[Cue], pass: usize) -> impl Iterator<Item = &Cue> {
     cues.iter().filter(move |c| pass == 0 || c.t >= 0.0)
+}
+
+/// Waits until `wake`, sending what the sink has to send of its own on the way. `false` if `stop`
+/// was set first.
+fn wait_for(wake: Instant, stop: &AtomicBool, sink: &mut dyn Sink) -> bool {
+    loop {
+        let next = sink.next_due().map_or(wake, |due| due.min(wake));
+        if !wait_until(next, stop) {
+            return false;
+        }
+        sink.flush(Instant::now());
+        if next >= wake {
+            return true;
+        }
+    }
 }
 
 /// Plays `cues` relative to `zero`, pass after pass while `control.looping()`
@@ -291,20 +325,28 @@ fn run_with(
             // The count-in (before zero, in the first pass only) is never squeezed.
             let t = if cue.t < 0.0 { cue.t } else { cue.t * squeeze };
             let Some(target) = at(zero, t + offset) else { continue };
-            if !wait_until(target, stop) {
+            let wake = target.checked_sub(sink.lookahead()).unwrap_or(target);
+            if !wait_for(wake, stop, sink) {
                 break 'passes;
             }
             if Instant::now().saturating_duration_since(target) > MAX_LATE {
                 continue;
             }
-            dispatch(cue, opts, control, sink);
+            dispatch(cue, target, opts, control, sink);
         }
         if let Some(end) = at(zero, offset + pass_len * squeeze) {
-            if !wait_until(end, stop) {
+            // The next pass starts at `end` and its first cues are handed over ahead of their time
+            // like any other, so when the music goes on the wait ends one look-ahead early. (Looping
+            // switched off in that last moment still lets one more pass begin.)
+            let hand_over = end.checked_sub(sink.lookahead()).unwrap_or(end);
+            if !wait_for(hand_over, stop, sink) {
                 break;
             }
-        }
-        if !control.looping() {
+            if !control.looping() {
+                wait_for(end, stop, sink);
+                break;
+            }
+        } else if !control.looping() {
             break;
         }
         pass += 1;
@@ -314,6 +356,7 @@ fn run_with(
     // Let the last notes ring out before the stream is dropped.
     let end = Instant::now() + tail;
     while Instant::now() < end && !stop.load(Ordering::Relaxed) {
+        sink.flush(Instant::now());
         std::thread::sleep(Duration::from_millis(20));
     }
 }
@@ -364,132 +407,108 @@ impl Drop for Player {
     }
 }
 
+
 fn note_on_off(conn: &mut MidiOutputConnection, channel: u8, note: u8, velocity: u8) {
     let _ = conn.send(&[0x90 | channel, note, velocity.clamp(1, 127)]);
     let _ = conn.send(&[0x80 | channel, note, 0]);
 }
 
-/// One drum sample, shared between the hits of a lane, played at `gain`. When
-/// `choke` is set the voice fades out over a few milliseconds and ends.
-#[cfg(feature = "audio")]
-struct Voice {
-    data: Arc<Vec<f32>>,
-    pos: usize,
-    gain: f32,
-    choke: Arc<AtomicBool>,
-    /// Samples of fade-out left once choked; `None` while the voice plays normally.
-    fade_left: Option<u32>,
+/// The choke group of a lane (the bit a later sound can choke it by) and the groups it chokes itself.
+fn choke_groups(lane: Lane) -> (u8, u32) {
+    let group = if lane.can_be_choked() { Lane::ALL.iter().position(|l| *l == lane).map_or(NO_GROUP, |i| i as u8) } else { NO_GROUP };
+    let chokes = Lane::ALL.iter().enumerate().filter(|(_, other)| lane.chokes(**other)).fold(0u32, |mask, (i, _)| mask | 1 << i);
+    (group, chokes)
 }
 
-#[cfg(feature = "audio")]
-const FADE_SAMPLES: u32 = 256;
-
-#[cfg(feature = "audio")]
-impl Iterator for Voice {
-    type Item = f32;
-
-    fn next(&mut self) -> Option<f32> {
-        if self.fade_left.is_none() && self.choke.load(Ordering::Relaxed) {
-            self.fade_left = Some(FADE_SAMPLES);
-        }
-        let ramp = match self.fade_left {
-            Some(0) => return None,
-            Some(left) => {
-                self.fade_left = Some(left - 1);
-                (left - 1) as f32 / FADE_SAMPLES as f32
-            }
-            None => 1.0,
-        };
-        let s = *self.data.get(self.pos)?;
-        self.pos += 1;
-        Some(s * self.gain * ramp)
-    }
+/// A note held back until its time, so MIDI keeps its exact timing while audio is handed over early.
+struct HeldNote {
+    when: Instant,
+    channel: u8,
+    note: u8,
+    velocity: u8,
 }
 
-#[cfg(feature = "audio")]
-impl rodio::Source for Voice {
-    fn current_frame_len(&self) -> Option<usize> {
-        None
-    }
-
-    fn channels(&self) -> u16 {
-        1
-    }
-
-    fn sample_rate(&self) -> u32 {
-        crate::synth::SAMPLE_RATE
-    }
-
-    fn total_duration(&self) -> Option<Duration> {
-        Some(Duration::from_secs_f64(self.data.len() as f64 / crate::synth::SAMPLE_RATE as f64))
-    }
-}
-
-#[cfg(feature = "audio")]
-fn play_voice(audio: &Audio, sample: &Arc<Vec<f32>>, gain: f32, choke: Arc<AtomicBool>) {
-    if let Some((_stream, handle)) = audio.as_ref() {
-        let _ = handle.play_raw(Voice { data: sample.clone(), pos: 0, gain, choke, fade_left: None });
-    }
-}
-
-/// A voice that may still be sounding and could be choked by a later hit.
-#[cfg(feature = "audio")]
-struct Ringing {
-    lane: Lane,
-    choke: Arc<AtomicBool>,
-    since: Instant,
-}
-
-/// The real output: the sound card and the MIDI port.
+/// The real output: the audio engine and the MIDI port.
 struct DeviceSink {
-    audio: Audio,
+    engine: Option<EngineHandle>,
+    run: u32,
+    /// The kit at the engine's rate, one sound per lane the cues use.
+    kit: BTreeMap<Lane, Arc<[f32]>>,
+    clicks: Option<ClickBank>,
     midi: Option<MidiOutputConnection>,
-    kit: Kit,
+    held: Vec<HeldNote>,
     click_note: u8,
     click_channel: u8,
     drum_channel: u8,
-    #[cfg(feature = "audio")]
-    ringing: Vec<Ringing>,
+}
+
+impl DeviceSink {
+    fn midi_note(&mut self, when: Instant, channel: u8, note: u8, velocity: u8) {
+        if self.midi.is_none() {
+            return;
+        }
+        if self.lookahead().is_zero() || when <= Instant::now() {
+            if let Some(conn) = self.midi.as_mut() {
+                note_on_off(conn, channel, note, velocity);
+            }
+        } else {
+            self.held.push(HeldNote { when, channel, note, velocity });
+        }
+    }
 }
 
 impl Sink for DeviceSink {
-    fn audio_click(&mut self, level: ClickLevel, volume: f32) {
-        click_audio(&self.audio, level, volume);
-    }
-
-    fn midi_click(&mut self, level: ClickLevel) {
-        if let Some(conn) = self.midi.as_mut() {
-            note_on_off(conn, self.click_channel, self.click_note, level.velocity());
+    fn audio_click(&mut self, level: ClickLevel, volume: f32, when: Instant) {
+        if let (Some(engine), Some(bank)) = (self.engine.as_ref(), self.clicks.as_ref()) {
+            let (sound, gain) = bank.get(level, volume);
+            let _ = engine.play(self.run, when, sound, gain, NO_GROUP, 0);
         }
     }
 
-    fn audio_drum(&mut self, lane: Lane, gain: f32) {
-        #[cfg(feature = "audio")]
-        {
-            // Closing the hi-hat ends the open one.
-            self.ringing.retain(|r| r.since.elapsed() < Duration::from_millis(2500));
-            for r in &self.ringing {
-                if lane.chokes(r.lane) {
-                    r.choke.store(true, Ordering::Relaxed);
-                }
+    fn midi_click(&mut self, level: ClickLevel, when: Instant) {
+        self.midi_note(when, self.click_channel, self.click_note, level.velocity());
+    }
+
+    fn audio_drum(&mut self, lane: Lane, gain: f32, when: Instant) {
+        if let (Some(engine), Some(sound)) = (self.engine.as_ref(), self.kit.get(&lane)) {
+            let (group, chokes) = choke_groups(lane);
+            let _ = engine.play(self.run, when, sound, gain, group, chokes);
+        }
+    }
+
+    fn midi_drum(&mut self, note: u8, velocity: u8, when: Instant) {
+        self.midi_note(when, self.drum_channel, note, velocity);
+    }
+
+    fn lookahead(&self) -> Duration {
+        if self.engine.is_some() {
+            AUDIO_LOOKAHEAD
+        } else {
+            Duration::ZERO
+        }
+    }
+
+    fn next_due(&self) -> Option<Instant> {
+        self.held.iter().map(|h| h.when).min()
+    }
+
+    fn flush(&mut self, now: Instant) {
+        let Some(conn) = self.midi.as_mut() else { return };
+        self.held.retain(|h| {
+            if h.when > now {
+                return true;
             }
-            if let Some(sample) = self.kit.sample(lane) {
-                let choke = Arc::new(AtomicBool::new(false));
-                if lane.can_be_choked() {
-                    self.ringing.push(Ringing { lane, choke: choke.clone(), since: Instant::now() });
-                }
-                play_voice(&self.audio, sample, gain, choke);
-            }
-        }
-        #[cfg(not(feature = "audio"))]
-        {
-            let _ = (lane, gain, &self.kit, &self.audio);
-        }
+            note_on_off(conn, h.channel, h.note, h.velocity);
+            false
+        });
     }
+}
 
-    fn midi_drum(&mut self, note: u8, velocity: u8) {
-        if let Some(conn) = self.midi.as_mut() {
-            note_on_off(conn, self.drum_channel, note, velocity);
+impl Drop for DeviceSink {
+    /// A stop cuts the sound at once: the engine fades out what this run has playing.
+    fn drop(&mut self) {
+        if let Some(engine) = self.engine.as_ref() {
+            let _ = engine.cancel_run(self.run);
         }
     }
 }
@@ -499,20 +518,26 @@ fn run(zero: Instant, cues: Vec<Cue>, pass_len: f64, opts: PlayOptions, control:
         Sound::Drum { lane, .. } if opts.audio => Some(lane),
         _ => None,
     });
-    let (kit, warnings) = Kit::load(lanes, opts.sounds_dir.as_deref());
+    let (kit, warnings) = Kit::load(lanes.clone(), opts.sounds_dir.as_deref());
     for w in warnings {
         errors.push(w);
     }
 
     let has_clicks = cues.iter().any(|c| matches!(c.sound, Sound::Click { .. }));
-    let want_audio = opts.audio || (opts.click_audio && has_clicks);
-    let (audio, audio_note) = open_audio(want_audio, &opts.audio_device);
-    if let Some(message) = audio_note {
-        errors.push(message);
-    }
-    #[cfg(not(feature = "audio"))]
-    if want_audio {
-        errors.push("This build has no sound output: send playback to a MIDI output instead.".into());
+    let engine = opts.engine.clone().filter(|_| opts.audio || (opts.click_audio && has_clicks));
+    let (mut sounds, mut clicks, mut run_id) = (BTreeMap::new(), None, 0);
+    if let Some(engine) = engine.as_ref() {
+        let rate = engine.shared().rate();
+        for lane in lanes {
+            if let Some(sample) = kit.sample(lane) {
+                sounds.entry(lane).or_insert_with(|| resample(sample, SAMPLE_RATE, rate).into());
+            }
+        }
+        clicks = Some(ClickBank::new(rate));
+        run_id = engine.new_run();
+        if !engine.wait_ready(Duration::from_millis(500)) {
+            errors.push("The sound output did not start in time, so the first sounds may be late.".into());
+        }
     }
     let mut midi = None;
     if let Some(port) = opts.midi_port.as_deref() {
@@ -523,14 +548,15 @@ fn run(zero: Instant, cues: Vec<Cue>, pass_len: f64, opts: PlayOptions, control:
     }
 
     let mut sink = DeviceSink {
-        audio,
+        engine,
+        run: run_id,
+        kit: sounds,
+        clicks,
         midi,
-        kit,
+        held: Vec::new(),
         click_note: opts.click_note,
         click_channel: opts.click_channel.clamp(1, 16) - 1,
         drum_channel: opts.drum_channel.clamp(1, 16) - 1,
-        #[cfg(feature = "audio")]
-        ringing: Vec::new(),
     };
     run_with(zero, &cues, pass_len, &opts, &control, &stop, &mut sink, TAIL);
 }

@@ -155,7 +155,8 @@ PURPOSE = {
     "rfd": "Native open and save file dialogs",
     "zip": "Reads compressed MusicXML (<code>.mxl</code>)",
     "hound": "Reads the WAV files that replace built-in drum sounds",
-    "rodio": "Audio output (optional feature <code>audio</code>; brings in cpal)",
+    "cpal": "Audio output (optional feature <code>audio</code>)",
+    "rtrb": "Wait-free queues between the scheduling threads and the audio callback",
 }
 
 

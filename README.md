@@ -48,7 +48,7 @@ The binary ends up in `target/release/roll-model(.exe)`.
 | macOS | none (CoreMIDI, CoreAudio) |
 | Linux | `sudo apt install libasound2-dev pkg-config` (ALSA, for MIDI and audio) |
 
-Build without the sound-card metronome (drops `rodio`/`cpal`): `cargo build --release --no-default-features`. The click can still be sent to the V31 over MIDI.
+Build without the sound-card metronome (drops `cpal`): `cargo build --release --no-default-features`. The click can still be sent to the V31 over MIDI.
 
 Run the unit tests (XML parser, MusicXML import, repeats, tempo maps, scoring): `cargo test`.
 
@@ -172,7 +172,7 @@ Settings are saved automatically. Sliders show their caption in front of them, a
 
 ## Latency
 
-Every audio and MIDI path adds some delay. Use **Settings → Timing → Calibrate**: play any pad exactly with 16 clicks; the median offset becomes the latency compensation. Sending the click to the V31 (Settings → Sound → Metronome, channel 10, an unmapped note such as 76) puts it in your headphones without computer-audio latency.
+Every audio and MIDI path adds some delay. Use **Settings → Timing → Calibrate**: play any pad exactly with 16 clicks; the median offset becomes the latency compensation. Sending the click to the V31 (Settings → Sound → Metronome, channel 10, an unmapped note such as 76) puts it in your headphones without computer-audio latency. The click and the built-in drums start at their exact moment (the audio engine places each sound at its frame of the output stream), so their timing does not wobble with the audio buffer; Settings → Sound shows the open output and the delay the driver reports. When a new version changes the engine, Settings → Timing says the stored latency is from an earlier one: calibrate again. Bluetooth audio adds 100–200 ms or more and cannot be used for timing.
 
 ## How grading works
 

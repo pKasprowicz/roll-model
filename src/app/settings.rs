@@ -148,7 +148,11 @@ impl DrumApp {
         egui::Grid::new("timing").num_columns(2).spacing([16.0, 8.0]).show(ui, |ui| {
             ui.label("Latency compensation");
             ui.horizontal(|ui| {
+                let before = self.cfg.latency_ms;
                 widgets::slider(ui, "", &mut self.cfg.latency_ms, -50.0..=200.0, " ms", 1.0);
+                if self.cfg.latency_ms != before {
+                    self.cfg.latency_engine = crate::audio::ENGINE_GENERATION; // set by hand with this engine
+                }
                 let calibrating = self.calibration.is_some();
                 if ui.add_enabled(!calibrating, egui::Button::new("Calibrate…")).clicked() {
                     self.start_calibration();
@@ -165,9 +169,37 @@ impl DrumApp {
             widgets::slider(ui, "", &mut self.cfg.tol.window_ms, 40.0..=250.0, " ms", 5.0);
             ui.end_row();
         });
+        if self.cfg.latency_is_stale(crate::audio::ENGINE_GENERATION) {
+            ui.horizontal(|ui| {
+                ui.label(RichText::new("This latency was set with an earlier audio engine; the click now comes at another time. Calibrate again.").small().color(render::AMBER));
+                if ui.small_button("Keep this value").clicked() {
+                    self.cfg.latency_engine = crate::audio::ENGINE_GENERATION;
+                }
+            });
+        }
         widgets::hint(ui, "Calibrate: play any pad exactly with 16 metronome clicks; the median offset becomes the latency compensation. Hover a slider and turn the mouse wheel to fine-tune it.");
         self.cfg.tol.good_ms = self.cfg.tol.good_ms.max(self.cfg.tol.perfect_ms);
         self.cfg.tol.window_ms = self.cfg.tol.window_ms.max(self.cfg.tol.good_ms);
+    }
+
+    /// What is known about the open sound output: which, how fast, and whether it is keeping up.
+    fn audio_readout(&self, ui: &mut egui::Ui) {
+        if !HAS_AUDIO {
+            return;
+        }
+        let Some(info) = self.audio.info() else {
+            widgets::hint(ui, "The output opens when the first sound starts.");
+            return;
+        };
+        let delay = match info.latency_ms {
+            Some(ms) => format!("The driver reports about {ms:.0} ms between the program and the output."),
+            None => "The driver reports no delay.".to_string(),
+        };
+        widgets::hint(ui, &format!("Open: {} at {} Hz. {delay}", info.device, info.rate));
+        if info.late + info.dropped > 0 {
+            ui.label(RichText::new(format!("Sounds that came too late: {} (the worst by {:.1} ms), dropped: {}. The computer may be too busy for the output.", info.late, info.worst_late_ms, info.dropped)).small().color(render::AMBER));
+        }
+        widgets::hint(ui, "Bluetooth headphones add 100-200 ms or more and cannot be used for timing: use a wired output, or send the click to the V31 (below).");
     }
 
     pub(super) fn settings_sound(&mut self, ui: &mut egui::Ui) {
@@ -199,6 +231,8 @@ impl DrumApp {
         } else {
             "This build has no sound output; use MIDI output below."
         }).small().weak());
+
+        self.audio_readout(ui);
 
         ui.add_space(10.0);
         ui.heading("MIDI output");

@@ -86,7 +86,7 @@
 <pre><code>cargo run --release                                  # start empty
 cargo run --release -- examples/basic_rock_beat.musicxml
 cargo test                                           # the unit tests
-cargo build --release --no-default-features          # without the sound card (drops rodio/cpal)</code></pre>
+cargo build --release --no-default-features          # without the sound card (drops cpal)</code></pre>
 <p>Without the sound card the click and Listen can still be sent to a MIDI output.</p>
 </section>
 
@@ -356,7 +356,7 @@ cargo build --release --no-default-features          # without the sound card (d
 
 <h3 id="set-sound">Sound</h3>
 <ul>
-<li><strong>Audio output:</strong> the sound card used for the click, Listen and calibration. A change applies the next time sound starts. If the chosen device is not connected, the system default is used and a message says so.</li>
+<li><strong>Audio output:</strong> the sound card used for the click, Listen and calibration. A change applies the next time sound starts; with <em>System default</em> chosen that includes a change of the default output in Windows (a Listen that is already playing stays on the output it began on). If the chosen device is not connected, the system default is used and a message says so. Once a sound has played, the page shows the open output, its rate and the delay the driver reports, and counts sounds that came too late (the computer is too busy for the output). The click and the built-in drums start at their exact moment, so their timing does not wobble with the size of the audio buffer.</li>
 <li><strong>MIDI output:</strong> the port that receives the click and the notes of Listen when they are sent over MIDI, such as the V31 or Windows' <em>Microsoft GS Wavetable Synth</em>.</li>
 <li><strong>Metronome:</strong> click through the sound card (with volume) and/or send it to the MIDI output (note and channel). Sending the click to the V31 (channel 10, an unmapped note such as 76, a wood block) puts it in your headphones with no computer-audio latency.</li>
 <li><strong>Listening:</strong> play Listen through the sound card (built-in drum sounds, volume) and/or send the notes to the MIDI output on a channel (default 10), so the V31 plays its own kit.</li>
@@ -524,6 +524,8 @@ ring  = tempo -&gt; cc 20 scale=127      # a plain value 0 to 127 instead of Mac
 <li>The median offset becomes the latency compensation. At least six of the hits must lie within a quarter of a second of a click, otherwise calibration fails (is the click audible?).</li>
 </ol>
 <div class="callout tip"><strong class="label">Lower latency</strong>Sending the click to the V31 (<em>Settings &rarr; Sound &rarr; Metronome</em>, channel 10, an unmapped note) puts it in your headphones without computer-audio latency. Calibrate again after changing the click path.</div>
+<div class="callout warn"><strong class="label">Bluetooth</strong>Bluetooth headphones and speakers add 100&ndash;200 ms or more of delay, and it is not steady. They cannot be used for timing: use a wired output, or send the click to the V31.</div>
+<p>The compensation depends on how the click reaches your ears, so it is tied to the program's audio engine. When a new version changes the engine, <em>Settings &rarr; Timing</em> shows an amber note that the latency was set with an earlier one: press <em>Calibrate&hellip;</em> again, or <em>Keep this value</em> if you know it is still right. Moving the slider by hand counts as setting it with the current engine.</p>
 </section>
 
 <section id="sound">
@@ -584,7 +586,7 @@ ring  = tempo -&gt; cc 20 scale=127      # a plain value 0 to 127 instead of Mac
 <thead><tr><th>Key</th><th>Meaning</th></tr></thead>
 <tbody>
 <tr><td><code>midi_in_port</code>, <code>midi_out_port</code></td><td>Part of the MIDI port names</td></tr>
-<tr><td><code>latency_ms</code>, <code>perfect_ms</code>, <code>good_ms</code>, <code>window_ms</code></td><td>Timing</td></tr>
+<tr><td><code>latency_ms</code>, <code>latency_engine</code>, <code>perfect_ms</code>, <code>good_ms</code>, <code>window_ms</code></td><td>Timing</td></tr>
 <tr><td><code>metronome_during_take</code>, <code>count_in_bars</code>, <code>listen_count_in</code></td><td>Click switch, count-in, and whether Listen has the count-in</td></tr>
 <tr><td><code>click_audio</code>, <code>click_volume</code>, <code>click_midi</code>, <code>click_note</code>, <code>click_channel</code></td><td>Metronome click</td></tr>
 <tr><td><code>playback_audio</code>, <code>playback_volume</code>, <code>playback_midi</code>, <code>playback_channel</code></td><td>Listen</td></tr>
