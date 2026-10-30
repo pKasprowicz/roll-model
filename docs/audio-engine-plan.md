@@ -1,6 +1,6 @@
 # Audio engine rework: plan
 
-Status: **in progress on `feature/audio_rework`: AUD-1 to AUD-7 are done (the new engine plays), AUD-8 is mostly done (the person-only checks are left), AUD-9 has its evidence, on two machines** (2026-10-30). Tasks AUD-1 to AUD-9 in `HANDOFF.md`.
+Status: **in progress on `feature/audio_rework`: AUD-1 to AUD-7 are done (the new engine plays), AUD-8 is done except one re-check (the person-only checks are in: they found that a change of the Windows default output was not followed, now fixed), AUD-9 has its evidence, on two machines** (2026-10-30). Tasks AUD-1 to AUD-9 in `HANDOFF.md`.
 
 Origin: a handover note ("low-latency audio rework", written the same day from a read of the repository on GitHub, nothing compiled or measured). This plan checks that note against the source and corrects it. All latency figures are typical values, not measurements of this app, until AUD-1 has run.
 
@@ -89,7 +89,7 @@ The same script, the same machine, the new engine (cpal 0.17, look-ahead 30 ms),
 | Places in the bar that jump | 3-5 of 20 | 0 (the two with a spread over 0.5 ms are ringing artefacts of the sound card's effects, not clicks) |
 | Click spacing | 60 and 70 ms alternating | **exactly 62.5 ms** |
 
-Listen on the sample score, recorded by loopback: the drums sound (peak 0.78), and after Esc the output is digitally silent within half a second. What the loopback cannot tell: how the kit sounds (nobody listened), the hardware latency, and the behaviour on a V31. Not tried yet: unplugging the output while it runs, a change of the default device, a long looping Listen with a ramp (AUD-8).
+Listen on the sample score, recorded by loopback: the drums sound (peak 0.78), and after Esc the output is digitally silent within half a second. What the loopback cannot tell: how the kit sounds (nobody listened), the hardware latency, and the behaviour on a V31. The unplugging, the change of the default device and the long looping Listen with a ramp were tried later by the owner (see "The checks that need a person").
 
 **A second machine (2026-10-30).** The same script and build on another Windows 11 machine whose default output is a USB audio interface ("Speakers (USB Audio Box)", 48 kHz), 30 s at 240 BPM in sixteenths: 481 sound starts, **16 places in the bar** (no doubled starts: this path adds no effects to the click), pooled standard deviation **0.01 ms**, widest spread **0.02 ms**, the places exactly 62.5 ms apart (bar 999.998 ms). That is consistent with the first machine's larger spreads (up to 1.14 ms) coming from its sound card's effects and not from the engine. The v0.7.3 build was not run here, so there is no before and after for this machine; the 5 ms gain estimate below does not depend on it (it comes from the callback period, 10.00 ms on both).
 
@@ -99,26 +99,26 @@ Listen on the sample score, recorded by loopback: the drums sound (peak 0.78), a
 
 - **A soak found a bug, now fixed.** A quiet 4-minute run showed 244 sounds "too late" (2 minutes: 124, the worst by 6.4 ms) although every 30 s recording looked perfect. A temporary trace of the hand-overs and the callbacks (not committed) showed the callbacks regular (480 frames every 10.00 ms, within 0.9 ms of the estimated line) and the cause on the scheduling side: the first cue of every looped pass was handed over with no look-ahead (lead 0 instead of 30 ms), because `run_with` waited for the end of the pass before it began the next one. For the metronome that is one click in sixteen (one per bar), hence 6%. Fixed: the wait ends one look-ahead early when the music goes on (`the_first_cue_of_a_looped_pass_is_handed_over_ahead_of_its_time_too`). Afterwards: 0 late, 0 dropped in 2 minutes quiet, and in 3 minutes with the last 90 s under full load (before: 185 late). The counter now also shows how late the worst sound was.
 - **Full CPU load** (22 busy processes on 22 logical processors): 30 s recorded, widest spread 0.06 ms, 600 starts, no lost sound. Recorded for 90 s, **both builds glitch in some 10-second windows** (extra sound starts, broken gaps); v0.7.3 slightly worse (283-347 starts in the bad windows, the new engine at most 259 against about 200 normal), so that is the machine at its limit, not a regression. The scheduling thread's priority did not need raising (after the fix the loaded soak shows no late sound), so nothing `unsafe` was added.
-- **Not done (needs a person):** unplugging the output while it runs, changing the default device, and a long looping Listen with a tempo ramp (looping is a session-only checkbox on the Score tab, not scriptable from here).
+- **Needed a person, now done:** unplugging the output while it runs, changing the default device, and a long looping Listen with a tempo ramp (looping is a session-only checkbox on the Score tab, not scriptable from here). Results below, in "The checks that need a person".
 - A measurement note: a metric of "deviation from the ideal 62.5 ms grid" is confounded by the sound card's effects (each tone is delayed differently); the fold (spread per place) and the click spacing are the sound ones.
 
-### The checks that need a person (read from the code on 2026-10-30, not yet tried)
+### The checks that need a person (tried by the owner, 2026-10-30)
 
 What the code does in each case (`src/audio/backend.rs`, `src/app/audio_output.rs`, and cpal 0.17.1's WASAPI backend):
 
 - **Unplugging the output the stream is on.** The render thread gets `AUDCLNT_E_DEVICE_INVALIDATED`, calls the error callback once (`DeviceNotAvailable`) and ends. The engine sets `failed` and logs "Sound output problem: ...", which `show_sound_errors` puts in the error bar. The sound stops. The next start (`ensure_audio`) drops the dead engine and opens the default (a named output that is gone gives "was not found; using the system default").
-- **Changing the Windows default output while the program runs.** The stream is bound to the endpoint it opened, and Windows does not invalidate a stream when only the default moves, so **no error is raised, `has_failed` stays false and `AudioOutput::ensure` keeps the old engine: the sound probably stays on the old output until the program is restarted or the output is changed in Settings → Sound.** That is a prediction from the code. If the check confirms it, `ensure` should also reopen when the setting is "System default" and the default output's name is not `Engine::device()` (a small change with a test).
+- **Changing the Windows default output while the program runs.** The stream is bound to the endpoint it opened, and Windows does not invalidate a stream when only the default moves, so **no error is raised, `has_failed` stays false and `AudioOutput::ensure` keeps the old engine: the sound probably stays on the old output until the program is restarted or the output is changed in Settings → Sound.** That was a prediction from the code, and **check 3 confirmed it** (see the sheet). Fixed: `AudioOutput::ensure` now also reopens when the setting is "System default" and the default output's name is not `Engine::device()` (`must_reopen`, tested as a pure function; the default is read at each start, not while something plays, so a Listen that is running stays on the output it began on).
 - **A long looping Listen with a ramp.** Nothing special in the engine; it shows whether the counters stay at zero over many passes while the tempo changes at each pass boundary (the first cue of a looped pass was the bug the soak found).
 
 Procedure and results sheet (fill in; write "not tried" rather than leaving it blank):
 
 | # | Do | Expect | Result |
 |---|---|---|---|
-| 1 | Listen on the sample score with *loop* on. Unplug the output that plays (the USB interface, or the headphones). | The sound stops, the error bar says "Sound output problem", the program stays responsive. | |
-| 2 | Plug it back. Stop and start Listen. | Sound again on the right output; Settings → Sound shows "Open: ..." with that device. | |
-| 3 | With "System default" chosen, start Listen, then change the default output in Windows (Settings → System → Sound) while it plays. Stop and start Listen. | Prediction: the sound stays on the old output, Settings → Sound still names the old device. Wanted: the new start opens the new default. | |
-| 4 | Choose a named output in Settings → Sound, unplug it, start Listen. | The "was not found; using the system default" message, sound on the default. | |
-| 5 | Listen with *loop* on and the ramp (*ramp +*, *every* next to it) set to climb for 10 minutes or more. | Steady click and drums; Settings → Sound shows no "too late" line afterwards. | |
+| 1 | Listen on the sample score with *loop* on. Unplug the output that plays (the USB interface, or the headphones). | The sound stops, the error bar says "Sound output problem", the program stays responsive. | As expected (owner, 2026-10-30). |
+| 2 | Plug it back. Stop and start Listen. | Sound again on the right output; Settings → Sound shows "Open: ..." with that device. | As expected (owner, 2026-10-30). |
+| 3 | With "System default" chosen, start Listen, then change the default output in Windows (Settings → System → Sound) while it plays. Stop and start Listen. | Prediction: the sound stays on the old output, Settings → Sound still names the old device. Wanted: the new start opens the new default. | **Prediction confirmed (owner, 2026-10-30): the sound stayed on the old output.** Fixed in code (`must_reopen`); **to be tried again with the fixed build, not yet done.** |
+| 4 | Choose a named output in Settings → Sound, unplug it, start Listen. | The "was not found; using the system default" message, sound on the default. | As expected (owner, 2026-10-30). |
+| 5 | Listen with *loop* on and the ramp (*ramp +*, *every* next to it) set to climb for 10 minutes or more. | Steady click and drums; Settings → Sound shows no "too late" line afterwards. | No late sounds at a tempo of 300 % (owner's report, 2026-10-30; the length of the run was not recorded). |
 
 ## Estimated latency gain (2026-10-30)
 
