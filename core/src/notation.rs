@@ -179,6 +179,61 @@ fn tuplet_of(onsets: &[Onset], start: f64) -> Option<u8> {
     }
 }
 
+/// How a rest is written.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum RestKind {
+    Whole,
+    Half,
+    Quarter,
+    /// 1 flag: an eighth rest; 2: a sixteenth; 3: a thirty-second.
+    Flagged(u8),
+}
+
+/// One rest sign: where it starts, what it looks like and whether it has a dot. A rest for the
+/// whole bar is a single whole rest in the middle of the bar (`bar`).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct RestGlyph {
+    pub q: f64,
+    pub kind: RestKind,
+    pub dotted: bool,
+    pub bar: bool,
+}
+
+/// The signs a rest is written with: one for a plain, dotted or triplet length, else the longest
+/// that fit one after another.
+pub fn rest_glyphs(rest: &crate::score::Rest) -> Vec<RestGlyph> {
+    const VALUES: [(f64, RestKind); 6] = [
+        (4.0, RestKind::Whole),
+        (2.0, RestKind::Half),
+        (1.0, RestKind::Quarter),
+        (0.5, RestKind::Flagged(1)),
+        (0.25, RestKind::Flagged(2)),
+        (0.125, RestKind::Flagged(3)),
+    ];
+    if rest.whole_bar {
+        return vec![RestGlyph { q: rest.q, kind: RestKind::Whole, dotted: false, bar: true }];
+    }
+    let near = |a: f64, b: f64| (a - b).abs() < 1e-3;
+    // One sign: its own length, with a dot, or in a tuplet (two thirds of it).
+    for (len, kind) in VALUES {
+        for (factor, dotted) in [(1.0, false), (1.5, true), (2.0 / 3.0, false)] {
+            if near(rest.dur_q, len * factor) {
+                return vec![RestGlyph { q: rest.q, kind, dotted, bar: false }];
+            }
+        }
+    }
+    let (mut q, mut left) = (rest.q, rest.dur_q);
+    let mut out = Vec::new();
+    for (len, kind) in VALUES {
+        while left >= len - 1e-3 {
+            out.push(RestGlyph { q, kind, dotted: false, bar: false });
+            q += len;
+            left -= len;
+        }
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -284,5 +339,21 @@ mod tests {
         // Notes at 2.0 and 2.5 are in the second bar (starts at 2.0) and beam together.
         assert!(n.beams.iter().any(|b| b.measure == 1 && b.onsets.len() == 2));
         assert_eq!(analyse(&Score::default()), Notation::default());
+    }
+
+    #[test]
+    fn a_rest_is_written_with_one_sign_when_it_can_be() {
+        use crate::score::Rest;
+        let rest = |dur_q: f64, whole_bar: bool| Rest { measure: 0, q: 1.0, dur_q, up: true, whole_bar };
+        let kinds = |r: &Rest| rest_glyphs(r).iter().map(|g| (g.kind, g.dotted)).collect::<Vec<_>>();
+        assert_eq!(kinds(&rest(1.0, false)), vec![(RestKind::Quarter, false)]);
+        assert_eq!(kinds(&rest(1.5, false)), vec![(RestKind::Quarter, true)]);
+        assert_eq!(kinds(&rest(1.0 / 3.0, false)), vec![(RestKind::Flagged(1), false)], "an eighth triplet");
+        assert_eq!(kinds(&rest(0.25, false)), vec![(RestKind::Flagged(2), false)]);
+        // 1.25 quarters: a quarter, then a sixteenth, one after the other.
+        let g = rest_glyphs(&rest(1.25, false));
+        assert_eq!((g.len(), g[0].kind, g[1].kind, g[1].q), (2, RestKind::Quarter, RestKind::Flagged(2), 2.0));
+        let bar = rest_glyphs(&rest(3.0, true));
+        assert_eq!((bar.len(), bar[0].kind, bar[0].bar), (1, RestKind::Whole, true));
     }
 }

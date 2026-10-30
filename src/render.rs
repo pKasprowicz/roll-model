@@ -6,7 +6,7 @@ use egui::{pos2, vec2, Align2, Color32, FontId, Painter, Pos2, Rect, Sense, Shap
 
 use crate::analysis::Grade;
 use crate::drums::{Lane, NoteHead};
-use crate::notation::{self, Beam, Notation};
+use crate::notation::{self, Beam, Notation, RestGlyph, RestKind};
 use crate::score::{Hand, Score, ScoreNote};
 
 const LS: f32 = 8.0; // staff line spacing
@@ -466,6 +466,38 @@ impl Canvas<'_> {
         p.text(pos2(x, y), Align2::CENTER_CENTER, letter, FontId::proportional(size), color);
     }
 
+    /// A rest sign at `x`; `y` is the line it hangs from or sits on (the middle of a quarter rest).
+    fn rest(&self, x: f32, y: f32, glyph: &RestGlyph, color: Color32) {
+        let p = self.painter;
+        let stroke = Stroke::new(1.8_f32, color);
+        match glyph.kind {
+            RestKind::Whole => {
+                p.rect_filled(Rect::from_min_max(pos2(x - 5.0, y), pos2(x + 5.0, y + 3.5)), 0.0, color);
+            }
+            RestKind::Half => {
+                p.rect_filled(Rect::from_min_max(pos2(x - 5.0, y - 3.5), pos2(x + 5.0, y)), 0.0, color);
+            }
+            RestKind::Quarter => {
+                let zigzag = vec![pos2(x + 1.0, y - 8.0), pos2(x - 2.5, y - 3.5), pos2(x + 2.0, y + 0.5), pos2(x - 2.0, y + 4.5), pos2(x + 1.5, y + 8.0)];
+                p.add(Shape::line(zigzag, stroke));
+            }
+            RestKind::Flagged(n) => {
+                // One dot per flag down a slanted stem.
+                let top = y - 5.0;
+                let n = f32::from(n);
+                let bottom = top + 4.0 * n + 5.0;
+                p.line_segment([pos2(x + 2.5, top), pos2(x - 1.5 - 1.2 * (n - 1.0), bottom)], Stroke::new(1.4_f32, color));
+                for k in 0..n as u32 {
+                    let k = k as f32;
+                    p.circle_filled(pos2(x - 1.0 - 1.2 * k, top + 4.0 * k + 1.5), 1.8, color);
+                }
+            }
+        }
+        if glyph.dotted {
+            p.circle_filled(pos2(x + 8.0, y - 2.0), 1.2, color);
+        }
+    }
+
     /// The beams of a group of stems, level at `tip`; further beams go towards the heads. A beam
     /// that only one note has is a stub, to the right for the first note and to the left for the others.
     fn beam(&self, beam: &Beam, xs: &[f32], tip: f32, color: Color32) {
@@ -565,6 +597,11 @@ struct Frame<'a> {
     stem_tips: Vec<Option<f32>>,
     beams_by_measure: Vec<Vec<usize>>,
     tuplets_by_measure: Vec<Vec<usize>>,
+    /// The rest signs of each measure, with whether they are the hands' (stems up).
+    rests_by_measure: Vec<Vec<(bool, RestGlyph)>>,
+    /// Whether the score has notes with stems up and with stems down, so that rests go to the
+    /// upper or lower half of the staff; else they stand in the middle.
+    two_voices: bool,
 }
 
 impl Frame<'_> {
@@ -669,6 +706,13 @@ pub fn show(ui: &mut Ui, view: &ScoreView) -> ViewOutput {
     let stem_tips = stem_tips(score, &notation);
     let beams_by_measure = indexed_by_measure(score, notation.beams.iter().map(|b| b.measure));
     let tuplets_by_measure = indexed_by_measure(score, notation.tuplets.iter().map(|t| t.measure));
+    let mut rests_by_measure = vec![Vec::new(); score.measures.len()];
+    for r in &score.rests {
+        if let Some(slot) = rests_by_measure.get_mut(r.measure) {
+            slot.extend(notation::rest_glyphs(r).into_iter().map(|g| (r.up, g)));
+        }
+    }
+    let two_voices = score.notes.iter().any(|n| n.stem_is_up()) && score.notes.iter().any(|n| !n.stem_is_up());
     let frame = Frame {
         view,
         lay: &lay,
@@ -688,6 +732,8 @@ pub fn show(ui: &mut Ui, view: &ScoreView) -> ViewOutput {
         stem_tips,
         beams_by_measure,
         tuplets_by_measure,
+        rests_by_measure,
+        two_voices,
     };
     let clip = painter.clip_rect();
     let mut hover_text: Option<String> = None;
@@ -755,6 +801,7 @@ fn draw_system(f: &Frame, rows: &Rows, bars: (usize, usize), hover_text: &mut Op
         for &ni in &f.notes_by_measure[mi] {
             draw_score_note(f, rows, mi, ni);
         }
+        draw_rests(f, rows, mi);
         for &bi in &f.beams_by_measure[mi] {
             draw_beam(f, rows, &f.notation.beams[bi]);
         }
@@ -814,6 +861,21 @@ fn draw_score_note(f: &Frame, rows: &Rows, mi: usize, ni: usize) {
     let col = view.grades.get(ni).copied().flatten().map(|g| grade_color(g, cv.text)).unwrap_or(cv.text);
     let end = StemEnd { tip: f.stem_tips[ni].map(|t| rows.exp_bot + t), flags: f.notation.flags[ni] };
     cv.written_note(n, x, rows.exp_bot, rows.y0 + 28.0, Ink { note: col, hand: cv.text, hand_dy: 18.0 }, end);
+}
+
+/// The rests of measure `mi` on the expected staff: those of the hands high and those of the feet
+/// low when the score has both, else in the middle.
+fn draw_rests(f: &Frame, rows: &Rows, mi: usize) {
+    let mp = &f.lay.measures[mi];
+    for (up, g) in &f.rests_by_measure[mi] {
+        let step = match (f.two_voices, up) {
+            (false, _) => 4,
+            (true, true) => 6,
+            (true, false) => 2,
+        };
+        let x = if g.bar { f.origin.x + mp.x0 + mp.w / 2.0 } else { f.x_of(mi, g.q) };
+        f.cv.rest(x, y_of(step, rows.exp_bot), g, f.cv.weak);
+    }
 }
 
 /// The beams over a group of stems (the stems are drawn with their notes, up to the beam).
