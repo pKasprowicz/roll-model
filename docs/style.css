@@ -94,3 +94,7 @@ dl.api dd { margin-left: 1.2rem; }
 table.compact td, table.compact th { padding: .25rem .5rem; font-size: .9rem; }
 .pill { display: inline-block; padding: 0 .55em; border-radius: 999px; background: var(--accent-soft); color: var(--accent); font-size: .8rem; font-weight: 600; }
 .pill.easy { background: var(--tip-bg); color: var(--good); } .pill.hard { background: var(--warn-bg); color: var(--amber); }
+a.gl { color: inherit; text-decoration: underline dotted; text-underline-offset: 3px; }
+a.gl:hover { color: var(--accent); }
+dl.gloss dt { font-weight: 700; margin-top: .9rem; }
+dl.gloss dd { margin-left: 1.2rem; }
