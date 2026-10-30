@@ -220,6 +220,29 @@ impl Layout {
         let mp = &self.measures[mi];
         mp.x0 + mp.pad + ((q - score.measures[mi].start_q) as f32) * mp.px_per_q
     }
+
+    /// Where the playhead is at `q` in measure `mi`. It is where a note at `q` is drawn, except
+    /// at the end of a bar that is followed by another in the same row: a bar has a padding
+    /// at both ends, so the first note of the next bar is two paddings further on than the end
+    /// of this one. Instead of jumping over them at the barline, the playhead speeds up during
+    /// the last stretch of the bar (about two paddings long) and arrives at that note on time.
+    fn playhead_x(&self, score: &Score, mi: usize, q: f64, next_in_row: bool) -> f32 {
+        let aligned = self.x_of(score, mi, q);
+        if !next_in_row {
+            return aligned;
+        }
+        let (mp, m) = (&self.measures[mi], &score.measures[mi]);
+        // The stretch, in quarters; never more than a quarter of the bar.
+        let stretch = ((2.0 * mp.pad / mp.px_per_q) as f64).min(m.len_q / 4.0).max(1e-6);
+        let from_q = m.end_q() - stretch;
+        if q <= from_q {
+            return aligned;
+        }
+        let start = self.x_of(score, mi, from_q);
+        let arrival = self.measures[mi + 1].x0 + self.measures[mi + 1].pad;
+        let t = ((q - from_q) / stretch).clamp(0.0, 1.0) as f32;
+        start + t * (arrival - start)
+    }
 }
 
 fn y_of(step: i32, staff_bottom: f32) -> f32 {
@@ -625,7 +648,7 @@ fn draw_system(f: &Frame, rows: &Rows, bars: (usize, usize), hover_text: &mut Op
     if let Some(q) = view.playhead_q {
         if let Some(mi) = view.score.measure_at(q.max(0.0)) {
             if mi >= a && mi < b && q >= 0.0 {
-                let x = f.x_of(mi, q);
+                let x = f.origin.x + lay.playhead_x(view.score, mi, q, mi + 1 < b);
                 painter.line_segment([pos2(x, rows.y0 + 12.0), pos2(x, rows.vel_base + 2.0)], Stroke::new(2.0_f32, ACCENT));
             }
         }
@@ -729,6 +752,33 @@ mod tests {
 
     fn width_of(lay: &Layout, bar: usize) -> f32 {
         lay.measures[bar].w
+    }
+
+    #[test]
+    fn the_playhead_crosses_a_barline_without_a_jump() {
+        let score = score_of(&[4.0, 4.0, 4.0]);
+        let lay = layout(&score, W, 1.0, FIXED(0, 0));
+        assert_eq!(lay.systems, vec![(0, 3)], "one row");
+        let x = |mi: usize, q: f64, next: bool| lay.playhead_x(&score, mi, q, next);
+        // In most of the bar it is where the notes are drawn.
+        assert_eq!(x(0, 1.0, true), lay.x_of(&score, 0, 1.0));
+        // At the end of the bar it has arrived where the next bar's first note is.
+        let arrival = lay.x_of(&score, 1, 4.0);
+        assert!((x(0, 4.0 - 1e-9, true) - arrival).abs() < 0.01, "{} {arrival}", x(0, 4.0 - 1e-9, true));
+        // And it never goes backwards, or further than a few pixels per step.
+        let mut last = x(0, 0.0, true);
+        let mut biggest = 0.0f32;
+        let mut q = 0.0;
+        while q < 3.99 {
+            q += 0.01;
+            let now = x(0, q, true);
+            assert!(now >= last - 1e-4, "moved back at {q}");
+            biggest = biggest.max(now - last);
+            last = now;
+        }
+        assert!(biggest < 1.5, "the biggest step is {biggest} px for 0.01 of a quarter");
+        // The last bar of a row (or of the score) has no next bar to arrive at.
+        assert_eq!(x(2, 3.99, false), lay.x_of(&score, 2, 3.99));
     }
 
     #[test]

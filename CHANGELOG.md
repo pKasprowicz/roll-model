@@ -6,6 +6,9 @@ All notable changes are recorded here. The format follows [Keep a Changelog](htt
 
 ## [Unreleased]
 
+### Fixed
+- **The playhead of the score no longer jumps over a barline**: each bar has a padding at both ends, so the first note of the next bar is about 24 pixels further on than the end of the bar before; the playhead used to cover that distance in one step at the barline. It now speeds up during the last stretch of the bar and arrives at the next bar's first note on time. (Only where the next bar is in the same row.)
+
 ### Added
 - **The Manage window can find out how an endless encoder counts**: *Detect* next to the kind of a value (turn the encoder four clicks to the right, then four to the left) chooses *mackie*, *twos*, *offset* or *signbit2* by itself, or says that it could not tell.
 - **Lights and rings can be added and edited in the Manage window**: the new *Lights and rings* section lists the actions that have a control; *Add light* / *Add ring* put one on that control, and the note or cc number and the on/off values can be changed (colours of a pad, for example).
