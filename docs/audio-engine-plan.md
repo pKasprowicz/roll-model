@@ -1,6 +1,6 @@
 # Audio engine rework: plan
 
-Status: **proposed, nothing implemented** (2026-10-30). Tasks AUD-1 to AUD-9 in `HANDOFF.md`.
+Status: **proposed; only the measurement (AUD-1) is done** (2026-10-30). Tasks AUD-1 to AUD-9 in `HANDOFF.md`.
 
 Origin: a handover note ("low-latency audio rework", written the same day from a read of the repository on GitHub, nothing compiled or measured). This plan checks that note against the source and corrects it. All latency figures are typical values, not measurements of this app, until AUD-1 has run.
 
@@ -59,11 +59,30 @@ Stage 1 removes the jitter, which is the goal. Stage 2 only lowers constant late
 
 Least impact: the engine is a module of its own (`trigger`, `cancel_run`, `frame_at(Instant)`, latency). The worker threads get an `EngineHandle` through `PlayOptions` and `ClickOptions` in place of `open_audio`; the owner of the stream lives in `DrumApp` (UI thread), is created on first use and rebuilt when `audio_output` changes (as now: "applies the next time sound starts"). Touched: `metronome.rs`, `playback.rs`, the option builders in `session.rs` and `metro.rs`, the Sound page, `Cargo.toml`. `Metronome` and `Player` stay two threads, `core/` is untouched.
 
+## Baseline (AUD-1, done 2026-10-30)
+
+Measured with `tools/audio_baseline.ps1` (and `examples/audio_probe.rs`): the release build of 0.7.3 (rodio 0.19, cpal 0.15.3) with the free metronome at 240 BPM in sixteenths (a click every 62.5 ms, a bar of 1000 ms), 30 s recorded by WASAPI loopback on `Speakers (Realtek(R) Audio)`, 48 kHz, Windows 11. Run it again with `-Exe` pointing at another build to compare (AUD-8); it needs a quiet machine (no other sound), a free keyboard focus for about a minute, and no V31.
+
+| | run 1 | run 2 |
+|---|---|---|
+| Sound starts found in a bar | 20 | 20 |
+| Places in the bar that stay put (spread under 1.1 ms) | 15 | 17 |
+| Places that jump between two positions | 5 | 3 |
+| Size of the jump | **10.02 ms** | **10.02 ms** |
+| Pooled standard deviation of the onsets | 1.09 ms | 0.72 ms |
+
+The jump of exactly 10 ms is one callback period of the WASAPI shared engine: a click whose time falls near a callback boundary is played in the one before or the one after, which is finding 1 measured. The places that "stay put" are not exact either: they sit in the same callback every time, so the clicks come 60 and 70 ms apart instead of 62.5 ms (the places are at 880, 940, 1000, 1060, 1130 ms ... in the bar). The fold in `audio_probe` removes that fixed error, so **the standard deviation understates the problem**; after AUD-6 the places should lie exactly 62.5 ms apart and none should jump.
+
+What the tool does and does not see:
+- Loopback records the mix before the driver: it measures the callback timing, not the hardware latency.
+- The sound card's effects change a click (the attack is a ramp, the 30 ms burst ends with a pop and rings on), so one click yields two sound starts in the recording; they move together, so the fold is not disturbed, but the report lists twenty places instead of sixteen.
+- The default output of this machine was a Bluetooth headset until it was switched off; the measurement is the same, but the delay to the ears there is 100-200 ms and more.
+
 ## Steps
 
 | ID | Step | Needs |
 |---|---|---|
-| **AUD-1** | Baseline, no app change: run the sample at 240 BPM on the Metronome tab (or Listen), capture the output with a WASAPI loopback recorder (Audacity) and measure the onset jitter with a new `tools/audio_jitter.py` (standard library only: finds the click onsets in a WAV and fits a perfect grid; the residual is the jitter). The released v0.7.3 is the baseline. Add the procedure to `docs/hardware-test-plan.md`. Also note in the README and manual that sending the click to the V31 over MIDI avoids computer-audio latency. | device |
+| **AUD-1** | **Done (2026-10-30).** Baseline, no app change: `tools/audio_baseline.ps1` runs the release build with its own settings folder, records the output by WASAPI loopback and `examples/audio_probe.rs` lays the sound starts over one bar and reports the jitter (results above). Needs a Windows machine with an output device and no other sound, not a V31. The README and the manual already say that sending the click to the V31 over MIDI avoids computer-audio latency. | machine |
 | **AUD-2** | Pure mixer `src/audio/mixer.rs` (no cpal): voice pool, pending list, choke groups, fade, run IDs and `CancelRun`, mono to N channels, sample-format conversion; fixed capacities and no allocation in `render`. Offline tests: onset at the exact frame, mid-block start, choke fade, pool and pending exhaustion with counters, cancel, no allocation. Port the offline mix tests of `playback/tests.rs`. | code |
 | **AUD-3** | Clock and handle: shared counters (`frames`, `rate`, `latency_frames`, `overruns`), the smoothed `Instant <-> frame` estimator built on cpal's device-clock callback timestamps (tested on synthetic jittery times), `EngineHandle` (`Mutex<Producer>`) with `trigger(run, instant, sample, gain, group)`, `cancel_run`, `frame_at`. The stream owner stays on the UI thread. | code |
 | **AUD-4** | cpal backend on **cpal 0.18** (rodio is going, so the upgrade is free; check the API changes since 0.15): open by device name with the existing fallback messages, errors to `ErrorLog`, reopen on the next start after a device loss, variable block sizes, `I16`/`U16` output; try opening the device at 44.1 kHz and letting Windows resample (decides AUD-5); keep the `audio` feature with a no-sound stub. No buffer-size setting. | code, device |

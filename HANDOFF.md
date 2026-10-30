@@ -104,7 +104,7 @@ The hardware tasks (HW-*) have a step-by-step plan in `docs/hardware-test-plan.m
 | **CD-28** | Split `app/controls.rs` (1,198 lines) | code |
 | **CD-29** | Drawing helpers as methods of `Canvas` | code |
 | **CD-21** to **CD-25** | Polish suggestions (see the review) | code |
-| **AUD-1** [#38](https://github.com/pKasprowicz/roll-model/issues/38) | Baseline: measure the onset jitter of the current output with a loopback recording and `tools/audio_jitter.py` | device |
+| **AUD-1** [#38](https://github.com/pKasprowicz/roll-model/issues/38) | Baseline: the onset jitter of the current output, by loopback recording (`tools/audio_baseline.ps1`, `examples/audio_probe.rs`); **done**, see the plan | machine |
 | **AUD-2** [#39](https://github.com/pKasprowicz/roll-model/issues/39) | Pure audio mixer with offline tests | code |
 | **AUD-3** [#40](https://github.com/pKasprowicz/roll-model/issues/40) | Audio clock (`Instant` to frame) and engine handle | code |
 | **AUD-4** [#41](https://github.com/pKasprowicz/roll-model/issues/41) | cpal 0.18 backend for the engine | code, device |
@@ -168,7 +168,7 @@ The Rudiments tab sits between Score and Metronome. `docs/rudiments.md` is the c
 
 ### Audio engine (proposed, 2026-10-30)
 
-[`docs/audio-engine-plan.md`](docs/audio-engine-plan.md) holds the plan: one persistent output stream on cpal (rodio removed) with sample-accurate triggers against a frame clock, so the onset jitter caused by the callback period goes away (and about 5 ms of mean latency with it); a low-latency shared-mode backend is a later, optional step; WASAPI shared mode only (exclusive mode and ASIO are out of scope by the owner's decision). Tasks **AUD-1** to **AUD-9**, in that order; AUD-1 (a baseline measurement) comes before any code. Nothing is implemented. AUD-6 touches the timing threads next to **CD-5**: it swaps their audio output only.
+[`docs/audio-engine-plan.md`](docs/audio-engine-plan.md) holds the plan: one persistent output stream on cpal (rodio removed) with sample-accurate triggers against a frame clock, so the onset jitter caused by the callback period goes away (and about 5 ms of mean latency with it); a low-latency shared-mode backend is a later, optional step; WASAPI shared mode only (exclusive mode and ASIO are out of scope by the owner's decision). Tasks **AUD-1** to **AUD-9**, in that order; AUD-1 (a baseline measurement) comes before any code. Only the measurement tooling exists (`tools/audio_baseline.ps1`, `examples/audio_probe.rs`; AUD-1 is done, its numbers are in the plan); the engine is not started. AUD-6 touches the timing threads next to **CD-5**: it swaps their audio output only.
 
 ### User manual
 

@@ -1,8 +1,8 @@
 # Measures the onset jitter of the program's sound output (tasks AUD-1 and AUD-8).
 #
 # Runs the release build with a settings folder of its own (your settings are not touched), starts
-# the free metronome at 240 BPM in sixteenths (a click every 62.5 ms), records what the default
-# output device plays (WASAPI loopback) and prints how far the clicks fall from a perfect grid.
+# the free metronome at 240 BPM in sixteenths (a click every 62.5 ms, a bar of 1000 ms), records what the default
+# output device plays (WASAPI loopback) and prints how far each click wanders from its usual place in the bar.
 # The window takes the keyboard focus for about a minute; do not type meanwhile. Close other
 # programs that make sound.
 #
@@ -35,8 +35,17 @@ New-Item -ItemType Directory -Force (Join-Path $appdata "RollModel") | Out-Null
 
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -Namespace Win -Name User32 -MemberDefinition @'
-[System.Runtime.InteropServices.DllImport("user32.dll")] public static extern bool SetForegroundWindow(System.IntPtr h);
+[System.Runtime.InteropServices.DllImport("user32.dll")] public static extern System.IntPtr GetForegroundWindow();
+[System.Runtime.InteropServices.DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(System.IntPtr h, out uint pid);
 '@
+
+# Keys go to the foreground window, so they are sent only while that is the program itself.
+function Send-ToApp($keys) {
+    $p = [uint32]0
+    [void][Win.User32]::GetWindowThreadProcessId([Win.User32]::GetForegroundWindow(), [ref]$p)
+    if ($p -ne $app.Id) { throw "the program is not the foreground window (something else took the focus); nothing was sent" }
+    [System.Windows.Forms.SendKeys]::SendWait($keys)
+}
 
 $saved = $env:APPDATA
 $env:APPDATA = $appdata
@@ -47,23 +56,20 @@ try {
     $deadline = (Get-Date).AddSeconds(30)
     while ($app.MainWindowHandle -eq 0 -and (Get-Date) -lt $deadline) { Start-Sleep -Milliseconds 200; $app.Refresh() }
     if ($app.MainWindowHandle -eq 0) { throw "the program's window did not appear" }
-    Start-Sleep -Seconds 3
-    [void][Win.User32]::SetForegroundWindow($app.MainWindowHandle)
-    Start-Sleep -Milliseconds 500
-    [System.Windows.Forms.SendKeys]::SendWait("{ENTER}")   # closes the splash
-    Start-Sleep -Seconds 1
-    [void][Win.User32]::SetForegroundWindow($app.MainWindowHandle)
-    [System.Windows.Forms.SendKeys]::SendWait("m")         # starts the metronome
+    Start-Sleep -Seconds 4                                 # the steps are done and the splash has the focus
+    Send-ToApp "{ENTER}"                                   # closes the splash
+    Start-Sleep -Seconds 1.5
+    Send-ToApp "m"                                         # starts the metronome
     Start-Sleep -Seconds 4                                 # the device is open, the clicks are steady
 
     & $Probe record $wav $Seconds
     if ($LASTEXITCODE -ne 0) { throw "recording failed" }
 
-    [void][Win.User32]::SetForegroundWindow($app.MainWindowHandle)
-    [System.Windows.Forms.SendKeys]::SendWait("{ESC}")
+    Send-ToApp "{ESC}"
 } finally {
     if (-not $app.HasExited) { [void]$app.CloseMainWindow(); Start-Sleep -Seconds 1 }
     if (-not $app.HasExited) { $app.Kill() }
 }
 
-& $Probe analyze $wav 62.5
+# One bar is 4 beats of 250 ms; the pattern repeats exactly every bar.
+& $Probe analyze $wav 1000
