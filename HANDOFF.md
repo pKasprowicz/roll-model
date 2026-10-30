@@ -12,7 +12,7 @@ A Rust desktop app that:
 2. captures MIDI from a **Roland V31** drum module and draws the hits as notes directly under the score notes, on the same time axis;
 3. compares the captured hits with the score and grades the drummer.
 
-All three are implemented. User-facing documentation is in `README.md`. A fourth part, the **Rudiments** tab (the 40 PAS rudiments practised like a score), is released too (0.6.0). Since 0.6.0 (now 0.7.0): the start-up splash, the start trigger, controller help pictures, generic MIDI controllers and the Manage window; see `CHANGELOG.md`.
+All three are implemented. User-facing documentation is in `README.md`. A fourth part, the **Rudiments** tab (the 40 PAS rudiments practised like a score), is released too (0.6.0). Since 0.6.0 (now 0.7.2): the start-up splash, the start trigger, controller help pictures, generic MIDI controllers and the Manage window (0.7.0); the count-in switch of Listen, the shortcut fix and the `roll-model-core` crate (0.7.1); layers, lights and rings, Detect, the tempo ramp, per-score layouts and the playhead fix (0.7.2). On `develop`, not released yet: beams, flags, tuplet brackets and rests on the Score tab, the row break after a pause, and the greyed-out zoom slider; see `CHANGELOG.md`.
 
 ## Status: builds, tests pass, UI smoke-tested; V31 never connected
 
@@ -22,7 +22,7 @@ First real build and smoke test done on 2026-10-24 (Windows 11, `x86_64-pc-windo
 
 | Part | Verified how | Confidence |
 |---|---|---|
-| `xml.rs`, `drums.rs`, `score.rs`, `musicxml.rs`, `analysis.rs`, `config.rs` | Unit tests (201 in the whole crate at 0.7.0) | High |
+| `xml.rs`, `drums.rs`, `score.rs`, `musicxml.rs`, `notation.rs`, `analysis.rs`, `config.rs` | Unit tests (231 in all on `develop`: 119 in the app crate, 109 in `core/`, 3 integration tests) | High |
 | `app.rs`, `render.rs`, `loader.rs`, `main.rs` | Ran the app: sample loads, both staves line up, take lifecycle (count-in, record, auto-stop), per-note colours, Results and Settings tabs, error banner | Medium-high |
 | Keyboard pads (`app.rs::keyboard_pads`) | Scripted take with synthetic key presses: 20 perfect / 12 good / 1 ok / 11 missed / 1 extra as expected | Medium (frame-time stamps, see below) |
 | `midi.rs` | Compiles. The test machine had no MIDI ports, so capture and port selection were not exercised | Low |
@@ -188,6 +188,7 @@ Checked on 2026-10-30, while the repository was still private. Every commit and 
 - [ ] **FEAT-2** ([#32](https://github.com/pKasprowicz/roll-model/issues/32)) Accent patterns and tap tempo for the free metronome.
 - [x] **FEAT-3** Remember the layout per score. **Done**: `Config.layouts` (`RowLayout`, `layout` lines in the settings file, 30 scores, keyed by the absolute path); `restore_layout` on opening and `keep_layout` when a Layout slider changes. The zoom is not per score.
 - [x] **FEAT-4** A Listen without count-in setting of its own. **Done**: `listen_count_in` and the *in Listen* box.
+- [x] **FEAT-5** A bar that ends with a pause ends its row. **Done**, on `develop`: `notation::pause_bars` (a rest runs to the barline and no note in any voice starts during it; a run of empty bars counts once, at its last bar), `LayoutOpts.break_at_pause` and `render::fixed_rows`, setting `break_at_pause` (on by default) and the *new row after a pause* box in the Layout menu. The break wins over *bars per row*: a pause starts a row and the bars after it are counted from there; *start a row at bar* applies to the part of the score it falls in. The zoom slider is greyed out while *bars per row* is fixed (the bars fill the width then). Looked at with a real score.
 - The click is implemented twice (a sine blip in `metronome::click_audio`, used by takes and by the player) and `Metronome` (takes, calibration) and `Player` (Listen, metronome tab) are two threads with separate loops; this is task **CD-5** below.
 - [x] **UI-3** Shortcuts (`R`, `L`, `K`, `M`, keyboard pads) were ignored while a widget had keyboard focus. **Done**: `widgets::typing(ctx)` is true only when the focused widget is a text edit (a slider's value box is one), and the shortcuts use it instead of `wants_keyboard_input()`; tested headlessly. Not tried with a real keyboard.
 
@@ -287,7 +288,8 @@ render.rs      Draws score staff + "You" staff per system; layout, hit-testing
 loader.rs      Read .musicxml/.xml (UTF-8/16) and .mxl (zip)
 musicxml.rs    MusicXML -> Score; repeats/voltas unrolled in playback_order()
 xml.rs         Dependency-free XML DOM parser
-score.rs       Score, Measure, ScoreNote, TempoMap (q <-> seconds)
+score.rs       Score, Measure, ScoreNote, Rest, TempoMap (q <-> seconds)
+notation.rs    What a printed page shows that the score does not store: `analyse` (beams, flags, tuplets from the onsets), `rest_glyphs` (how a rest is written), `pause_bars` (bars that end with a pause, for the row break)
 drums.rs       Lane enum, GM + Roland note maps, staff positions, name heuristics
 analysis.rs    expected_notes(), analyze() -> Report (matching + metrics + feedback)
 midi.rs        midir input (callback -> Arc<Mutex<Vec<RawEvent>>>) and output; `connect_controller` for the control surface (raw messages in a queue, lights out)
@@ -347,7 +349,7 @@ config.rs      key = value settings file, auto-saved when Config changes
 
 - **V31 note map is unverified.** It is the common Roland V-Drums factory map (kick 36, snare 38/40, x-stick 37, toms 48/50 45/47 43/58 41/39, HH 42/22 closed 46/26 open 44 pedal, crash 49/55 57/52, ride 51/59 bell 53). The V31's documentation wasn't found. MIDI-learn exists in Settings.
 - **Hi-hat.** CC#4 is attached to each hit (`RawEvent.hihat`) and `Lane::by_hihat_pedal` turns a 42/46 hit into closed (pedal >= 3/4 of `Config::hihat_cc_max`) or open; never tried with a real module. Half-open is not a separate state, and the pedal polarity (127 = closed) is the Roland convention, unverified on the V31.
-- **Notation.** Proportional spacing, noteheads and stems only; no beams, flags, rests or tuplet brackets. Fine for timing feedback, not a full engraver.
+- **Notation.** Proportional spacing, noteheads, stems, beams, flags, tuplet brackets and the rests a MusicXML file prints (`core/src/notation.rs` works the first three out from where the notes fall in the beat, since the score keeps no note lengths). Not drawn: ties, beams on the Metronome tab's rolling staff, rests in program-made scores (rudiments), and anything above a single voice pair (hands up, feet down). Fine for timing feedback, not a full engraver.
 - **MusicXML coverage.** D.S./D.C./coda jumps are not followed. `score-timewise` is rejected. With several parts, only the first drum-looking part is used.
 - **Keyboard test input** is timestamped at frame time (~16 ms jitter in a release build), so it is useful for testing, not for timing judgement. In a debug build the frames are slow enough to make it unreliable: test takes with `cargo run --release`.
 - **Follow mode** calls `scroll_to_rect` every frame while recording, so the user can't scroll manually during a take.
@@ -381,7 +383,8 @@ config.rs      key = value settings file, auto-saved when Config changes
   - the slider helper in a headless egui context (`widgets.rs`): wheel steps, clamping, integer and fractional ranges, disabled sliders, and that the page behind a slider does not scroll;
   - the recent-files list (order, duplicates, limit, round-trip) and the path shortening used by the welcome panel;
   - the playback core against a fake output (`playback.rs`): the click switch (count-in unaffected), notes off, per-instrument gain and mute, output routing, passes and looping, stop, late cues; the metronome bar (`metronome_cues`) and `Control`;
-  - the score layout (`render.rs`): fixed bars per row, the alignment bar, zoom independence, mixed bar lengths, too narrow a window, degenerate scores, every bar in exactly one row;
+  - the score layout (`render.rs`): fixed bars per row, the alignment bar, zoom independence, mixed bar lengths, too narrow a window, degenerate scores, every bar in exactly one row, the row break after a pause (automatic and fixed rows, runs of empty bars);
+  - beams, flags, tuplets, rest signs and pause bars (`notation.rs`) and the parsing of printed and hidden rests with their voices (`musicxml.rs`);
   - the synthesised kit (`synth.rs`): bounded, decaying, deterministic samples, the spectral guard for the cymbals, the WAV loader (bit depths, channels, resampling, bad files) and the kit's fallback to the built-in sound;
   - mixer settings (`Config::effective_gain`, clamping and defaults of the new keys) and the listing of sound outputs.
 - Listening has no automated test of the real outputs. To check them on Windows, play the sample with `cargo run --release` and read the per-application peak meter of the default output device (Core Audio `IAudioSessionManager2` → `IAudioMeterInformation`, e.g. from PowerShell with C# COM interop): the `roll-model` session must stay silent until about 0.5 s after pressing `L` and be silent again after stopping. The device-wide meter also hears every other application, so use the per-application one.
