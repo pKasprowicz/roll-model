@@ -1,6 +1,6 @@
 # Audio engine rework: plan
 
-Status: **proposed; only the measurement (AUD-1) is done** (2026-10-30). Tasks AUD-1 to AUD-9 in `HANDOFF.md`.
+Status: **in progress on `feature/audio_rework`: AUD-1 to AUD-3 are done** (2026-10-30). Tasks AUD-1 to AUD-9 in `HANDOFF.md`.
 
 Origin: a handover note ("low-latency audio rework", written the same day from a read of the repository on GitHub, nothing compiled or measured). This plan checks that note against the source and corrects it. All latency figures are typical values, not measurements of this app, until AUD-1 has run.
 
@@ -83,8 +83,8 @@ What the tool does and does not see:
 | ID | Step | Needs |
 |---|---|---|
 | **AUD-1** | **Done (2026-10-30).** Baseline, no app change: `tools/audio_baseline.ps1` runs the release build with its own settings folder, records the output by WASAPI loopback and `examples/audio_probe.rs` lays the sound starts over one bar and reports the jitter (results above). Needs a Windows machine with an output device and no other sound, not a V31. The README and the manual already say that sending the click to the V31 over MIDI avoids computer-audio latency. | machine |
-| **AUD-2** | Pure mixer `src/audio/mixer.rs` (no cpal): voice pool, pending list, choke groups, fade, run IDs and `CancelRun`, mono to N channels, sample-format conversion; fixed capacities and no allocation in `render`. Offline tests: onset at the exact frame, mid-block start, choke fade, pool and pending exhaustion with counters, cancel, no allocation. Port the offline mix tests of `playback/tests.rs`. | code |
-| **AUD-3** | Clock and handle: shared counters (`frames`, `rate`, `latency_frames`, `overruns`), the smoothed `Instant <-> frame` estimator built on cpal's device-clock callback timestamps (tested on synthetic jittery times), `EngineHandle` (`Mutex<Producer>`) with `trigger(run, instant, sample, gain, group)`, `cancel_run`, `frame_at`. The stream owner stays on the UI thread. | code |
+| **AUD-2** | **Done on `feature/audio_rework`.** Pure mixer `src/audio/mixer.rs` (no cpal): voice pool, pending list, choke groups, fade, run IDs and `CancelRun`, mono to N channels, sample-format conversion; fixed capacities and no allocation in `render`. Offline tests: onset at the exact frame, mid-block start, choke fade, pool and pending exhaustion with counters, cancel, no allocation. Port the offline mix tests of `playback/tests.rs`. | code |
+| **AUD-3** | **Done on `feature/audio_rework`.** Clock and handle: shared counters (`frames`, `rate`, `latency_frames`, `overruns`), the smoothed `Instant <-> frame` estimator built on cpal's device-clock callback timestamps (tested on synthetic jittery times), `EngineHandle` (`Mutex<Producer>`) with `trigger(run, instant, sample, gain, group)`, `cancel_run`, `frame_at`. The stream owner stays on the UI thread. | code |
 | **AUD-4** | cpal backend on **cpal 0.18** (rodio is going, so the upgrade is free; check the API changes since 0.15): open by device name with the existing fallback messages, errors to `ErrorLog`, reopen on the next start after a device loss, variable block sizes, `I16`/`U16` output; try opening the device at 44.1 kHz and letting Windows resample (decides AUD-5); keep the `audio` feature with a no-sound stub. No buffer-size setting. | code, device |
 | **AUD-5** | Rate-aware kit and clicks, **only if AUD-4 shows that Windows cannot resample for us**: `Kit::load(lanes, sounds_dir, rate)` resamples the built-in sounds and WAVs with a proper interpolator (the linear one in `load_wav` is poor for cymbals); clicks generated at the rate; the kit lives in an engine-owned cache so the callback never frees a sample. Otherwise drop the task. | code |
 | **AUD-6** | Switch-over, together with AUD-4: `Sink` gets `when`; `run_with` waits to `target - LOOKAHEAD` and keeps a due-queue for MIDI; `MAX_LATE` becomes an exact frame check; choke groups replace `Voice`, `play_voice` and `Ringing`; takes, calibration, audition and the metronome tab use the engine (this also ends the duplicated click synthesis of CD-5); the audio thread raises its priority from the first callback; drop rodio. `Metronome` and `Player` stay two threads (merging them is CD-5). | code |
@@ -95,6 +95,11 @@ What the tool does and does not see:
 Order: AUD-1; then AUD-2, AUD-3 (and AUD-5 if it is needed) as tested code that nothing calls yet; then AUD-4 with AUD-6 as one switch-over; then AUD-7, AUD-8; AUD-9 last.
 
 Docs to update with AUD-7: the manual (Latency and Sound sections), the developer guide threads section (`tools/build_devguide.py` fails if a shown item moves, so run it), `README.md` (Latency), `HANDOFF.md`.
+
+## Progress notes
+
+- **AUD-2/AUD-3** (`src/audio/mixer.rs`, `clock.rs`, `handle.rs`; nothing calls them yet, `mod audio` carries a temporary `allow(dead_code)` that AUD-6 removes). Choke groups are a bit number plus a mask in the trigger; a full pool or a full waiting list drops the *new* sound and counts it (`Counters`); a sound whose frame has passed starts at the first frame of the block and counts as late. The clock is a minimum filter over the last 128 callbacks of `wall - frame / rate` (`Estimator`), published through `Shared`; `Callback::render(out, channels, wall)` is the whole callback and is tested by simulating callbacks: with callbacks up to 4 ms late, 9 ms stalls and a sound card clock 80 ppm fast or slow, sounds start within 0.16 ms of the frame the program's clock names (the measured baseline jumps by 10 ms).
+- **For AUD-4:** `wall` is whatever the backend reads from `Instant::now()` early in the callback; check whether cpal's `StreamInstant` (device clock) differences make a steadier `frame` side. The estimator needs no change for that, only what is fed to it. The backend also sets `Shared::set_latency_frames` and converts to `i16`/`u16` output if the device does not take `f32`. `rtrb` 0.4.1 (MIT OR Apache-2.0) is the queue.
 
 ## Risks
 
