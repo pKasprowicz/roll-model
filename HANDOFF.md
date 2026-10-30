@@ -71,7 +71,7 @@ The hardware tasks (HW-*) have a step-by-step plan in `docs/hardware-test-plan.m
 | **UI-1** | Try with a real mouse and wheel | device |
 | **UI-2** | The bar numbering mismatch (printed number against position) | decision, code |
 | **UI-3** | Shortcuts are ignored while a widget has the focus | code |
-| **UI-4** | Notation: beams, flags, rests and tuplet brackets | code (rests not looked at) |
+| **UI-4** | Notation: beams, flags, rests and tuplet brackets | code (metronome staff, ties left) |
 | **FEAT-1** | Tempo ramp for Listen and the metronome | code |
 | **FEAT-2** | Accent patterns and tap tempo for the free metronome | code |
 | **FEAT-3** | Remember the layout per score | code |
@@ -156,7 +156,7 @@ The Rudiments tab sits between Score and Metronome. `docs/rudiments.md` is the c
 - [ ] **RUD-6** User-defined rudiment files (like the controller presets).
 - [ ] **RUD-7** Practice sets and routines (a list of rudiment, repeats, BPM stepped through when a take is clean).
 - [ ] **RUD-8** A progress history beyond the best clean tempo (takes are only in memory today).
-- [ ] **UI-4** Beams, flags, tuplet brackets (worked out from the onsets in `core/src/notation.rs`) were looked at and are fine. Rests are parsed (`Score.rests`, voice by its notes' stems) and drawn but not yet looked at. Left: beams on the metronome's rolling staff, ties.
+- [ ] **UI-4** Beams, flags, tuplet brackets (worked out from the onsets in `core/src/notation.rs`), rests (`Score.rests`) and the row break after a pause (`notation::pause_bars`, setting `break_at_pause`) are done and looked at. Left: beams on the metronome's rolling staff, ties.
 
 ### User manual
 
