@@ -96,6 +96,13 @@ impl DrumApp {
         if let Some(message) = self.audio.ensure(&self.cfg.audio_output) {
             self.view.error = Some(message);
         }
+        // With "System default" chosen the open output is the default that was just looked at, so
+        // the label of the Sound page follows a change of it without a Refresh.
+        if self.cfg.audio_output.trim().is_empty() {
+            if let Some(info) = self.audio.info() {
+                self.audio_default = Some(info.device);
+            }
+        }
     }
 }
 

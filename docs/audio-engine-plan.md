@@ -1,6 +1,6 @@
 # Audio engine rework: plan
 
-Status: **in progress on `feature/audio_rework`: AUD-1 to AUD-7 are done (the new engine plays), AUD-8 is done except one re-check (the person-only checks are in: they found that a change of the Windows default output was not followed, now fixed), AUD-9 has its evidence, on two machines** (2026-10-30). Tasks AUD-1 to AUD-9 in `HANDOFF.md`.
+Status: **in progress on `feature/audio_rework`: AUD-1 to AUD-7 are done (the new engine plays), AUD-8 is done (the person-only checks are in: they found that a change of the Windows default output was not followed, now fixed and re-checked), AUD-9 has its evidence, on two machines** (2026-10-30). Tasks AUD-1 to AUD-9 in `HANDOFF.md`.
 
 Origin: a handover note ("low-latency audio rework", written the same day from a read of the repository on GitHub, nothing compiled or measured). This plan checks that note against the source and corrects it. All latency figures are typical values, not measurements of this app, until AUD-1 has run.
 
@@ -116,7 +116,7 @@ Procedure and results sheet (fill in; write "not tried" rather than leaving it b
 |---|---|---|---|
 | 1 | Listen on the sample score with *loop* on. Unplug the output that plays (the USB interface, or the headphones). | The sound stops, the error bar says "Sound output problem", the program stays responsive. | As expected (owner, 2026-10-30). |
 | 2 | Plug it back. Stop and start Listen. | Sound again on the right output; Settings → Sound shows "Open: ..." with that device. | As expected (owner, 2026-10-30). |
-| 3 | With "System default" chosen, start Listen, then change the default output in Windows (Settings → System → Sound) while it plays. Stop and start Listen. | Prediction: the sound stays on the old output, Settings → Sound still names the old device. Wanted: the new start opens the new default. | **Prediction confirmed (owner, 2026-10-30): the sound stayed on the old output.** Fixed in code (`must_reopen`); **to be tried again with the fixed build, not yet done.** |
+| 3 | With "System default" chosen, start Listen, then change the default output in Windows (Settings → System → Sound) while it plays. Stop and start Listen. | Prediction: the sound stays on the old output, Settings → Sound still names the old device. Wanted: the new start opens the new default. | **Prediction confirmed (owner, 2026-10-30): the sound stayed on the old output.** Fixed in code (`must_reopen`); **Tried again with the fixed build (owner, 2026-10-30): the sound follows the change of the default.** The "System default (name)" label on the Sound page did not follow; it is now updated from the open output at each start (not re-tried by eye). |
 | 4 | Choose a named output in Settings → Sound, unplug it, start Listen. | The "was not found; using the system default" message, sound on the default. | As expected (owner, 2026-10-30). |
 | 5 | Listen with *loop* on and the ramp (*ramp +*, *every* next to it) set to climb for 10 minutes or more. | Steady click and drums; Settings → Sound shows no "too late" line afterwards. | No late sounds at a tempo of 300 % (owner's report, 2026-10-30; the length of the run was not recorded). |
 
