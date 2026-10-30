@@ -93,7 +93,13 @@ impl DrumApp {
             let position = self.listen_position().unwrap_or_default();
             ui.add_sized([150.0, 30.0], egui::Label::new(RichText::new(position).weak()));
             ui.separator();
-            widgets::slider(ui, "zoom", &mut self.cfg.zoom, 0.5..=3.0, "", 0.05);
+            // With a fixed number of bars per row the bars fill the width, so there is nothing to zoom.
+            let auto_rows = self.cfg.bars_per_row == 0;
+            ui.add_enabled_ui(auto_rows, |ui| {
+                widgets::slider(ui, "zoom", &mut self.cfg.zoom, 0.5..=3.0, "", 0.05);
+            })
+            .response
+            .on_disabled_hover_text("Zoom sets how wide a bar is drawn when the rows are automatic. With a fixed number of bars per row (Layout menu) the bars fill the width instead; set bars per row to auto to use the zoom.");
             ui.checkbox(&mut self.follow, "follow");
             ui.menu_button("Layout", |ui| {
                 ui.set_min_width(320.0);

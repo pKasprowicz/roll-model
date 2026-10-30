@@ -6,6 +6,9 @@ All notable changes are recorded here. The format follows [Keep a Changelog](htt
 
 ## [Unreleased]
 
+### Changed
+- **The zoom slider is greyed out while *bars per row* is fixed**, with a hint on hover: with a fixed count the bars fill the width, so the zoom had no effect and the slider looked broken. Set *bars per row* to *auto* to use it.
+
 ### Added
 - **A bar that ends with a pause ends its row** (Layout menu → *new row after a pause*, on by default; setting `break_at_pause`): when the last rest of a bar runs to the barline and no note in any voice starts during it, the score goes on in the next row. A rest under notes of another voice, like the feet's rest under the hands in the sample, is not a pause. The break wins over *bars per row*: after a pause a new row starts and the bars are counted from there (*start a row at bar* still applies to the part of the score it falls in). Covered by a test; not looked at in the running app.
 - **The user manual and the developer guide are published online** on GitHub Pages (<https://pkasprowicz.github.io/roll-model/>), behind a start page that links to both. They are the same files as before and are still in every release archive and attached to every release.
