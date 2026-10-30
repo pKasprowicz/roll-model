@@ -11,7 +11,7 @@ A Rust desktop app (egui) for practising drum parts against a score:
 
 ## User manual
 
-An extensive manual (setup, every tab, the controller, grading, troubleshooting, and a reference of the 40 rudiments) is one HTML file, `roll-model-manual.html`, included in every release archive and attached to the release. It is built from `docs/manual/manual.template.html` and the rudiment data in `core/src/rudiments.rs`:
+An extensive manual (setup, every tab, the controller, grading, troubleshooting, and a reference of the 40 rudiments) is one HTML file, `roll-model-manual.html`, included in every release archive and attached to the release; the latest one is also published at <https://pkasprowicz.github.io/roll-model/manual/>. It is built from `docs/manual/manual.template.html` and the rudiment data in `core/src/rudiments.rs`:
 
 ```sh
 python3 tools/build_manual.py      # writes target/manual/roll-model-manual.html (standard library only)
@@ -21,7 +21,7 @@ Edit the template when behaviour changes; the rudiment tables regenerate themsel
 
 ## Developer guide
 
-For anyone who wants to change the program: `roll-model-developer-guide.html`, also in every release archive. It explains the architecture and the ideas behind it (layers, time in quarter notes, takes and grading, the real-time threads, the controller and rudiment subsystems), the Rust constructs the design leans on, where the program can be extended, and seven step-by-step tutorials. It is built from `docs/developer/developer.template.html`, and its code excerpts, module map and statistics are generated from the source, so they cannot go stale:
+For anyone who wants to change the program: `roll-model-developer-guide.html`, also in every release archive and published at <https://pkasprowicz.github.io/roll-model/developer/>. It explains the architecture and the ideas behind it (layers, time in quarter notes, takes and grading, the real-time threads, the controller and rudiment subsystems), the Rust constructs the design leans on, where the program can be extended, and seven step-by-step tutorials. It is built from `docs/developer/developer.template.html`, and its code excerpts, module map and statistics are generated from the source, so they cannot go stale:
 
 ```sh
 python3 tools/build_devguide.py    # writes target/devguide/roll-model-developer-guide.html
@@ -29,9 +29,11 @@ python3 tools/build_devguide.py    # writes target/devguide/roll-model-developer
 
 If a refactoring renames an item the guide shows, that command fails and names the snippet to update.
 
+Both are published on GitHub Pages, behind a start page that links to them (<https://pkasprowicz.github.io/roll-model/>). `python3 tools/build_site.py` builds that site into `target/site/`; the `Pages` workflow deploys it whenever `main` changes, and `main` only receives releases, so it shows the latest release. The release files are built as before.
+
 ## Build and run
 
-Install a recent Rust from <https://rustup.rs> (tested with 1.99; 1.82 is too old for the dependencies), then:
+Ready-made Windows and Linux archives (the program, the manual and the licences) are attached to each [release](https://github.com/pKasprowicz/roll-model/releases). To build it yourself, install a recent Rust from <https://rustup.rs> (tested with 1.99; 1.82 is too old for the dependencies), then:
 
 ```sh
 cargo run --release                                 # start empty
@@ -166,7 +168,7 @@ Settings are saved automatically. Sliders show their caption in front of them, a
 
 **Audio output device.** By default sound goes to the system's default output. Pick another one on the Sound page (for example a USB interface) and the click, Listen and the calibration clicks follow it. If the chosen device is not connected, the default is used and a message says so.
 
-**Score layout.** The **Layout** button on the Score tab sets *bars per row* (auto fits as many as the width allows) and *start a row at bar*. With a fixed number every bar has the same width, so barlines line up from row to row, and the first row may be shorter: with 4 bars per row and a row starting at bar 2 you get `[1] [2–5] [6–9] …`. If that many bars do not fit the window, fewer are shown and a note says so. The bar number is the position in the score as shown (the same numbering as the Measures sliders); with repeats expanded the numbers printed above the bars can repeat, and the button shows the printed number of the chosen bar.
+**Score layout.** The **Layout** button on the Score tab sets *bars per row* (auto fits as many as the width allows) and *start a row at bar*. With a fixed number every bar has the same width, so barlines line up from row to row, and the first row may be shorter: with 4 bars per row and a row starting at bar 2 you get `[1] [2–5] [6–9] …`. If that many bars do not fit the window, fewer are shown and a note says so. The zoom slider only works with automatic rows (with a fixed number it is greyed out: the bars fill the width). A bar that ends with a pause ends its row (*new row after a pause* in the same menu, on by default): the score goes on in the next row and the bars are counted from there. A rest under notes of another voice does not count as a pause, and neither does the rest of an empty bar in a run of them: the row ends after the last empty bar. The bar number is the position in the score as shown (the same numbering as the Measures sliders); with repeats expanded the numbers printed above the bars can repeat, and the button shows the printed number of the chosen bar.
 
 ## Latency
 
@@ -184,7 +186,7 @@ Every audio and MIDI path adds some delay. Use **Settings → Timing → Calibra
 
 ## MusicXML support
 
-Partwise MusicXML 2.0–4.0: multiple voices (`backup`/`forward`), chords, tempo changes (`sound tempo` or metronome marks), time-signature changes, pickup bars, repeats with 1st/2nd endings (expanded by default), ties, accents, ghost notes (parenthesised noteheads), grace notes, notehead shapes. Instruments are identified from `midi-unpitched` (General MIDI), then the instrument name, then staff position and notehead. Not supported: D.S./D.C./coda jumps and `score-timewise` files.
+Partwise MusicXML 2.0–4.0: multiple voices (`backup`/`forward`), chords, tempo changes (`sound tempo` or metronome marks), time-signature changes, pickup bars, repeats with 1st/2nd endings (expanded by default), ties, rests (drawn; the voice decides whether a rest goes high or low), accents, ghost notes (parenthesised noteheads), grace notes, notehead shapes. Instruments are identified from `midi-unpitched` (General MIDI), then the instrument name, then staff position and notehead. Not supported: D.S./D.C./coda jumps and `score-timewise` files.
 
 ## License
 
@@ -195,6 +197,10 @@ The program is built from open-source libraries and fonts under their own licenc
 ## Support
 
 Roll Model is free for noncommercial use and developed in spare time. If it helps your practice, you can [buy me a coffee](https://buymeacoffee.com/pkasprowicz). Donations are optional and don't change the licence or buy any features.
+
+## Feedback
+
+Roll Model is written by its author alone, so pull requests are not accepted (see [CONTRIBUTING.md](CONTRIBUTING.md)). Bug reports and results from real hardware (the V31 note map and the controller presets are the least tested parts) are welcome as issues. Security problems are reported as described in [SECURITY.md](SECURITY.md), not in a public issue.
 
 ## Versioning
 
@@ -224,6 +230,7 @@ What counts as the public interface: the settings file keys, the CSV export colu
 | `src/widgets.rs` | Shared UI helpers: the wheel-aware slider and the larger Score-tab style |
 | `tools/build_notices.py` | Generates `THIRD_PARTY_NOTICES.txt`, the licence texts of all dependencies, for the release archives |
 | `docs/developer/`, `tools/build_devguide.py` | The developer guide (HTML template with code excerpts pulled from the source) and its build script |
+| `docs/site/`, `tools/build_site.py` | The start page of the online documentation and the script that builds the whole site (start page, manual, developer guide) for GitHub Pages |
 | `docs/style.css` | The stylesheet shared by the manual and the developer guide |
 | `docs/manual/`, `tools/build_manual.py` | The user manual (HTML template) and the script that builds it for releases |
 | `core/src/config.rs` | Settings file (`%APPDATA%\RollModel\config.txt` on Windows) |

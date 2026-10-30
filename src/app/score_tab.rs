@@ -93,7 +93,13 @@ impl DrumApp {
             let position = self.listen_position().unwrap_or_default();
             ui.add_sized([150.0, 30.0], egui::Label::new(RichText::new(position).weak()));
             ui.separator();
-            widgets::slider(ui, "zoom", &mut self.cfg.zoom, 0.5..=3.0, "", 0.05);
+            // With a fixed number of bars per row the bars fill the width, so there is nothing to zoom.
+            let auto_rows = self.cfg.bars_per_row == 0;
+            ui.add_enabled_ui(auto_rows, |ui| {
+                widgets::slider(ui, "zoom", &mut self.cfg.zoom, 0.5..=3.0, "", 0.05);
+            })
+            .response
+            .on_disabled_hover_text("Zoom sets how wide a bar is drawn when the rows are automatic. With a fixed number of bars per row (Layout menu) the bars fill the width instead; set bars per row to auto to use the zoom.");
             ui.checkbox(&mut self.follow, "follow");
             ui.menu_button("Layout", |ui| {
                 ui.set_min_width(320.0);
@@ -102,6 +108,8 @@ impl DrumApp {
                 if bars.changed() || align.changed() {
                     self.keep_layout();
                 }
+                ui.checkbox(&mut self.cfg.break_at_pause, "new row after a pause")
+                    .on_hover_text("A bar that ends with a rest (and no note in any voice during it) is the last of its row; the score goes on in the next row.");
                 let printed = self
                     .score
                     .as_ref()
@@ -212,7 +220,7 @@ impl DrumApp {
             range: (self.range_from, self.range_to),
             zoom: self.cfg.zoom,
             follow: self.follow && (running || self.playback.listen.is_some()),
-            layout: LayoutOpts { bars_per_row: self.cfg.bars_per_row, align_bar: self.cfg.layout_align_bar },
+            layout: LayoutOpts { bars_per_row: self.cfg.bars_per_row, align_bar: self.cfg.layout_align_bar, break_at_pause: self.cfg.break_at_pause },
         };
         let out = egui::ScrollArea::vertical()
             .auto_shrink([false, false])

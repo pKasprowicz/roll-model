@@ -6,6 +6,7 @@ use egui::{pos2, vec2, Align2, Color32, FontId, Painter, Pos2, Rect, Sense, Shap
 
 use crate::analysis::Grade;
 use crate::drums::{Lane, NoteHead};
+use crate::notation::{self, Beam, Notation, RestGlyph, RestKind};
 use crate::score::{Hand, Score, ScoreNote};
 
 const LS: f32 = 8.0; // staff line spacing
@@ -19,6 +20,20 @@ const SYS_H: f32 = VEL_BASE + 16.0;
 const LEFT: f32 = 58.0;
 const MEASURE_PAD: f32 = 12.0;
 const STEM: f32 = 3.5 * LS;
+const BEAM_W: f32 = 3.0;
+const BEAM_GAP: f32 = 4.5;
+const FLAG_GAP: f32 = 4.5;
+const STUB: f32 = 7.0;
+
+/// Where the stem of a note at `x` stands: right of the head going up, left of it going down.
+fn stem_x(x: f32, up: bool, scale: f32) -> f32 {
+    let rx = 5.0 * scale;
+    if up {
+        x + rx - 0.5
+    } else {
+        x - rx + 0.5
+    }
+}
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum HitStatus {
@@ -68,6 +83,8 @@ pub struct LayoutOpts {
     pub bars_per_row: usize,
     /// Position (1-based, in the score as shown) of a bar that must start a row; 0 = none.
     pub align_bar: usize,
+    /// A bar that ends with a pause is the last of its row.
+    pub break_at_pause: bool,
 }
 
 pub const GREEN: Color32 = Color32::from_rgb(0x2e, 0xb8, 0x5c);
@@ -150,8 +167,27 @@ fn typical_len_q(score: &Score) -> f64 {
         .max(0.25)
 }
 
+/// The rows when each holds `per_row` bars: the score is cut after every bar in `pauses` (not the
+/// last one) and each part is laid out by `row_starts`, so a pause always starts a new row and the
+/// bars after it are counted from there. `align` (0-based) is honoured in the part it falls in.
+fn fixed_rows(n: usize, per_row: usize, align: Option<usize>, pauses: &[bool]) -> Vec<(usize, usize)> {
+    let mut cuts: Vec<usize> = (0..n.saturating_sub(1)).filter(|i| pauses.get(*i).copied().unwrap_or(false)).map(|i| i + 1).collect();
+    cuts.push(n);
+    let mut rows = Vec::new();
+    let mut a = 0;
+    for b in cuts {
+        let starts = row_starts(b - a, per_row, align.filter(|x| (a..b).contains(x)).map(|x| x - a));
+        for (i, s) in starts.iter().enumerate() {
+            rows.push((a + s, a + starts.get(i + 1).copied().unwrap_or(b - a)));
+        }
+        a = b;
+    }
+    rows
+}
+
 fn layout(score: &Score, width: f32, zoom: f32, opts: LayoutOpts) -> Layout {
     let n = score.measures.len();
+    let pauses = if opts.break_at_pause { notation::pause_bars(score) } else { Vec::new() };
     let line_w = (width - LEFT - 8.0).max(200.0);
     let align = (opts.align_bar >= 1 && opts.align_bar <= n).then(|| opts.align_bar - 1);
     let fixed = opts.bars_per_row > 0;
@@ -172,17 +208,15 @@ fn layout(score: &Score, width: f32, zoom: f32, opts: LayoutOpts) -> Layout {
             fit_bars = Some(k);
         }
         ppq = per_quarter(k).max(4.0);
-        let starts = row_starts(n, k, align);
-        for (i, s) in starts.iter().enumerate() {
-            systems.push((*s, starts.get(i + 1).copied().unwrap_or(n)));
-        }
+        systems = fixed_rows(n, k, align, &pauses);
     } else {
         ppq = 56.0 * zoom;
         let mut start = 0usize;
         let mut w = 0.0f32;
         for (i, m) in score.measures.iter().enumerate() {
             let mw = m.len_q as f32 * ppq + 2.0 * MEASURE_PAD;
-            if i > start && (w + mw > line_w || align == Some(i)) {
+            let after_pause = i > 0 && pauses.get(i - 1).copied().unwrap_or(false);
+            if i > start && (w + mw > line_w || align == Some(i) || after_pause) {
                 systems.push((start, i));
                 start = i;
                 w = 0.0;
@@ -334,7 +368,7 @@ pub fn rolling(ui: &mut Ui, view: &RollingView) {
                 continue;
             }
             let col = if x < now_x - 4.0 { weak } else { text };
-            notes.written_note(n, x, bot, rect.top() + 28.0, Ink { note: col, hand: col, hand_dy: 16.0 });
+            notes.written_note(n, x, bot, rect.top() + 28.0, Ink { note: col, hand: col, hand_dy: 16.0 }, StemEnd::default());
         }
     }
     painter.line_segment([pos2(now_x, rect.top() + 12.0), pos2(now_x, bot + STEM + 4.0)], Stroke::new(2.0_f32, ACCENT));
@@ -347,6 +381,14 @@ struct Canvas<'a> {
     weak: Color32,
     line: Color32,
     grid: Color32,
+}
+
+/// How the stem of a written note ends: at a beam (`tip`, the y of the far end of the stem) or
+/// with `flags` flags; both none for a plain stem.
+#[derive(Clone, Copy, Default)]
+struct StemEnd {
+    tip: Option<f32>,
+    flags: u8,
 }
 
 /// What colours a written note is drawn in, and how far under the staff its hand letter goes.
@@ -443,20 +485,105 @@ impl Canvas<'_> {
         p.text(pos2(x, y), Align2::CENTER_CENTER, letter, FontId::proportional(size), color);
     }
 
+    /// A rest sign at `x`; `y` is the line it hangs from or sits on (the middle of a quarter rest).
+    fn rest(&self, x: f32, y: f32, glyph: &RestGlyph, color: Color32) {
+        let p = self.painter;
+        let stroke = Stroke::new(1.8_f32, color);
+        match glyph.kind {
+            RestKind::Whole => {
+                p.rect_filled(Rect::from_min_max(pos2(x - 5.0, y), pos2(x + 5.0, y + 3.5)), 0.0, color);
+            }
+            RestKind::Half => {
+                p.rect_filled(Rect::from_min_max(pos2(x - 5.0, y - 3.5), pos2(x + 5.0, y)), 0.0, color);
+            }
+            RestKind::Quarter => {
+                let zigzag = vec![pos2(x + 1.0, y - 8.0), pos2(x - 2.5, y - 3.5), pos2(x + 2.0, y + 0.5), pos2(x - 2.0, y + 4.5), pos2(x + 1.5, y + 8.0)];
+                p.add(Shape::line(zigzag, stroke));
+            }
+            RestKind::Flagged(n) => {
+                // One dot per flag down a slanted stem.
+                let top = y - 5.0;
+                let n = f32::from(n);
+                let bottom = top + 4.0 * n + 5.0;
+                p.line_segment([pos2(x + 2.5, top), pos2(x - 1.5 - 1.2 * (n - 1.0), bottom)], Stroke::new(1.4_f32, color));
+                for k in 0..n as u32 {
+                    let k = k as f32;
+                    p.circle_filled(pos2(x - 1.0 - 1.2 * k, top + 4.0 * k + 1.5), 1.8, color);
+                }
+            }
+        }
+        if glyph.dotted {
+            p.circle_filled(pos2(x + 8.0, y - 2.0), 1.2, color);
+        }
+    }
+
+    /// The beams of a group of stems, level at `tip`; further beams go towards the heads. A beam
+    /// that only one note has is a stub, to the right for the first note and to the left for the others.
+    fn beam(&self, beam: &Beam, xs: &[f32], tip: f32, color: Color32) {
+        let dir = if beam.up { 1.0 } else { -1.0 };
+        let levels: Vec<u8> = beam.onsets.iter().map(|o| o.level).collect();
+        for k in 1..=levels.iter().copied().max().unwrap_or(1) {
+            let y = tip + dir * f32::from(k - 1) * BEAM_GAP;
+            let mut i = 0;
+            while i < levels.len() {
+                if levels[i] < k {
+                    i += 1;
+                    continue;
+                }
+                let mut j = i;
+                while j + 1 < levels.len() && levels[j + 1] >= k {
+                    j += 1;
+                }
+                let (x0, x1) = match (i == j, i == 0) {
+                    (false, _) => (xs[i], xs[j]),
+                    (true, true) => (xs[i], xs[i] + STUB),
+                    (true, false) => (xs[i] - STUB, xs[i]),
+                };
+                self.beam_bar(x0, x1, y, beam.up, color);
+                i = j + 1;
+            }
+        }
+    }
+
+    /// One thick bar of a beam from `x0` to `x1`, its outer edge at `y`, growing towards the heads.
+    fn beam_bar(&self, x0: f32, x1: f32, y: f32, up: bool, color: Color32) {
+        let (a, b) = if up { (y, y + BEAM_W) } else { (y - BEAM_W, y) };
+        self.painter.add(Shape::convex_polygon(vec![pos2(x0, a), pos2(x1, a), pos2(x1, b), pos2(x0, b)], color, Stroke::NONE));
+    }
+
+    /// The bracket of a tuplet over stems that end at `tip`, with the number in a gap in the middle.
+    fn bracket(&self, x0: f32, x1: f32, tip: f32, up: bool, number: u8) {
+        let p = self.painter;
+        let stroke = Stroke::new(1.0_f32, self.weak);
+        let (y, hook) = if up { (tip - 8.0, 4.0) } else { (tip + 8.0, -4.0) };
+        let (mid, gap) = ((x0 + x1) / 2.0, 7.0);
+        p.line_segment([pos2(x0, y + hook), pos2(x0, y)], stroke);
+        p.line_segment([pos2(x0, y), pos2(mid - gap, y)], stroke);
+        p.line_segment([pos2(mid + gap, y), pos2(x1, y)], stroke);
+        p.line_segment([pos2(x1, y), pos2(x1, y + hook)], stroke);
+        p.text(pos2(mid, y), Align2::CENTER_CENTER, number.to_string(), FontId::proportional(10.0), self.weak);
+    }
+
     /// A written note: head, ledger lines, hand letter, stem, ghost brackets and accent. `x` already
     /// includes the grace offset; `accent_up_y` is where the accent goes above a stem that points up.
-    fn written_note(&self, n: &ScoreNote, x: f32, staff_bottom: f32, accent_up_y: f32, ink: Ink) {
+    fn written_note(&self, n: &ScoreNote, x: f32, staff_bottom: f32, accent_up_y: f32, ink: Ink, end: StemEnd) {
         let p = self.painter;
         let (col, scale) = (ink.note, if n.grace { 0.65 } else { 1.0 });
         let y = y_of(n.staff_step, staff_bottom);
         self.ledgers(x, n.staff_step, staff_bottom);
         self.head(pos2(x, y), n.head, col, scale);
         self.hand(x, staff_bottom + ink.hand_dy, n, ink.hand);
-        let up = n.stem_up.unwrap_or(!n.lane.is_foot());
-        let rx = 5.0 * scale;
-        let sx = if up { x + rx - 0.5 } else { x - rx + 0.5 };
-        let sy = if up { y - STEM * scale } else { y + STEM * scale };
+        let up = n.stem_is_up();
+        let sx = stem_x(x, up, scale);
+        let sy = end.tip.unwrap_or(if up { y - STEM * scale } else { y + STEM * scale });
         p.line_segment([pos2(sx, y), pos2(sx, sy)], Stroke::new(1.0_f32, col));
+        for k in 0..end.flags {
+            // A flag curls to the right of the stem, towards the heads.
+            let dy = if up { 1.0 } else { -1.0 };
+            let y0 = sy + dy * f32::from(k) * FLAG_GAP;
+            let curl = vec![pos2(sx, y0), pos2(sx + 3.5, y0 + 3.0 * dy), pos2(sx + 6.5, y0 + 8.0 * dy), pos2(sx + 4.5, y0 + 12.0 * dy)];
+            p.add(Shape::line(curl, Stroke::new(1.6_f32, col)));
+        }
         if n.ghost {
             p.text(pos2(x - 8.0, y), Align2::CENTER_CENTER, "(", FontId::proportional(11.0), col);
             p.text(pos2(x + 8.0, y), Align2::CENTER_CENTER, ")", FontId::proportional(11.0), col);
@@ -483,11 +610,32 @@ struct Frame<'a> {
     lane_staff: Vec<(i32, NoteHead)>,
     notes_by_measure: Vec<Vec<usize>>,
     played_by_measure: Vec<Vec<usize>>,
+    notation: Notation,
+    /// Per note: where its stem ends when a beam holds it, as a y relative to the bottom line of its
+    /// staff (so it holds for every row).
+    stem_tips: Vec<Option<f32>>,
+    beams_by_measure: Vec<Vec<usize>>,
+    tuplets_by_measure: Vec<Vec<usize>>,
+    /// The rest signs of each measure, with whether they are the hands' (stems up).
+    rests_by_measure: Vec<Vec<(bool, RestGlyph)>>,
+    /// Whether the score has notes with stems up and with stems down, so that rests go to the
+    /// upper or lower half of the staff; else they stand in the middle.
+    two_voices: bool,
 }
 
 impl Frame<'_> {
     fn x_of(&self, measure: usize, q: f64) -> f32 {
         self.origin.x + self.lay.x_of(self.view.score, measure, q)
+    }
+
+    /// Whether a note head of measure `mi` is within a head's reach of the box that starts at `x`
+    /// and spans `y0..y1` (the staff ends at `staff_bottom`).
+    fn head_near(&self, mi: usize, x: f32, y0: f32, y1: f32, staff_bottom: f32, notes: &[ScoreNote]) -> bool {
+        self.notes_by_measure[mi].iter().any(|&i| {
+            let n = &notes[i];
+            let (nx, ny) = (self.x_of(mi, n.q) + grace_dx(n), y_of(n.staff_step, staff_bottom));
+            (nx - x).abs() < 9.0 && ny + 4.5 > y0 && ny - 4.5 < y1
+        })
     }
 }
 
@@ -524,6 +672,32 @@ fn played_by_measure(score: &Score, played: &[PlayedNote]) -> Vec<Vec<usize>> {
     by_measure
 }
 
+/// For each measure, the positions in a list whose measures are `measures`.
+fn indexed_by_measure(score: &Score, measures: impl Iterator<Item = usize>) -> Vec<Vec<usize>> {
+    let mut by_measure = vec![Vec::new(); score.measures.len()];
+    for (i, m) in measures.enumerate() {
+        if let Some(slot) = by_measure.get_mut(m) {
+            slot.push(i);
+        }
+    }
+    by_measure
+}
+
+/// The y of the end of each beamed note's stem, relative to the bottom line of the staff: a beam is
+/// level, at the end of the longest stem of its group, and the other stems grow to meet it.
+fn stem_tips(score: &Score, notation: &Notation) -> Vec<Option<f32>> {
+    let mut tips = vec![None; score.notes.len()];
+    for beam in &notation.beams {
+        let notes: Vec<usize> = beam.onsets.iter().flat_map(|o| o.notes.iter().copied()).collect();
+        let ends = notes.iter().map(|&i| y_of(score.notes[i].staff_step, 0.0) + if beam.up { -STEM } else { STEM });
+        let tip = if beam.up { ends.fold(f32::MAX, f32::min) } else { ends.fold(f32::MIN, f32::max) };
+        for i in notes {
+            tips[i] = Some(tip);
+        }
+    }
+    tips
+}
+
 fn notes_by_measure(score: &Score) -> Vec<Vec<usize>> {
     let mut by_measure: Vec<Vec<usize>> = vec![Vec::new(); score.measures.len()];
     for (i, n) in score.notes.iter().enumerate() {
@@ -557,6 +731,17 @@ pub fn show(ui: &mut Ui, view: &ScoreView) -> ViewOutput {
     let total_h = lay.systems.len() as f32 * SYS_H + 10.0;
     let (response, painter) = ui.allocate_painter(vec2(width, total_h), Sense::click());
     let weak = ui.visuals().weak_text_color();
+    let notation = notation::analyse(score);
+    let stem_tips = stem_tips(score, &notation);
+    let beams_by_measure = indexed_by_measure(score, notation.beams.iter().map(|b| b.measure));
+    let tuplets_by_measure = indexed_by_measure(score, notation.tuplets.iter().map(|t| t.measure));
+    let mut rests_by_measure = vec![Vec::new(); score.measures.len()];
+    for r in &score.rests {
+        if let Some(slot) = rests_by_measure.get_mut(r.measure) {
+            slot.extend(notation::rest_glyphs(r).into_iter().map(|g| (r.up, g)));
+        }
+    }
+    let two_voices = score.notes.iter().any(|n| n.stem_is_up()) && score.notes.iter().any(|n| !n.stem_is_up());
     let frame = Frame {
         view,
         lay: &lay,
@@ -572,6 +757,12 @@ pub fn show(ui: &mut Ui, view: &ScoreView) -> ViewOutput {
         lane_staff: Lane::ALL.iter().map(|l| score.staff_for_lane(*l)).collect(),
         notes_by_measure: notes_by_measure(score),
         played_by_measure: played_by_measure(score, view.played),
+        notation,
+        stem_tips,
+        beams_by_measure,
+        tuplets_by_measure,
+        rests_by_measure,
+        two_voices,
     };
     let clip = painter.clip_rect();
     let mut hover_text: Option<String> = None;
@@ -639,6 +830,13 @@ fn draw_system(f: &Frame, rows: &Rows, bars: (usize, usize), hover_text: &mut Op
         for &ni in &f.notes_by_measure[mi] {
             draw_score_note(f, rows, mi, ni);
         }
+        draw_rests(f, rows, mi);
+        for &bi in &f.beams_by_measure[mi] {
+            draw_beam(f, rows, &f.notation.beams[bi]);
+        }
+        for &ti in &f.tuplets_by_measure[mi] {
+            draw_tuplet(f, rows, &f.notation.tuplets[ti]);
+        }
         for &pi in &f.played_by_measure[mi] {
             draw_played_note(f, rows, mi, pi, hover_text);
         }
@@ -690,7 +888,57 @@ fn draw_score_note(f: &Frame, rows: &Rows, mi: usize, ni: usize) {
     let n = &view.score.notes[ni];
     let x = f.x_of(mi, n.q) + grace_dx(n);
     let col = view.grades.get(ni).copied().flatten().map(|g| grade_color(g, cv.text)).unwrap_or(cv.text);
-    cv.written_note(n, x, rows.exp_bot, rows.y0 + 28.0, Ink { note: col, hand: cv.text, hand_dy: 18.0 });
+    let end = StemEnd { tip: f.stem_tips[ni].map(|t| rows.exp_bot + t), flags: f.notation.flags[ni] };
+    cv.written_note(n, x, rows.exp_bot, rows.y0 + 28.0, Ink { note: col, hand: cv.text, hand_dy: 18.0 }, end);
+}
+
+/// The rests of measure `mi` on the expected staff: those of the hands high and those of the feet
+/// low when the score has both, else in the middle. A rest that would sit on a note head moves
+/// away from the middle of the staff, two steps at a time, until it is clear.
+fn draw_rests(f: &Frame, rows: &Rows, mi: usize) {
+    let mp = &f.lay.measures[mi];
+    let notes = &f.view.score.notes;
+    for (up, g) in &f.rests_by_measure[mi] {
+        let mut step = match (f.two_voices, up) {
+            (false, _) => 4,
+            (true, true) => 6,
+            (true, false) => 2,
+        };
+        let x = if g.bar { f.origin.x + mp.x0 + mp.w / 2.0 } else { f.x_of(mi, g.q) };
+        let (top, bottom) = match g.kind {
+            RestKind::Whole => (0.0, 3.5),
+            RestKind::Half => (-3.5, 0.0),
+            RestKind::Quarter => (-8.0, 8.0),
+            RestKind::Flagged(n) => (-5.0, 4.0 * f32::from(n) + 1.0),
+        };
+        let clear = |step: i32| {
+            let y = y_of(step, rows.exp_bot);
+            !f.head_near(mi, x, y + top, y + bottom, rows.exp_bot, notes)
+        };
+        for _ in 0..4 {
+            if clear(step) {
+                break;
+            }
+            step += if *up { 2 } else { -2 };
+        }
+        f.cv.rest(x, y_of(step, rows.exp_bot), g, f.cv.weak);
+    }
+}
+
+/// The beams over a group of stems (the stems are drawn with their notes, up to the beam).
+fn draw_beam(f: &Frame, rows: &Rows, beam: &Beam) {
+    let Some(tip) = beam.onsets.first().and_then(|o| f.stem_tips[o.notes[0]]) else { return };
+    let xs: Vec<f32> = beam.onsets.iter().map(|o| stem_x(f.x_of(beam.measure, o.q), beam.up, 1.0)).collect();
+    f.cv.beam(beam, &xs, rows.exp_bot + tip, f.cv.text);
+}
+
+/// The bracket and number over a tuplet, above (or under) the ends of its stems.
+fn draw_tuplet(f: &Frame, rows: &Rows, t: &notation::Tuplet) {
+    let notes = &f.view.score.notes;
+    let tips = t.notes.iter().map(|&i| f.stem_tips[i].unwrap_or_else(|| y_of(notes[i].staff_step, 0.0) + if t.up { -STEM } else { STEM }));
+    let tip = if t.up { tips.fold(f32::MAX, f32::min) } else { tips.fold(f32::MIN, f32::max) };
+    let (x0, x1) = (f.x_of(t.measure, t.first_q), f.x_of(t.measure, t.last_q));
+    f.cv.bracket(x0 - 5.0, x1 + 5.0, rows.exp_bot + tip, t.up, t.number);
 }
 
 /// A played note (`view.played[pi]` of measure `mi`) on the lower staff, with its velocity bar;
@@ -748,10 +996,58 @@ mod tests {
     }
 
     const W: f32 = 1300.0;
-    const FIXED: fn(usize, usize) -> LayoutOpts = |bars_per_row, align_bar| LayoutOpts { bars_per_row, align_bar };
+    const FIXED: fn(usize, usize) -> LayoutOpts = |bars_per_row, align_bar| LayoutOpts { bars_per_row, align_bar, break_at_pause: false };
 
     fn width_of(lay: &Layout, bar: usize) -> f32 {
         lay.measures[bar].w
+    }
+
+    #[test]
+    fn a_bar_that_ends_with_a_pause_ends_its_row() {
+        use crate::score::Rest;
+        let mut score = score_of(&[4.0; 6]);
+        // Bar 2 (index 1) ends with a rest from its third beat; bar 5 has a rest but a note after it.
+        let q = |bar: usize, beat: f64| bar as f64 * 4.0 + beat;
+        score.rests = vec![
+            Rest { measure: 1, q: q(1, 2.0), dur_q: 2.0, up: true, whole_bar: false },
+            Rest { measure: 4, q: q(4, 1.0), dur_q: 3.0, up: false, whole_bar: false },
+        ];
+        let note = |measure: usize, q: f64| crate::score::ScoreNote {
+            q,
+            measure,
+            lane: Lane::Snare,
+            staff_step: 5,
+            head: NoteHead::Normal,
+            accent: false,
+            ghost: false,
+            grace: false,
+            grace_order: 0,
+            hand: None,
+            stem_up: None,
+        };
+        score.notes = vec![note(1, q(1, 0.0)), note(4, q(4, 2.0))];
+        let on = LayoutOpts { break_at_pause: true, ..LayoutOpts::default() };
+        assert_eq!(layout(&score, 2400.0, 1.0, on).systems, [(0, 2), (2, 6)], "only the pause breaks");
+        assert_eq!(layout(&score, 2400.0, 1.0, LayoutOpts::default()).systems, [(0, 6)], "off: one row");
+        // A fixed number of bars per row: the pause starts a row, and the bars after it are counted
+        // from there, not from the old places of the rows.
+        let fixed = LayoutOpts { bars_per_row: 4, break_at_pause: true, ..LayoutOpts::default() };
+        assert_eq!(layout(&score, W, 1.0, fixed).systems, [(0, 2), (2, 6)]);
+        let two = LayoutOpts { bars_per_row: 2, break_at_pause: true, ..LayoutOpts::default() };
+        score.rests = vec![Rest { measure: 2, q: q(2, 2.0), dur_q: 2.0, up: true, whole_bar: false }];
+        score.notes = vec![note(2, q(2, 0.0))];
+        assert_eq!(layout(&score, W, 1.0, two).systems, [(0, 2), (2, 3), (3, 5), (5, 6)], "pause after bar 3, then pairs again");
+        score.notes.clear();
+        score.rests.clear();
+        // Empty bars in a row make one pause: the row ends after the last of them.
+        let empty = |measure: usize| Rest { measure, q: q(measure, 0.0), dur_q: 4.0, up: true, whole_bar: true };
+        score.notes.clear();
+        score.rests = vec![empty(0), empty(1), empty(2)];
+        assert_eq!(layout(&score, 2400.0, 1.0, on).systems, [(0, 3), (3, 6)]);
+        score.rests = vec![Rest { measure: 1, q: q(1, 2.0), dur_q: 2.0, up: true, whole_bar: false }];
+        // A pause at the end of the score adds no empty row.
+        score.rests.push(empty(5));
+        assert_eq!(layout(&score, 2400.0, 1.0, on).systems.last(), Some(&(2, 6)));
     }
 
     #[test]

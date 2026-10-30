@@ -3,7 +3,7 @@
 use std::collections::HashMap;
 
 use crate::drums::{gm_lane, lane_from_name, lane_from_staff, staff_step, Lane, NoteHead};
-use crate::score::{Measure, Score, ScoreNote, TempoMap};
+use crate::score::{Measure, Rest, Score, ScoreNote, TempoMap};
 use crate::xml::{self, Element};
 
 #[derive(Clone, Debug)]
@@ -18,6 +18,15 @@ struct RawNote {
     stem_up: Option<bool>,
 }
 
+#[derive(Clone, Debug)]
+struct RawRest {
+    offset_q: f64,
+    dur_q: f64,
+    voice: String,
+    whole_bar: bool,
+    up: bool,
+}
+
 #[derive(Clone, Debug, Default)]
 struct RawMeasure {
     number: String,
@@ -25,6 +34,7 @@ struct RawMeasure {
     beats: u32,
     beat_type: u32,
     notes: Vec<RawNote>,
+    rests: Vec<RawRest>,
     tempos: Vec<(f64, f64)>,
     forward_repeat: bool,
     backward_repeat: Option<u32>,
@@ -193,6 +203,9 @@ pub fn parse_musicxml(text: &str, opts: &ParseOptions) -> Result<Score, ScoreErr
                 stem_up: n.stem_up,
             });
         }
+        for r in &rm.rests {
+            score.rests.push(Rest { measure: idx, q: q + r.offset_q, dur_q: r.dur_q, up: r.up, whole_bar: r.whole_bar });
+        }
         for (off, bpm) in &rm.tempos {
             tempo_pts.push((q + off, *bpm));
         }
@@ -272,6 +285,7 @@ fn parse_measures(
     let mut beat_type = 4u32;
     let mut active_ending: Vec<u32> = Vec::new();
     let mut unknown_instruments = 0usize;
+    let mut voice_up: HashMap<String, bool> = HashMap::new();
 
     for m in part.children_named("measure") {
         let mut rm = RawMeasure {
@@ -356,7 +370,20 @@ fn parse_measures(
                         pos += dur;
                         max_pos = max_pos.max(pos);
                     }
-                    if el.has_child("rest") || el.has_child("cue") {
+                    if el.has_child("rest") {
+                        // A rest the score hides (print-object="no") is not drawn either.
+                        if !is_chord && !is_grace && dur > 0.0 && el.attr("print-object") != Some("no") {
+                            rm.rests.push(RawRest {
+                                offset_q: start / divisions,
+                                dur_q: dur / divisions,
+                                voice: voice_of(el),
+                                whole_bar: el.child("rest").and_then(|r| r.attr("measure")) == Some("yes"),
+                                up: true,
+                            });
+                        }
+                        continue;
+                    }
+                    if el.has_child("cue") {
                         continue;
                     }
                     let tie_stop = el
@@ -366,6 +393,9 @@ fn parse_measures(
                         continue;
                     }
                     if let Some(n) = parse_note(el, start / divisions, is_grace, instruments, &mut unknown_instruments) {
+                        // A voice with any stem-up note is the hands'.
+                        let up = n.stem_up.unwrap_or(!n.lane.is_foot());
+                        *voice_up.entry(voice_of(el)).or_insert(false) |= up;
                         rm.notes.push(n);
                     }
                 }
@@ -391,7 +421,16 @@ fn parse_measures(
             "{unknown_instruments} notes had no recognisable instrument; guessed from staff position"
         ));
     }
+    // A rest belongs to the hands or the feet by its voice; a voice without notes is the hands' if
+    // it is the first.
+    for r in out.iter_mut().flat_map(|m| m.rests.iter_mut()) {
+        r.up = voice_up.get(&r.voice).copied().unwrap_or(r.voice == "1");
+    }
     out
+}
+
+fn voice_of(note: &Element) -> String {
+    note.child_text("voice").map(|v| v.trim().to_string()).unwrap_or_else(|| "1".to_string())
 }
 
 fn parse_note(
@@ -587,5 +626,25 @@ mod tests {
         let t0 = s.tempo.q_to_sec(s.measures[1].start_q, 0.8);
         let q = s.tempo.sec_to_q(hits[0].t - 0.012 + t0, 0.8);
         assert!((q - s.notes[exp[1].note_idx].q).abs() < 1e-9);
+    }
+
+    #[test]
+    fn printed_rests_are_kept_with_their_voice_and_hidden_ones_are_not() {
+        let note = |voice: u32, step: &str, stem: &str| format!("<note><unpitched><display-step>{step}</display-step><display-octave>5</display-octave></unpitched><duration>2</duration><voice>{voice}</voice><stem>{stem}</stem></note>");
+        let rest = |voice: u32, dur: u32, extra: &str| format!("<note><rest{extra}/><duration>{dur}</duration><voice>{voice}</voice></note>");
+        let hidden = "<note print-object=\"no\"><rest/><duration>2</duration><voice>2</voice></note>";
+        let body = format!(
+            "<measure number=\"1\"><attributes><divisions>2</divisions><time><beats>4</beats><beat-type>4</beat-type></time></attributes>             {}{}{}<backup><duration>8</duration></backup>{}{}{hidden}</measure>             <measure number=\"2\">{}</measure>",
+            note(1, "G", "up"),
+            rest(1, 2, ""),
+            rest(1, 4, ""),
+            note(2, "F", "down"),
+            rest(2, 4, ""),
+            rest(1, 8, " measure=\"yes\""),
+        );
+        let xml = format!("<score-partwise><part-list><score-part id=\"P1\"><part-name>D</part-name></score-part></part-list><part id=\"P1\">{body}</part></score-partwise>");
+        let s = parse_musicxml(&xml, &ParseOptions::default()).unwrap();
+        let rests: Vec<(usize, f64, f64, bool, bool)> = s.rests.iter().map(|r| (r.measure, r.q, r.dur_q, r.up, r.whole_bar)).collect();
+        assert_eq!(rests, vec![(0, 1.0, 1.0, true, false), (0, 2.0, 2.0, true, false), (0, 1.0, 2.0, false, false), (1, 4.0, 4.0, true, true)]);
     }
 }

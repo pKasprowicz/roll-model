@@ -6,6 +6,19 @@ All notable changes are recorded here. The format follows [Keep a Changelog](htt
 
 ## [Unreleased]
 
+## [0.7.3] - 2026-10-30
+
+The score is drawn like a drum part: beams, flags, tuplet brackets and the rests a file prints. A bar that ends with a pause now ends its row. Covered by unit and integration tests (231); the notation, the rests, the row breaks and the zoom slider were looked at in the running app with the sample and with a real score. The manual and the developer guide are published online with this release (the first deployment of the GitHub Pages workflow). Nothing in the controller, tempo ramp and layer work of 0.7.2 has been tried on a device yet.
+
+### Changed
+- **The zoom slider is greyed out while *bars per row* is fixed**, with a hint on hover: with a fixed count the bars fill the width, so the zoom had no effect and the slider looked broken. Set *bars per row* to *auto* to use it.
+
+### Added
+- **A bar that ends with a pause ends its row** (Layout menu → *new row after a pause*, on by default; setting `break_at_pause`): when the last rest of a bar runs to the barline and no note in any voice starts during it, the score goes on in the next row. A rest under notes of another voice, like the feet's rest under the hands in the sample, is not a pause. The break wins over *bars per row*: after a pause a new row starts and the bars are counted from there (*start a row at bar* still applies to the part of the score it falls in). Covered by a test and looked at in the running app.
+- **The user manual and the developer guide are published online** on GitHub Pages (<https://pkasprowicz.github.io/roll-model/>), behind a start page that links to both. They are the same files as before and are still in every release archive and attached to every release.
+- **The score is drawn with beams, flags and tuplet brackets**: eighths and shorter notes of a beat are joined by beams (hands and feet separately, as two voices; a dotted quarter in 6/8, 9/8 and 12/8), a note alone on an off-beat has flags, and triplets, sextuplets and quintuplets have a bracket with its number. Everything is worked out from where the notes fall in the beat (`core/src/notation.rs`), because the score keeps no note lengths: a note counts as lasting until the next one of its voice. The metronome's rolling staff has none of this. Looked at in the running app (beams, flags, brackets).
+- **Rests the file prints are drawn** on the Score tab: the hands' voice high and the feet's low when the score has both, else in the middle; a bar's rest is a whole rest in the middle of the bar; a rest that would sit on a note head moves away from the middle of the staff until it is clear; rests the file hides are not drawn. Looked at in the running app. Scores made by the program (rudiments) have none.
+
 ## [0.7.2] - 2026-10-30
 
 Editing controller presets gets much further (layers, lights and rings, finding how an encoder counts), Listen and the metronome can ramp the tempo, each score remembers its row layout, and the playhead no longer jumps at a barline. Covered by unit and integration tests; the playhead fix was watched in the running app. The tempo ramp (not listened to), the layer, light and Detect editing (simulated messages only, no real controller) and the layouts were not tried on devices.

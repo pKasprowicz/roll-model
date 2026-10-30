@@ -53,6 +53,26 @@ pub struct ScoreNote {
     pub stem_up: Option<bool>,
 }
 
+impl ScoreNote {
+    /// Whether its stem points up: as the file says, else up for the hands and down for the feet.
+    pub fn stem_is_up(&self) -> bool {
+        self.stem_up.unwrap_or(!self.lane.is_foot())
+    }
+}
+
+/// A rest the file prints. Rests are only drawn; nothing in grading or playback reads them.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Rest {
+    /// Index into `Score::measures`.
+    pub measure: usize,
+    pub q: f64,
+    pub dur_q: f64,
+    /// The voice it belongs to: true for the hands (stems up), false for the feet.
+    pub up: bool,
+    /// A rest for the whole bar, whatever its length.
+    pub whole_bar: bool,
+}
+
 #[derive(Clone, Debug)]
 pub struct Measure {
     /// Measure number as printed in the file.
@@ -170,6 +190,8 @@ pub struct Score {
     pub measures: Vec<Measure>,
     /// Sorted by `q`.
     pub notes: Vec<ScoreNote>,
+    /// The rests the file prints (none for a score made by the program).
+    pub rests: Vec<Rest>,
     pub tempo: TempoMap,
     pub warnings: Vec<String>,
 }

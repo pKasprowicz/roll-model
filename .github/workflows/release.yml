@@ -99,17 +99,28 @@ jobs:
           name: linux
           path: roll-model-*.tar.gz
 
+  # GitHub-hosted, because the repository is public and a self-hosted runner must
+  # not run its jobs. The GNU toolchain is the one every Windows release has been
+  # built and tried with; an MSVC build would need the Visual C++ runtime on the
+  # user's machine.
   build-windows:
-    name: Build Windows (self-hosted)
+    name: Build Windows
     needs: [plan, manual]
     if: needs.plan.outputs.build == 'true'
-    runs-on: [self-hosted, windows]
+    runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
         with:
           name: manual
           path: manual
+      - name: Install Rust (GNU toolchain)
+        shell: bash
+        run: |
+          rustup toolchain install stable-x86_64-pc-windows-gnu --profile minimal
+          rustup default stable-x86_64-pc-windows-gnu
+          rustc -vV
+      - uses: Swatinem/rust-cache@v2
       - name: Test
         shell: pwsh
         run: cargo test --release
