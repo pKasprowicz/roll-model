@@ -6,6 +6,10 @@ All notable changes are recorded here. The format follows [Keep a Changelog](htt
 
 ## [Unreleased]
 
+## [0.7.2] - 2026-10-30
+
+Editing controller presets gets much further (layers, lights and rings, finding how an encoder counts), Listen and the metronome can ramp the tempo, each score remembers its row layout, and the playhead no longer jumps at a barline. Covered by unit and integration tests; the playhead fix was watched in the running app. The tempo ramp (not listened to), the layer, light and Detect editing (simulated messages only, no real controller) and the layouts were not tried on devices.
+
 ### Fixed
 - **The playhead of the score no longer jumps over a barline**: each bar has a padding at both ends, so the first note of the next bar is about 24 pixels further on than the end of the bar before; the playhead used to cover that distance in one step at the barline. It now speeds up during the last stretch of the bar and arrives at the next bar's first note on time. (Only where the next bar is in the same row.)
 
