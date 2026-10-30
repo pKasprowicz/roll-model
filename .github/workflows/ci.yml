@@ -3,6 +3,8 @@ name: CI
 on:
   push:
     branches: [develop]
+  # The Run workflow button on the Actions tab (needs write access to the repository).
+  workflow_dispatch:
 
 permissions:
   contents: read
