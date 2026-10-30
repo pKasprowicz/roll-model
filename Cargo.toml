@@ -28,6 +28,8 @@ midir = "0.10"
 rfd = "0.15"
 # Reads the WAV files that replace built-in instrument sounds.
 hound = "3"
+# Wait-free queue from the scheduler threads to the audio callback.
+rtrb = "0.4"
 rodio = { version = "0.19", default-features = false, optional = true }
 
 [[example]]
