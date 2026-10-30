@@ -104,6 +104,15 @@ The hardware tasks (HW-*) have a step-by-step plan in `docs/hardware-test-plan.m
 | **CD-28** | Split `app/controls.rs` (1,198 lines) | code |
 | **CD-29** | Drawing helpers as methods of `Canvas` | code |
 | **CD-21** to **CD-25** | Polish suggestions (see the review) | code |
+| **AUD-1** | Baseline: measure the onset spread of the current audio output | device |
+| **AUD-2** | Pure audio mixer with offline tests | code |
+| **AUD-3** | Audio clock (`Instant` to frame) and engine handle | code |
+| **AUD-4** | cpal backend for the engine | code, device |
+| **AUD-5** | Rate-aware kit and clicks | code |
+| **AUD-6** | Rewire Listen, metronome and calibration to the engine; remove rodio | code |
+| **AUD-7** | Audio settings, calibration signature, docs, 0.8.0 | code |
+| **AUD-8** | Hardware validation of the new engine | device |
+| **AUD-9** | Decide on and build the `IAudioClient3` backend (optional) | decision, device |
 
 ### Done in 0.4.0 (released; the list of that time)
 
@@ -156,6 +165,10 @@ The Rudiments tab sits between Score and Metronome. `docs/rudiments.md` is the c
 - [ ] **RUD-7** ([#23](https://github.com/pKasprowicz/roll-model/issues/23)) Practice sets and routines (a list of rudiment, repeats, BPM stepped through when a take is clean).
 - [ ] **RUD-8** ([#24](https://github.com/pKasprowicz/roll-model/issues/24)) A progress history beyond the best clean tempo (takes are only in memory today).
 - [ ] **UI-4** ([#25](https://github.com/pKasprowicz/roll-model/issues/25)) Beams, flags, tuplet brackets (worked out from the onsets in `core/src/notation.rs`), rests (`Score.rests`) and the row break after a pause (`notation::pause_bars`, setting `break_at_pause`) are done and looked at. Left: beams on the metronome's rolling staff, ties.
+
+### Audio engine (proposed, 2026-10-30)
+
+[`docs/audio-engine-plan.md`](docs/audio-engine-plan.md) holds the plan: one persistent output stream on cpal (rodio removed) with sample-accurate triggers against a frame clock, so the onset jitter caused by the callback period goes away; WASAPI shared mode only (exclusive mode and ASIO are out of scope by the owner's decision). Tasks **AUD-1** to **AUD-9**, in that order; AUD-1 (a baseline measurement) comes before any code. Nothing is implemented. AUD-6 touches the timing threads next to **CD-5**: it swaps their audio output only.
 
 ### User manual
 
