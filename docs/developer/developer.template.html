@@ -813,6 +813,7 @@ impl DrumApp {
 <li><strong>publish</strong> attaches everything to a GitHub release (a normal one for <code>v*.*.*</code>, a replaced pre-release for <code>preview</code>).</li>
 </ol>
 <p><code>.github/workflows/ci.yml</code> runs <code>cargo test --release</code> on every push to <code>develop</code>, on hosted Ubuntu and Windows with the same toolchains. It has no <code>pull_request</code> trigger on purpose: the repository takes no outside pull requests, and no workflow may use a self-hosted runner.</p>
+<p><code>.github/workflows/pages.yml</code> publishes the documentation on every push to <code>main</code> (which only receives releases, so the site shows the latest release): <code>tools/build_site.py</code> builds a start page and runs the same two scripts as the release into <code>manual/</code> and <code>developer/</code>, and the three official Pages actions upload and deploy the folder. The release files do not depend on it. The repository's Pages source must be set to <em>GitHub Actions</em>.</p>
 <h3>Making a release</h3>
 <ol class="steps">
 <li>On <code>develop</code>: move <code>[Unreleased]</code> in the changelog under the new version and date; bump <code>version</code> in <code>Cargo.toml</code>, <code>core/Cargo.toml</code> and <code>Cargo.lock</code>; commit <code>chore: release X.Y.Z</code>.</li>

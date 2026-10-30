@@ -11,7 +11,7 @@ A Rust desktop app (egui) for practising drum parts against a score:
 
 ## User manual
 
-An extensive manual (setup, every tab, the controller, grading, troubleshooting, and a reference of the 40 rudiments) is one HTML file, `roll-model-manual.html`, included in every release archive and attached to the release. It is built from `docs/manual/manual.template.html` and the rudiment data in `core/src/rudiments.rs`:
+An extensive manual (setup, every tab, the controller, grading, troubleshooting, and a reference of the 40 rudiments) is one HTML file, `roll-model-manual.html`, included in every release archive and attached to the release; the latest one is also published at <https://pkasprowicz.github.io/roll-model/manual/>. It is built from `docs/manual/manual.template.html` and the rudiment data in `core/src/rudiments.rs`:
 
 ```sh
 python3 tools/build_manual.py      # writes target/manual/roll-model-manual.html (standard library only)
@@ -21,13 +21,15 @@ Edit the template when behaviour changes; the rudiment tables regenerate themsel
 
 ## Developer guide
 
-For anyone who wants to change the program: `roll-model-developer-guide.html`, also in every release archive. It explains the architecture and the ideas behind it (layers, time in quarter notes, takes and grading, the real-time threads, the controller and rudiment subsystems), the Rust constructs the design leans on, where the program can be extended, and seven step-by-step tutorials. It is built from `docs/developer/developer.template.html`, and its code excerpts, module map and statistics are generated from the source, so they cannot go stale:
+For anyone who wants to change the program: `roll-model-developer-guide.html`, also in every release archive and published at <https://pkasprowicz.github.io/roll-model/developer/>. It explains the architecture and the ideas behind it (layers, time in quarter notes, takes and grading, the real-time threads, the controller and rudiment subsystems), the Rust constructs the design leans on, where the program can be extended, and seven step-by-step tutorials. It is built from `docs/developer/developer.template.html`, and its code excerpts, module map and statistics are generated from the source, so they cannot go stale:
 
 ```sh
 python3 tools/build_devguide.py    # writes target/devguide/roll-model-developer-guide.html
 ```
 
 If a refactoring renames an item the guide shows, that command fails and names the snippet to update.
+
+Both are published on GitHub Pages, behind a start page that links to them (<https://pkasprowicz.github.io/roll-model/>). `python3 tools/build_site.py` builds that site into `target/site/`; the `Pages` workflow deploys it whenever `main` changes, and `main` only receives releases, so it shows the latest release. The release files are built as before.
 
 ## Build and run
 
@@ -228,6 +230,7 @@ What counts as the public interface: the settings file keys, the CSV export colu
 | `src/widgets.rs` | Shared UI helpers: the wheel-aware slider and the larger Score-tab style |
 | `tools/build_notices.py` | Generates `THIRD_PARTY_NOTICES.txt`, the licence texts of all dependencies, for the release archives |
 | `docs/developer/`, `tools/build_devguide.py` | The developer guide (HTML template with code excerpts pulled from the source) and its build script |
+| `docs/site/`, `tools/build_site.py` | The start page of the online documentation and the script that builds the whole site (start page, manual, developer guide) for GitHub Pages |
 | `docs/style.css` | The stylesheet shared by the manual and the developer guide |
 | `docs/manual/`, `tools/build_manual.py` | The user manual (HTML template) and the script that builds it for releases |
 | `core/src/config.rs` | Settings file (`%APPDATA%\RollModel\config.txt` on Windows) |
