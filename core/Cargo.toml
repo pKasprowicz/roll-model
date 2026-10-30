@@ -1,6 +1,6 @@
 [package]
 name = "roll-model-core"
-version = "0.7.0"
+version = "0.7.1"
 edition = "2021"
 description = "The part of Roll Model that needs no window, MIDI port or sound card: scores, grading, controller presets and settings"
 license = "PolyForm-Noncommercial-1.0.0"
