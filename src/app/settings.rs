@@ -194,10 +194,8 @@ impl DrumApp {
             widgets::hint(ui, "The output opens when the first sound starts.");
             return;
         };
-        let delay = match info.latency_ms {
-            Some(ms) => format!("The driver reports about {ms:.0} ms between the program and the output."),
-            None => "The driver reports no delay.".to_string(),
-        };
+        let calibrated = (self.cfg.latency_ms > 0.0 && !self.cfg.latency_is_stale(crate::audio::ENGINE_GENERATION)).then_some(self.cfg.latency_ms);
+        let delay = delay_text(info.latency_ms, calibrated);
         widgets::hint(ui, &format!("Open: {} at {} Hz. {delay}", info.device, info.rate));
         if info.late + info.dropped > 0 {
             ui.label(RichText::new(format!("Sounds that came too late: {} (the worst by {:.1} ms), dropped: {}. The computer may be too busy for the output.", info.late, info.worst_late_ms, info.dropped)).small().color(render::AMBER));
@@ -319,5 +317,33 @@ impl DrumApp {
         if let Some(p) = self.paths.config_file() {
             widgets::hint(ui, format!("Settings are saved automatically to {}", p.display()));
         }
+    }
+}
+
+/// What the Sound page says about the delay. The driver's figure is the free space of one block, so it is
+/// a lower bound: the system's own buffer comes on top (45 ms against 10 ms reported was measured on one machine).
+fn delay_text(reported_ms: Option<f64>, calibrated_ms: Option<f64>) -> String {
+    let mut s = match reported_ms {
+        Some(ms) => format!("The driver reports about {ms:.0} ms, but that is only the least: the system's buffer comes on top, so the real delay is longer (one machine measured 45 ms where the driver said 10)."),
+        None => "The driver reports no delay; the real one is not zero.".to_string(),
+    };
+    match calibrated_ms {
+        Some(ms) => s.push_str(&format!(" Your calibrated latency is {ms:.0} ms (the whole path, and your own habit).")),
+        None => s.push_str(" Settings → Timing → Calibrate measures it."),
+    }
+    s
+}
+
+#[cfg(test)]
+mod delay_text_tests {
+    use super::delay_text;
+
+    #[test]
+    fn the_reported_delay_is_called_a_lower_bound_and_calibration_is_offered_or_shown() {
+        let t = delay_text(Some(10.0), None);
+        assert!(t.contains("about 10 ms") && t.contains("only the least") && t.contains("Calibrate"), "{t}");
+        let t = delay_text(Some(10.0), Some(45.0));
+        assert!(t.contains("calibrated latency is 45 ms") && !t.contains("Calibrate measures"), "{t}");
+        assert!(delay_text(None, None).contains("not zero"));
     }
 }
