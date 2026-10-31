@@ -57,6 +57,7 @@ impl DrumApp {
             click_midi: c.click_midi,
             click_note: c.click_note,
             click_channel: c.click_channel,
+            midi_delay: self.output_delay(),
             drum_notes: BTreeMap::new(),
             ramp: self.metro_ramp(),
         }

@@ -24,6 +24,9 @@ pub struct ClickOptions {
     pub midi_note: u8,
     /// 1..=16
     pub midi_channel: u8,
+    /// How much later than its time the MIDI click goes out when the click also sounds through the sound
+    /// card (the output delay). Zero for the calibration clicks.
+    pub midi_delay: Duration,
 }
 
 pub struct Metronome {
@@ -71,6 +74,15 @@ pub(crate) fn at(zero: Instant, t: f64) -> Option<Instant> {
         zero.checked_add(Duration::from_secs_f64(t))
     } else {
         zero.checked_sub(Duration::from_secs_f64(-t))
+    }
+}
+
+/// The MIDI delay, cut short where the next click would otherwise be handed to the engine late: this thread
+/// waits for the MIDI note, and the next click is due `AUDIO_LOOKAHEAD` before its time.
+fn midi_delay_before_next(delay: Duration, gap_to_next: Option<f64>) -> Duration {
+    match gap_to_next {
+        Some(gap) => delay.min(Duration::from_secs_f64(gap.max(0.0)).saturating_sub(AUDIO_LOOKAHEAD)),
+        None => delay,
     }
 }
 
@@ -126,7 +138,8 @@ fn run(
     }
     let ch = opts.midi_channel.clamp(1, 16) - 1;
 
-    for (t, accent) in clicks {
+    let times: Vec<f64> = clicks.iter().map(|c| c.0).collect();
+    for (i, (t, accent)) in clicks.into_iter().enumerate() {
         let Some(target) = at(zero, t) else { continue };
         // The engine needs the click ahead of its time; MIDI goes out at the time itself.
         let wake = if engine.is_some() { target.checked_sub(AUDIO_LOOKAHEAD).unwrap_or(target) } else { target };
@@ -143,7 +156,8 @@ fn run(
             let _ = engine.play(run, target, sound, gain, NO_GROUP, 0);
         }
         if let Some(conn) = midi.as_mut() {
-            if !wait_until(target, &stop) {
+            let delay = if engine.is_some() { midi_delay_before_next(opts.midi_delay, times.get(i + 1).map(|n| n - t)) } else { Duration::ZERO };
+            if !wait_until(target + delay, &stop) {
                 break;
             }
             let _ = conn.send(&[0x90 | ch, opts.midi_note, level.velocity()]);
@@ -156,5 +170,20 @@ fn run(
     }
     if let (Some(engine), Some(run)) = (engine.as_ref(), run_id) {
         let _ = engine.cancel_run(run);
+    }
+}
+
+#[cfg(test)]
+mod delay_tests {
+    use super::*;
+
+    #[test]
+    fn the_midi_delay_leaves_the_next_click_its_lookahead() {
+        let ms = Duration::from_millis;
+        assert_eq!(midi_delay_before_next(ms(45), Some(0.6)), ms(45));
+        assert_eq!(midi_delay_before_next(ms(45), None), ms(45));
+        // Clicks 62.5 ms apart: only 32.5 ms are left once the next one must be handed over 30 ms ahead.
+        assert_eq!(midi_delay_before_next(ms(45), Some(0.0625)), Duration::from_micros(32_500));
+        assert_eq!(midi_delay_before_next(ms(45), Some(0.02)), Duration::ZERO);
     }
 }

@@ -8,7 +8,8 @@ All notable changes are recorded here. The format follows [Keep a Changelog](htt
 
 ### Changed
 - **The Sound page says the driver's delay is only the least** and shows the calibrated latency beside it (one machine measured 45 ms end to end where the driver reported 10 ms).
-- **The playhead, the beat lights and the count-in are drawn where the sound is heard** when it comes through the computer: the calibrated latency later than the click was scheduled (at most 150 ms; not when the latency is from an earlier engine or negative). Before, they ran about one output delay ahead of the sound. Grading is unchanged. New setting `sync_display` (Settings → Timing → Playhead), on by default.
+- **The playhead, the beat lights and the count-in are drawn where the sound is heard** when it comes through the computer: the calibrated latency later than the click was scheduled (at most 150 ms; not when the latency is from an earlier engine or negative). Before, they ran about one output delay ahead of the sound. Grading is unchanged. New setting `sync_display` (Settings → Timing → Picture and MIDI click), on by default.
+- **A MIDI click or MIDI drums that also sound through the computer are sent later by the same delay**, so the two are heard together (for example a V31 that plays both its USB audio and the MIDI note). A sound that goes only to MIDI is not moved, and the calibration clicks are not either. Needs trying with a V31.
 
 ### Added
 - **`examples/audio_latency.rs`** measures the whole delay from the program's `play` instant to the sound at an input wired to the output (task AUD-10, experiment E3), with the program's own engine code. On the first machine: 45.2 ms, steady to 0.01 ms, against the 10 ms the driver reports.

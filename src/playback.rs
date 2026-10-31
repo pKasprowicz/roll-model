@@ -135,6 +135,9 @@ pub struct PlayOptions {
     pub click_note: u8,
     /// 1..=16
     pub click_channel: u8,
+    /// How much later than its time a MIDI note is sent when the same sound also goes through the sound
+    /// card: the output delay, so that the two are heard together. Zero when only MIDI sounds.
+    pub midi_delay: Duration,
     /// MIDI note that sounds each lane on the module.
     pub drum_notes: BTreeMap<Lane, u8>,
     /// Raises the tempo as the passes go by (only with looping on).
@@ -440,13 +443,24 @@ struct DeviceSink {
     click_note: u8,
     click_channel: u8,
     drum_channel: u8,
+    /// How much later the MIDI click and the MIDI drums go out (see `PlayOptions::midi_delay`).
+    click_delay: Duration,
+    drum_delay: Duration,
+}
+
+/// The delays of the MIDI click and of the MIDI drums: `opts.midi_delay` for each that is also played
+/// through the sound card in this run, otherwise none.
+fn midi_delays(opts: &PlayOptions, has_clicks: bool) -> (Duration, Duration) {
+    let delay = |also_audio: bool| if also_audio { opts.midi_delay } else { Duration::ZERO };
+    (delay(opts.click_audio && has_clicks && opts.engine.is_some()), delay(opts.audio && opts.engine.is_some()))
 }
 
 impl DeviceSink {
-    fn midi_note(&mut self, when: Instant, channel: u8, note: u8, velocity: u8) {
+    fn midi_note(&mut self, when: Instant, delay: Duration, channel: u8, note: u8, velocity: u8) {
         if self.midi.is_none() {
             return;
         }
+        let when = when + delay;
         if self.lookahead().is_zero() || when <= Instant::now() {
             if let Some(conn) = self.midi.as_mut() {
                 note_on_off(conn, channel, note, velocity);
@@ -466,7 +480,7 @@ impl Sink for DeviceSink {
     }
 
     fn midi_click(&mut self, level: ClickLevel, when: Instant) {
-        self.midi_note(when, self.click_channel, self.click_note, level.velocity());
+        self.midi_note(when, self.click_delay, self.click_channel, self.click_note, level.velocity());
     }
 
     fn audio_drum(&mut self, lane: Lane, gain: f32, when: Instant) {
@@ -477,7 +491,7 @@ impl Sink for DeviceSink {
     }
 
     fn midi_drum(&mut self, note: u8, velocity: u8, when: Instant) {
-        self.midi_note(when, self.drum_channel, note, velocity);
+        self.midi_note(when, self.drum_delay, self.drum_channel, note, velocity);
     }
 
     fn lookahead(&self) -> Duration {
@@ -547,6 +561,7 @@ fn run(zero: Instant, cues: Vec<Cue>, pass_len: f64, opts: PlayOptions, control:
         }
     }
 
+    let (click_delay, drum_delay) = midi_delays(&opts, has_clicks);
     let mut sink = DeviceSink {
         engine,
         run: run_id,
@@ -557,6 +572,8 @@ fn run(zero: Instant, cues: Vec<Cue>, pass_len: f64, opts: PlayOptions, control:
         click_note: opts.click_note,
         click_channel: opts.click_channel.clamp(1, 16) - 1,
         drum_channel: opts.drum_channel.clamp(1, 16) - 1,
+        click_delay,
+        drum_delay,
     };
     run_with(zero, &cues, pass_len, &opts, &control, &stop, &mut sink, TAIL);
 }

@@ -22,7 +22,8 @@ pub struct Config {
     /// engines were told apart. The program compares it with its own to say when to calibrate again.
     pub latency_engine: u32,
     /// Draw the playhead and the beat lights where the sound is heard (the calibrated latency later)
-    /// rather than where it was scheduled. Grading is not affected.
+    /// rather than where it was scheduled, and send a MIDI click or MIDI drums that also sound through the
+    /// computer that much later. Grading is not affected.
     pub sync_display: bool,
     pub tol: Tolerances,
     pub metronome_during_take: bool,

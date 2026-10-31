@@ -159,8 +159,8 @@ impl DrumApp {
                 }
             });
             ui.end_row();
-            ui.label("Playhead");
-            ui.checkbox(&mut self.cfg.sync_display, "Draw it where the sound is heard (the latency later)");
+            ui.label("Picture and MIDI click");
+            ui.checkbox(&mut self.cfg.sync_display, "Follow the sound: draw it, and send the MIDI click, as late as the sound is heard (the latency)");
             ui.end_row();
             ui.label("Perfect within");
             widgets::slider(ui, "", &mut self.cfg.tol.perfect_ms, 5.0..=50.0, " ms", 1.0);
