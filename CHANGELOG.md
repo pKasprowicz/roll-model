@@ -6,6 +6,9 @@ All notable changes are recorded here. The format follows [Keep a Changelog](htt
 
 ## [Unreleased]
 
+### Added
+- **`examples/audio_latency.rs`** measures the whole delay from the program's `play` instant to the sound at an input wired to the output (task AUD-10, experiment E3), with the program's own engine code. On the first machine: 45.2 ms, steady to 0.01 ms, against the 10 ms the driver reports.
+
 ## [0.8.0] - 2026-10-30
 
 A new audio engine: the click and the built-in drums start at an exact moment of one output stream that stays open, instead of at the next audio callback, so their timing no longer wobbles by up to 10 ms. **Run Settings → Timing → Calibrate again after updating.** Covered by unit tests (271), and measured by loopback recording on two Windows machines. Unplugging the output, a missing named output, changing the Windows default output and a long looping Listen with a tempo ramp (up to 300 %) were tried by hand; Listen was listened to on the new engine (the cymbals and the WAV override were not judged). Not tried: a real V31 and controllers, and audio output on Linux and macOS.
