@@ -195,7 +195,7 @@ impl DrumApp {
             return;
         };
         let calibrated = (self.cfg.latency_ms > 0.0 && !self.cfg.latency_is_stale(crate::audio::ENGINE_GENERATION)).then_some(self.cfg.latency_ms);
-        let delay = delay_text(info.latency_ms, calibrated);
+        let delay = delay_text(info.latency_ms, super::audio_output::SYSTEM_BUFFER_MS, calibrated);
         widgets::hint(ui, &format!("Open: {} at {} Hz. {delay}", info.device, info.rate));
         if info.late + info.dropped > 0 {
             ui.label(RichText::new(format!("Sounds that came too late: {} (the worst by {:.1} ms), dropped: {}. The computer may be too busy for the output.", info.late, info.worst_late_ms, info.dropped)).small().color(render::AMBER));
@@ -320,12 +320,15 @@ impl DrumApp {
     }
 }
 
-/// What the Sound page says about the delay. The driver's figure is the free space of one block, so it is
-/// a lower bound: the system's own buffer comes on top (45 ms against 10 ms reported was measured on one machine).
-fn delay_text(reported_ms: Option<f64>, calibrated_ms: Option<f64>) -> String {
-    let mut s = match reported_ms {
-        Some(ms) => format!("The driver reports about {ms:.0} ms, but that is only the least: the system's buffer comes on top, so the real delay is longer (one machine measured 45 ms where the driver said 10)."),
-        None => "The driver reports no delay; the real one is not zero.".to_string(),
+/// What the Sound page says about the delay. The driver's figure is the free space of one block; the
+/// system's own buffer (`system_ms`, 22 ms on Windows) comes on top, so the sum is still a lower bound (45 ms
+/// against 10 + 22 was measured on one machine, with the rest not accounted for).
+fn delay_text(reported_ms: Option<f64>, system_ms: f64, calibrated_ms: Option<f64>) -> String {
+    let mut s = match (reported_ms, system_ms > 0.0) {
+        (Some(r), true) => format!("The driver reports about {r:.0} ms. The system adds a buffer of about {system_ms:.0} ms on top, so the delay is at least about {:.0} ms (one machine measured 45 ms end to end).", r + system_ms),
+        (None, true) => format!("The driver reports no delay. The system adds a buffer of about {system_ms:.0} ms, so the delay is at least that."),
+        (Some(r), false) => format!("The driver reports about {r:.0} ms, but that is only the least: the system's buffer comes on top, so the real delay is longer (one machine measured 45 ms where the driver said 10)."),
+        (None, false) => "The driver reports no delay; the real one is not zero.".to_string(),
     };
     match calibrated_ms {
         Some(ms) => s.push_str(&format!(" Your calibrated latency is {ms:.0} ms (the whole path, and your own habit).")),
@@ -340,10 +343,17 @@ mod delay_text_tests {
 
     #[test]
     fn the_reported_delay_is_called_a_lower_bound_and_calibration_is_offered_or_shown() {
-        let t = delay_text(Some(10.0), None);
+        let t = delay_text(Some(10.0), 0.0, None);
         assert!(t.contains("about 10 ms") && t.contains("only the least") && t.contains("Calibrate"), "{t}");
-        let t = delay_text(Some(10.0), Some(45.0));
+        let t = delay_text(Some(10.0), 0.0, Some(45.0));
         assert!(t.contains("calibrated latency is 45 ms") && !t.contains("Calibrate measures"), "{t}");
-        assert!(delay_text(None, None).contains("not zero"));
+        assert!(delay_text(None, 0.0, None).contains("not zero"));
+    }
+
+    #[test]
+    fn the_system_buffer_is_added_to_what_the_driver_reports() {
+        let t = delay_text(Some(10.0), 22.0, None);
+        assert!(t.contains("about 10 ms") && t.contains("buffer of about 22 ms") && t.contains("at least about 32 ms"), "{t}");
+        assert!(delay_text(None, 22.0, None).contains("at least that"));
     }
 }
