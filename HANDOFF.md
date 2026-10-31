@@ -66,7 +66,7 @@ The hardware tasks (HW-*) have a step-by-step plan in `docs/hardware-test-plan.m
 | **RUD-7** [#23](https://github.com/pKasprowicz/roll-model/issues/23) | Practice sets and routines | code |
 | **RUD-8** [#24](https://github.com/pKasprowicz/roll-model/issues/24) | A progress history on disk | code |
 | **SND-1** [#27](https://github.com/pKasprowicz/roll-model/issues/27) | Listen to the cymbals and the rest of the kit | ears |
-| **SND-2** [#28](https://github.com/pKasprowicz/roll-model/issues/28) | Ask whether volume plus WAV files is enough or several kits are wanted | decision |
+| **SND-2** [#28](https://github.com/pKasprowicz/roll-model/issues/28) | Ask whether volume plus WAV files is enough or several kits are wanted: **decided 2026-10-31: enough as it is; no extra kits** | decision |
 | **SND-3** [#30](https://github.com/pKasprowicz/roll-model/issues/30) | Listen to the WAV override and the hi-hat choke | ears |
 | **UI-1** [#29](https://github.com/pKasprowicz/roll-model/issues/29) | Try with a real mouse and wheel | device |
 | **UI-2** [#31](https://github.com/pKasprowicz/roll-model/issues/31) | The bar numbering mismatch (printed number against position) | decision, code |
@@ -199,7 +199,7 @@ Checked on 2026-10-30, while the repository was still private. Every commit and 
 ### Still open
 
 - [ ] **SND-1** ([#27](https://github.com/pKasprowicz/roll-model/issues/27)) **Listen to the new cymbals and the rest of the kit.** Nobody has heard them; only their spectra are tested (centroid, share below 2 kHz, lone low partials). Tune `Cymbal` parameters in `synth.rs` by ear, then adjust the guard bands if needed. The hi-hats are untouched and still very bright (spectral centroid about 13 kHz).
-- [ ] **SND-2** ([#28](https://github.com/pKasprowicz/roll-model/issues/28)) **Ask the user** whether per-instrument volume plus WAV files is enough, or whether several synthesised kits (brighter, darker, …) are wanted.
+- [x] **SND-2** ([#28](https://github.com/pKasprowicz/roll-model/issues/28)) **Decided 2026-10-31: per-instrument volume plus WAV files is enough; no extra kits.** (The question was: whether per-instrument volume plus WAV files is enough, or whether several synthesised kits (brighter, darker, …) are wanted.)
 - [ ] **UI-1** ([#29](https://github.com/pKasprowicz/roll-model/issues/29)) Try with a real mouse and wheel: the Layout popup, the mixer's mute/solo/play buttons, the wheel on sliders. Verified only through the keyboard, config keys, and headless egui tests.
 - [ ] **SND-3** ([#30](https://github.com/pKasprowicz/roll-model/issues/30)) The WAV override and the hi-hat choke have unit tests but were never heard.
 - [ ] **UI-2** ([#31](https://github.com/pKasprowicz/roll-model/issues/31)) The numbering mismatch is still there: bars drawn in the score show their printed number (repeated after unrolling repeats), while the Measures sliders and *start a row at bar* use the position. The Layout popup shows the printed number of the chosen bar; consider showing both on the bars, or making the sliders use printed numbers.
