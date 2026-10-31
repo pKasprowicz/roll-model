@@ -47,6 +47,7 @@ fn opts() -> PlayOptions {
         click_midi: true,
         click_note: 76,
         click_channel: 10,
+        midi_delay: Duration::ZERO,
         drum_notes: [(Lane::Kick, 36), (Lane::Snare, 38)].into_iter().collect(),
         ramp: Ramp::default(),
     }
@@ -456,4 +457,17 @@ fn the_first_cue_of_a_looped_pass_is_handed_over_ahead_of_its_time_too() {
         let ahead = when.saturating_duration_since(*told_at);
         assert!(ahead >= Duration::from_millis(20), "cue {i} was handed over only {ahead:?} ahead of its time");
     }
+}
+
+#[test]
+fn midi_is_delayed_only_for_what_also_sounds_through_the_sound_card() {
+    use crate::audio::EngineHandle;
+    let (engine, _callback) = crate::audio::handle::channel(48_000, Instant::now());
+    let both = PlayOptions { engine: Some(engine), midi_delay: Duration::from_millis(40), ..opts() };
+    let ms = Duration::from_millis;
+    assert_eq!(midi_delays(&both, true), (ms(40), ms(40)), "the click and the drums sound twice");
+    assert_eq!(midi_delays(&PlayOptions { click_audio: false, ..both.clone() }, true), (Duration::ZERO, ms(40)), "a MIDI-only click is not moved");
+    assert_eq!(midi_delays(&PlayOptions { audio: false, ..both.clone() }, true), (ms(40), Duration::ZERO), "MIDI-only drums are not moved");
+    assert_eq!(midi_delays(&both, false).0, Duration::ZERO, "no click in this run");
+    assert_eq!(midi_delays(&PlayOptions { engine: None::<EngineHandle>, ..both }, true), (Duration::ZERO, Duration::ZERO), "no open output, nothing to line up with");
 }

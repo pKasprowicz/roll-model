@@ -33,7 +33,18 @@ impl DrumApp {
             midi_port: self.cfg.click_midi.then(|| self.cfg.midi_out_port.clone()),
             midi_note: self.cfg.click_note,
             midi_channel: self.cfg.click_channel,
+            midi_delay: self.output_delay(),
         }
+    }
+
+    /// How long the sound takes through the computer's output: the latency compensation, when it is meant
+    /// for this engine (see `Config::display_delay`), and only while the output is open. The screen and the
+    /// MIDI notes that sound together with the audio are shifted by it.
+    pub(super) fn output_delay(&self) -> Duration {
+        if !self.audio.is_open() {
+            return Duration::ZERO;
+        }
+        Duration::from_secs_f64(self.cfg.display_delay(crate::audio::ENGINE_GENERATION))
     }
 
     /// Copies the settings that can change while sound is playing into the
@@ -139,6 +150,7 @@ impl DrumApp {
             click_midi: c.click_midi,
             click_note: c.click_note,
             click_channel: c.click_channel,
+            midi_delay: self.output_delay(),
             drum_notes: Lane::ALL.iter().filter_map(|l| c.note_map.playback_note(*l).map(|n| (*l, n))).collect(),
             ramp: self.listen_ramp(),
         }
@@ -277,7 +289,7 @@ impl DrumApp {
     pub(super) fn listen_position(&self) -> Option<String> {
         let l = self.playback.listen.as_ref()?;
         let score = self.score.as_ref()?;
-        let elapsed = signed_secs(Instant::now(), l.zero);
+        let elapsed = signed_secs(self.shown_now(), l.zero);
         if elapsed < 0.0 {
             let left = (-elapsed / l.beat_sec).ceil() as u32;
             return Some(if left > l.count_in_beats { "starting…".into() } else { format!("count-in {left}") });
@@ -293,11 +305,19 @@ impl DrumApp {
         Some(text)
     }
 
+    /// The moment the screen shows: the playhead, the beat lights and the count-in are drawn for it. With
+    /// the sound coming through the computer it is one output delay (the latency compensation) behind
+    /// the clock, so the picture and the sound agree; grading always uses the clock itself.
+    pub(super) fn shown_now(&self) -> Instant {
+        let now = Instant::now();
+        now.checked_sub(self.output_delay()).unwrap_or(now)
+    }
+
     /// The playhead of Listen, in quarter notes; it wraps around while looping.
     pub(super) fn listen_playhead(&self) -> Option<f64> {
         let l = self.playback.listen.as_ref()?;
         let score = self.score.as_ref()?;
-        let elapsed = signed_secs(Instant::now(), l.zero);
+        let elapsed = signed_secs(self.shown_now(), l.zero);
         let (_, e) = l.ramp.locate(l.end_sec, elapsed);
         Some(score.tempo.sec_to_q(e + l.t0, l.tempo_scale))
     }
@@ -412,7 +432,9 @@ impl DrumApp {
         let beats: Vec<f64> = (0..16).map(|i| i as f64 * beat).collect();
         let clicks = beats.iter().map(|t| (*t, false)).collect();
         // No control: the calibration clicks must sound whatever the click switch says.
-        self.metronome = Some(Metronome::start(zero, clicks, self.click_options(), None));
+        // The calibration measures the whole delay, so its MIDI click is not moved.
+        let opts = ClickOptions { midi_delay: Duration::ZERO, ..self.click_options() };
+        self.metronome = Some(Metronome::start(zero, clicks, opts, None));
         self.calibration = Some(Calibration { zero, beats, hits: Vec::new() });
         self.view.status = "Calibrating: hit any pad together with the 16 clicks…".into();
     }

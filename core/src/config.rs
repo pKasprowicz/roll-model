@@ -21,6 +21,10 @@ pub struct Config {
     /// Which audio engine `latency_ms` was set with (calibrated, or moved by hand); 0 = before the
     /// engines were told apart. The program compares it with its own to say when to calibrate again.
     pub latency_engine: u32,
+    /// Draw the playhead and the beat lights where the sound is heard (the calibrated latency later)
+    /// rather than where it was scheduled, and send a MIDI click or MIDI drums that also sound through the
+    /// computer that much later. Grading is not affected.
+    pub sync_display: bool,
     pub tol: Tolerances,
     pub metronome_during_take: bool,
     pub count_in_bars: u32,
@@ -118,6 +122,8 @@ fn same_path(a: &str, b: &str) -> bool {
 }
 /// The controller preset used until another is chosen (or "none": an empty name).
 pub const DEFAULT_CONTROLLER: &str = "Behringer X-Touch Mini";
+/// Longest latency the playhead is shifted by, in ms (the slider goes to 200).
+const MAX_DISPLAY_DELAY_MS: f64 = 150.0;
 /// Loudest instrument gain the mixer allows.
 pub const MAX_LANE_GAIN: f32 = 1.5;
 
@@ -128,6 +134,7 @@ impl Default for Config {
             midi_out_port: "V31".into(),
             latency_ms: 0.0,
             latency_engine: 0,
+            sync_display: true,
             tol: Tolerances::default(),
             metronome_during_take: true,
             count_in_bars: 1,
@@ -314,6 +321,7 @@ const KEYS: &[Key] = &[
     key!("midi_out_port", c.midi_out_port, Text),
     key!("latency_ms", c.latency_ms, number(f64::MIN, f64::MAX)),
     key!("latency_engine", c.latency_engine, number(0, 9999)),
+    key!("sync_display", c.sync_display, Flag),
     key!("perfect_ms", c.tol.perfect_ms, number(f64::MIN, f64::MAX)),
     key!("good_ms", c.tol.good_ms, number(f64::MIN, f64::MAX)),
     key!("window_ms", c.tol.window_ms, number(f64::MIN, f64::MAX)),
@@ -417,6 +425,15 @@ impl Config {
     /// therefore probably wrong now. A compensation of zero says nothing, so it is never stale.
     pub fn latency_is_stale(&self, engine: u32) -> bool {
         self.latency_ms != 0.0 && self.latency_engine != engine
+    }
+
+    /// How many seconds later than scheduled the sound is heard, for drawing the playhead: the latency
+    /// compensation, when it is meant for this engine, positive and not absurd; otherwise 0.
+    pub fn display_delay(&self, engine: u32) -> f64 {
+        if !self.sync_display || self.latency_is_stale(engine) {
+            return 0.0;
+        }
+        self.latency_ms.clamp(0.0, MAX_DISPLAY_DELAY_MS) / 1000.0
     }
 
     /// Volume of one instrument in Listen (1.0 unless changed).

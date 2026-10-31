@@ -45,6 +45,7 @@ fn roundtrip() {
     let mut c = Config {
         latency_ms: 12.5,
         latency_engine: 2,
+        sync_display: false,
         midi_in_port: "Roland V31 MIDI 1".into(),
         metronome_during_take: false,
         count_in_bars: 2,
@@ -235,4 +236,14 @@ fn a_latency_set_with_another_engine_is_stale() {
     let old = Config::from_text("latency_ms = 5\n");
     assert_eq!((old.latency_engine, old.latency_is_stale(2)), (0, true));
     assert_eq!(Config::from_text(&c.to_text()).latency_engine, 2);
+}
+
+#[test]
+fn the_display_follows_the_latency_only_when_it_is_meant_for_this_engine() {
+    let c = Config { latency_ms: 45.0, latency_engine: 2, ..Default::default() };
+    assert_eq!(c.display_delay(2), 0.045);
+    assert_eq!(c.display_delay(3), 0.0, "a latency from another engine says nothing about this one");
+    assert_eq!(Config { sync_display: false, ..c.clone() }.display_delay(2), 0.0);
+    assert_eq!(Config { latency_ms: -20.0, latency_engine: 2, ..Default::default() }.display_delay(2), 0.0, "early is not drawn");
+    assert_eq!(Config { latency_ms: 200.0, latency_engine: 2, ..Default::default() }.display_delay(2), 0.15);
 }

@@ -1,0 +1,97 @@
+<h3 id="aud-glossary">Glossary</h3>
+<p>Terms of this chapter, in alphabetical order. In the text above, the first use of each is underlined with dots and links here. Where a word has two senses in this chapter, both are given.</p>
+<dl class="gloss">
+<dt id="g-allocation">Allocation, free</dt><dd>Asking the system for memory while the program runs (growing a list, creating a box), and giving it back. How long either takes depends on what else the system is doing, so it can take longer than a callback has. The callback does neither; see <a href="#aud-rt">What the callback may and may not do</a>.</dd>
+
+<dt id="g-arc">Arc</dt><dd>Rust's reference-counted pointer: several owners share one value, and it is freed when the last owner lets go. A drum sound is an <code>Arc&lt;[f32]&gt;</code>, so the scheduler, the queue and the mixer share one copy. The graveyard exists so that the <em>last</em> owner is never the callback.</dd>
+
+<dt id="g-atomic">Atomic</dt><dd>A number or flag that threads read and write without a lock, each access happening as one indivisible step. The clock estimate, the counters and the stop flags are atomics. A <em>relaxed</em> store is the cheapest kind; <em>release</em> and <em>acquire</em> additionally make everything written before the store visible to a thread that sees the flag.</dd>
+
+<dt id="g-engine">Audio engine</dt><dd>Two things carry this name. <strong>The engine</strong> is this program's own code in <code>src/audio/</code>: the queue, the clock estimate, the mixer and the stream. <strong>The Windows audio engine</strong> is the system component that, in shared mode, mixes the sound of every program, applies effects and passes the sum to the driver; it wakes the program's callback once per period. The text says "Windows audio engine" or "operating system's audio engine" for the second.</dd>
+
+<dt id="g-block">Block</dt><dd>The frames one callback fills. In shared mode a block is one period long (480 frames, 10 ms on the outputs measured). The mixer accepts a block of any size, because other drivers and systems hand over other sizes. Some documents call it a buffer; this chapter keeps "buffer" for the endpoint buffer.</dd>
+
+<dt id="g-callback">Callback</dt><dd>A function that the audio system calls, on a thread of its own, every time it needs the next block of samples. It has to finish before the hardware runs out of data; if it is late the output glitches (a click or a gap). cpal calls ours; <code>Callback</code> in <code>handle.rs</code> is what it does. Also <em>audio callback</em>.</dd>
+
+<dt id="g-choke">Choke group</dt><dd>A bit number a sound can be cut off by. When a sound starts it can <em>choke</em> the groups in its mask: a closed hi-hat cuts an open one that is still ringing. Done with two integers per sound, so no list is needed in the callback.</dd>
+
+<dt id="g-converter">Converter (DAC)</dt><dd>The digital-to-analogue converter that turns the stream of numbers into a voltage for the speaker. With a USB or Bluetooth output it is in the device, and the link to it has its own buffering.</dd>
+
+<dt id="g-cpal">cpal</dt><dd>The Rust library the engine uses to open an output stream on the system's audio interface (WASAPI on Windows, ALSA and others elsewhere). It creates the audio thread and calls the program's callback on it.</dd>
+
+<dt id="g-cue">Cue</dt><dd>One thing to play at one moment of a run: a click or a drum hit, with its time in seconds from zero (<code>Cue</code> in <code>playback.rs</code>).</dd>
+
+<dt id="g-drift">Drift, ppm</dt><dd>The sound card has its own clock crystal, which runs a little faster or slower than the computer's clock. The difference is small: parts per million (ppm); 100 ppm is 0.1 ms per second. The clock estimate has to follow it, or sounds placed far ahead would end up early or late.</dd>
+
+<dt id="g-endpoint">Endpoint, endpoint buffer</dt><dd><em>Endpoint</em> is Windows' word for an output device (speakers, headphones, a monitor's speakers). The <em>endpoint buffer</em> is the buffer between the Windows audio engine and the driver; it stays ahead of the hardware. For a shared, event-driven stream it was measured as 1056 frames, 22 ms, and a request for less is raised to that.</dd>
+
+<dt id="g-exclusive">Exclusive mode, ASIO, WDM-KS</dt><dd>Ways to talk to the sound hardware without the Windows audio engine mixing in between: the program has the device to itself. They remove most of the delay and are out of scope by decision of the owner.</dd>
+
+<dt id="g-fade">Fade-out</dt><dd>A short ramp to silence (256 frames, 5.3 ms at 48 kHz) used when a sound is choked or cancelled, because cutting a sound at a random sample makes an audible click.</dd>
+
+<dt id="g-frame">Frame</dt><dd>One sample for each channel at one instant. At 48 kHz the stream plays 48,000 frames a second, so a frame lasts about 20.8 microseconds and 10 ms is 480 frames. The mixer counts frames from the first one it renders, and a sound is told to start <em>at frame number N</em>.</dd>
+
+<dt id="g-graveyard">Graveyard</dt><dd>A second queue, from the callback to the scheduler side, into which the callback puts the sound data of finished sounds so that it never has to free memory itself.</dd>
+
+<dt id="g-instant">Instant</dt><dd>Rust's type for a point on the computer's steady clock (<code>std::time::Instant</code>). Only the difference between two instants means something. The scheduler's clock; the engine's estimate converts it to a frame.</dd>
+
+<dt id="g-intercept">Intercept, origin</dt><dd>The <em>origin</em> is the instant the engine was opened. The <em>intercept</em> is the estimate of when, counting from the origin, the stream's frame 0 was rendered; frame <em>f</em> is then rendered at about <code>intercept + f / rate</code>.</dd>
+
+<dt id="g-jitter">Jitter</dt><dd>Variation of the delay from one sound to the next. A constant delay can be measured and subtracted; jitter cannot, because there is no single number.</dd>
+
+<dt id="g-late">Late sound</dt><dd>A sound handed to the engine after the frame it was meant to start at had already been rendered. It starts at the first frame of the block instead and is counted (the Sound page shows the count and the worst lateness).</dd>
+
+<dt id="g-latency">Latency, delay</dt><dd>The time from the program deciding to play a sound to the sound being heard. This chapter uses <em>delay</em> and <em>latency</em> alike. A <em>constant</em> delay is the same for every sound; see jitter.</dd>
+
+<dt id="g-lock">Lock, mutex</dt><dd>A <code>Mutex</code> lets one thread at a time use a value; a thread that finds it taken waits. Waiting is what the callback must never do, so the callback only touches things that need no lock.</dd>
+
+<dt id="g-lookahead">Look-ahead</dt><dd>How far ahead of its time a sound is handed to the engine: 30 ms (<code>AUDIO_LOOKAHEAD</code>). It must exceed one block plus the lateness of the scheduler's wake-up, so that the command is in the queue before the callback that renders the sound's block runs.</dd>
+
+<dt id="g-loopback">Loopback recording</dt><dd>Recording what the program sends to an output, by tapping the Windows audio engine's mix (WASAPI loopback), instead of with a microphone. It sees the mix before the driver and the hardware, so it measures timing, not the full delay.</dd>
+
+<dt id="g-mixer">Mixer</dt><dd>The <code>Mixer</code> adds up all the sounds playing at a moment into one stream, starts waiting sounds at their frame, and applies fades and chokes. It is rendered from the audio callback, which is why it follows the callback's rules.</dd>
+
+<dt id="g-voice">Voice</dt><dd>One sound that is playing, with its position in the sound data and its gain. The pool holds at most 64 voices; a sound that finds it full is dropped and counted.</dd>
+
+<dt id="g-mmcss">MMCSS</dt><dd>The Multimedia Class Scheduler Service: a Windows service that gives threads registered as "Audio" or "Pro Audio" a protected priority. Not used here; cpal raises the render thread's priority itself.</dd>
+
+<dt id="g-mono">Mono, channel</dt><dd>A <em>channel</em> is one stream of samples going to one speaker (left, right). The program's mix is <em>mono</em>, one channel, and the engine copies it to every channel of the device.</dd>
+
+<dt id="g-onset">Onset</dt><dd>The moment a sound starts.</dd>
+
+<dt id="g-period">Period</dt><dd>The interval at which the Windows audio engine wakes the program's callback in shared mode (the <em>shared-mode engine period</em>): 10 ms on every output measured. One period is one block.</dd>
+
+<dt id="g-priority">Thread priority</dt><dd>How readily the system gives a thread the processor. A thread at <em>time-critical</em> priority is run ahead of ordinary ones, which keeps the callback from being delayed by other work.</dd>
+
+<dt id="g-queue">Queue, ring buffer</dt><dd>A fixed-size first-in first-out list between two threads. The engine's command queue is a <em>ring buffer</em> of 1024 entries with one writer end and one reader end (the crate <code>rtrb</code>).</dd>
+
+<dt id="g-render">Render</dt><dd>To compute the samples of a block. "Rendered at time T" means the frame the callback computes at that moment of the clock.</dd>
+
+<dt id="g-resampling">Resampling</dt><dd>Converting a sound to another sample rate. The drum kit is made at 44.1 kHz and the card usually runs at 48 kHz, so each sound is converted once per run with a windowed-sinc interpolator (it keeps the cymbals' high end and adds no false frequencies).</dd>
+
+<dt id="g-run">Run</dt><dd>One playing session of sounds that belong together: one Listen, one take, one audition. Each has a number, and cancelling ends exactly its sounds.</dd>
+
+<dt id="g-sample">Sample</dt><dd>Two senses. (1) An <em>audio sample</em> is one number: the level of the signal at one instant. (2) A <em>sample</em> of the kit is a whole short sound, a snare or a click, stored as a list of such numbers (<code>Arc&lt;[f32]&gt;</code>). The context says which; "a block of samples" is the first, "the lane's sample" the second.</dd>
+
+<dt id="g-samplerate">Sample rate, kHz</dt><dd>How many samples per channel the stream plays in a second; 48 kHz is 48,000. The sound card and Windows decide it; the program reads it and makes its sounds to match.</dd>
+
+<dt id="g-scheduler">Scheduler</dt><dd>A thread (<code>Player</code> or <code>Metronome</code>) that walks the list of cues, waits for each one's moment and hands it on. It makes no sound itself.</dd>
+
+<dt id="g-shared">Shared mode</dt><dd>The usual way of using WASAPI: the program's sound goes to the Windows audio engine, which mixes it with every other program's and sends the sum to the driver. Other programs keep working; the cost is the engine's period and buffer, which the program cannot change.</dd>
+
+<dt id="g-sink">Sink</dt><dd>The trait that receives what a cue sounds like (an audio click, a MIDI drum). The real one drives the devices; tests pass a fake. See <a href="#sink">The Sink seam</a>.</dd>
+
+<dt id="g-spin">Spin</dt><dd>Waiting by running a tight loop and checking the clock instead of sleeping. It wastes processor time but ends exactly on time, so the scheduler sleeps in coarse steps and spins for the last 1.5 ms.</dd>
+
+<dt id="g-spread">Spread</dt><dd>In the measurements: for one place in the bar, the difference between the earliest and the latest onset recorded there. A spread of 0.02 ms means the click never moved by more than that.</dd>
+
+<dt id="g-stream">Stream</dt><dd>The open connection to one output device, through which the frames flow. The engine keeps one open; frames are numbered from the first it renders.</dd>
+
+<dt id="g-estimate">Estimator, clock estimate</dt><dd>The part of the callback that turns "when the callback ran" and "which frame it started on" into the intercept: the smallest recent value, so late callbacks do not count (<code>Estimator</code> in <code>clock.rs</code>).</dd>
+
+<dt id="g-trigger">Trigger, command</dt><dd>A <code>Trigger</code> is one sound to start: its frame, sound data, gain, run and choke groups. A <em>command</em> is what goes through the queue: <code>Play(trigger)</code> or <code>CancelRun(run)</code>.</dd>
+
+<dt id="g-wait-free">Wait-free</dt><dd>An operation that always finishes in a bounded number of steps whatever other threads do, because it never waits for one. Popping from the command queue is wait-free; that is why the callback may do it.</dd>
+
+<dt id="g-wasapi">WASAPI</dt><dd>The Windows Audio Session API: how Windows programs play sound. It has a shared mode and an exclusive mode. cpal uses it on Windows.</dd>
+</dl>

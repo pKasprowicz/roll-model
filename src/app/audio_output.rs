@@ -15,6 +15,11 @@ pub(super) struct AudioOutput {
     note: Option<String>,
 }
 
+/// The buffer between Windows' audio engine and the driver that the program cannot make smaller: 1056 frames,
+/// 22 ms at 48 kHz, measured on every output tried (a request for less is raised to it). It comes on top of
+/// the delay the driver reports. Zero where it is not known.
+pub(super) const SYSTEM_BUFFER_MS: f64 = if cfg!(windows) { 22.0 } else { 0.0 };
+
 /// What the Sound page shows about the open output.
 pub(super) struct AudioInfo {
     pub device: String,
@@ -62,6 +67,10 @@ impl AudioOutput {
 
     pub(super) fn handle(&self) -> Option<EngineHandle> {
         self.engine.as_ref().map(|e| e.handle())
+    }
+
+    pub(super) fn is_open(&self) -> bool {
+        self.engine.is_some()
     }
 
     pub(super) fn info(&self) -> Option<AudioInfo> {

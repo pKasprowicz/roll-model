@@ -6,6 +6,20 @@ All notable changes are recorded here. The format follows [Keep a Changelog](htt
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-10-31
+
+Latency work on Windows, mostly honest numbers and a picture that follows the sound: the playhead, beat lights and count-in are drawn where the sound is heard, a MIDI click that also sounds through the computer is sent later by the same delay, and the Sound page says "at least" and adds Windows' 22 ms buffer. The manual has a quick-start guide that picks your settings by how you hear the click, and each GitHub release page now opens with a short summary taken from this file.
+
+### Changed
+- **The Sound page adds Windows' 22 ms buffer to the driver's delay and says "at least"** (10 + 22 = 32 ms where one machine measured 45 ms end to end), and shows the calibrated latency beside it.
+- **The playhead, the beat lights and the count-in are drawn where the sound is heard** when it comes through the computer: the calibrated latency later than the click was scheduled (at most 150 ms; not when the latency is from an earlier engine or negative). Before, they ran about one output delay ahead of the sound. Grading is unchanged. New setting `sync_display` (Settings → Timing → Picture and MIDI click), on by default.
+- **A MIDI click or MIDI drums that also sound through the computer are sent later by the same delay**, so the two are heard together (for example a V31 that plays both its USB audio and the MIDI note). A sound that goes only to MIDI is not moved, and the calibration clicks are not either. Tried with a V31 (USB audio and MIDI into its headphones): after Calibrate the two were heard together.
+
+### Added
+- **Each GitHub release page opens with a short summary**: the paragraph under the version's heading in this file, then a link to that version's section (`tools/release_notes.py`, run by `release.yml`).
+- **The manual has a quick-start guide to the settings** ("Setting up: pick your scenario"): a decision tree by how you hear the click (the module's headphones by MIDI or by USB audio, the computer's output, no kit), the settings of each scenario, and the last steps (calibrate, try a score, when to calibrate again).
+- **`examples/audio_latency.rs`** measures the whole delay from the program's `play` instant to the sound at an input wired to the output (task AUD-10, experiment E3), with the program's own engine code. On the first machine: 45.2 ms, steady to 0.01 ms, against the 10 ms the driver reports.
+
 ## [0.8.0] - 2026-10-30
 
 A new audio engine: the click and the built-in drums start at an exact moment of one output stream that stays open, instead of at the next audio callback, so their timing no longer wobbles by up to 10 ms. **Run Settings → Timing → Calibrate again after updating.** Covered by unit tests (271), and measured by loopback recording on two Windows machines. Unplugging the output, a missing named output, changing the Windows default output and a long looping Listen with a tempo ramp (up to 300 %) were tried by hand; Listen was listened to on the new engine (the cymbals and the WAV override were not judged). Not tried: a real V31 and controllers, and audio output on Linux and macOS.
