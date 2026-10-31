@@ -1,6 +1,5 @@
 //! The Score tab: the transport row, the switches and the score itself.
 
-use std::time::Instant;
 
 use egui::{Color32, RichText};
 
@@ -154,7 +153,7 @@ impl DrumApp {
             if let Some(take) = self.take.as_ref() {
                 let r = &take.report;
                 if take.running {
-                    let el = signed_secs(Instant::now(), take.zero);
+                    let el = signed_secs(self.shown_now(), take.zero);
                     if el < 0.0 {
                         let beats_left = (-el / take.count_in_beat_sec).ceil() as i64;
                         ui.label(RichText::new(format!("Count-in… {beats_left}")).size(22.0).strong().color(render::ACCENT));
@@ -209,7 +208,7 @@ impl DrumApp {
         let listen_q = self.listen_playhead();
         let score = self.score.as_ref().unwrap();
         let playhead = match (self.take.as_ref().filter(|t| t.running), listen_q) {
-            (Some(t), _) => Some(score_q(score, t, signed_secs(Instant::now(), t.zero))),
+            (Some(t), _) => Some(score_q(score, t, signed_secs(self.shown_now(), t.zero))),
             (None, q) => q,
         };
         let view = ScoreView {

@@ -179,7 +179,7 @@ impl DrumApp {
     /// practice range repeats, and the metronome's first beat is its first note.
     fn metro_preview_pos(&self, start_q: f64, len_q: f64) -> f64 {
         let Some(run) = self.metro_run.run.as_ref() else { return start_q };
-        let now = Instant::now();
+        let now = self.shown_now();
         let elapsed = match now.checked_duration_since(run.zero) {
             Some(d) => d.as_secs_f64(),
             None => -run.zero.duration_since(now).as_secs_f64(),
@@ -256,7 +256,7 @@ impl DrumApp {
         let (rect, _) = ui.allocate_exact_size(size, Sense::hover());
         let painter = ui.painter_at(rect);
         let current = self.metro_run.run.as_ref().and_then(|run| {
-            let elapsed = Instant::now().checked_duration_since(run.zero)?.as_secs_f64();
+            let elapsed = self.shown_now().checked_duration_since(run.zero)?.as_secs_f64();
             let beat = run.ramp.base_seconds(run.bar_sec, elapsed) / run.beat_sec;
             Some((beat.floor() as u64 % beats as u64, 1.0 - beat.fract() as f32))
         });

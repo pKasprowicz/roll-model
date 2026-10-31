@@ -64,6 +64,10 @@ impl AudioOutput {
         self.engine.as_ref().map(|e| e.handle())
     }
 
+    pub(super) fn is_open(&self) -> bool {
+        self.engine.is_some()
+    }
+
     pub(super) fn info(&self) -> Option<AudioInfo> {
         let engine = self.engine.as_ref()?;
         let handle = engine.handle();

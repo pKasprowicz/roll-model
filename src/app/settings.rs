@@ -159,6 +159,9 @@ impl DrumApp {
                 }
             });
             ui.end_row();
+            ui.label("Playhead");
+            ui.checkbox(&mut self.cfg.sync_display, "Draw it where the sound is heard (the latency later)");
+            ui.end_row();
             ui.label("Perfect within");
             widgets::slider(ui, "", &mut self.cfg.tol.perfect_ms, 5.0..=50.0, " ms", 1.0);
             ui.end_row();

@@ -349,6 +349,7 @@ cargo build --release --no-default-features          # without the sound card (d
 <thead><tr><th>Setting</th><th>Range</th><th>Meaning</th></tr></thead>
 <tbody>
 <tr><td>Latency compensation</td><td>&minus;50&hellip;200 ms</td><td>Subtracted from every hit. <em>Calibrate&hellip;</em> measures it.</td></tr>
+<tr><td>Playhead</td><td>on / off</td><td>Draws the playhead, the beat lights and the count-in where you hear the sound, that is the latency compensation (up to 150 ms) later than the click was scheduled. It changes only the picture, never the grading, and only while the sound comes through the computer.</td></tr>
 <tr><td>Perfect within</td><td>5&hellip;50 ms</td><td>Hits this close to a note are green.</td></tr>
 <tr><td>Good within</td><td>10&hellip;100 ms</td><td>Light green. Never smaller than <em>perfect</em>.</td></tr>
 <tr><td>Hit window</td><td>40&hellip;250 ms</td><td>Hits further than this from every note are extra; notes with no hit inside are missed. Never smaller than <em>good</em>.</td></tr>

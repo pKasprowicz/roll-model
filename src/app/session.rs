@@ -277,7 +277,7 @@ impl DrumApp {
     pub(super) fn listen_position(&self) -> Option<String> {
         let l = self.playback.listen.as_ref()?;
         let score = self.score.as_ref()?;
-        let elapsed = signed_secs(Instant::now(), l.zero);
+        let elapsed = signed_secs(self.shown_now(), l.zero);
         if elapsed < 0.0 {
             let left = (-elapsed / l.beat_sec).ceil() as u32;
             return Some(if left > l.count_in_beats { "starting…".into() } else { format!("count-in {left}") });
@@ -293,11 +293,23 @@ impl DrumApp {
         Some(text)
     }
 
+    /// The moment the screen shows: the playhead, the beat lights and the count-in are drawn for it. With
+    /// the sound coming through the computer it is one output delay (the latency compensation) behind
+    /// the clock, so the picture and the sound agree; grading always uses the clock itself.
+    pub(super) fn shown_now(&self) -> Instant {
+        let now = Instant::now();
+        if !self.audio.is_open() {
+            return now;
+        }
+        let delay = self.cfg.display_delay(crate::audio::ENGINE_GENERATION);
+        now.checked_sub(Duration::from_secs_f64(delay)).unwrap_or(now)
+    }
+
     /// The playhead of Listen, in quarter notes; it wraps around while looping.
     pub(super) fn listen_playhead(&self) -> Option<f64> {
         let l = self.playback.listen.as_ref()?;
         let score = self.score.as_ref()?;
-        let elapsed = signed_secs(Instant::now(), l.zero);
+        let elapsed = signed_secs(self.shown_now(), l.zero);
         let (_, e) = l.ramp.locate(l.end_sec, elapsed);
         Some(score.tempo.sec_to_q(e + l.t0, l.tempo_scale))
     }

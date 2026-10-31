@@ -6,6 +6,9 @@ All notable changes are recorded here. The format follows [Keep a Changelog](htt
 
 ## [Unreleased]
 
+### Changed
+- **The playhead, the beat lights and the count-in are drawn where the sound is heard** when it comes through the computer: the calibrated latency later than the click was scheduled (at most 150 ms; not when the latency is from an earlier engine or negative). Before, they ran about one output delay ahead of the sound. Grading is unchanged. New setting `sync_display` (Settings → Timing → Playhead), on by default.
+
 ### Added
 - **`examples/audio_latency.rs`** measures the whole delay from the program's `play` instant to the sound at an input wired to the output (task AUD-10, experiment E3), with the program's own engine code. On the first machine: 45.2 ms, steady to 0.01 ms, against the 10 ms the driver reports.
 

@@ -64,7 +64,7 @@ Two things that would feel like lower latency without touching the driver:
 
 1. **Keep AUD-9 closed.** E1 (task AUD-10) was run and did not change the verdict: the inbox driver offers no range either.
 2. Do not build anything else for the driver. A buffer request cannot lower the 22 ms floor (measured), the thread priority is already raised, and the remaining options need hardware or are out of scope.
-3. Consider the playhead shift as a small, separate task if the lag between the screen and the sound bothers in practice.
+3. **Done (unreleased):** the playhead, beat lights and count-in are drawn the calibrated latency later (`Config::display_delay`, `DrumApp::shown_now`; setting `sync_display`). Not done: the MIDI click when audio and MIDI sound together, and trying it by eye (the calibrated value includes the player's habit, so check that the picture and the sound agree).
 
 ## Sources
 
