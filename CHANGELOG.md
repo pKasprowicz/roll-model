@@ -6,6 +6,8 @@ All notable changes are recorded here. The format follows [Keep a Changelog](htt
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-10-31
+
 Latency work on Windows, mostly honest numbers and a picture that follows the sound: the playhead, beat lights and count-in are drawn where the sound is heard, a MIDI click that also sounds through the computer is sent later by the same delay, and the Sound page says "at least" and adds Windows' 22 ms buffer. The manual has a quick-start guide that picks your settings by how you hear the click, and each GitHub release page now opens with a short summary taken from this file.
 
 ### Changed
