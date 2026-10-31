@@ -27,14 +27,8 @@ use std::time::{Duration, Instant};
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use cpal::{SampleFormat, StreamInstant};
 
-mod audio {
-    #[path = "../../src/audio/clock.rs"]
-    pub mod clock;
-    #[path = "../../src/audio/handle.rs"]
-    pub mod handle;
-    #[path = "../../src/audio/mixer.rs"]
-    pub mod mixer;
-}
+#[path = "audio_latency/engine.rs"]
+mod audio;
 
 use audio::handle::channel;
 
