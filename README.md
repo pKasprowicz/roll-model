@@ -204,7 +204,7 @@ Roll Model is written by its author alone, so pull requests are not accepted (se
 
 ## Versioning
 
-The project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html). The version lives in `Cargo.toml` and `core/Cargo.toml`, each release is tagged `vMAJOR.MINOR.PATCH`, and every change that users can see is listed in [CHANGELOG.md](CHANGELOG.md). Moving the tag `preview` onto a commit of `develop` (`git tag -f preview && git push -f origin preview`) builds a *preview* release from it: a GitHub pre-release, replaced each time, that may be unfinished.
+The project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html). The version lives in `Cargo.toml` and `core/Cargo.toml`, each release is tagged `vMAJOR.MINOR.PATCH`, and every change that users can see is listed in [CHANGELOG.md](CHANGELOG.md). The text of a release page comes from the changelog: write a short paragraph under the new version's heading in `CHANGELOG.md`, before its first `###`, and `tools/release_notes.py` (run by the release workflow) puts it on the release page above a link to that version's section; without a paragraph the page has only the link. Moving the tag `preview` onto a commit of `develop` (`git tag -f preview && git push -f origin preview`) builds a *preview* release from it: a GitHub pre-release, replaced each time, that may be unfinished.
 
 What counts as the public interface: the settings file keys, the CSV export columns, and the MusicXML features listed above. While the major version is 0, a minor bump (`0.x.0`) may break any of them and a patch bump (`0.1.x`) is for fixes only. From 1.0.0, breaking one of them needs a major bump.
 
@@ -229,6 +229,7 @@ What counts as the public interface: the settings file keys, the CSV export colu
 | `src/app.rs` | UI: welcome panel, Score, Results and Settings tabs; `src/app/metro.rs` is the Metronome tab, `src/app/rudiment.rs` the Rudiments tab, `src/app/mixer.rs` the instrument mixer, `src/app/controls.rs` what the controller does and its Settings page |
 | `src/widgets.rs` | Shared UI helpers: the wheel-aware slider and the larger Score-tab style |
 | `tools/build_notices.py` | Generates `THIRD_PARTY_NOTICES.txt`, the licence texts of all dependencies, for the release archives |
+| `tools/release_notes.py` | Cuts a version's summary paragraph out of `CHANGELOG.md` for the GitHub release page |
 | `docs/developer/`, `tools/build_devguide.py` | The developer guide (HTML template with code excerpts pulled from the source) and its build script |
 | `docs/site/`, `tools/build_site.py` | The start page of the online documentation and the script that builds the whole site (start page, manual, developer guide) for GitHub Pages |
 | `docs/style.css` | The stylesheet shared by the manual and the developer guide |

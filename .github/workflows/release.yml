@@ -146,15 +146,24 @@ jobs:
     needs: [build-linux, build-windows, manual]
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v4
+        if: startsWith(github.ref, 'refs/tags/v')
       - uses: actions/download-artifact@v4
         with:
           path: dist
           merge-multiple: true
+      # The abstract is the paragraph under the version's heading in CHANGELOG.md
+      # (tools/release_notes.py); GitHub's generated notes follow it.
+      - name: Release notes
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          python3 tools/release_notes.py "$GITHUB_REF_NAME" > release-notes.md
+          echo "Roll Model is free for noncommercial use. If it helps your practice, you can [buy me a coffee](https://buymeacoffee.com/pkasprowicz)." >> release-notes.md
       - uses: softprops/action-gh-release@v2
         if: startsWith(github.ref, 'refs/tags/v')
         with:
           files: dist/*
-          body: Roll Model is free for noncommercial use. If it helps your practice, you can [buy me a coffee](https://buymeacoffee.com/pkasprowicz).
+          body_path: release-notes.md
           generate_release_notes: true
       # The same release is updated each time: its files are replaced and it
       # points at the newest preview commit.
