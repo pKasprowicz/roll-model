@@ -52,6 +52,16 @@ tbody tr:nth-child(even) { background: color-mix(in srgb, var(--panel) 55%, tran
 figure { margin: 1.5rem 0; }
 figure svg { max-width: 100%; height: auto; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; }
 figcaption { color: var(--muted); font-size: .9rem; margin-top: .3rem; }
+.decide { margin: 1.4rem 0; }
+.decide .q { background: var(--accent-soft); border: 1px solid var(--line); border-radius: 8px; padding: .55rem .8rem; font-weight: 600; }
+.decide .q.end { margin-top: 1rem; }
+.decide ul { list-style: none; margin: 0; padding: .4rem 0 0 1.1rem; border-left: 2px solid var(--line); margin-left: .9rem; }
+.decide li { position: relative; padding: .35rem 0 .35rem 1rem; }
+.decide li::before { content: ""; position: absolute; left: 0; top: 1.15rem; width: .8rem; border-top: 2px solid var(--line); }
+.decide .a { display: block; color: var(--muted); }
+.decide .go { display: block; margin-top: .15rem; padding: .35rem .7rem; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); text-decoration: none; }
+.decide .go:hover { border-color: var(--accent); }
+.decide .note { color: var(--muted); font-size: .9rem; margin: .6rem 0 0; }
 .sticking { font-family: ui-monospace, "Cascadia Mono", Consolas, Menlo, monospace; white-space: nowrap; }
 .sticking b { color: var(--accent); }
 .nard { color: var(--accent); font-weight: 700; }

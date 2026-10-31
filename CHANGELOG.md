@@ -12,6 +12,7 @@ All notable changes are recorded here. The format follows [Keep a Changelog](htt
 - **A MIDI click or MIDI drums that also sound through the computer are sent later by the same delay**, so the two are heard together (for example a V31 that plays both its USB audio and the MIDI note). A sound that goes only to MIDI is not moved, and the calibration clicks are not either. Tried with a V31 (USB audio and MIDI into its headphones): after Calibrate the two were heard together.
 
 ### Added
+- **The manual has a quick-start guide to the settings** ("Setting up: pick your scenario"): a decision tree by how you hear the click (the module's headphones by MIDI or by USB audio, the computer's output, no kit), the settings of each scenario, and the last steps (calibrate, try a score, when to calibrate again).
 - **`examples/audio_latency.rs`** measures the whole delay from the program's `play` instant to the sound at an input wired to the output (task AUD-10, experiment E3), with the program's own engine code. On the first machine: 45.2 ms, steady to 0.01 ms, against the 10 ms the driver reports.
 
 ## [0.8.0] - 2026-10-30

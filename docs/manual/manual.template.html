@@ -14,7 +14,7 @@
   <div class="ver">User manual &middot; {{LABEL}}</div>
   <ol>
     <li><a href="#welcome">Welcome</a>
-      <ol><li><a href="#what">What it does</a></li><li><a href="#quickstart">Quick start</a></li><li><a href="#install">Installing</a></li></ol></li>
+      <ol><li><a href="#what">What it does</a></li><li><a href="#quickstart">Quick start</a></li><li><a href="#setup-guide">Setting up: pick your scenario</a></li><li><a href="#install">Installing</a></li></ol></li>
     <li><a href="#connect">Connecting your kit</a>
       <ol><li><a href="#v31">The Roland V31</a></li><li><a href="#hihat">Hi-hat pedal</a></li><li><a href="#nokit">No kit at hand</a></li></ol></li>
     <li><a href="#tour">A tour of the window</a>
@@ -69,7 +69,80 @@
   <li><strong>Record.</strong> Press <kbd>R</kbd>. After the count-in, play. Your hits appear under the notes as you play and the take stops by itself at the end.</li>
   <li><strong>Read the result.</strong> Green notes were right. The <em>Results</em> tab explains everything else.</li>
 </ol>
-<div class="callout tip"><strong class="label">First time</strong>Run <em>Settings &rarr; Timing &rarr; Calibrate</em> once (<a href="#latency">Latency and calibration</a>). It removes the delay of your sound card and MIDI path, so that a note you play exactly on the click is graded as exactly on time.</div>
+<div class="callout tip"><strong class="label">First time</strong>Run <em>Settings &rarr; Timing &rarr; Calibrate</em> once (<a href="#latency">Latency and calibration</a>). It removes the delay of your sound card and MIDI path, so that a note you play exactly on the click is graded as exactly on time. Which settings to choose first depends on how you hear the click: see <a href="#setup-guide">Setting up: pick your scenario</a>.</div>
+
+<h3 id="setup-guide">Setting up: pick your scenario</h3>
+<p>Most of the settings you need once are about <strong>where the click and the music come from</strong>. Follow the questions below to the scenario that fits your kit, set what that scenario lists, then calibrate once. The steps after the figure are the same for everybody.</p>
+<div class="decide" role="group" aria-label="Decision tree: which scenario to follow">
+<div class="q">Do you have an electronic kit with MIDI?</div>
+<ul>
+<li><span class="a">No</span><a class="go" href="#scen-d"><strong>Scenario D</strong>: the computer keyboard plays the pads</a></li>
+<li><span class="a">Yes</span>
+<div class="q">How do you want to hear the click and the music?</div>
+<ul>
+<li><span class="a">In the module's headphones, the click played by the module itself (MIDI only)</span><a class="go" href="#scen-b"><strong>Scenario B</strong>: lowest delay</a></li>
+<li><span class="a">In the module's headphones, with the computer sending sound to the module over USB audio as well</span><a class="go" href="#scen-a"><strong>Scenario A</strong>: the module does everything</a></li>
+<li><span class="a">In headphones or speakers on the computer (wired)</span><a class="go" href="#scen-c"><strong>Scenario C</strong>: the computer plays the sound</a></li>
+</ul></li>
+</ul>
+<div class="q end">Then, for every scenario: calibrate once, then Listen and Record (<a href="#setup-last">last steps</a>).</div>
+<p class="note">Bluetooth headphones are not an answer to the second question: they add 100&ndash;200 ms or more that is not steady. Use a wired output, or scenario B.</p>
+</div>
+
+<h4>Step 1 for everybody: the kit talks to the program</h4>
+<ol class="steps">
+<li><strong>Close other MIDI programs</strong> (a DAW, drum software, a MIDI monitor). On Windows only one program can use a MIDI port.</li>
+<li>Plug the module in by USB and start Roll Model. The top right corner should show a green dot and the port name. If not, choose the port on <em>Settings &rarr; MIDI input</em> and press <em>Refresh ports</em> (<a href="#v31">The Roland V31</a>).</li>
+<li>On the same page, <strong>hit every pad and zone once</strong> and watch the monitor: each hit should show the instrument it was mapped to. A hit shown as <em>unmapped</em> needs <em>Learn</em>. If the open and closed hi-hat come out wrong, see <a href="#hihat">Hi-hat pedal</a>.</li>
+</ol>
+
+<h4 id="scen-a">Scenario A &mdash; the module does everything</h4>
+<p>For a module that also appears as a <strong>USB audio device</strong> to the computer, with your headphones in the module. The computer's click and the module's own sounds then come out of the same headphones.</p>
+<table>
+<thead><tr><th>Where</th><th>Set</th></tr></thead>
+<tbody>
+<tr><td><em>Settings &rarr; Sound &rarr; Audio output</em></td><td>The module's entry in <em>Output device</em> (press <em>Refresh</em> if it is not listed).</td></tr>
+<tr><td><em>Settings &rarr; Sound &rarr; MIDI output</em></td><td>The module's port.</td></tr>
+<tr><td><em>Metronome</em></td><td>Click through the sound card <strong>and</strong> send it to the MIDI output, or just one of them. With both on, the program sends the MIDI click that much later, so you hear one click, not two (<em>Settings &rarr; Timing &rarr; Picture and MIDI click</em> must be on, which is the default).</td></tr>
+<tr><td><em>Listening</em></td><td>Choose <strong>one</strong> for the drums: through the sound card (the built-in kit), or the module's own kit by MIDI (channel 10). Both together would play every drum twice.</td></tr>
+</tbody></table>
+<p><strong>Calibrate with the audio click only:</strong> untick the MIDI click, calibrate, then tick it again.</p>
+
+<h4 id="scen-b">Scenario B &mdash; the module plays the click, the computer plays nothing</h4>
+<p>The lowest delay, because there is no computer audio in the path. The click and Listen both come from the module.</p>
+<table>
+<thead><tr><th>Where</th><th>Set</th></tr></thead>
+<tbody>
+<tr><td><em>Settings &rarr; Sound &rarr; MIDI output</em></td><td>The module's port.</td></tr>
+<tr><td><em>Metronome</em></td><td>Switch <em>Click through the sound card</em> off, send the click to the MIDI output: channel 10 and a note that no pad uses, such as 76 (a wood block).</td></tr>
+<tr><td><em>Listening</em></td><td>Switch the sound card off and send the notes to the MIDI output on channel 10: the module plays its own kit.</td></tr>
+</tbody></table>
+<p>Calibrate as it is. The number will be small, because it covers only the MIDI path.</p>
+
+<h4 id="scen-c">Scenario C &mdash; the computer plays the sound</h4>
+<p>Headphones or speakers on the computer; the module only sends your hits.</p>
+<table>
+<thead><tr><th>Where</th><th>Set</th></tr></thead>
+<tbody>
+<tr><td><em>Settings &rarr; Sound &rarr; Audio output</em></td><td>A <strong>wired</strong> output (or <em>System default</em>).</td></tr>
+<tr><td><em>Metronome</em></td><td>Click through the sound card on, MIDI click off.</td></tr>
+<tr><td><em>Listening</em></td><td>Through the sound card (the built-in kit), MIDI off.</td></tr>
+</tbody></table>
+<p>The click reaches your ears a few tens of milliseconds after the program sends it. That delay is steady, so Calibrate removes it.</p>
+
+<h4 id="scen-d">Scenario D &mdash; no kit at hand</h4>
+<p>Tick <em>Settings &rarr; General &rarr; Computer keyboard plays pads</em> (<a href="#nokit">No kit at hand</a>) and set up the sound as in scenario C. Key presses are about 16 ms late and uneven, so this is for trying the program, not for judging your timing. Calibrating cannot remove the unevenness.</p>
+
+<h4>Another e-kit</h4>
+<p>Any MIDI kit works. Choose its port on <em>Settings &rarr; MIDI input</em>, teach every pad with <em>Learn</em> (the default map is the Roland V-Drums factory map), then pick the scenario that matches how you hear the sound. If the kit has no USB audio, that is scenario B or C.</p>
+
+<h4 id="setup-last">Last steps for everybody</h4>
+<ol class="steps">
+<li><strong>Calibrate once</strong>: <em>Settings &rarr; Timing &rarr; Calibrate&hellip;</em>, then hit any pad exactly with 16 clicks (<a href="#latency">Latency and calibration</a>). Calibrate the way you will practise: the click you hear is the one you play with.</li>
+<li><strong>Try it</strong>: open <code>examples/basic_rock_beat.musicxml</code> or press <em>Practise the 40 rudiments</em> on Home, press <kbd>L</kbd> to hear it and <kbd>R</kbd> to record.</li>
+<li><strong>Calibrate again</strong> whenever you change the output device, the click routing or the sound driver. <em>Settings &rarr; Timing</em> shows an amber note when the latency is from an earlier version of the program.</li>
+</ol>
+<div class="callout tip"><strong class="label">How to tell it works</strong>The green dot is on; every pad shows the right instrument in the monitor; you hear the click in your headphones; Calibrate says <em>Latency calibrated</em> (not <em>failed</em>); during a take your hits appear under the notes. If something is missing, see <a href="#trouble">Troubleshooting</a>.</div>
 
 <h3 id="install">Installing</h3>
 <p>Roll Model is a single program; there is no installer.</p>
