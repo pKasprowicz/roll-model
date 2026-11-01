@@ -163,6 +163,8 @@ fn parse_measures(
     let mut active_ending: Vec<u32> = Vec::new();
     let mut unknown_instruments = 0usize;
     let mut voice_up: HashMap<String, bool> = HashMap::new();
+    // Inside a measure repeat (the "simile" sign): how many measures back the music is copied from.
+    let mut repeating: Option<usize> = None;
 
     for m in part.children_named("measure") {
         let mut rm = RawMeasure {
@@ -193,6 +195,13 @@ fn parse_measures(
                         }
                         if let Some(bt) = bt.filter(|v| *v > 0) {
                             beat_type = bt;
+                        }
+                    }
+                    if let Some(r) = el.child("measure-style").and_then(|s| s.child("measure-repeat")) {
+                        match r.attr("type") {
+                            Some("start") => repeating = Some(r.text().trim().parse::<usize>().ok().filter(|n| *n > 0).unwrap_or(1)),
+                            Some("stop") => repeating = None,
+                            _ => {}
                         }
                     }
                 }
@@ -287,6 +296,13 @@ fn parse_measures(
         rm.len_q = if pickup || content > sig_len + 1e-6 { content } else { sig_len };
         rm.beats = beats;
         rm.beat_type = beat_type;
+        // A repeated measure is written without its notes (some programs put a whole-bar rest there):
+        // it is the music of the measure that many back.
+        if let Some(back) = repeating.filter(|b| rm.notes.is_empty() && out.len() >= *b) {
+            let source: &RawMeasure = &out[out.len() - back];
+            rm.notes = source.notes.clone();
+            rm.rests = source.rests.clone();
+        }
         rm.endings = active_ending.clone();
         if clear_ending {
             active_ending.clear();

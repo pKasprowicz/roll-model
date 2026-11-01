@@ -4,7 +4,7 @@
 
 A Rust desktop app (egui) for practising drum parts against a score:
 
-1. **Loads MusicXML drum scores** (`.musicxml`, `.xml`, compressed `.mxl`) and draws them on a percussion staff in the **Score** tab.
+1. **Loads MusicXML drum scores** (`.musicxml`, `.xml`, compressed `.mxl`) and draws them on a percussion staff in the **Score** tab. **Standard MIDI Files** (`.mid`) open too: the drum notes are laid on bars and a grid, and a *MIDI import* menu changes the grid, the offset and where the first bar starts.
 2. **Practises the 40 drum rudiments** on the **Rudiments** tab: pick one, repeat it as often as you like, hear it, play it along with the click and get graded, hand by hand.
 3. **Captures MIDI from a Roland V31** (or any V-Drums / e-kit) and draws every hit as a note on a second staff **directly under the score**, on the same time axis — early hits sit left of the written note, late hits to the right.
 4. **Compares the performance with the score** and grades it: note accuracy, timing offset and consistency, tempo drift, wrong pads, missed and extra notes, and dynamics (accents and ghost notes).
@@ -62,7 +62,7 @@ Run the unit tests (XML parser, MusicXML import, repeats, tempo maps, scoring): 
 
 ## Practising
 
-1. **Open MusicXML…** (or drop a file on the window). Export the drum part from MuseScore, Guitar Pro, Sibelius, Dorico, etc. The welcome panel lists the scores you opened before (the last ten); click one to open it, `×` removes it from the list. It is shown on the **Home** tab, so it is always one click away,.
+1. **Open score…** (or drop a file on the window). Export the drum part from MuseScore, Guitar Pro, Sibelius, Dorico, etc. The welcome panel lists the scores you opened before (the last ten); click one to open it, `×` removes it from the list. It is shown on the **Home** tab, so it is always one click away,.
 2. Pick the measures to practise (sliders, or click a measure to start there and shift+click to set the end), and the tempo (25–150 %). Every slider also follows the mouse wheel: hover it and scroll to change the value one step per notch.
 3. Press **⏵ Listen** (or `L`) to hear the selected measures at the chosen tempo, with a moving playhead and the current bar and beat next to the button. Press it again, or `Esc`, to stop. See "Listening to the score" below.
 4. Press **⏺ Record** (or `R`). After a count-in (0–2 bars, with click) play along. The take stops by itself at the end of the range, or press `Esc`. The click can be switched off and on while you play (`K`).
@@ -187,6 +187,12 @@ Every audio and MIDI path adds some delay. Use **Settings → Timing → Calibra
 ## MusicXML support
 
 Partwise MusicXML 2.0–4.0: multiple voices (`backup`/`forward`), chords, tempo changes (`sound tempo` or metronome marks), time-signature changes, pickup bars, repeats with 1st/2nd endings (expanded by default), ties, rests (drawn; the voice decides whether a rest goes high or low), accents, ghost notes (parenthesised noteheads), grace notes, notehead shapes. Instruments are identified from `midi-unpitched` (General MIDI), then the instrument name, then staff position and notehead. Not supported: D.S./D.C./coda jumps and `score-timewise` files.
+
+## MIDI files
+
+A Standard MIDI File opens as a score: the drum notes (channel 10, else a track named like drums, else a channel that looks like drums) are put on bars from the file's time signatures and tempo, each beat on the coarsest grid that fits it (eighths, sixteenths or triplets), after a constant offset of a recording is removed. The **MIDI import** menu beside **Layout** changes the grid, the offset removal, the accent and ghost thresholds (relative to each instrument's median velocity) and where the first bar starts, and reads the file again at once. A recording played without a click is not repaired; the program warns.
+
+Scores from Guitar Pro, MuseScore, Sibelius, Dorico or Finale are opened by exporting them as MusicXML (the program says so when such a file is dropped on it).
 
 ## License
 

@@ -240,7 +240,7 @@ fn real_files() {
             let path = entry.path();
             if path.is_dir() {
                 walk(&path, out);
-            } else if path.extension().is_some_and(|e| e == "mid" || e == "midi") {
+            } else if path.extension().is_some_and(|e| ["mid", "midi", "xml", "musicxml", "mxl"].iter().any(|x| e == *x)) {
                 out.push(path);
             }
         }
@@ -256,6 +256,13 @@ fn real_files() {
         match roll_model_core::import::load_score(path, &ImportOptions::default()) {
             Ok(loaded) => {
                 ok += 1;
+                if std::env::var_os("ROLL_MODEL_VERBOSE").is_some() {
+                    let mut lanes = std::collections::BTreeMap::<String, usize>::new();
+                    for n in &loaded.score.notes {
+                        *lanes.entry(format!("{:?}", n.lane)).or_default() += 1;
+                    }
+                    println!("FILE {}: {} bars, {:.0} BPM, {} accents {} ghosts, {lanes:?}", path.file_name().unwrap().to_string_lossy(), loaded.score.measures.len(), loaded.score.tempo.bpm_at(0.0), loaded.score.notes.iter().filter(|n| n.accent).count(), loaded.score.notes.iter().filter(|n| n.ghost).count());
+                }
                 if let Some(m) = &loaded.report.midi {
                     free += usize::from(m.free_time);
                     offsets.push(m.offset_ms);
@@ -271,6 +278,7 @@ fn real_files() {
                 ghosts += loaded.score.notes.iter().filter(|n| n.ghost).count();
                 check_invariants(&loaded.score).unwrap_or_else(|e| panic!("{}: {e}", path.display()));
                 for w in &loaded.score.warnings {
+                    if w.contains("No drum notes") || w.contains("no recognisable") { println!("NOTE {}: {w}", path.file_name().unwrap().to_string_lossy()); }
                     let key: String = w.split_once("(keys").map_or(w.clone(), |(_, k)| format!("keys{}", k.split(")").next().unwrap_or(""))).chars().filter(|c| !c.is_ascii_alphabetic() || true).collect();
                     *warnings.entry(key).or_default() += 1;
                 }

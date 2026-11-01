@@ -360,3 +360,31 @@ fn bytes_that_are_not_a_readable_score_say_what_they_are() {
     let err = import_bytes(b"<score-partwise/>, much longer than ten bytes", "x.musicxml", &tight).unwrap_err();
     assert!(matches!(err, ImportError::TooLarge(_)), "{err:?}");
 }
+
+#[test]
+fn measure_repeats_copy_the_music_of_the_measures_before() {
+    let start = |n: &str| format!("<attributes><measure-style><measure-repeat type=\"start\">{n}</measure-repeat></measure-style></attributes>");
+    let stop = "<attributes><measure-style><measure-repeat type=\"stop\"/></measure-style></attributes>";
+    let whole_bar_rest = "<note><rest measure=\"yes\"/><duration>8</duration><voice>1</voice></note>";
+    // bar 1 kick, bar 2 and 3 = "%" (one bar back, the second with a rest written in it), bar 4 snare,
+    // bars 5 and 6 are a one-bar group again, bars 7 and 8 repeat bars 5 and 6 two at a time.
+    let text = score(&[
+        measure("1", &format!("{FOUR_FOUR}{}", note("K", 2, ""))),
+        measure("2", &start("1")),
+        measure("3", whole_bar_rest),
+        measure("4", &format!("{stop}{}", note("S", 2, ""))),
+        measure("5", &note("H", 2, "")),
+        measure("6", &note("C", 2, "")),
+        measure("7", &start("2")),
+        measure("8", ""),
+    ].concat());
+    let s = parse(&text, true).unwrap();
+    let lanes: Vec<(usize, String)> = s.notes.iter().map(|n| (n.measure, format!("{:?}", n.lane))).collect();
+    let expected: Vec<(usize, String)> =
+        [(0, "Kick"), (1, "Kick"), (2, "Kick"), (3, "Snare"), (4, "HiHatClosed"), (5, "Crash1"), (6, "HiHatClosed"), (7, "Crash1")]
+            .iter()
+            .map(|(m, l)| (*m, l.to_string()))
+            .collect();
+    assert_eq!(lanes, expected);
+    check("measure_repeat", &dump(&s));
+}
