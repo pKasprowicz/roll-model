@@ -12,8 +12,11 @@
 mod container;
 mod finish;
 mod ir;
+mod midi;
 mod musicxml;
 mod sniff;
+#[doc(hidden)]
+pub mod smf;
 
 use std::path::Path;
 
@@ -24,7 +27,7 @@ pub use sniff::{sniff, Detected, Format};
 use crate::score::Score;
 
 /// The file extensions the program opens; the one list behind the open dialog and the hints.
-pub const EXTENSIONS: &[&str] = &["musicxml", "xml", "mxl"];
+pub const EXTENSIONS: &[&str] = &["musicxml", "xml", "mxl", "mid", "midi"];
 
 /// Bounds on what one file may ask of the program. Loading runs on the window's thread, so a file
 /// that expands without end must be refused instead of read.
@@ -35,11 +38,13 @@ pub struct Limits {
     /// Measures, after repeats are played out.
     pub max_measures: usize,
     pub max_notes: usize,
+    /// Events of a MIDI file, whatever they are.
+    pub max_events: usize,
 }
 
 impl Default for Limits {
     fn default() -> Self {
-        Limits { max_bytes: 64 << 20, max_measures: 20_000, max_notes: 500_000 }
+        Limits { max_bytes: 64 << 20, max_measures: 20_000, max_notes: 500_000, max_events: 2_000_000 }
     }
 }
 
@@ -143,6 +148,7 @@ pub fn import_bytes(bytes: &[u8], name: &str, opts: &ImportOptions) -> Result<Lo
     };
     let raw = match format {
         Format::MusicXml => musicxml::parse(&container::musicxml_text(bytes, &opts.limits)?, opts)?,
+        Format::Midi => midi::parse(bytes, opts)?,
     };
     let report = Report { format, parts: raw.parts.clone(), part_used: raw.part_used };
     let mut score = finish::finish(raw, opts)?;

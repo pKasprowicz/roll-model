@@ -352,7 +352,7 @@ fn files_of_every_container_and_encoding() {
 #[test]
 fn bytes_that_are_not_a_readable_score_say_what_they_are() {
     let say = |bytes: &[u8], name: &str| import_bytes(bytes, name, &ImportOptions::default()).unwrap_err().to_string();
-    assert_eq!(say(b"just some words", "notes.txt"), "not a score file this program reads (it opens .musicxml, .xml, .mxl)");
+    assert_eq!(say(b"just some words", "notes.txt"), "not a score file this program reads (it opens .musicxml, .xml, .mxl, .mid, .midi)");
     assert_eq!(say(b"PK\x03\x04", "song.mscz"), "MuseScore files are not read directly; export the score as MusicXML from MuseScore and open that file");
     assert_eq!(say(b"\x18FICHIER GUITAR PRO v5.00", "song"), "Guitar Pro files are not read directly; export the score as MusicXML from Guitar Pro and open that file");
     let mut tight = ImportOptions::default();

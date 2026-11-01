@@ -4,12 +4,14 @@
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Format {
     MusicXml,
+    Midi,
 }
 
 impl Format {
     pub fn name(self) -> &'static str {
         match self {
             Format::MusicXml => "MusicXML",
+            Format::Midi => "MIDI",
         }
     }
 }
@@ -51,9 +53,15 @@ pub fn sniff(bytes: &[u8], name: &str) -> Detected {
     if let Some((_, format)) = RECOGNISED_BY_EXTENSION.iter().find(|(e, _)| *e == ext) {
         return Detected::Recognised { format };
     }
+    if bytes.starts_with(b"MThd") {
+        return Detected::Known(Format::Midi);
+    }
     // A zip is a compressed MusicXML file (.mxl); the container module says what is wrong with it.
-    if bytes.starts_with(b"PK") || looks_like_text(bytes) || super::EXTENSIONS.contains(&ext.as_str()) {
+    if bytes.starts_with(b"PK") || looks_like_text(bytes) || ["musicxml", "xml", "mxl"].contains(&ext.as_str()) {
         return Detected::Known(Format::MusicXml);
+    }
+    if ext == "mid" || ext == "midi" {
+        return Detected::Known(Format::Midi);
     }
     Detected::Unknown
 }

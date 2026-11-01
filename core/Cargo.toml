@@ -10,3 +10,6 @@ publish = false
 [dependencies]
 # Reads the compressed .mxl scores.
 zip = { version = "2", default-features = false, features = ["deflate"] }
+
+# Reads Standard MIDI Files (Unlicense).
+midly = { version = "0.5", default-features = false, features = ["alloc", "std"] }
