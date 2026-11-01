@@ -191,36 +191,7 @@ impl DrumApp {
         else {
             return;
         };
-        let mut s = String::from("measure,beat,instrument,expected_ms,played_ms,offset_ms,midi_note,velocity,grade\n");
-        for (e, r) in take.expected.iter().zip(&take.report.results) {
-            let n = &score.notes[e.note_idx];
-            let m = &score.measures[n.measure];
-            let beat = (n.q - m.start_q) / m.beat_q() + 1.0;
-            let (played, note, vel) = r
-                .hit
-                .map(|h| {
-                    let h = &take.hits[h];
-                    (format!("{:.1}", h.t * 1000.0), h.note.to_string(), h.velocity.to_string())
-                })
-                .unwrap_or_default();
-            s.push_str(&format!(
-                "{},{:.3},{},{:.1},{},{},{},{},{}\n",
-                m.number,
-                beat,
-                e.lane.label(),
-                e.t * 1000.0,
-                played,
-                r.dt_ms.map(|d| format!("{d:.1}")).unwrap_or_default(),
-                note,
-                vel,
-                r.grade.label()
-            ));
-        }
-        for (hi, h) in take.hits.iter().enumerate() {
-            if take.report.hit_match[hi].is_none() {
-                s.push_str(&format!(",,{},,{:.1},,{},{},Extra\n", h.lane.label(), h.t * 1000.0, h.note, h.velocity));
-            }
-        }
+        let s = crate::export::take_csv(score, &take.expected, &take.hits, &take.report);
         match std::fs::write(&path, s) {
             Ok(()) => self.view.status = format!("Saved {}", path.display()),
             Err(e) => self.view.error = Some(format!("Could not save: {e}")),
