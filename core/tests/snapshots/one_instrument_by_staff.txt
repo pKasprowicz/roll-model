@@ -1,0 +1,14 @@
+title: Untitled
+part: Drum Set
+tempo: TempoMap { points: [(0.0, 120.0)] }
+measure 0: #1 start=0.000000 len=8.000000 4/4
+note q=0.000000 m=0 HiHatClosed step=9 head=X accent=false ghost=false grace=false/0 stem=None
+note q=1.000000 m=0 Kick step=1 head=Normal accent=false ghost=false grace=false/0 stem=None
+note q=2.000000 m=0 HiHatClosed step=9 head=X accent=false ghost=false grace=false/0 stem=None
+note q=3.000000 m=0 Snare step=5 head=Normal accent=false ghost=false grace=false/0 stem=None
+note q=4.000000 m=0 Crash1 step=10 head=X accent=false ghost=false grace=false/0 stem=None
+note q=5.000000 m=0 Tom1 step=7 head=Normal accent=false ghost=false grace=false/0 stem=None
+note q=6.000000 m=0 Tom2 step=6 head=Normal accent=false ghost=false grace=false/0 stem=None
+note q=7.000000 m=0 Tom3 step=3 head=Normal accent=false ghost=false grace=false/0 stem=None
+warning: 8 notes had no recognisable instrument; guessed from staff position
+warning: No tempo marking in the file; using 120 BPM
