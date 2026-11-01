@@ -117,6 +117,9 @@ pub enum ImportError {
     Parse { format: Format, reason: String },
     NoDrumPart,
     NoMeasures,
+    /// The parser produced a score that breaks a rule of [`check_invariants`]; a defect of the
+    /// importer, not of the file.
+    Invalid(String),
 }
 
 impl std::fmt::Display for ImportError {
@@ -129,6 +132,7 @@ impl std::fmt::Display for ImportError {
             ImportError::Parse { reason, .. } => write!(f, "{reason}"),
             ImportError::NoDrumPart => write!(f, "the file has no drum part"),
             ImportError::NoMeasures => write!(f, "the drum part has no measures"),
+            ImportError::Invalid(why) => write!(f, "the score read from the file is not consistent ({why}); this is a defect of the importer"),
         }
     }
 }

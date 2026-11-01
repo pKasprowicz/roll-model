@@ -68,7 +68,9 @@ pub fn finish(raw: RawScore, opts: &ImportOptions) -> Result<Score, ImportError>
     if score.notes.is_empty() {
         score.warnings.push("No drum notes found in the part".into());
     }
-    debug_assert!(check_invariants(&score).is_ok(), "{:?}", check_invariants(&score));
+    // The rest of the program indexes measures and notes as if this held, so a parser that breaks it
+    // is an error here and not a panic somewhere else.
+    check_invariants(&score).map_err(ImportError::Invalid)?;
     Ok(score)
 }
 
@@ -184,6 +186,26 @@ mod tests {
         let ms = vec![rm(false, Some(2), &[]), rm(false, None, &[])];
         assert_eq!(playback_order(&ms, true), vec![0, 0, 1]);
         assert_eq!(playback_order(&ms, false), vec![0, 1]);
+    }
+
+    #[test]
+    fn a_parser_that_breaks_the_invariants_is_an_error_not_a_bad_score() {
+        let measure = RawMeasure { number: "1".into(), len_q: 4.0, beats: 4, beat_type: 4, ..Default::default() };
+        let mut stray = measure.clone();
+        stray.notes.push(super::super::RawNote {
+            offset_q: 9.0,
+            lane: crate::drums::Lane::Kick,
+            staff_step: 1,
+            head: crate::drums::NoteHead::Normal,
+            accent: false,
+            ghost: false,
+            grace: false,
+            stem_up: None,
+        });
+        let err = finish(RawScore { measures: vec![stray], ..Default::default() }, &ImportOptions::default()).unwrap_err();
+        assert!(matches!(&err, ImportError::Invalid(why) if why.contains("outside its measure")), "{err:?}");
+        assert!(err.to_string().contains("not consistent"));
+        assert!(finish(RawScore { measures: vec![measure], ..Default::default() }, &ImportOptions::default()).is_ok());
     }
 
     #[test]
