@@ -866,6 +866,36 @@ mod tests {
     }
 
     #[test]
+    fn a_file_that_arrives_while_the_rudiments_tab_shows_goes_to_the_score_tab() {
+        let mut app = DrumApp::with_config(Config::default());
+        app.background_bytes = 0;
+        app.open_file(&sample());
+        app.view.tab = Tab::Rudiments;
+        app.sync_source();
+        assert!(app.score.as_ref().is_some_and(|s| s.title != "Basic Rock Beat"), "the rudiment is on screen");
+        for _ in 0..500 {
+            app.poll_loading();
+            if app.loading.is_none() {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+        assert!(app.loading.is_none());
+        app.sync_source();
+        assert!(app.view.tab == Tab::Score, "the file is shown");
+        assert_eq!(app.score.as_ref().map(|s| s.title.as_str()), Some("Basic Rock Beat"));
+        assert!(app.score_path.is_some());
+
+        // The rudiment is still there when the tab is opened again.
+        app.view.tab = Tab::Rudiments;
+        app.sync_source();
+        assert!(app.score.as_ref().is_some_and(|s| s.title != "Basic Rock Beat"));
+        app.view.tab = Tab::Score;
+        app.sync_source();
+        assert_eq!(app.score.as_ref().map(|s| s.title.as_str()), Some("Basic Rock Beat"), "and the file after that");
+    }
+
+    #[test]
     fn the_timing_and_sound_pages_draw_with_a_stale_latency_and_no_open_output() {
         let mut app = DrumApp::with_config(Config { latency_ms: 24.0, ..Config::default() });
         assert!(app.cfg.latency_is_stale(crate::audio::ENGINE_GENERATION), "a latency from before the engine says is stale");
