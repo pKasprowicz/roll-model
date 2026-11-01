@@ -241,6 +241,8 @@ pub struct DrumApp {
     midi_options: crate::import::MidiOptions,
     /// A big file being read on another thread.
     loading: Option<import_menu::PendingLoad>,
+    /// Since when the settings differ from the file; they are written a little later, not every frame.
+    settings_dirty_since: Option<Instant>,
     /// Files over this many bytes are read on another thread, so the window does not freeze.
     background_bytes: u64,
 
@@ -293,6 +295,9 @@ const KEYBOARD_PADS: [(egui::Key, Lane, &str); 13] = [
     (egui::Key::E, Lane::Crash2, "E"),
 ];
 
+/// How long changed settings wait before they are written.
+const SETTINGS_SAVE_DELAY: Duration = Duration::from_millis(500);
+
 impl DrumApp {
     pub fn new(cc: &eframe::CreationContext<'_>, initial_file: Option<PathBuf>) -> DrumApp {
         // The grey helper texts are the "small" style: half as big again as egui's default.
@@ -326,6 +331,7 @@ impl DrumApp {
             score_report: None,
             midi_options: crate::import::MidiOptions::default(),
             loading: None,
+            settings_dirty_since: None,
             background_bytes: 1 << 20,
             range_from: 0,
             range_to: 0,
@@ -602,6 +608,10 @@ impl DrumApp {
 }
 
 impl eframe::App for DrumApp {
+    fn on_exit(&mut self, _gl: Option<&eframe::glow::Context>) {
+        self.save_settings_now();
+    }
+
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         // The splash window (`startup.rs`); the main window stays empty while the steps run.
         let mut key_taken = false;
@@ -717,13 +727,28 @@ impl DrumApp {
         self.controller_editor_window(ctx);
     }
 
+    /// Writes the settings when they have been different from the file for [`SETTINGS_SAVE_DELAY`]
+    /// (a slider being dragged changes them every frame), and once more on exit.
     fn save_settings_if_changed(&mut self) {
-        if self.cfg != self.saved_cfg {
-            if let Err(e) = self.cfg.save(&self.paths) {
-                self.view.status = format!("Could not save settings: {e}");
-            }
-            self.saved_cfg = self.cfg.clone();
+        if self.cfg == self.saved_cfg {
+            self.settings_dirty_since = None;
+            return;
         }
+        let since = *self.settings_dirty_since.get_or_insert_with(Instant::now);
+        if since.elapsed() >= SETTINGS_SAVE_DELAY {
+            self.save_settings_now();
+        }
+    }
+
+    fn save_settings_now(&mut self) {
+        self.settings_dirty_since = None;
+        if self.cfg == self.saved_cfg {
+            return;
+        }
+        if let Err(e) = self.cfg.save(&self.paths) {
+            self.view.status = format!("Could not save settings: {e}");
+        }
+        self.saved_cfg = self.cfg.clone();
     }
 
     /// Keep animating while recording, calibrating, listening or clicking; otherwise poll MIDI
@@ -893,6 +918,34 @@ mod tests {
         app.view.tab = Tab::Score;
         app.sync_source();
         assert_eq!(app.score.as_ref().map(|s| s.title.as_str()), Some("Basic Rock Beat"), "and the file after that");
+    }
+
+    #[test]
+    fn changed_settings_are_written_after_a_short_wait_and_on_exit_not_every_frame() {
+        let dir = std::env::temp_dir().join(format!("roll-model-app-settings-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let mut app = DrumApp::with_config(Config::default());
+        app.paths = crate::config::Paths::in_dir(dir.clone());
+        let file = dir.join("config.txt");
+
+        app.cfg.zoom = 1.25;
+        for _ in 0..30 {
+            app.save_settings_if_changed(); // thirty frames of a slider being dragged
+        }
+        assert!(!file.exists(), "nothing is written while the value is still moving");
+        assert!(app.settings_dirty_since.is_some());
+
+        app.settings_dirty_since = Some(Instant::now() - SETTINGS_SAVE_DELAY);
+        app.save_settings_if_changed();
+        assert!(std::fs::read_to_string(&file).unwrap().contains("zoom = 1.25"));
+        assert!(app.cfg == app.saved_cfg && app.settings_dirty_since.is_none());
+
+        // Closing the window writes what is still waiting.
+        app.cfg.zoom = 2.5;
+        app.save_settings_if_changed();
+        app.save_settings_now();
+        assert!(std::fs::read_to_string(&file).unwrap().contains("zoom = 2.5"));
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

@@ -212,9 +212,13 @@ impl DrumApp {
     fn run_step(&mut self, step: Step, st: &mut Startup) -> Option<Line> {
         Some(match step {
             Step::Settings => {
-                let cfg = Config::load_from(&self.paths);
+                let (cfg, notice) = Config::load_with_notice(&self.paths);
                 self.saved_cfg = cfg.clone();
                 self.cfg = cfg;
+                if let Some(text) = notice {
+                    self.view.error = Some(text.clone());
+                    return Some(Line { text, ok: false });
+                }
                 match self.paths.config_file().filter(|p| p.is_file()) {
                     Some(p) => Line { text: format!("Settings read from {}", p.display()), ok: true },
                     None => Line { text: "No settings file yet, starting with the defaults".into(), ok: true },
