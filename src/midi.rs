@@ -28,10 +28,9 @@ const MAX_QUEUED: usize = 2000;
 
 /// Adds to a queue the window empties once a frame; what arrives while it is full is dropped.
 fn push_capped<T>(queue: &Mutex<Vec<T>>, item: T) {
-    if let Ok(mut q) = queue.lock() {
-        if q.len() < MAX_QUEUED {
-            q.push(item);
-        }
+    let mut q = crate::sync::locked(queue);
+    if q.len() < MAX_QUEUED {
+        q.push(item);
     }
 }
 

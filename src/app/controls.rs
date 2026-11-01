@@ -171,9 +171,7 @@ impl DrumApp {
         c.link = None; // close the old port first (Windows ports are exclusive)
         c.wanted.clear();
         c.monitor.clear();
-        if let Ok(mut q) = c.queue.lock() {
-            q.clear();
-        }
+        crate::sync::locked(&c.queue).clear();
         if self.cfg.controller_preset.is_empty() {
             c.message = "No controller selected.".into();
             return;
@@ -211,10 +209,7 @@ impl DrumApp {
         if self.controller.link.is_none() {
             return;
         }
-        let messages = match self.controller.queue.lock() {
-            Ok(mut q) => std::mem::take(&mut *q),
-            Err(_) => Vec::new(),
-        };
+        let messages = std::mem::take(&mut *crate::sync::locked(&self.controller.queue));
         for bytes in messages {
             let Some(msg) = controller::parse(&bytes) else { continue };
             // A control is being taught to the preset editor: it does nothing else.

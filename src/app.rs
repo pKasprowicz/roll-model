@@ -397,10 +397,7 @@ impl DrumApp {
     }
 
     fn drain_midi(&mut self) {
-        let events: Vec<RawEvent> = match self.midi.queue.lock() {
-            Ok(mut q) => std::mem::take(&mut *q),
-            Err(_) => return,
-        };
+        let events: Vec<RawEvent> = std::mem::take(&mut *crate::sync::locked(&self.midi.queue));
         for ev in events {
             self.handle_event(ev);
         }

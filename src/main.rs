@@ -9,6 +9,7 @@ mod midi;
 mod playback;
 mod render;
 mod synth;
+mod sync;
 mod widgets;
 
 use std::path::PathBuf;

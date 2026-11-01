@@ -133,13 +133,11 @@ pub struct ErrorLog(Arc<Mutex<Vec<String>>>);
 
 impl ErrorLog {
     pub fn push(&self, message: String) {
-        if let Ok(mut v) = self.0.lock() {
-            v.push(message);
-        }
+        crate::sync::locked(&self.0).push(message);
     }
 
     pub fn take(&self) -> Vec<String> {
-        self.0.lock().map(|mut v| std::mem::take(&mut *v)).unwrap_or_default()
+        std::mem::take(&mut *crate::sync::locked(&self.0))
     }
 }
 

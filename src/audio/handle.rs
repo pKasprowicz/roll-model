@@ -78,7 +78,8 @@ impl EngineHandle {
         if let Ok(mut yard) = self.graveyard.try_lock() {
             while yard.pop().is_ok() {}
         }
-        let mut queue = self.queue.lock().map_err(|_| PlayError::QueueFull)?;
+        // A panic on another thread is not an overloaded queue: the command queue is still fine.
+        let mut queue = self.queue.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
         queue.push(command).map_err(|_| PlayError::QueueFull)
     }
 }
