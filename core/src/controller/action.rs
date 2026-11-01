@@ -13,6 +13,17 @@ pub enum Src {
 }
 
 impl Src {
+    /// The output that lights this control, if one can: a button (note or cc) is lit on the same
+    /// number, a ring (`ring` true) only exists for a cc, and a pitch bend (its number is a channel,
+    /// not a note) has none.
+    pub fn light_target(self, ring: bool) -> Option<Out> {
+        match self {
+            Src::Cc(n) => Some(Out::Cc(n)),
+            Src::Note(n) if !ring => Some(Out::Note(n)),
+            Src::Note(_) | Src::Bend(_) => None,
+        }
+    }
+
     pub(super) fn of(msg: Msg) -> Src {
         match msg {
             Msg::NoteOn { note, .. } | Msg::NoteOff { note, .. } => Src::Note(note),

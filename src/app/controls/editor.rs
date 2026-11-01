@@ -773,12 +773,8 @@ impl DrumApp {
             Op::AddLight(action, ring) => {
                 let Some(preset) = self.preset_being_edited() else { return };
                 let layer = self.editor_layer(&preset);
-                let wanted = |b: &&Binding| if ring { matches!(b.input.src, controller::Src::Cc(_)) } else { !matches!(b.input.src, controller::Src::Bend(_)) };
-                if let Some(b) = preset.bindings_of(layer.as_deref(), action).into_iter().find(wanted) {
-                    let out = match b.input.src {
-                        controller::Src::Cc(n) => controller::Out::Cc(n),
-                        controller::Src::Note(n) | controller::Src::Bend(n) => controller::Out::Note(n),
-                    };
+                let target = preset.bindings_of(layer.as_deref(), action).into_iter().find_map(|b| b.input.src.light_target(ring).map(|out| (b, out)));
+                if let Some((b, out)) = target {
                     let mut light = Light::new(layer.as_deref(), action, out, ring);
                     light.channel = b.input.channel.unwrap_or(1);
                     let _ = self.edit_preset(|p| p.set_light(light));
@@ -883,7 +879,7 @@ fn light_cell(ui: &mut egui::Ui, preset: &Preset, layer: Option<&str>, action: A
                     }
                 }
                 None => {
-                    let possible = bound.iter().any(|b| if ring { matches!(b.input.src, controller::Src::Cc(_)) } else { !matches!(b.input.src, controller::Src::Bend(_)) });
+                    let possible = bound.iter().any(|b| b.input.src.light_target(ring).is_some());
                     let hint = if ring { "Show the value in an LED ring on the same cc as the knob; change the number if the device uses another" } else { "Light the button on the same note or cc it sends; change the number if the device uses another" };
                     if ui.add_enabled(possible, egui::Button::new(format!("Add {kind}")).small()).on_hover_text(hint).clicked() {
                         op = Some(Op::AddLight(action, ring));

@@ -674,3 +674,14 @@ fn an_encoding_is_guessed_from_a_few_clicks_each_way() {
     // Turning the other way round first reads as the opposite encoding, which is why the order is asked for.
     assert_ne!(Encoding::guess(&[65, 65], &[1, 1]), Encoding::guess(&[1, 1], &[65, 65]));
 }
+
+#[test]
+fn a_control_is_lit_on_its_own_number_and_a_pitch_bend_cannot_be_lit() {
+    assert_eq!(Src::Note(36).light_target(false), Some(Out::Note(36)));
+    assert_eq!(Src::Cc(13).light_target(false), Some(Out::Cc(13)));
+    assert_eq!(Src::Cc(13).light_target(true), Some(Out::Cc(13)), "a ring is on a cc");
+    assert_eq!(Src::Note(36).light_target(true), None, "a button has no ring");
+    // Its number is a channel, which would otherwise be taken for a note.
+    assert_eq!(Src::Bend(3).light_target(false), None);
+    assert_eq!(Src::Bend(3).light_target(true), None);
+}
