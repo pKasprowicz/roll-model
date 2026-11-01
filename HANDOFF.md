@@ -131,11 +131,11 @@ The hardware tasks (HW-*) have a step-by-step plan in `docs/hardware-test-plan.m
 | **RV-2** [#61](https://github.com/pKasprowicz/roll-model/issues/61) | Settings are written every frame, non-atomically, and a corrupted file silently resets everything (S1, effort S) — **done 2026-11-01, in 0.10.2** | code |
 | **RV-3** [#62](https://github.com/pKasprowicz/roll-model/issues/62) | Learn reports success and moves on when saving the preset failed (S1, effort S) — **done 2026-11-01, in 0.10.2** | code |
 | **RV-4** [#63](https://github.com/pKasprowicz/roll-model/issues/63) | Light editing does read-parse-write of a file on every drag frame (S1, effort S) — **done 2026-11-01, in 0.10.2** | code |
-| **RV-5** [#64](https://github.com/pKasprowicz/roll-model/issues/64) | Invariants are checked only in debug builds, and the UI indexes as if they always hold (S2, effort S) | code |
-| **RV-6** [#65](https://github.com/pKasprowicz/roll-model/issues/65) | Some editor code paths turn a channel into a note number (S3, effort S) | code |
-| **RV-7** [#66](https://github.com/pKasprowicz/roll-model/issues/66) | The drum MIDI queue is unbounded; the controller queue is capped (S3, effort S) | code |
-| **RV-8** [#67](https://github.com/pKasprowicz/roll-model/issues/67) | A poisoned mutex is handled differently in each place (S3, effort S) | code |
-| **RV-9** [#68](https://github.com/pKasprowicz/roll-model/issues/68) | Hand-written CSV export without quoting (S3, effort S) | code |
+| **RV-5** [#64](https://github.com/pKasprowicz/roll-model/issues/64) | Invariants are checked only in debug builds, and the UI indexes as if they always hold (S2, effort S) — **done 2026-11-01** | code |
+| **RV-6** [#65](https://github.com/pKasprowicz/roll-model/issues/65) | Some editor code paths turn a channel into a note number (S3, effort S) — **done 2026-11-01** | code |
+| **RV-7** [#66](https://github.com/pKasprowicz/roll-model/issues/66) | The drum MIDI queue is unbounded; the controller queue is capped (S3, effort S) — **done 2026-11-01** | code |
+| **RV-8** [#67](https://github.com/pKasprowicz/roll-model/issues/67) | A poisoned mutex is handled differently in each place (S3, effort S) — **done 2026-11-01** | code |
+| **RV-9** [#68](https://github.com/pKasprowicz/roll-model/issues/68) | Hand-written CSV export without quoting (S3, effort S) — **done 2026-11-01** | code |
 | **RV-10** [#69](https://github.com/pKasprowicz/roll-model/issues/69) | Practice state is swapped by hand (`Parked`) instead of modelled (S2, effort M) | code |
 | **RV-11** [#70](https://github.com/pKasprowicz/roll-model/issues/70) | `tempo_pct` is per cent or BPM depending on the tab (S2, effort M) | code |
 | **RV-12** [#71](https://github.com/pKasprowicz/roll-model/issues/71) | Two command paths (keyboard vs controller) with different rules, and match guards with side effects (S2, effort M) | code |

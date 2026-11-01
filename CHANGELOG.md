@@ -6,6 +6,11 @@ All notable changes are recorded here. The format follows [Keep a Changelog](htt
 
 ## [Unreleased]
 
+### Fixed
+- **A file whose import would produce an inconsistent score is refused with a message** instead of being opened and failing later (RV-5); the check ran only in test builds before.
+- **The CSV of a take quotes its fields** (RV-9): a printed measure number with a comma or a quote no longer breaks the rows.
+- **The drum MIDI queue is capped** like the controller's (RV-7), and a thread that panicked while holding a MIDI or sound queue no longer silences it or is reported as a full queue (RV-8).
+
 ## [0.10.2] - 2026-11-01
 
 Four fixes from the code review of 0.10.1. A big file that finishes loading while the Rudiments tab is open now goes to the Score tab instead of replacing the rudiment, settings are saved whole and no longer written on every frame (and a damaged settings file is kept and reported instead of silently replaced by the defaults), and the controller editor no longer reports a failed save as success or writes the preset file on every step of a drag.
