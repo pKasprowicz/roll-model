@@ -364,6 +364,25 @@ const KEYS: &[Key] = &[
     key!("rudiment_ladder", c.rudiment_ladder, Flag),
 ];
 
+/// Writes `bytes` to `path` whole or not at all: they go to a file beside it (`<name>.tmp`) that is
+/// then moved over `path`, so a crash or a full disk leaves the old file, not half of a new one.
+pub fn write_atomically(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
+    use std::io::Write;
+    let mut tmp = path.as_os_str().to_owned();
+    tmp.push(".tmp");
+    let tmp = PathBuf::from(tmp);
+    let written = (|| {
+        let mut file = std::fs::File::create(&tmp)?;
+        file.write_all(bytes)?;
+        file.sync_all()?;
+        std::fs::rename(&tmp, path)
+    })();
+    if written.is_err() {
+        let _ = std::fs::remove_file(&tmp);
+    }
+    written
+}
+
 /// Where the settings, the replacement sounds and the user's controller presets live. The
 /// application has one, found from the operating system; a test makes one on a temporary folder
 /// (or `none`, which has no folder at all), so nothing reads or writes the user's own files.
@@ -536,20 +555,7 @@ impl Config {
         if let Some(dir) = p.parent() {
             std::fs::create_dir_all(dir).map_err(|e| ConfigError::Write(e.to_string()))?;
         }
-        // Written beside the file and moved over it, so a crash or a full disk leaves the old file,
-        // not half of a new one.
-        let tmp = p.with_extension("txt.tmp");
-        let written = (|| {
-            use std::io::Write;
-            let mut file = std::fs::File::create(&tmp)?;
-            file.write_all(self.to_text().as_bytes())?;
-            file.sync_all()?;
-            std::fs::rename(&tmp, &p)
-        })();
-        if let Err(e) = written {
-            let _ = std::fs::remove_file(&tmp);
-            return Err(ConfigError::Write(e.to_string()));
-        }
+        write_atomically(&p, self.to_text().as_bytes()).map_err(|e| ConfigError::Write(e.to_string()))?;
         Ok(p)
     }
 

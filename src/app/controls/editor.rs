@@ -173,6 +173,10 @@ fn action_order() -> Vec<Action> {
     Action::sections().into_iter().flat_map(|(_, actions)| actions).collect()
 }
 
+/// The preset could not be read or written; the reason is already on screen (`view.error`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct EditFailed;
+
 impl DrumApp {
     fn preset_dir(&self) -> Option<PathBuf> {
         self.paths.controllers_dir()
@@ -198,23 +202,23 @@ impl DrumApp {
 
     /// Changes the chosen (custom) preset: reads its file, applies `change`, writes the file and
     /// puts the result in place in the running controller.
-    fn edit_preset<R>(&mut self, change: impl FnOnce(&mut Preset) -> R) -> Option<R> {
-        let path = self.editable_path()?;
-        let dir = self.preset_dir()?;
+    fn edit_preset<R>(&mut self, change: impl FnOnce(&mut Preset) -> R) -> Result<R, EditFailed> {
+        let path = self.editable_path().ok_or(EditFailed)?;
+        let dir = self.preset_dir().ok_or(EditFailed)?;
         let mut preset = match controller::load_preset(&self.cfg.controller_preset, Some(&dir)) {
             Ok(p) => p,
             Err(e) => {
                 self.view.error = Some(e.to_string());
-                return None;
+                return Err(EditFailed);
             }
         };
         let result = change(&mut preset);
-        if let Err(e) = std::fs::write(&path, preset.to_text()) {
+        if let Err(e) = crate::config::write_atomically(&path, preset.to_text().as_bytes()) {
             self.view.error = Some(format!("Could not save {}: {e}", path.display()));
-            return None;
+            return Err(EditFailed);
         }
         self.controller.replace_preset(preset);
-        Some(result)
+        Ok(result)
     }
 
     /// The layer the table edits: `None` for a preset without layers.
@@ -241,7 +245,13 @@ impl DrumApp {
         let existing = preset.bindings_of(layer.as_deref(), action).into_iter().find(|b| matches!(b.input.src, controller::Src::Cc(_))).map(|b| b.reading);
         let reading = existing.unwrap_or_else(|| self.controller.editor.chosen_kind(action));
         let Some(found) = controller::learn(msg, action, reading, self.controller.editor.remember_channel) else { return true };
-        let taken_from = self.edit_preset(|p| p.assign(layer.as_deref(), action, found)).flatten();
+        let Ok(taken_from) = self.edit_preset(|p| p.assign(layer.as_deref(), action, found)) else {
+            // Not saved: say so, and do not go on to the next action as if it had been.
+            let editor = &mut self.controller.editor;
+            editor.learning = None;
+            editor.notice = format!("{}: not saved, see the message above", action.title());
+            return true;
+        };
         let mut notice = format!("{}: {}", action.title(), control_text(&Binding { layer: None, input: found.input, reading: found.reading, action }));
         if let Some(other) = taken_from {
             notice.push_str(&format!(" (it was {})", other.title()));
@@ -280,7 +290,10 @@ impl DrumApp {
                 self.controller.editor.choose_kind(d.action, reading);
                 if let Some(preset) = self.preset_being_edited() {
                     let layer = self.editor_layer(&preset);
-                    self.edit_preset(|p| p.set_reading(layer.as_deref(), d.action, reading));
+                    if self.edit_preset(|p| p.set_reading(layer.as_deref(), d.action, reading)).is_err() {
+                        self.controller.editor.say(format!("{} counts {}, but this could not be saved.", d.action.title(), kind_text(reading)));
+                        return true;
+                    }
                 }
                 self.controller.editor.say(format!("{} counts {}.", d.action.title(), kind_text(reading)));
             }
@@ -303,7 +316,7 @@ impl DrumApp {
         let Some(found) = controller::learn(msg, Action::Stop, Reading::Absolute, false) else { return true };
         let src = found.input.src;
         match self.edit_preset(|p| p.add_layer(name, src).map(|()| p.layers.len() - 1)) {
-            Some(Ok(index)) => {
+            Ok(Ok(index)) => {
                 let editor = &mut self.controller.editor;
                 editor.say(format!("Layer {name}: {}", src.text()));
                 editor.view.layer = index;
@@ -311,11 +324,11 @@ impl DrumApp {
                 editor.view.new_layer.clear();
                 editor.stop_learning();
             }
-            Some(Err(e)) => {
+            Ok(Err(e)) => {
                 // The same layer waits for another press.
                 self.controller.editor.say(e.to_string());
             }
-            None => self.controller.editor.stop_learning(),
+            Err(EditFailed) => self.controller.editor.stop_learning(),
         }
         true
     }
@@ -733,16 +746,16 @@ impl DrumApp {
                     };
                     let mut light = Light::new(layer.as_deref(), action, out, ring);
                     light.channel = b.input.channel.unwrap_or(1);
-                    self.edit_preset(|p| p.set_light(light));
+                    let _ = self.edit_preset(|p| p.set_light(light));
                 }
             }
             Op::SetLight(light) => {
-                self.edit_preset(|p| p.set_light(light));
+                let _ = self.edit_preset(|p| p.set_light(light));
             }
             Op::ClearLight(action, ring) => {
                 if let Some(preset) = self.preset_being_edited() {
                     let layer = self.editor_layer(&preset);
-                    self.edit_preset(|p| p.clear_light(layer.as_deref(), action, ring));
+                    let _ = self.edit_preset(|p| p.clear_light(layer.as_deref(), action, ring));
                 }
             }
             Op::AddLayer => {
@@ -763,23 +776,25 @@ impl DrumApp {
             }
             Op::AskDeleteLayer(ask) => self.controller.editor.view.confirm_layer_delete = ask,
             Op::DeleteLayer(name) => {
-                self.edit_preset(|p| p.remove_layer(&name));
+                let deleted = self.edit_preset(|p| p.remove_layer(&name)).is_ok();
                 let editor = &mut self.controller.editor;
                 editor.view.confirm_layer_delete = false;
-                editor.view.layer = 0;
-                editor.say(format!("Layer {name} deleted."));
+                if deleted {
+                    editor.view.layer = 0;
+                    editor.say(format!("Layer {name} deleted."));
+                }
             }
             Op::Clear(action) => {
                 if let Some(preset) = self.preset_being_edited() {
                     let layer = self.editor_layer(&preset);
-                    self.edit_preset(|p| p.clear(layer.as_deref(), action));
+                    let _ = self.edit_preset(|p| p.clear(layer.as_deref(), action));
                 }
             }
             Op::Kind(action, reading) => {
                 self.controller.editor.choose_kind(action, reading);
                 if let Some(preset) = self.preset_being_edited() {
                     let layer = self.editor_layer(&preset);
-                    self.edit_preset(|p| p.set_reading(layer.as_deref(), action, reading));
+                    let _ = self.edit_preset(|p| p.set_reading(layer.as_deref(), action, reading));
                 }
             }
             Op::NewPreset => self.new_learned_preset(),
@@ -955,6 +970,29 @@ bind = cc 13 abs -> tempo
         let ctx = egui::Context::default();
         app.controller.editor.view.open = true;
         let _ = ctx.run(egui::RawInput::default(), |ctx| app.controller_editor_window(ctx));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn learning_stops_and_says_so_when_the_preset_cannot_be_saved() {
+        let dir = temp_dir("learn-fails");
+        std::fs::write(dir.join("Pads.txt"), "name = Pads
+port = PADS
+bind = note 1 -> stop
+").unwrap();
+        std::fs::create_dir(dir.join("Pads.txt.tmp")).unwrap(); // the write has no place to go
+        let mut app = DrumApp::with_config(Config { controller_preset: "Pads".into(), ..Config::default() });
+        app.paths = Paths::in_dir(dir.parent().unwrap().to_path_buf());
+        app.controller.editor.learning = Some(Action::Record);
+        app.controller.editor.keep_going = true;
+
+        assert!(app.learn_message(pressed(40)), "the press is used up");
+        let editor = &app.controller.editor;
+        assert!(editor.learning.is_none(), "it does not go on to the next action as if this one was bound");
+        assert!(editor.notice.contains("not saved"), "{}", editor.notice);
+        assert!(app.view.error.as_deref().is_some_and(|e| e.contains("Could not save")), "{:?}", app.view.error);
+        let kept = controller::Preset::parse(&std::fs::read_to_string(dir.join("Pads.txt")).unwrap());
+        assert!(kept.bindings_of(None, Action::Record).is_empty(), "the file is as it was");
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -1230,7 +1268,7 @@ bind = note 36 -> record
         app.controller.editor.learning_layer = Some("B".into());
         frame(&mut app);
         app.controller.editor.stop_learning();
-        app.edit_preset(|p| p.add_layer("B", controller::Src::Note(85)).unwrap());
+        app.edit_preset(|p| p.add_layer("B", controller::Src::Note(85)).unwrap()).unwrap();
         app.controller.editor.view.confirm_layer_delete = true;
         frame(&mut app);
         let _ = std::fs::remove_dir_all(&dir);
