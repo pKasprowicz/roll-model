@@ -64,14 +64,14 @@ impl DrumApp {
         ui.vertical_centered(|ui| {
             ui.label(RichText::new("Roll Model").size(34.0).strong());
             ui.add_space(4.0);
-            ui.label("Load a MusicXML drum score, listen to it, then play it on your kit and see how you did.");
+            ui.label("Load a drum score (MusicXML or MIDI), listen to it, then play it on your kit and see how you did.");
             ui.add_space(18.0);
-            let open = egui::Button::new(RichText::new("📂 Open MusicXML…").size(18.0)).min_size(egui::vec2(260.0, 46.0));
+            let open = egui::Button::new(RichText::new("📂 Open score…").size(18.0)).min_size(egui::vec2(260.0, 46.0));
             if ui.add(open).clicked() {
                 self.open_dialog();
             }
             ui.add_space(6.0);
-            widgets::hint(ui, "or drop a file onto the window — .musicxml, .xml or .mxl, exported from MuseScore, Guitar Pro, Sibelius, Dorico…");
+            widgets::hint(ui, "or drop a file onto the window: MusicXML (.musicxml, .xml, .mxl), exported from MuseScore, Guitar Pro, Sibelius, Dorico…, or a MIDI file (.mid)");
             ui.add_space(14.0);
             let rudiments = egui::Button::new(RichText::new("Practise the 40 rudiments").size(16.0)).min_size(egui::vec2(260.0, 38.0));
             if ui.add(rudiments).on_hover_text("Singles, rolls, paradiddles, flams and drags: pick one, repeat it and play it along with the click").clicked() {

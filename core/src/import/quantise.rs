@@ -61,11 +61,15 @@ pub struct MidiOptions {
     pub accent_ratio: f64,
     /// A note at or below this multiple is a ghost note.
     pub ghost_ratio: f64,
+    /// The music's first bar line is this many beats after the start of the file, so what comes
+    /// before it is a short first bar (a pickup, or a count-in); 0 keeps the file's own bars.
+    /// Refused when the time signature changes later in the file.
+    pub first_bar_beats: u32,
 }
 
 impl Default for MidiOptions {
     fn default() -> Self {
-        MidiOptions { grid: Grid::Auto, remove_offset: true, accent_ratio: 1.5, ghost_ratio: 0.45 }
+        MidiOptions { grid: Grid::Auto, remove_offset: true, accent_ratio: 1.5, ghost_ratio: 0.45, first_bar_beats: 0 }
     }
 }
 
@@ -105,6 +109,29 @@ pub struct MidiReport {
     /// click, and the placement is probably wrong in places.
     pub free_time: bool,
     pub notes: usize,
+}
+
+impl MidiReport {
+    /// One line for the status bar: the grids chosen, the offset removed, the worst shift.
+    pub fn summary(&self) -> String {
+        let name = |n: u32| match n {
+            1 => "quarters",
+            2 => "eighths",
+            4 => "sixteenths",
+            3 => "eighth triplets",
+            6 => "sixteenth triplets",
+            _ => "thirty-seconds",
+        };
+        let mut grids: Vec<(u32, usize)> = self.beats_by_subdivision.iter().map(|(n, c)| (*n, *c)).collect();
+        grids.sort_by_key(|(_, c)| std::cmp::Reverse(*c));
+        let grids: Vec<String> = grids.iter().take(3).map(|(n, c)| format!("{} in {c} beats", name(*n))).collect();
+        let mut parts = vec![grids.join(", ")];
+        if self.offset_ms.abs() >= 1.0 {
+            parts.push(format!("played {:.0} ms {}, corrected", self.offset_ms.abs(), if self.offset_ms > 0.0 { "late" } else { "early" }));
+        }
+        parts.push(format!("largest shift {:.0} ms", self.max_shift_ms));
+        parts.join("; ")
+    }
 }
 
 /// A note counts as moved when it was placed further than this from where it was played.
@@ -274,6 +301,13 @@ mod tests {
             self.0 = self.0.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
             (self.0 >> 33) as f64 / (1u64 << 31) as f64
         }
+    }
+
+    #[test]
+    fn the_report_reads_as_one_line() {
+        let ticks: Vec<u64> = (0..32).map(|i| i * PPQ / 2 + 24).collect();
+        let (_, report) = run(&ticks, &MidiOptions::default());
+        assert_eq!(report.summary(), "eighths in 16 beats; played 25 ms late, corrected; largest shift 25 ms");
     }
 
     #[test]

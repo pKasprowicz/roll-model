@@ -150,7 +150,7 @@ struct Bar {
     beat_type: u32,
 }
 
-fn lay_bars(data: &MidiData, last_tick: u64, limits: &Limits, warnings: &mut Vec<String>) -> Result<Vec<Bar>, ImportError> {
+fn lay_bars(data: &MidiData, last_tick: u64, limits: &Limits, first_bar_beats: u32, warnings: &mut Vec<String>) -> Result<Vec<Bar>, ImportError> {
     let mut signatures = data.signatures.clone();
     if signatures.first().is_none_or(|s| s.0 > 0) {
         signatures.insert(0, (0, 4, 4));
@@ -158,6 +158,20 @@ fn lay_bars(data: &MidiData, last_tick: u64, limits: &Limits, warnings: &mut Vec
     }
     let mut bars = Vec::new();
     let mut start = 0u64;
+    if first_bar_beats > 0 {
+        // The music starts that many beats before its first bar line: a short first bar, like a pickup.
+        if signatures.len() > 1 {
+            warnings.push("The first bar cannot start later: the time signature changes later in the file".into());
+        } else {
+            let (_, beats, beat_type) = signatures[0];
+            let beat = data.ppq * 4 / u64::from(beat_type);
+            let len = u64::from(first_bar_beats.min(beats - 1)) * beat;
+            if len > 0 {
+                bars.push(Bar { start: 0, len, beats, beat_type });
+                start = len;
+            }
+        }
+    }
     let mut moved = false;
     let mut inexact = false;
     loop {
@@ -233,7 +247,7 @@ fn dynamics(onsets: &[Onset], lanes: &[Lane], opts: &MidiOptions) -> Vec<(bool, 
 pub fn build(data: MidiData, opts: &ImportOptions) -> Result<RawScore, ImportError> {
     let mut warnings = data.warnings.clone();
     let last_tick = data.onsets.last().map_or(0, |o| o.tick);
-    let bars = lay_bars(&data, last_tick, &opts.limits, &mut warnings)?;
+    let bars = lay_bars(&data, last_tick, &opts.limits, opts.midi.first_bar_beats, &mut warnings)?;
     let ppq = data.ppq as f64;
 
     let lanes: Vec<Lane> = data.onsets.iter().map(|o| lane_of(o.key)).collect();

@@ -219,7 +219,9 @@ impl Score {
         if beats {
             let t0 = self.tempo.q_to_sec(m0.start_q, scale);
             for m in &self.measures[from..=to.clamp(from, self.measures.len() - 1)] {
-                for b in 0..m.beats {
+                // A short first bar (a pickup) has fewer beats than its time signature says.
+                let beats = (m.len_q / m.beat_q() - 1e-9).ceil().max(1.0) as u32;
+                for b in 0..beats {
                     let q = m.start_q + b as f64 * m.beat_q();
                     clicks.push((self.tempo.q_to_sec(q, scale) - t0, b == 0));
                 }

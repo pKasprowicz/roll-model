@@ -300,3 +300,34 @@ fn the_edge_keys_of_roland_modules_have_instruments() {
     assert_eq!(s.notes.iter().map(|n| n.lane).collect::<Vec<_>>(), [Lane::HiHatClosed, Lane::HiHatOpen, Lane::Tom3]);
     assert!(s.warnings.iter().all(|w| !w.contains("no known drum instrument")));
 }
+
+#[test]
+fn the_first_bar_can_start_later_and_the_music_before_it_is_a_short_bar() {
+    // A pickup note on the beat before the downbeat, then two bars.
+    let notes = [(0.0, SNARE, 100), (1.0, KICK, 100), (3.0, SNARE, 100), (5.0, KICK, 100), (7.0, SNARE, 100)];
+    let bytes = write_smf(1, PPQ, &[conductor(500_000), track_of(&notes, 9)]);
+    let mut options = ImportOptions::default();
+    let plain = import_bytes(&bytes, "x.mid", &options).unwrap().score;
+    assert_eq!(plain.measures.len(), 2);
+
+    options.midi.first_bar_beats = 1;
+    let shifted = import_bytes(&bytes, "x.mid", &options).unwrap().score;
+    check_invariants(&shifted).unwrap();
+    let lens: Vec<f64> = shifted.measures.iter().map(|m| m.len_q).collect();
+    assert_eq!(lens, [1.0, 4.0, 4.0]);
+    assert_eq!(shifted.notes.iter().map(|n| n.measure).collect::<Vec<_>>(), [0, 1, 1, 2, 2]);
+    assert!(shifted.measures.iter().all(|m| (m.beats, m.beat_type) == (4, 4)), "the signature is the file's");
+    assert_eq!(placed(&shifted).iter().map(|p| p.0).collect::<Vec<_>>(), [0, 1000, 3000, 5000, 7000], "no note moves");
+}
+
+#[test]
+fn the_first_bar_does_not_start_later_when_the_time_signature_changes() {
+    let mut conductor = conductor(500_000);
+    conductor.push((3840, Ev::TimeSig(3, 2)));
+    let bytes = write_smf(1, PPQ, &[conductor, track_of(&[(0.0, SNARE, 100), (9.0, KICK, 100)], 9)]);
+    let mut options = ImportOptions::default();
+    options.midi.first_bar_beats = 1;
+    let s = import_bytes(&bytes, "x.mid", &options).unwrap().score;
+    assert_eq!(s.measures[0].len_q, 4.0);
+    assert!(s.warnings.iter().any(|w| w.contains("cannot start later")), "{:?}", s.warnings);
+}
