@@ -76,6 +76,7 @@ The hardware tasks (HW-*) have a step-by-step plan in `docs/hardware-test-plan.m
 | **FEAT-2** [#32](https://github.com/pKasprowicz/roll-model/issues/32) | Accent patterns and tap tempo for the free metronome | code |
 | **FEAT-3** | Remember the layout per score | code |
 | **FEAT-4** | A Listen without count-in setting of its own | code |
+| **FEAT-6** [#107](https://github.com/pKasprowicz/roll-model/issues/107) | Send the click to the MIDI output as MIDI clock (24 per quarter, with Start and Stop), so a device can follow the score's tempo | code, device, decision |
 | **NAME-1** [#36](https://github.com/pKasprowicz/roll-model/issues/36) | Check the name (GitHub, web, trademark, domain) | decision |
 | **NAME-2** [#37](https://github.com/pKasprowicz/roll-model/issues/37) | Rename the local folder `D:\projects\DrumTutor` | decision |
 | **PUB-1** | Make the repository public and set the GitHub options (see "Going public") | decision |
@@ -282,6 +283,7 @@ A harsh review of the whole tree, [`docs/code-review-2026-11-01.md`](docs/code-r
 - [x] **FEAT-3** Remember the layout per score. **Done**: `Config.layouts` (`RowLayout`, `layout` lines in the settings file, 30 scores, keyed by the absolute path); `restore_layout` on opening and `keep_layout` when a Layout slider changes. The zoom is not per score.
 - [x] **FEAT-4** A Listen without count-in setting of its own. **Done**: `listen_count_in` and the *in Listen* box.
 - [x] **FEAT-5** A bar that ends with a pause ends its row. **Done** (0.7.3): `notation::pause_bars` (a rest runs to the barline and no note in any voice starts during it; a run of empty bars counts once, at its last bar), `LayoutOpts.break_at_pause` and `render::fixed_rows`, setting `break_at_pause` (on by default) and the *new row after a pause* box in the Layout menu. The break wins over *bars per row*: a pause starts a row and the bars after it are counted from there; *start a row at bar* applies to the part of the score it falls in. The zoom slider is greyed out while *bars per row* is fixed (the bars fill the width then). Looked at with a real score.
+- [ ] **FEAT-6** ([#107](https://github.com/pKasprowicz/roll-model/issues/107)) An option to send the click as MIDI clock (timing clock 24 per quarter, Start, Stop, perhaps Continue with Song Position Pointer) to the MIDI output port, beside the click as a note. Which devices follow it, and where it starts, are open questions in the issue.
 - The click is implemented twice (a sine blip in `metronome::click_audio`, used by takes and by the player) and `Metronome` (takes, calibration) and `Player` (Listen, metronome tab) are two threads with separate loops; this is task **CD-5** below.
 - [x] **UI-3** Shortcuts (`R`, `L`, `K`, `M`, keyboard pads) were ignored while a widget had keyboard focus. **Done**: `widgets::typing(ctx)` is true only when the focused widget is a text edit (a slider's value box is one), and the shortcuts use it instead of `wants_keyboard_input()`; tested headlessly. Not tried with a real keyboard.
 
