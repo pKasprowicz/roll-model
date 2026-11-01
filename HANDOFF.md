@@ -126,6 +126,53 @@ The hardware tasks (HW-*) have a step-by-step plan in `docs/hardware-test-plan.m
 | **IMP-6** [#57](https://github.com/pKasprowicz/roll-model/issues/57) | Adjust after load: **done 2026-11-01** (the *MIDI import* menu beside Layout: grid, offset, first bar starts at beat, accent and ghost thresholds; reads the file again at once and keeps the selected bars); background loading is IMP-8 | code |
 | **IMP-7** [#58](https://github.com/pKasprowicz/roll-model/issues/58) | Parked: a converter reading other formats straight into `RawScore`; only if IMP-5 shows the export route failing | decision |
 | **IMP-8** [#59](https://github.com/pKasprowicz/roll-model/issues/59) | Load score files on a background thread: **done 2026-11-01** (files over 1 MiB; `DrumApp::start_loading`, `poll_loading`; the pipeline needed no change) | code |
+| **RV-1** [#60](https://github.com/pKasprowicz/roll-model/issues/60) | A background load that finishes on the Rudiments tab puts the file into the rudiment slot (S1, effort S) | code |
+| **RV-2** [#61](https://github.com/pKasprowicz/roll-model/issues/61) | Settings are written every frame, non-atomically, and a corrupted file silently resets everything (S1, effort S) | code |
+| **RV-3** [#62](https://github.com/pKasprowicz/roll-model/issues/62) | Learn reports success and moves on when saving the preset failed (S1, effort S) | code |
+| **RV-4** [#63](https://github.com/pKasprowicz/roll-model/issues/63) | Light editing does read-parse-write of a file on every drag frame (S1, effort S) | code |
+| **RV-5** [#64](https://github.com/pKasprowicz/roll-model/issues/64) | Invariants are checked only in debug builds, and the UI indexes as if they always hold (S2, effort S) | code |
+| **RV-6** [#65](https://github.com/pKasprowicz/roll-model/issues/65) | Some editor code paths turn a channel into a note number (S3, effort S) | code |
+| **RV-7** [#66](https://github.com/pKasprowicz/roll-model/issues/66) | The drum MIDI queue is unbounded; the controller queue is capped (S3, effort S) | code |
+| **RV-8** [#67](https://github.com/pKasprowicz/roll-model/issues/67) | A poisoned mutex is handled differently in each place (S3, effort S) | code |
+| **RV-9** [#68](https://github.com/pKasprowicz/roll-model/issues/68) | Hand-written CSV export without quoting (S3, effort S) | code |
+| **RV-10** [#69](https://github.com/pKasprowicz/roll-model/issues/69) | Practice state is swapped by hand (`Parked`) instead of modelled (S2, effort M) | code |
+| **RV-11** [#70](https://github.com/pKasprowicz/roll-model/issues/70) | `tempo_pct` is per cent or BPM depending on the tab (S2, effort M) | code |
+| **RV-12** [#71](https://github.com/pKasprowicz/roll-model/issues/71) | Two command paths (keyboard vs controller) with different rules, and match guards with side effects (S2, effort M) | code |
+| **RV-13** [#72](https://github.com/pKasprowicz/roll-model/issues/72) | `DrumApp` is still a god object; the split was by file, not by responsibility (S2, effort L) | code |
+| **RV-14** [#73](https://github.com/pKasprowicz/roll-model/issues/73) | Domain logic and data live in the GUI crate (S2, effort M) | code |
+| **RV-15** [#74](https://github.com/pKasprowicz/roll-model/issues/74) | Core is not as pure as `CLAUDE.md` claims (S3, effort S to M) | code |
+| **RV-16** [#75](https://github.com/pKasprowicz/roll-model/issues/75) | Similar names for unrelated concepts (S3, effort M) | code |
+| **RV-17** [#76](https://github.com/pKasprowicz/roll-model/issues/76) | The status line is used as a return channel (S2, effort S) | code |
+| **RV-18** [#77](https://github.com/pKasprowicz/roll-model/issues/77) | Drawing functions mutate domain state (S2, effort M) | code |
+| **RV-19** [#78](https://github.com/pKasprowicz/roll-model/issues/78) | Boolean and illegal-state soup in the score model (S2, effort M) | code |
+| **RV-20** [#79](https://github.com/pKasprowicz/roll-model/issues/79) | Units carried in names, not types (S2, effort M to L) | code |
+| **RV-21** [#80](https://github.com/pKasprowicz/roll-model/issues/80) | Anonymous tuples as domain types (S3, effort S to M) | code |
+| **RV-22** [#81](https://github.com/pKasprowicz/roll-model/issues/81) | Boolean parameters (S3, effort S) | code |
+| **RV-23** [#82](https://github.com/pKasprowicz/roll-model/issues/82) | Stringly keys and sentinels (S3, effort S) | code |
+| **RV-24** [#83](https://github.com/pKasprowicz/roll-model/issues/83) | Public fields everywhere in core (S3, effort M) | code |
+| **RV-40** [#84](https://github.com/pKasprowicz/roll-model/issues/84) | Ranges are defined in three or four places and already disagree (S2, effort M) | code |
+| **RV-41** [#85](https://github.com/pKasprowicz/roll-model/issues/85) | Persisted enum indices (S3, effort S) | code |
+| **RV-42** [#86](https://github.com/pKasprowicz/roll-model/issues/86) | The grading model is inline arithmetic (S2, effort S) | code |
+| **RV-43** [#87](https://github.com/pKasprowicz/roll-model/issues/87) | Renderer geometry magic (S3, effort S) | code |
+| **RV-30** [#88](https://github.com/pKasprowicz/roll-model/issues/88) | Two schedulers, still (S2, effort L) | code |
+| **RV-31** [#89](https://github.com/pKasprowicz/roll-model/issues/89) | Restart-after-settle debounce, written twice (S3, effort S) | code |
+| **RV-32** [#90](https://github.com/pKasprowicz/roll-model/issues/90) | Other copies | code |
+| **RV-50** [#91](https://github.com/pKasprowicz/roll-model/issues/91) | CD-10 is half done (S3, effort S) | code |
+| **RV-51** [#92](https://github.com/pKasprowicz/roll-model/issues/92) | Silent failure as the default (S2, effort S) | code |
+| **RV-60** [#93](https://github.com/pKasprowicz/roll-model/issues/93) | Per-frame recomputation of derived data (S2, effort M) | code |
+| **RV-61** [#94](https://github.com/pKasprowicz/roll-model/issues/94) | Blocking work on the UI thread (S3, effort M) | code |
+| **RV-62** [#95](https://github.com/pKasprowicz/roll-model/issues/95) | Allocation and freeing inside the audio callback (S4) | code |
+| **RV-70** [#96](https://github.com/pKasprowicz/roll-model/issues/96) | The Manage window (`editor.rs`) is now the largest file (S2, effort M) | code |
+| **RV-71** [#97](https://github.com/pKasprowicz/roll-model/issues/97) | User data is stored in the settings file (S3, effort S) | code |
+| **RV-72** [#98](https://github.com/pKasprowicz/roll-model/issues/98) | UI conventions are enforced by prose (S3, effort S) | code |
+| **RV-73** [#99](https://github.com/pKasprowicz/roll-model/issues/99) | Colour palette in `render.rs` (S4) | code |
+| **RV-74** [#100](https://github.com/pKasprowicz/roll-model/issues/100) | Leftover scaffolding (S4) | code |
+| **RV-80** [#101](https://github.com/pKasprowicz/roll-model/issues/101) | Timing tests use the wall clock (S2, effort M) | code |
+| **RV-81** [#102](https://github.com/pKasprowicz/roll-model/issues/102) | Tests through `DrumApp` (S3) | code |
+| **RV-82** [#103](https://github.com/pKasprowicz/roll-model/issues/103) | Missing tests for the failure paths found here | code |
+| **RV-85** [#104](https://github.com/pKasprowicz/roll-model/issues/104) | No formatter, no lint gate (S3, effort S) | code |
+| **RV-90** [#105](https://github.com/pKasprowicz/roll-model/issues/105) | `HANDOFF.md` is too large, contradicts itself, and is mandatory reading (S2, effort M) | code |
+| **RV-91** [#106](https://github.com/pKasprowicz/roll-model/issues/106) | Comment style raises the cognitive load (S3) | code |
 
 ### Done in 0.4.0 (released; the list of that time)
 
@@ -216,6 +263,12 @@ MIDI is the only new format; other programs go through their MusicXML export. Al
 - [x] **IMP-6** ([#57](https://github.com/pKasprowicz/roll-model/issues/57)) Adjust after load (grid, "first bar starts at" in whole beats, velocity rule) and background loading.
 - [ ] **IMP-7** ([#58](https://github.com/pKasprowicz/roll-model/issues/58)) Parked: a converter reading other formats straight into `RawScore`; only if IMP-5 shows the export route failing.
 - [x] **IMP-8** ([#59](https://github.com/pKasprowicz/roll-model/issues/59)) Load score files on a background thread.
+
+### Code review of 0.10.1 (2026-11-01)
+
+A harsh review of the whole tree, [`docs/code-review-2026-11-01.md`](docs/code-review-2026-11-01.md): 47 findings with IDs RV-1 to RV-91, each a task in the index above and a GitHub issue (#60 to #106, labels `review`, `code-design` and `severity-S1` to `severity-S4`). The report says how to work through it: one commit per finding with the tests green, and its "Suggested order of work": RV-1 to RV-5, RV-8 and RV-9 first (RV-1 is a verified defect in the background loading of 0.10.1, RV-2 and RV-3 can lose settings or report a failed save as done), then RV-85 and RV-80 as prerequisites, then the structure (RV-10 to RV-12). Some findings are the old tasks seen again: RV-30 is CD-5, RV-61 is CD-13, RV-50 is CD-10. The report's list of what is good (the audio engine, the import pipeline, the core crate's independence) is not to be "fixed".
+
+- [ ] **RV-1 to RV-91** ([#60](https://github.com/pKasprowicz/roll-model/issues/60) to [#106](https://github.com/pKasprowicz/roll-model/issues/106)) The 47 findings of the review; see the index above for each one's issue.
 
 ### Still open
 
