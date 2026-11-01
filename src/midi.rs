@@ -22,6 +22,19 @@ pub const HIHAT_CC: u8 = 4;
 /// Filled by the MIDI callback thread, drained by the UI every frame.
 pub type EventQueue = Arc<Mutex<Vec<RawEvent>>>;
 
+/// Most events or messages kept between two frames of the window, for the drums and for the
+/// controller alike; a runaway device or a window that is not repainting cannot fill memory.
+const MAX_QUEUED: usize = 2000;
+
+/// Adds to a queue the window empties once a frame; what arrives while it is full is dropped.
+fn push_capped<T>(queue: &Mutex<Vec<T>>, item: T) {
+    if let Ok(mut q) = queue.lock() {
+        if q.len() < MAX_QUEUED {
+            q.push(item);
+        }
+    }
+}
+
 pub struct InputHandle {
     _conn: MidiInputConnection<()>,
     pub port_name: String,
@@ -103,9 +116,7 @@ pub fn connect_input(wanted: &str, queue: EventQueue) -> Result<InputHandle, Mid
                 if msg.len() >= 3 && msg[0] & 0xF0 == 0xB0 && msg[1] == HIHAT_CC {
                     pedal = Some(msg[2]);
                 } else if msg.len() >= 3 && msg[0] & 0xF0 == 0x90 && msg[2] > 0 {
-                    if let Ok(mut q) = queue.lock() {
-                        q.push(RawEvent { at, note: msg[1], velocity: msg[2], channel: (msg[0] & 0x0F) + 1, hihat: pedal });
-                    }
+                    push_capped(&queue, RawEvent { at, note: msg[1], velocity: msg[2], channel: (msg[0] & 0x0F) + 1, hihat: pedal });
                 }
             },
             (),
@@ -137,9 +148,6 @@ impl ControllerHandle {
     }
 }
 
-/// Most messages kept between two frames of the window; a runaway device cannot fill memory.
-const MAX_QUEUED: usize = 2000;
-
 /// Opens the input port whose name matches `wanted` and, if there is one with
 /// the same name, its output port too (for the lights).
 pub fn connect_controller(wanted: &str, queue: MessageQueue) -> Result<ControllerHandle, MidiError> {
@@ -155,11 +163,7 @@ pub fn connect_controller(wanted: &str, queue: MessageQueue) -> Result<Controlle
             &ports[idx],
             "roll-model-controller-in",
             move |_stamp, msg, _| {
-                if let Ok(mut q) = queue.lock() {
-                    if q.len() < MAX_QUEUED {
-                        q.push(msg.to_vec());
-                    }
-                }
+                push_capped(&queue, msg.to_vec());
             },
             (),
         )
@@ -188,4 +192,30 @@ pub fn connect_output(wanted: &str) -> Result<MidiOutputConnection, MidiError> {
 pub fn note_name(n: u8) -> String {
     const NAMES: [&str; 12] = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
     format!("{}{}", NAMES[(n % 12) as usize], (n as i32 / 12) - 1)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_queue_nobody_empties_stops_growing_at_the_cap() {
+        let queue: Mutex<Vec<u32>> = Mutex::new(Vec::new());
+        for n in 0..(MAX_QUEUED as u32 + 500) {
+            push_capped(&queue, n);
+        }
+        let q = queue.lock().unwrap();
+        assert_eq!(q.len(), MAX_QUEUED);
+        assert_eq!(q.last(), Some(&(MAX_QUEUED as u32 - 1)), "what came first is kept, what came after the cap is dropped");
+    }
+
+    #[test]
+    fn the_drum_and_controller_queues_have_the_same_cap() {
+        let events: EventQueue = Arc::new(Mutex::new(Vec::new()));
+        let at = Instant::now();
+        for _ in 0..MAX_QUEUED * 2 {
+            push_capped(&events, RawEvent { at, note: 38, velocity: 100, channel: 10, hihat: None });
+        }
+        assert_eq!(events.lock().unwrap().len(), MAX_QUEUED);
+    }
 }
