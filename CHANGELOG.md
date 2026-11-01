@@ -6,6 +6,16 @@ All notable changes are recorded here. The format follows [Keep a Changelog](htt
 
 ## [Unreleased]
 
+## [0.10.2] - 2026-11-01
+
+Four fixes from the code review of 0.10.1. A big file that finishes loading while the Rudiments tab is open now goes to the Score tab instead of replacing the rudiment, settings are saved whole and no longer written on every frame (and a damaged settings file is kept and reported instead of silently replaced by the defaults), and the controller editor no longer reports a failed save as success or writes the preset file on every step of a drag.
+
+### Fixed
+- **A score that finished loading in the background while the Rudiments tab was open ended up as the rudiment** and the Score tab showed nothing (RV-1, a defect of 0.10.1). It now goes to the Score tab whichever tab is open, and waits while a recording or Listen is running.
+- **Settings are written whole and not every frame** (RV-2). The file is written beside itself and moved into place, so a crash or a full disk cannot leave half a file; changes are written half a second after the last one and when the window closes, not 60 times a second while a slider moves. A settings file that cannot be read, or is not text, is kept as `config.txt.bad` and the user is told, instead of being replaced by the defaults without a word.
+- **Learning a controller button says so when the preset cannot be saved** (RV-3). It no longer shows the control as bound and moves on to the next action, a layer is announced as deleted only when it was, and a failed encoder reading is reported.
+- **A controller light dragged in the Manage window is written once, when the drag ends** (RV-4), not read, parsed and written on every frame of it; presets are also written whole.
+
 ## [0.10.1] - 2026-11-01
 
 Big score files no longer freeze the window while they load. Nothing else changes for users; behind the scenes the importer gained a test for drum exports that name one instrument and no General MIDI numbers (the shape Sibelius is said to write).
