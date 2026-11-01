@@ -43,6 +43,11 @@ impl DrumApp {
     /// Picks up the result of a background load once it is there.
     pub(super) fn poll_loading(&mut self) {
         let Some(pending) = self.loading.take() else { return };
+        // A file that arrives while something is recording or playing waits; it must not stop that.
+        if self.take.as_ref().is_some_and(|t| t.running) || self.playback.listen.is_some() {
+            self.loading = Some(pending);
+            return;
+        }
         let result = match pending.rx.try_recv() {
             Ok(result) => result,
             Err(mpsc::TryRecvError::Empty) => {
@@ -75,6 +80,9 @@ impl DrumApp {
     /// Puts a loaded score on screen. `again` is a re-import of the open file: the range of bars,
     /// the tab and the layout are kept.
     pub(super) fn install(&mut self, loaded: Loaded, path: &Path, again: bool) {
+        // The practice fields belong to the Rudiments tab while it shows; the score goes to the Score
+        // tab's fields whichever tab the user is on when the file arrives.
+        self.activate(Source::Score);
         let Loaded { score, report } = loaded;
         self.view.status = format!(
             "Loaded \"{}\": {} measures, {} notes, {:.0} BPM{}",

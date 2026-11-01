@@ -364,6 +364,25 @@ const KEYS: &[Key] = &[
     key!("rudiment_ladder", c.rudiment_ladder, Flag),
 ];
 
+/// Writes `bytes` to `path` whole or not at all: they go to a file beside it (`<name>.tmp`) that is
+/// then moved over `path`, so a crash or a full disk leaves the old file, not half of a new one.
+pub fn write_atomically(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
+    use std::io::Write;
+    let mut tmp = path.as_os_str().to_owned();
+    tmp.push(".tmp");
+    let tmp = PathBuf::from(tmp);
+    let written = (|| {
+        let mut file = std::fs::File::create(&tmp)?;
+        file.write_all(bytes)?;
+        file.sync_all()?;
+        std::fs::rename(&tmp, path)
+    })();
+    if written.is_err() {
+        let _ = std::fs::remove_file(&tmp);
+    }
+    written
+}
+
 /// Where the settings, the replacement sounds and the user's controller presets live. The
 /// application has one, found from the operating system; a test makes one on a temporary folder
 /// (or `none`, which has no folder at all), so nothing reads or writes the user's own files.
@@ -499,14 +518,36 @@ impl Config {
     /// The settings kept in `paths` (the defaults when there is no file); the settings of the
     /// application's former name are copied across first, once.
     pub fn load_from(paths: &Paths) -> Config {
+        Config::load_with_notice(paths).0
+    }
+
+    /// Like [`Config::load_from`], and says what was wrong when the files were not right: the
+    /// settings of the old name could not be copied, or the file could not be read or was not
+    /// text. An unreadable file is kept as `config.txt.bad` before the defaults can overwrite it.
+    pub fn load_with_notice(paths: &Paths) -> (Config, Option<String>) {
+        let mut notice = None;
         if let (Some(old), Some(new)) = (&paths.legacy, &paths.dir) {
-            let _ = Config::migrate(old, new);
+            if let Err(e) = Config::migrate(old, new) {
+                notice = Some(format!("The settings of the old name could not be copied: {e}"));
+            }
         }
-        paths
-            .config_file()
-            .and_then(|p| std::fs::read_to_string(p).ok())
-            .map(|t| Config::from_text(&t))
-            .unwrap_or_default()
+        let Some(file) = paths.config_file() else { return (Config::default(), notice) };
+        let keep = |why: String| {
+            let copy = file.with_extension("txt.bad");
+            let kept = std::fs::copy(&file, &copy).is_ok();
+            format!("The settings file {why}.{}", if kept { format!(" A copy is kept as {}.", copy.display()) } else { String::new() })
+        };
+        match std::fs::read(&file) {
+            Ok(bytes) => match String::from_utf8(bytes) {
+                Ok(text) => (Config::from_text(&text), notice),
+                Err(e) => {
+                    let notice = Some(keep("was not valid text; what could be read was used".into()));
+                    (Config::from_text(&String::from_utf8_lossy(e.as_bytes())), notice)
+                }
+            },
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => (Config::default(), notice),
+            Err(e) => (Config::default(), Some(keep(format!("could not be read ({e}); the defaults are used")))),
+        }
     }
 
     pub fn save(&self, paths: &Paths) -> Result<PathBuf, ConfigError> {
@@ -514,7 +555,7 @@ impl Config {
         if let Some(dir) = p.parent() {
             std::fs::create_dir_all(dir).map_err(|e| ConfigError::Write(e.to_string()))?;
         }
-        std::fs::write(&p, self.to_text()).map_err(|e| ConfigError::Write(e.to_string()))?;
+        write_atomically(&p, self.to_text().as_bytes()).map_err(|e| ConfigError::Write(e.to_string()))?;
         Ok(p)
     }
 
