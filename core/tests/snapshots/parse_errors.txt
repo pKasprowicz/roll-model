@@ -1,0 +1,5 @@
+not_xml: XML error: document has no root element
+timewise: score-timewise MusicXML is not supported; export as partwise (the default in MuseScore, Sibelius, Dorico, Finale, Guitar Pro)
+other_root: not a MusicXML score (root element <html>)
+no_parts: the file contains no parts
+no_measures: the drum part has no measures

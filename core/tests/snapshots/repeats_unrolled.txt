@@ -1,0 +1,20 @@
+title: Fixture
+part: Drumset
+tempo: TempoMap { points: [(0.0, 120.0)] }
+measure 0: #1 start=0.000000 len=4.000000 4/4
+measure 1: #2 start=4.000000 len=4.000000 4/4
+measure 2: #3 start=8.000000 len=4.000000 4/4
+measure 3: #1 start=12.000000 len=4.000000 4/4
+measure 4: #2 start=16.000000 len=4.000000 4/4
+measure 5: #4 start=20.000000 len=4.000000 4/4
+measure 6: #5 start=24.000000 len=4.000000 4/4
+note q=0.000000 m=0 Kick step=1 head=Normal accent=false ghost=false grace=false/0 stem=None
+note q=1.000000 m=0 Snare step=5 head=Normal accent=false ghost=false grace=false/0 stem=None
+note q=4.000000 m=1 HiHatClosed step=9 head=Normal accent=false ghost=false grace=false/0 stem=None
+note q=8.000000 m=2 Snare step=5 head=Normal accent=false ghost=false grace=false/0 stem=None
+note q=12.000000 m=3 Kick step=1 head=Normal accent=false ghost=false grace=false/0 stem=None
+note q=13.000000 m=3 Snare step=5 head=Normal accent=false ghost=false grace=false/0 stem=None
+note q=16.000000 m=4 HiHatClosed step=9 head=Normal accent=false ghost=false grace=false/0 stem=None
+note q=20.000000 m=5 Crash1 step=9 head=Normal accent=false ghost=false grace=false/0 stem=None
+note q=24.000000 m=6 Kick step=1 head=Normal accent=false ghost=false grace=false/0 stem=None
+warning: No tempo marking in the file; using 120 BPM

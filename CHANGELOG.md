@@ -6,6 +6,22 @@ All notable changes are recorded here. The format follows [Keep a Changelog](htt
 
 ## [Unreleased]
 
+## [0.10.0] - 2026-11-01
+
+MIDI files open as scores. Drop a `.mid` file on the window and its drum notes are laid out on bars and a grid, with accents and ghost notes read from the velocities; a new MIDI import menu beside Layout changes the grid, the offset and where the first bar starts. Behind it the file opening was rebuilt as a pipeline that a further format can join, files from Guitar Pro, MuseScore, Sibelius, Finale and Dorico now say to export MusicXML, and MusicXML measure repeats are no longer empty bars.
+
+### Added
+- **MIDI files (`.mid`, `.midi`) open as scores** (tasks IMP-3, IMP-4). The drum notes come from channel 10, else from a track named like a drum part, else from a channel that looks like drums; tempo changes and time signatures are kept. Every beat gets the coarsest grid that fits its notes (eighths, sixteenths, triplets), after a constant offset of the recording is removed; notes of one instrument that land on one place are merged and counted; accents and ghost notes come from the velocity relative to each instrument's median; a warning says when the notes fall between grid points (a recording made without a click). Tried on the 1150 files of the Groove MIDI Dataset and 15 CC0 songs: all open. Roland's edge keys 22, 26 and 58 are known.
+- **A MIDI import menu beside Layout** (task IMP-6) changes the grid (auto, 1/8, 1/16, triplets, 1/32), the offset removal, the accent and ghost thresholds and *first bar starts at beat* (a short first bar for a pickup or a count-in; the notes do not move), and reads the file again at once, keeping the selected bars. The status line says how the file was laid out.
+- **`examples/basic_rock_beat.mid`**, the same groove as the MusicXML sample, written by the test code; the two import to the same score.
+- **MusicXML measure repeats** (the "simile" sign, one bar or several at a time) play and draw the music they repeat instead of empty bars.
+
+### Changed
+- **Opening a file goes through a new import pipeline** (`core/src/import/`: find the format, unpack, read into a neutral form, build the score), the groundwork for more formats (task IMP-1). MusicXML scores read as before; the tests of the MusicXML import now compare whole scores with stored snapshots.
+- **A file that is not a score says so instead of failing in the XML parser**, and a Guitar Pro, MuseScore, Sibelius, Finale or Dorico file says to export the score as MusicXML. A file larger than 64 MiB, or one that unrolls to more than 20,000 measures or 500,000 notes, is refused instead of read.
+- **Open score…** replaces *Open MusicXML…*; the open dialog, the Home text and the manual say that MIDI opens too.
+- **The metronome clicks only the beats of a short bar** (a pickup), not a whole bar of them.
+
 ## [0.9.0] - 2026-10-31
 
 Latency work on Windows, mostly honest numbers and a picture that follows the sound: the playhead, beat lights and count-in are drawn where the sound is heard, a MIDI click that also sounds through the computer is sent later by the same delay, and the Sound page says "at least" and adds Windows' 22 ms buffer. The manual has a quick-start guide that picks your settings by how you hear the click, and each GitHub release page now opens with a short summary taken from this file.

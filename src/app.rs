@@ -4,6 +4,7 @@ mod audio_output;
 mod controller_help;
 mod controls;
 mod home;
+mod import_menu;
 mod metro;
 mod mixer;
 mod results;
@@ -25,10 +26,9 @@ use crate::analysis::{Expected, Hit, Report};
 use crate::config::{Config, Paths, RowLayout};
 use crate::control::Control;
 use crate::drums::Lane;
-use crate::loader::load_score;
+use crate::import::load_score;
 use crate::metronome::Metronome;
 use crate::midi::{self, EventQueue, InputHandle, RawEvent};
-use crate::musicxml::ParseOptions;
 use crate::playback::{Player, Ramp};
 use crate::render::{self};
 use crate::score::Score;
@@ -235,6 +235,10 @@ pub struct DrumApp {
     trigger_learn: Option<crate::trigger::Slot>,
     score: Option<Score>,
     score_path: Option<PathBuf>,
+    /// What the import found out about the score in `score`, when it was read from a file.
+    score_report: Option<crate::import::Report>,
+    /// How a MIDI file is laid out; the Score tab's "MIDI import" menu changes it.
+    midi_options: crate::import::MidiOptions,
 
     range_from: usize,
     range_to: usize,
@@ -315,6 +319,8 @@ impl DrumApp {
             trigger_learn: None,
             score: None,
             score_path: None,
+            score_report: None,
+            midi_options: crate::import::MidiOptions::default(),
             range_from: 0,
             range_to: 0,
             tempo_pct: 100.0,
@@ -446,7 +452,7 @@ impl DrumApp {
 
     fn open_dialog(&mut self) {
         if let Some(p) = rfd::FileDialog::new()
-            .add_filter("MusicXML", &["musicxml", "xml", "mxl"])
+            .add_filter("Scores (MusicXML, MIDI)", crate::import::EXTENSIONS)
             .pick_file()
         {
             self.open_file(&p);
@@ -524,28 +530,9 @@ impl DrumApp {
         self.activate(Source::Score);
         self.stop_take(false);
         self.stop_listen();
-        let opts = ParseOptions { expand_repeats: self.cfg.expand_repeats };
-        match load_score(path, &opts) {
-            Ok(score) => {
-                self.view.status = format!(
-                    "Loaded \"{}\": {} measures, {} notes, {:.0} BPM",
-                    score.title,
-                    score.measures.len(),
-                    score.notes.len(),
-                    score.tempo.bpm_at(0.0)
-                );
-                self.range_from = 0;
-                self.range_to = score.measures.len().saturating_sub(1);
-                self.score = Some(score);
-                self.score_path = Some(path.to_path_buf());
-                let absolute = std::path::absolute(path).unwrap_or_else(|_| path.to_path_buf());
-                self.cfg.remember_recent(&absolute.to_string_lossy());
-                self.restore_layout();
-                self.take = None;
-                self.view.error = None;
-                self.score_gen += 1;
-                self.view.tab = Tab::Score;
-            }
+        self.midi_options = crate::import::MidiOptions::default();
+        match load_score(path, &self.import_options()) {
+            Ok(loaded) => self.install(loaded, path, false),
             Err(e) => self.view.error = Some(format!("Could not load {}: {e}", path.display())),
         }
     }
@@ -558,7 +545,7 @@ impl DrumApp {
 
     fn top_bar(&mut self, ui: &mut egui::Ui) {
         ui.horizontal(|ui| {
-            if ui.button("📂 Open MusicXML…").clicked() {
+            if ui.button("📂 Open score…").clicked() {
                 self.open_dialog();
             }
             if let Some(p) = self.main_path() {
@@ -791,6 +778,44 @@ mod tests {
         assert!(app.view.tab == Tab::Home, "a failed open does not leave Home");
         assert!(app.score.is_some(), "the loaded score stays");
         assert_eq!(app.cfg.recent_files.len(), 1, "a failed file is not remembered");
+    }
+
+    #[test]
+    fn a_midi_score_is_read_again_with_new_import_settings_and_keeps_its_place() {
+        let mut app = DrumApp::with_config(Config::default());
+        let midi = Path::new(env!("CARGO_MANIFEST_DIR")).join("examples").join("basic_rock_beat.mid");
+        app.open_file(&midi);
+        assert!(app.is_midi_score(), "{:?}", app.view.error);
+        assert_eq!(app.score.as_ref().unwrap().measures.len(), 4);
+        assert!(app.view.status.contains("sixteenths") || app.view.status.contains("eighths"), "{}", app.view.status);
+        // The Score tab, with its MIDI menu, draws.
+        let ctx = egui::Context::default();
+        for _ in 0..2 {
+            let _ = ctx.run(egui::RawInput::default(), |ctx| {
+                egui::CentralPanel::default().show(ctx, |ui| app.score_tab(ui));
+            });
+        }
+        app.range_from = 1;
+        app.range_to = 2;
+        app.view.tab = Tab::Results;
+        let gen = app.score_gen;
+
+        app.midi_options.first_bar_beats = 1;
+        app.reimport();
+        let score = app.score.as_ref().unwrap();
+        assert_eq!(score.measures[0].len_q, 1.0, "a short first bar");
+        assert_eq!((app.range_from, app.range_to), (1, 2), "the selected bars stay");
+        assert!(app.view.tab == Tab::Results, "the tab stays");
+        assert!(app.score_gen > gen);
+
+        // Opening a file again starts from the default settings.
+        app.open_file(&midi);
+        assert_eq!(app.midi_options, crate::import::MidiOptions::default());
+        assert_eq!(app.score.as_ref().unwrap().measures[0].len_q, 4.0);
+
+        // A MusicXML score has no such menu.
+        app.open_file(&sample());
+        assert!(!app.is_midi_score());
     }
 
     #[test]

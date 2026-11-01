@@ -1,0 +1,8 @@
+title: Untitled
+part: Drums
+tempo: TempoMap { points: [(0.0, 120.0)] }
+measure 0: #1 start=0.000000 len=4.000000 4/4
+note q=0.000000 m=0 Snare step=5 head=Normal accent=false ghost=false grace=false/0 stem=None
+warning: File has 2 parts; using "Drums"
+warning: 1 notes had no recognisable instrument; guessed from staff position
+warning: No tempo marking in the file; using 120 BPM

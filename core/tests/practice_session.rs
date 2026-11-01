@@ -4,13 +4,13 @@
 use roll_model_core::analysis::{analyze, expected_notes, Hit, Tolerances};
 use roll_model_core::config::Config;
 use roll_model_core::controller::{self, Action, Mapper, Msg, Command, State};
-use roll_model_core::musicxml::{parse_musicxml, ParseOptions};
+use roll_model_core::import::{import_bytes, ImportOptions};
 
 const SAMPLE: &str = include_str!("../../examples/basic_rock_beat.musicxml");
 
 #[test]
 fn a_perfect_take_of_the_example_score_grades_perfect() {
-    let score = parse_musicxml(SAMPLE, &ParseOptions::default()).unwrap();
+    let score = import_bytes(SAMPLE.as_bytes(), "sample.musicxml", &ImportOptions::default()).unwrap().score;
     let last = score.measures.len() - 1;
     let expected = expected_notes(&score, 0, last, 1.0);
     assert!(!expected.is_empty());
@@ -41,4 +41,14 @@ fn a_built_in_controller_preset_turns_a_button_into_a_command() {
         other => panic!("record is a button, not {other:?}"),
     };
     assert_eq!(mapper.handle(msg, &state), vec![Command::Press(Action::Record)]);
+}
+
+#[test]
+fn every_rudiment_builds_a_score_that_keeps_the_score_invariants() {
+    for rudiment in roll_model_core::rudiments::all() {
+        for repeats in [1, 3] {
+            let score = rudiment.build(repeats, rudiment.default_lead());
+            roll_model_core::import::check_invariants(&score).unwrap_or_else(|e| panic!("rudiment {} x{repeats}: {e}", rudiment.number));
+        }
+    }
 }

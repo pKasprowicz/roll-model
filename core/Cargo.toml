@@ -1,6 +1,6 @@
 [package]
 name = "roll-model-core"
-version = "0.9.0"
+version = "0.10.0"
 edition = "2021"
 description = "The part of Roll Model that needs no window, MIDI port or sound card: scores, grading, controller presets and settings"
 license = "PolyForm-Noncommercial-1.0.0"
@@ -10,3 +10,6 @@ publish = false
 [dependencies]
 # Reads the compressed .mxl scores.
 zip = { version = "2", default-features = false, features = ["deflate"] }
+
+# Reads Standard MIDI Files (Unlicense).
+midly = { version = "0.5", default-features = false, features = ["alloc", "std"] }

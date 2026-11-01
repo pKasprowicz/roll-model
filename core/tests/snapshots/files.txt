@@ -1,0 +1,11 @@
+plain.musicxml: ok title="Fixture" measures=1 notes=1
+little_endian.xml: ok title="Fixture" measures=1 notes=1
+big_endian.xml: ok title="Fixture" measures=1 notes=1
+with_container.mxl: ok title="Fixture" measures=1 notes=1
+container_names_a_missing_file.mxl: ok title="Fixture" measures=1 notes=1
+no_container.mxl: ok title="Fixture" measures=1 notes=1
+no_document.mxl: error no MusicXML document inside the .mxl archive
+not_a_zip.mxl: error bad .mxl archive: invalid Zip archive: Could not find EOCD
+untitled_gets_the_file_name.musicxml: ok title="untitled_gets_the_file_name" measures=1 notes=1
+garbage.musicxml: error XML error: document has no root element
+missing: error=true

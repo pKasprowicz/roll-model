@@ -55,7 +55,7 @@
 <h3 id="what">What it does</h3>
 <p>Roll Model is a desktop practice tool for drummers with an electronic kit. It does three things:</p>
 <div class="cards">
-  <div class="card"><h4>Shows the music</h4><p>Loads a MusicXML drum score, or one of the 40 drum rudiments, and draws it on a percussion staff.</p></div>
+  <div class="card"><h4>Shows the music</h4><p>Loads a drum score (MusicXML or a MIDI file), or one of the 40 drum rudiments, and draws it on a percussion staff.</p></div>
   <div class="card"><h4>Listens to you</h4><p>Captures what you play on a Roland V31 (or any e-kit with MIDI) and draws your hits directly under the written notes, on the same time axis.</p></div>
   <div class="card"><h4>Grades you</h4><p>Compares your hits with the notes: accuracy, timing, consistency, tempo drift, wrong pads, extra notes, dynamics, and for rudiments, how even your two hands are.</p></div>
 </div>
@@ -64,7 +64,7 @@
 <h3 id="quickstart">Quick start</h3>
 <ol class="steps">
   <li><strong>Connect the kit.</strong> Plug the V31 into the computer by USB and start Roll Model. The program connects to the first MIDI input whose name contains <code>V31</code>; the top right corner shows a green dot and the port name when it worked (see <a href="#connect">Connecting your kit</a>). A small splash window says what the program is doing while it starts (<a href="#start-up">Starting the program</a>).</li>
-  <li><strong>Open a score or a rudiment.</strong> Click <em>Open MusicXML&hellip;</em> or drop a file on the window, or press <em>Practise the 40 rudiments</em> on the Home tab.</li>
+  <li><strong>Open a score or a rudiment.</strong> Click <em>Open score&hellip;</em> or drop a file on the window, or press <em>Practise the 40 rudiments</em> on the Home tab.</li>
   <li><strong>Listen first.</strong> Press <kbd>L</kbd> to hear what you are about to play, with the count-in and click.</li>
   <li><strong>Record.</strong> Press <kbd>R</kbd>. After the count-in, play. Your hits appear under the notes as you play and the take stops by itself at the end.</li>
   <li><strong>Read the result.</strong> Green notes were right. The <em>Results</em> tab explains everything else.</li>
@@ -202,7 +202,7 @@ cargo build --release --no-default-features          # without the sound card (d
 <svg viewBox="0 0 760 330" role="img" aria-label="Layout of the Roll Model window" xmlns="http://www.w3.org/2000/svg" font-family="system-ui, sans-serif" font-size="13">
   <rect x="10" y="10" width="740" height="310" rx="8" fill="none" stroke="currentColor" opacity=".5"/>
   <rect x="10" y="10" width="740" height="34" rx="8" fill="currentColor" opacity=".12"/>
-  <text x="22" y="32">Open MusicXML&hellip;</text>
+  <text x="22" y="32">Open score&hellip;</text>
   <text x="170" y="32">Home</text><text x="225" y="32">Score</text><text x="283" y="32" font-weight="700">Rudiments</text><text x="365" y="32">Metronome</text><text x="445" y="32">Results</text><text x="505" y="32">Settings</text>
   <text x="590" y="32" opacity=".8">controller &middot; last hit</text><circle cx="738" cy="27" r="5" fill="#2eb85c"/>
   <text x="22" y="68" opacity=".8">Heading, title of the score or rudiment</text>
@@ -227,7 +227,7 @@ cargo build --release --no-default-features          # without the sound card (d
 <p>When everything is done the splash stays, so you can read it, and says <em>Ready</em>. It closes when you press any key or click the mouse in the program (the key or click that closes it is not used for anything else, and nothing closes it in the first moments after the start). The main window is empty until the steps are done; on a slow start (a MIDI driver that takes seconds to open) the list shows which step it is waiting for.</p>
 <h3>Top bar</h3>
 <ul>
-<li><strong>Open MusicXML&hellip;</strong> loads a score; <strong>Reload</strong> reads the same file again (after editing it in your notation program).</li>
+<li><strong>Open score&hellip;</strong> loads a MusicXML or MIDI file; <strong>Reload</strong> reads the same file again (after editing it in your notation program).</li>
 <li><strong>Tabs:</strong> Home, Score, Rudiments, Metronome, Results, Settings. <em>Score</em> is greyed until a score is loaded.</li>
 <li><strong>Right side:</strong> the controller (if one is chosen) with its layer, the last drum hit (instrument, note, velocity) and a dot for the MIDI input: green with the port name when connected, red with <em>no MIDI input</em> when not. A click on the controller opens its <a href="#ctl-help">help screen</a>.</li>
 </ul>
@@ -239,7 +239,7 @@ cargo build --release --no-default-features          # without the sound card (d
 
 <section id="home">
 <h2>4. Home</h2>
-<p>The Home tab is where the program starts. It has the <em>Open MusicXML&hellip;</em> button, a button that takes you to the <a href="#rudiments">Rudiments</a>, and the list of <strong>recent scores</strong> (the last ten). Click an entry to open it; the <kbd>&times;</kbd> removes it from the list and <em>Clear list</em> empties it. A file that no longer exists is greyed out and marked &ldquo;file not found&rdquo;. You can also drop <code>.musicxml</code>, <code>.xml</code> or <code>.mxl</code> files on the window.</p>
+<p>The Home tab is where the program starts. It has the <em>Open score&hellip;</em> button, a button that takes you to the <a href="#rudiments">Rudiments</a>, and the list of <strong>recent scores</strong> (the last ten). Click an entry to open it; the <kbd>&times;</kbd> removes it from the list and <em>Clear list</em> empties it. A file that no longer exists is greyed out and marked &ldquo;file not found&rdquo;. You can also drop <code>.musicxml</code>, <code>.xml</code> or <code>.mxl</code> files on the window.</p>
 </section>
 
 <section id="score">
@@ -247,6 +247,7 @@ cargo build --release --no-default-features          # without the sound card (d
 
 <h3 id="score-load">Loading a score</h3>
 <p>Export the drum part from MuseScore, Guitar Pro, Sibelius, Dorico or similar as MusicXML and open it. The status line reports the title, the number of measures and notes and the tempo. Warnings from the import (for example a missing tempo marking) are shown in amber under the title. See <a href="#musicxml">MusicXML scores</a> for what is supported.</p>
+<p>A MIDI file (<code>.mid</code>) opens too; the notes are laid on bars for you, and a <em>MIDI import</em> menu beside <em>Layout</em> changes how. See <a href="#midi">MIDI files</a>.</p>
 
 <h3 id="score-range">Range and tempo</h3>
 <table>
@@ -613,6 +614,13 @@ ring  = tempo -&gt; cc 20 scale=127      # a plain value 0 to 127 instead of Mac
 <p>On <em>Settings &rarr; Sound</em>, every instrument has a <strong>volume</strong>, a <strong>mute</strong> and a <strong>solo</strong> (solo is not saved), live while Listen plays, and a play button that sounds it on its own. An open hi-hat is cut off when the hi-hat is closed.</p>
 <h3>Your own sounds</h3>
 <p>Put a WAV file named after the instrument in the <code>sounds</code> folder next to the settings file (the Sound page shows the path): <code>Kick.wav</code>, <code>Snare.wav</code>, <code>CrossStick.wav</code>, <code>HiHatClosed.wav</code>, <code>HiHatOpen.wav</code>, <code>HiHatPedal.wav</code>, <code>Tom1.wav</code> to <code>Tom4.wav</code>, <code>Crash1.wav</code>, <code>Crash2.wav</code>, <code>Ride.wav</code>, <code>RideBell.wav</code>, <code>China.wav</code>, <code>Splash.wav</code>, <code>Cowbell.wav</code>. Any instrument without a file keeps its built-in sound; a file that cannot be read is reported and replaced by the built-in one.</p>
+</section>
+
+<section id="midi">
+<h2>14a. MIDI files</h2>
+<p>A Standard MIDI File (<code>.mid</code>, <code>.midi</code>) opens like a score. It has no printed bars and no exact note positions, so the program lays them out: the drum notes are taken from channel 10 (or from a track named like a drum part, or from a channel that looks like drums), the tempo and time signature come from the file, and every note is placed on the nearest point of a grid. Each beat gets the coarsest grid that fits its notes (eighths, sixteenths, or triplets), so a groove with a triplet fill comes out right. A recording with a fixed delay is moved as a whole first. The status line says what was done and how far the worst note moved.</p>
+<p>The <em>MIDI import</em> menu on the Score tab changes the result and reads the file again at once, keeping the selected bars: the finest <strong>grid</strong> (auto, 1/8, 1/16, triplets, 1/32), <strong>remove a constant offset</strong>, <strong>first bar starts at beat</strong> (moves the bar lines, not the notes, for a pickup or a count-in; not possible when the time signature changes), and the <strong>accent</strong> and <strong>ghost</strong> thresholds (relative to the median loudness of each instrument, so a quietly played file still has accents).</p>
+<p>Limits: a recording made without a click is not repaired; the program warns when many notes fall between grid points. Two notes of one instrument on the same grid point become one (a flam is counted, not drawn). There are no rests, no stickings and no repeats in a MIDI file. Keys that are not drums, or no known drum, are drawn on one line and counted in a warning.</p>
 </section>
 
 <section id="musicxml">

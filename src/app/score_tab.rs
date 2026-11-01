@@ -119,6 +119,9 @@ impl DrumApp {
                 }
                 widgets::hint(ui, "With a fixed number of bars per row every bar has the same width and the zoom no longer matters. Each score keeps its own layout.");
             });
+            if self.is_midi_score() {
+                self.midi_import_menu(ui);
+            }
         });
     }
 
