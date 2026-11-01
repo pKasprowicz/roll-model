@@ -1,6 +1,7 @@
 //! The neutral form every format is read into. A parser fills a [`RawScore`]; `finish` turns it
 //! into the [`Score`](crate::score::Score). Nothing here belongs to one file format.
 
+use super::MidiReport;
 use crate::drums::{Lane, NoteHead};
 
 /// An onset, as a parser found it: its place inside its measure, in quarter notes.
@@ -62,4 +63,6 @@ pub struct RawScore {
     pub measures: Vec<RawMeasure>,
     /// What the parser had to guess.
     pub warnings: Vec<String>,
+    /// What the quantiser did, for a MIDI file.
+    pub midi: Option<MidiReport>,
 }

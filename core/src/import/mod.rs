@@ -14,6 +14,7 @@ mod finish;
 mod ir;
 mod midi;
 mod musicxml;
+mod quantise;
 mod sniff;
 #[doc(hidden)]
 pub mod smf;
@@ -22,6 +23,7 @@ use std::path::Path;
 
 pub use finish::check_invariants;
 pub use ir::{PartInfo, RawMeasure, RawNote, RawRest, RawScore};
+pub use quantise::{Grid, MidiOptions, MidiReport, MOVED_MS};
 pub use sniff::{sniff, Detected, Format};
 
 use crate::score::Score;
@@ -56,11 +58,12 @@ pub struct ImportOptions {
     /// Which part of the file to read (its place in `Report::parts`); `None` picks the drum part.
     pub part: Option<usize>,
     pub limits: Limits,
+    pub midi: MidiOptions,
 }
 
 impl Default for ImportOptions {
     fn default() -> Self {
-        ImportOptions { expand_repeats: true, part: None, limits: Limits::default() }
+        ImportOptions { expand_repeats: true, part: None, limits: Limits::default(), midi: MidiOptions::default() }
     }
 }
 
@@ -74,16 +77,23 @@ impl ImportOptions {
         self.part = part;
         self
     }
+
+    pub fn with_midi(mut self, midi: MidiOptions) -> Self {
+        self.midi = midi;
+        self
+    }
 }
 
 /// What the import knows about the file besides the score.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct Report {
     pub format: Format,
     /// The parts the file holds.
     pub parts: Vec<PartInfo>,
     /// The place in `parts` of the one that was read.
     pub part_used: usize,
+    /// For a MIDI file: how its notes were placed.
+    pub midi: Option<MidiReport>,
 }
 
 #[derive(Clone, Debug)]
@@ -150,7 +160,7 @@ pub fn import_bytes(bytes: &[u8], name: &str, opts: &ImportOptions) -> Result<Lo
         Format::MusicXml => musicxml::parse(&container::musicxml_text(bytes, &opts.limits)?, opts)?,
         Format::Midi => midi::parse(bytes, opts)?,
     };
-    let report = Report { format, parts: raw.parts.clone(), part_used: raw.part_used };
+    let report = Report { format, parts: raw.parts.clone(), part_used: raw.part_used, midi: raw.midi.clone() };
     let mut score = finish::finish(raw, opts)?;
     if score.title == "Untitled" {
         if let Some(stem) = Path::new(name).file_stem() {

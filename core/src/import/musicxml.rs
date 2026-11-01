@@ -97,7 +97,7 @@ pub fn parse(text: &str, opts: &ImportOptions) -> Result<RawScore, ImportError> 
     let part_name = parts[part_used].name.clone();
 
     let measures = parse_measures(part, &instruments, &mut warnings);
-    Ok(RawScore { title, part_name, parts, part_used, measures, warnings })
+    Ok(RawScore { title, part_name, parts, part_used, measures, warnings, midi: None })
 }
 
 fn parse_f64(s: &str) -> Option<f64> {

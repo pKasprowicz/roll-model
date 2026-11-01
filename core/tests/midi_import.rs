@@ -250,10 +250,25 @@ fn real_files() {
     walk(std::path::Path::new(&dir), &mut files);
     files.sort();
     let (mut ok, mut failed, mut warnings) = (0, 0, std::collections::BTreeMap::<String, usize>::new());
+    let (mut free, mut offsets, mut shifts, mut merged, mut notes, mut accents, mut ghosts, mut moved) = (0, Vec::new(), Vec::new(), 0, 0, 0, 0, 0);
+    let mut subdivisions = std::collections::BTreeMap::<u32, usize>::new();
     for path in &files {
         match roll_model_core::import::load_score(path, &ImportOptions::default()) {
             Ok(loaded) => {
                 ok += 1;
+                if let Some(m) = &loaded.report.midi {
+                    free += usize::from(m.free_time);
+                    offsets.push(m.offset_ms);
+                    shifts.push(m.max_shift_ms);
+                    merged += m.merged;
+                    moved += m.moved;
+                    notes += loaded.score.notes.len();
+                    for (n, c) in &m.beats_by_subdivision {
+                        *subdivisions.entry(*n).or_default() += c;
+                    }
+                }
+                accents += loaded.score.notes.iter().filter(|n| n.accent).count();
+                ghosts += loaded.score.notes.iter().filter(|n| n.ghost).count();
                 check_invariants(&loaded.score).unwrap_or_else(|e| panic!("{}: {e}", path.display()));
                 for w in &loaded.score.warnings {
                     let key: String = w.split_once("(keys").map_or(w.clone(), |(_, k)| format!("keys{}", k.split(")").next().unwrap_or(""))).chars().filter(|c| !c.is_ascii_alphabetic() || true).collect();
@@ -267,6 +282,12 @@ fn real_files() {
         }
     }
     println!("{} files: {ok} opened, {failed} failed", files.len());
+    offsets.sort_by(f64::total_cmp);
+    shifts.sort_by(f64::total_cmp);
+    let pct = |v: &Vec<f64>, p: usize| v.get(v.len().saturating_sub(1) * p / 100).copied().unwrap_or(0.0);
+    println!("free time: {free}; offset ms p5/p50/p95: {:.1} {:.1} {:.1}; max shift ms p50/p90/max: {:.1} {:.1} {:.1}", pct(&offsets, 5), pct(&offsets, 50), pct(&offsets, 95), pct(&shifts, 50), pct(&shifts, 90), pct(&shifts, 100));
+    println!("notes {notes}, moved over {} ms: {moved}, merged: {merged}, accents {accents} ({:.1}%), ghosts {ghosts} ({:.1}%)", roll_model_core::import::MOVED_MS, accents as f64 * 100.0 / notes.max(1) as f64, ghosts as f64 * 100.0 / notes.max(1) as f64);
+    println!("beats by subdivision: {subdivisions:?}");
     for (w, n) in warnings {
         println!("{n:5} x {w}");
     }

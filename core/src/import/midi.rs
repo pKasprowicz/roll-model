@@ -5,7 +5,10 @@
 
 use midly::{MetaMessage, MidiMessage, Smf, Timing, TrackEventKind};
 
+use std::collections::HashMap;
+
 use super::ir::{PartInfo, RawMeasure, RawNote, RawScore};
+use super::quantise::{self, MidiOptions};
 use super::{Format, ImportError, ImportOptions, Limits};
 use crate::drums::{gm_lane, Lane};
 
@@ -166,8 +169,10 @@ fn lay_bars(data: &MidiData, last_tick: u64, limits: &Limits, warnings: &mut Vec
         let len = (exact / u64::from(beat_type)).max(1);
         moved |= signatures.iter().any(|s| s.0 > start && s.0 < start + len);
         bars.push(Bar { start, len, beats, beat_type });
+        // One bar past the last onset, for a note that rounds up to the next bar line.
+        let past_the_end = start > last_tick;
         start += len;
-        if start > last_tick {
+        if past_the_end {
             break;
         }
         if bars.len() >= limits.max_measures {
@@ -198,11 +203,44 @@ pub fn parse(bytes: &[u8], opts: &ImportOptions) -> Result<RawScore, ImportError
     build(read(bytes, &opts.limits)?, opts)
 }
 
+/// Accent and ghost flags from velocity, relative to the median of each instrument: a file played
+/// quietly has no accents under a fixed threshold. An instrument with too few notes, or whose notes
+/// are all one velocity (a programmed loop), has none.
+fn dynamics(onsets: &[Onset], lanes: &[Lane], opts: &MidiOptions) -> Vec<(bool, bool)> {
+    let mut by_lane: HashMap<Lane, Vec<u8>> = HashMap::new();
+    for (o, lane) in onsets.iter().zip(lanes) {
+        by_lane.entry(*lane).or_default().push(o.velocity);
+    }
+    let medians: HashMap<Lane, Option<f64>> = by_lane
+        .into_iter()
+        .map(|(lane, mut v)| {
+            v.sort_unstable();
+            let spread = v[v.len() - 1] - v[0];
+            let median = (f64::from(v[(v.len() - 1) / 2]) + f64::from(v[v.len() / 2])) / 2.0;
+            (lane, (v.len() >= 4 && spread >= 8).then_some(median))
+        })
+        .collect();
+    onsets
+        .iter()
+        .zip(lanes)
+        .map(|(o, lane)| match medians[lane] {
+            Some(m) => (f64::from(o.velocity) >= m * opts.accent_ratio, f64::from(o.velocity) <= m * opts.ghost_ratio),
+            None => (false, false),
+        })
+        .collect()
+}
+
 pub fn build(data: MidiData, opts: &ImportOptions) -> Result<RawScore, ImportError> {
     let mut warnings = data.warnings.clone();
     let last_tick = data.onsets.last().map_or(0, |o| o.tick);
     let bars = lay_bars(&data, last_tick, &opts.limits, &mut warnings)?;
     let ppq = data.ppq as f64;
+
+    let lanes: Vec<Lane> = data.onsets.iter().map(|o| lane_of(o.key)).collect();
+    let quantiser_bars: Vec<quantise::Bar> = bars.iter().map(|b| quantise::Bar { start: b.start, len: b.len, beat: data.ppq * 4 / u64::from(b.beat_type) }).collect();
+    let ticks: Vec<(u64, Lane)> = data.onsets.iter().zip(&lanes).map(|(o, l)| (o.tick, *l)).collect();
+    let (placed, report) = quantise::quantise(data.ppq, &quantiser_bars, &data.tempos, &ticks, &opts.midi);
+    let flags = dynamics(&data.onsets, &lanes, &opts.midi);
 
     let mut measures: Vec<RawMeasure> = bars
         .iter()
@@ -223,34 +261,30 @@ pub fn build(data: MidiData, opts: &ImportOptions) -> Result<RawScore, ImportErr
     }
 
     let mut unknown_keys: Vec<u8> = Vec::new();
-    for onset in &data.onsets {
-        let bar = bars.partition_point(|b| b.start <= onset.tick).saturating_sub(1);
-        // Interim placement: the nearest sixteenth (the quantiser replaces it).
-        let step = (data.ppq / 4).max(1);
-        let tick_in_bar = onset.tick - bars[bar].start;
-        let snapped = ((tick_in_bar + step / 2) / step * step).min(bars[bar].len);
-        let lane = lane_of(onset.key);
+    let mut last_bar = 0;
+    for p in &placed {
+        let lane = lanes[p.index];
         if lane == Lane::Other {
-            unknown_keys.push(onset.key);
+            unknown_keys.push(data.onsets[p.index].key);
         }
         let (staff_step, head) = lane.default_staff();
-        measures[bar].notes.push(RawNote {
-            offset_q: snapped as f64 / ppq,
-            lane,
-            staff_step,
-            head,
-            accent: false,
-            ghost: false,
-            grace: false,
-            stem_up: None,
-        });
+        let (accent, ghost) = flags[p.index];
+        measures[p.bar].notes.push(RawNote { offset_q: p.offset_q, lane, staff_step, head, accent, ghost, grace: false, stem_up: None });
+        last_bar = last_bar.max(p.bar);
     }
+    measures.truncate(last_bar + 1);
     if !unknown_keys.is_empty() {
         let count = unknown_keys.len();
         unknown_keys.sort_unstable();
         unknown_keys.dedup();
         let keys: Vec<String> = unknown_keys.iter().map(u8::to_string).collect();
         warnings.push(format!("{count} notes are on keys with no known drum instrument (keys {}); they are drawn on one line", keys.join(", ")));
+    }
+    if report.free_time {
+        warnings.push("Many notes fall between the points of any grid: the file was probably played without a click, so some notes may sit in the wrong place".into());
+    }
+    if report.merged > 0 {
+        warnings.push(format!("{} notes of the same instrument fell on one place (flams, double hits) and were merged", report.merged));
     }
     Ok(RawScore {
         title: "Untitled".into(),
@@ -259,5 +293,6 @@ pub fn build(data: MidiData, opts: &ImportOptions) -> Result<RawScore, ImportErr
         part_used: 0,
         measures,
         warnings,
+        midi: Some(report),
     })
 }
