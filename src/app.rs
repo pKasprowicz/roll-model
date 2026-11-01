@@ -609,6 +609,7 @@ impl DrumApp {
 
 impl eframe::App for DrumApp {
     fn on_exit(&mut self, _gl: Option<&eframe::glow::Context>) {
+        self.flush_draft();
         self.save_settings_now();
     }
 

@@ -72,6 +72,9 @@ pub(super) struct EditorState {
     /// How a value's cc is read, chosen before it is learned (by the action's name).
     pub(super) kinds: BTreeMap<String, Reading>,
     pub(super) notice: String,
+    /// A preset whose lights are being changed (a number dragged): the file it belongs to and the
+    /// preset as it is now. The file is written when the drag ends, not on every frame of it.
+    pub(super) draft: Option<(PathBuf, Preset)>,
     /// What the Manage window remembers about itself.
     pub(super) view: ManageView,
 }
@@ -119,7 +122,7 @@ impl EditorState {
 
 impl Default for EditorState {
     fn default() -> EditorState {
-        EditorState { learning: None, detecting: None, learning_layer: None, keep_going: true, remember_channel: false, kinds: BTreeMap::new(), notice: String::new(), view: ManageView::default() }
+        EditorState { learning: None, detecting: None, learning_layer: None, keep_going: true, remember_channel: false, kinds: BTreeMap::new(), notice: String::new(), draft: None, view: ManageView::default() }
     }
 }
 
@@ -136,7 +139,8 @@ enum Op {
     Delete,
     /// Give the action a light (false) or a ring (true) on the control it is bound to.
     AddLight(Action, bool),
-    SetLight(Light),
+    /// Change a light; `true` when the number stopped changing (the drag ended, or the typing).
+    SetLight(Light, bool),
     ClearLight(Action, bool),
     Detect(Action),
     AddLayer,
@@ -193,6 +197,11 @@ impl DrumApp {
 
     /// The chosen preset as it is now, for the table: the one in use, or its file.
     fn preset_being_edited(&self) -> Option<Preset> {
+        if let Some((path, preset)) = &self.controller.editor.draft {
+            if self.editable_path().as_ref() == Some(path) {
+                return Some(preset.clone());
+            }
+        }
         if let Some((preset, _)) = self.controller.live() {
             return Some(preset.clone());
         }
@@ -203,6 +212,7 @@ impl DrumApp {
     /// Changes the chosen (custom) preset: reads its file, applies `change`, writes the file and
     /// puts the result in place in the running controller.
     fn edit_preset<R>(&mut self, change: impl FnOnce(&mut Preset) -> R) -> Result<R, EditFailed> {
+        self.flush_draft();
         let path = self.editable_path().ok_or(EditFailed)?;
         let dir = self.preset_dir().ok_or(EditFailed)?;
         let mut preset = match controller::load_preset(&self.cfg.controller_preset, Some(&dir)) {
@@ -219,6 +229,31 @@ impl DrumApp {
         }
         self.controller.replace_preset(preset);
         Ok(result)
+    }
+
+    /// Writes the preset whose lights were being dragged, if there is one; before anything else
+    /// reads the file, and when the program closes.
+    pub(in crate::app) fn flush_draft(&mut self) {
+        let Some((path, preset)) = self.controller.editor.draft.take() else { return };
+        if self.editable_path().as_ref() != Some(&path) {
+            return; // another preset was chosen meanwhile
+        }
+        if let Err(e) = crate::config::write_atomically(&path, preset.to_text().as_bytes()) {
+            self.view.error = Some(format!("Could not save {}: {e}", path.display()));
+        }
+    }
+
+    /// Changes a light. While a number is still being dragged (`settled` is false) the running
+    /// controller follows at once and the file waits; it is written when the drag ends.
+    fn set_light(&mut self, light: Light, settled: bool) {
+        let Some(path) = self.editable_path() else { return };
+        let Some(mut preset) = self.preset_being_edited() else { return };
+        preset.set_light(light);
+        self.controller.replace_preset(preset.clone());
+        self.controller.editor.draft = Some((path, preset));
+        if settled {
+            self.flush_draft();
+        }
     }
 
     /// The layer the table edits: `None` for a preset without layers.
@@ -749,9 +784,7 @@ impl DrumApp {
                     let _ = self.edit_preset(|p| p.set_light(light));
                 }
             }
-            Op::SetLight(light) => {
-                let _ = self.edit_preset(|p| p.set_light(light));
-            }
+            Op::SetLight(light, settled) => self.set_light(light, settled),
             Op::ClearLight(action, ring) => {
                 if let Some(preset) = self.preset_being_edited() {
                     let layer = self.editor_layer(&preset);
@@ -822,11 +855,14 @@ fn light_cell(ui: &mut egui::Ui, preset: &Preset, layer: Option<&str>, action: A
                 Some(found) => {
                     let mut light = found.clone();
                     let mut changed = false;
+                    let mut settled = false;
                     ui.label(RichText::new(format!("{kind}: {}", out_text(light.out))).monospace().small());
                     let mut number = match light.out {
                         controller::Out::Note(n) | controller::Out::Cc(n) => n,
                     };
-                    if ui.add(egui::DragValue::new(&mut number).range(0..=127).prefix("no. ")).on_hover_text("The note or cc the device is told to light").changed() {
+                    let response = ui.add(egui::DragValue::new(&mut number).range(0..=127).prefix("no. ")).on_hover_text("The note or cc the device is told to light");
+                    settled |= response.drag_stopped() || response.lost_focus();
+                    if response.changed() {
                         light.out = match light.out {
                             controller::Out::Note(_) => controller::Out::Note(number),
                             controller::Out::Cc(_) => controller::Out::Cc(number),
@@ -834,11 +870,13 @@ fn light_cell(ui: &mut egui::Ui, preset: &Preset, layer: Option<&str>, action: A
                         changed = true;
                     }
                     if !ring {
-                        changed |= ui.add(egui::DragValue::new(&mut light.on).range(0..=127).prefix("on ")).on_hover_text("The value that lights it (often the colour)").changed();
-                        changed |= ui.add(egui::DragValue::new(&mut light.off).range(0..=127).prefix("off ")).on_hover_text("The value that darkens it").changed();
+                        let on = ui.add(egui::DragValue::new(&mut light.on).range(0..=127).prefix("on ")).on_hover_text("The value that lights it (often the colour)");
+                        let off = ui.add(egui::DragValue::new(&mut light.off).range(0..=127).prefix("off ")).on_hover_text("The value that darkens it");
+                        changed |= on.changed() || off.changed();
+                        settled |= on.drag_stopped() || on.lost_focus() || off.drag_stopped() || off.lost_focus();
                     }
-                    if changed {
-                        op = Some(Op::SetLight(light));
+                    if changed || settled {
+                        op = Some(Op::SetLight(light, settled));
                     }
                     if ui.small_button("×").on_hover_text(format!("Remove the {kind}")).clicked() {
                         op = Some(Op::ClearLight(action, ring));
@@ -960,7 +998,7 @@ bind = cc 13 abs -> tempo
         let mut colour = light.clone();
         colour.on = 60;
         colour.out = controller::Out::Note(40);
-        app.run_op(Some(Op::SetLight(colour)));
+        app.run_op(Some(Op::SetLight(colour, true)));
         let kept = saved().lights_of(None, Action::Record, false).cloned().unwrap();
         assert_eq!((kept.out, kept.on), (controller::Out::Note(40), 60));
         app.run_op(Some(Op::ClearLight(Action::Record, false)));
@@ -970,6 +1008,47 @@ bind = cc 13 abs -> tempo
         let ctx = egui::Context::default();
         app.controller.editor.view.open = true;
         let _ = ctx.run(egui::RawInput::default(), |ctx| app.controller_editor_window(ctx));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_light_dragged_through_many_values_is_written_once_when_the_drag_ends() {
+        let dir = temp_dir("light-drag");
+        std::fs::write(dir.join("Pads.txt"), "name = Pads
+port = PADS
+bind = note 36 -> record
+").unwrap();
+        let mut app = DrumApp::with_config(Config { controller_preset: "Pads".into(), ..Config::default() });
+        app.paths = Paths::in_dir(dir.parent().unwrap().to_path_buf());
+        let file = dir.join("Pads.txt");
+        let on_disk = || controller::Preset::parse(&std::fs::read_to_string(&file).unwrap());
+        app.run_op(Some(Op::AddLight(Action::Record, false)));
+        let mut light = on_disk().lights_of(None, Action::Record, false).cloned().unwrap();
+        let written = std::fs::read_to_string(&file).unwrap();
+
+        for on in 1..=60 {
+            light.on = on;
+            app.run_op(Some(Op::SetLight(light.clone(), false))); // sixty frames of a drag
+        }
+        assert_eq!(std::fs::read_to_string(&file).unwrap(), written, "the file is not touched while the number moves");
+        let shown = app.preset_being_edited().unwrap();
+        assert_eq!(shown.lights_of(None, Action::Record, false).unwrap().on, 60, "the table shows the value now");
+
+        app.run_op(Some(Op::SetLight(light.clone(), true)));
+        assert_eq!(on_disk().lights_of(None, Action::Record, false).unwrap().on, 60, "written when the drag ends");
+        assert!(app.controller.editor.draft.is_none());
+
+        // Closing the program in the middle of a drag keeps what was dragged to.
+        light.on = 7;
+        app.run_op(Some(Op::SetLight(light, false)));
+        app.flush_draft();
+        assert_eq!(on_disk().lights_of(None, Action::Record, false).unwrap().on, 7);
+        // Another change while a drag is pending does not lose it.
+        let mut again = on_disk().lights_of(None, Action::Record, false).cloned().unwrap();
+        again.on = 9;
+        app.run_op(Some(Op::SetLight(again, false)));
+        app.run_op(Some(Op::Clear(Action::Stop)));
+        assert_eq!(on_disk().lights_of(None, Action::Record, false).unwrap().on, 9);
         let _ = std::fs::remove_dir_all(&dir);
     }
 
