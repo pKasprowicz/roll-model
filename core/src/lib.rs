@@ -1,5 +1,5 @@
 //! The core of Roll Model: everything that needs no window, no MIDI port and no sound card.
-//! Scores (`musicxml`, `xml`, `loader`, `score`, `drums`), grading (`analysis`), rudiments, the
+//! Scores (`import`, `xml`, `score`, `drums`), grading (`analysis`), rudiments, the
 //! start trigger, the hardware controller (`controller`, `controller_layout`) and the settings
 //! file (`config`). Positions in a score are quarter notes (`q`); seconds come only from
 //! `score::TempoMap`.
@@ -12,8 +12,7 @@ pub mod config;
 pub mod controller;
 pub mod controller_layout;
 pub mod drums;
-pub mod loader;
-pub mod musicxml;
+pub mod import;
 pub mod notation;
 pub mod rudiments;
 pub mod score;

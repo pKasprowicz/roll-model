@@ -1,88 +1,24 @@
-//! MusicXML (score-partwise) -> [`Score`] for drum parts.
+//! MusicXML (score-partwise) -> [`RawScore`] for drum parts.
 
 use std::collections::HashMap;
 
+use super::ir::{PartInfo, RawMeasure, RawNote, RawRest, RawScore};
+use super::{Format, ImportError, ImportOptions};
 use crate::drums::{gm_lane, lane_from_name, lane_from_staff, staff_step, Lane, NoteHead};
-use crate::score::{Measure, Rest, Score, ScoreNote, TempoMap};
 use crate::xml::{self, Element};
 
-#[derive(Clone, Debug)]
-struct RawNote {
-    offset_q: f64,
-    lane: Lane,
-    staff_step: i32,
-    head: NoteHead,
-    accent: bool,
-    ghost: bool,
-    grace: bool,
-    stem_up: Option<bool>,
+fn parse_error(reason: String) -> ImportError {
+    ImportError::Parse { format: Format::MusicXml, reason }
 }
 
-#[derive(Clone, Debug)]
-struct RawRest {
-    offset_q: f64,
-    dur_q: f64,
-    voice: String,
-    whole_bar: bool,
-    up: bool,
-}
-
-#[derive(Clone, Debug, Default)]
-struct RawMeasure {
-    number: String,
-    len_q: f64,
-    beats: u32,
-    beat_type: u32,
-    notes: Vec<RawNote>,
-    rests: Vec<RawRest>,
-    tempos: Vec<(f64, f64)>,
-    forward_repeat: bool,
-    backward_repeat: Option<u32>,
-    endings: Vec<u32>,
-}
-
-pub struct ParseOptions {
-    pub expand_repeats: bool,
-}
-
-impl Default for ParseOptions {
-    fn default() -> Self {
-        ParseOptions { expand_repeats: true }
-    }
-}
-
-/// Why a file is not a drum score this app can read.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub enum ScoreError {
-    Xml(xml::XmlError),
-    Timewise,
-    NotMusicXml(String),
-    NoParts,
-    NoMeasures,
-}
-
-impl std::fmt::Display for ScoreError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            ScoreError::Xml(e) => write!(f, "XML error: {e}"),
-            ScoreError::Timewise => write!(f, "score-timewise MusicXML is not supported; export as partwise (the default in MuseScore, Sibelius, Dorico, Finale, Guitar Pro)"),
-            ScoreError::NotMusicXml(root) => write!(f, "not a MusicXML score (root element <{root}>)"),
-            ScoreError::NoParts => write!(f, "the file contains no parts"),
-            ScoreError::NoMeasures => write!(f, "the drum part has no measures"),
-        }
-    }
-}
-
-impl std::error::Error for ScoreError {}
-
-pub fn parse_musicxml(text: &str, opts: &ParseOptions) -> Result<Score, ScoreError> {
-    let root = xml::parse(text).map_err(ScoreError::Xml)?;
+pub fn parse(text: &str, opts: &ImportOptions) -> Result<RawScore, ImportError> {
+    let root = xml::parse(text).map_err(|e| parse_error(format!("XML error: {e}")))?;
     match root.name.as_str() {
         "score-partwise" => {}
         "score-timewise" => {
-            return Err(ScoreError::Timewise)
+            return Err(parse_error("score-timewise MusicXML is not supported; export as partwise (the default in MuseScore, Sibelius, Dorico, Finale, Guitar Pro)".into()))
         }
-        other => return Err(ScoreError::NotMusicXml(other.to_string())),
+        other => return Err(parse_error(format!("not a MusicXML score (root element <{other}>)"))),
     }
 
     let mut warnings = Vec::new();
@@ -136,91 +72,32 @@ pub fn parse_musicxml(text: &str, opts: &ParseOptions) -> Result<Score, ScoreErr
         }
     }
 
-    let parts: Vec<&Element> = root.children_named("part").collect();
-    if parts.is_empty() {
-        return Err(ScoreError::NoParts);
+    let elements: Vec<&Element> = root.children_named("part").collect();
+    if elements.is_empty() {
+        return Err(parse_error("the file contains no parts".into()));
     }
-    let part = parts
-        .iter()
-        .find(|p| p.find("unpitched").is_some())
-        .or_else(|| {
-            parts.iter().find(|p| {
-                p.find("clef")
-                    .and_then(|c| c.child_text("sign"))
-                    .is_some_and(|s| s == "percussion")
-            })
-        })
-        .copied()
-        .unwrap_or(parts[0]);
-    if parts.len() > 1 {
-        warnings.push(format!(
-            "File has {} parts; using \"{}\"",
-            parts.len(),
-            part_names.get(part.attr("id").unwrap_or_default()).cloned().unwrap_or_default()
-        ));
-    }
-    let part_name = part_names
-        .get(part.attr("id").unwrap_or_default())
-        .cloned()
-        .unwrap_or_default();
-
-    let raw = parse_measures(part, &instruments, &mut warnings);
-    if raw.is_empty() {
-        return Err(ScoreError::NoMeasures);
-    }
-    let order = playback_order(&raw, opts.expand_repeats);
-
-    let mut score = Score {
-        title,
-        part_name,
-        warnings,
-        ..Default::default()
+    let name_of = |p: &Element| part_names.get(p.attr("id").unwrap_or_default()).cloned().unwrap_or_default();
+    let is_drums = |p: &Element| {
+        p.find("unpitched").is_some()
+            || p.find("clef").and_then(|c| c.child_text("sign")).is_some_and(|s| s == "percussion")
     };
-    let mut tempo_pts = Vec::new();
-    let mut q = 0.0;
-    for &mi in &order {
-        let rm = &raw[mi];
-        let idx = score.measures.len();
-        score.measures.push(Measure {
-            number: rm.number.clone(),
-            start_q: q,
-            len_q: rm.len_q,
-            beats: rm.beats,
-            beat_type: rm.beat_type,
-        });
-        for n in &rm.notes {
-            score.notes.push(ScoreNote {
-                q: q + n.offset_q,
-                measure: idx,
-                lane: n.lane,
-                staff_step: n.staff_step,
-                head: n.head,
-                accent: n.accent,
-                ghost: n.ghost,
-                grace: n.grace,
-                grace_order: u8::from(n.grace),
-                hand: None,
-                stem_up: n.stem_up,
-            });
-        }
-        for r in &rm.rests {
-            score.rests.push(Rest { measure: idx, q: q + r.offset_q, dur_q: r.dur_q, up: r.up, whole_bar: r.whole_bar });
-        }
-        for (off, bpm) in &rm.tempos {
-            tempo_pts.push((q + off, *bpm));
-        }
-        q += rm.len_q;
+    let parts: Vec<PartInfo> = elements.iter().map(|p| PartInfo { name: name_of(p), drums: is_drums(p) }).collect();
+    // The part that was asked for, else the first with unpitched notes, else the first with a
+    // percussion clef, else the first.
+    let part_used = opts
+        .part
+        .filter(|i| *i < elements.len())
+        .or_else(|| elements.iter().position(|p| p.find("unpitched").is_some()))
+        .or_else(|| elements.iter().position(|p| is_drums(p)))
+        .unwrap_or(0);
+    let part = elements[part_used];
+    if elements.len() > 1 {
+        warnings.push(format!("File has {} parts; using \"{}\"", elements.len(), parts[part_used].name));
     }
-    if tempo_pts.is_empty() {
-        score.warnings.push("No tempo marking in the file; using 120 BPM".into());
-    }
-    score.tempo = TempoMap::from_points(tempo_pts);
-    score.notes.sort_by(|a, b| a.q.total_cmp(&b.q).then(a.lane.cmp(&b.lane)));
-    score.notes.dedup_by(|b, a| (a.q - b.q).abs() < 1e-6 && a.lane == b.lane && a.grace == b.grace);
-    if score.notes.is_empty() {
-        score.warnings.push("No drum notes found in the part".into());
-    }
-    Ok(score)
+    let part_name = parts[part_used].name.clone();
+
+    let measures = parse_measures(part, &instruments, &mut warnings);
+    Ok(RawScore { title, part_name, parts, part_used, measures, warnings })
 }
 
 fn parse_f64(s: &str) -> Option<f64> {
@@ -497,91 +374,20 @@ fn parse_note(
     })
 }
 
-/// Measure indices in playback order (repeats and 1st/2nd endings expanded).
-fn playback_order(raw: &[RawMeasure], expand: bool) -> Vec<usize> {
-    if !expand {
-        return (0..raw.len()).collect();
-    }
-    let mut order = Vec::new();
-    let mut counts: HashMap<usize, u32> = HashMap::new();
-    let mut repeat_start = 0usize;
-    let mut pass = 1u32;
-    let mut last_in_ending = false;
-    let mut prev: Option<usize> = None;
-    let mut i = 0usize;
-    let mut guard = 0usize;
-    while i < raw.len() && guard < 100_000 {
-        guard += 1;
-        let m = &raw[i];
-        if m.forward_repeat && repeat_start != i {
-            repeat_start = i;
-            pass = 1;
-        }
-        let moving_forward = prev.is_some_and(|p| i > p);
-        if m.endings.is_empty() && last_in_ending && pass > 1 && moving_forward {
-            // Left the 1st/2nd-ending block: a new section begins here.
-            repeat_start = i;
-            pass = 1;
-        }
-        if !m.endings.is_empty() && !m.endings.contains(&pass) {
-            i += 1;
-            continue;
-        }
-        order.push(i);
-        prev = Some(i);
-        last_in_ending = !m.endings.is_empty();
-        if let Some(times) = m.backward_repeat {
-            let c = counts.entry(i).or_insert(1);
-            if *c < times {
-                *c += 1;
-                pass += 1;
-                i = repeat_start;
-                continue;
-            }
-            counts.remove(&i);
-            repeat_start = i + 1;
-            pass = 1;
-        }
-        i += 1;
-    }
-    order
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    pub const SAMPLE: &str = include_str!("../../../examples/basic_rock_beat.musicxml");
 
-    fn rm(fwd: bool, back: Option<u32>, endings: &[u32]) -> RawMeasure {
-        RawMeasure {
-            forward_repeat: fwd,
-            backward_repeat: back,
-            endings: endings.to_vec(),
-            len_q: 4.0,
-            beats: 4,
-            beat_type: 4,
-            ..Default::default()
-        }
+    fn parse_sample(text: &str) -> crate::score::Score {
+        let loaded = crate::import::import_bytes(text.as_bytes(), "fixture.musicxml", &ImportOptions::default()).unwrap();
+        crate::import::check_invariants(&loaded.score).unwrap();
+        loaded.score
     }
-
-    #[test]
-    fn repeats_and_voltas() {
-        // |: A B [1. C :| [2. D | E
-        let ms = vec![rm(true, None, &[]), rm(false, None, &[]), rm(false, Some(2), &[1]), rm(false, None, &[2]), rm(false, None, &[])];
-        assert_eq!(playback_order(&ms, true), vec![0, 1, 2, 0, 1, 3, 4]);
-        // A |: B :| x3  C
-        let ms = vec![rm(false, None, &[]), rm(true, Some(3), &[]), rm(false, None, &[])];
-        assert_eq!(playback_order(&ms, true), vec![0, 1, 1, 1, 2]);
-        // A :| B (repeat from start)
-        let ms = vec![rm(false, Some(2), &[]), rm(false, None, &[])];
-        assert_eq!(playback_order(&ms, true), vec![0, 0, 1]);
-        assert_eq!(playback_order(&ms, false), vec![0, 1]);
-    }
-
-    pub const SAMPLE: &str = include_str!("../../examples/basic_rock_beat.musicxml");
 
     #[test]
     fn parses_sample() {
-        let s = parse_musicxml(SAMPLE, &ParseOptions::default()).unwrap();
+        let s = parse_sample(SAMPLE);
         assert_eq!(s.title, "Basic Rock Beat");
         assert_eq!(s.measures.len(), 4);
         assert!((s.tempo.bpm_at(0.0) - 100.0).abs() < 1e-9);
@@ -603,7 +409,7 @@ mod tests {
     #[test]
     fn simulated_take_on_sample() {
         use crate::analysis::{analyze, expected_notes, Grade, Hit, Tolerances};
-        let s = parse_musicxml(SAMPLE, &ParseOptions::default()).unwrap();
+        let s = parse_sample(SAMPLE);
         // Practise bars 2..4 at 80% tempo; play everything 12 ms late except
         // one missed kick and one extra crash.
         let exp = expected_notes(&s, 1, 3, 0.8);
@@ -643,7 +449,7 @@ mod tests {
             rest(1, 8, " measure=\"yes\""),
         );
         let xml = format!("<score-partwise><part-list><score-part id=\"P1\"><part-name>D</part-name></score-part></part-list><part id=\"P1\">{body}</part></score-partwise>");
-        let s = parse_musicxml(&xml, &ParseOptions::default()).unwrap();
+        let s = parse_sample(&xml);
         let rests: Vec<(usize, f64, f64, bool, bool)> = s.rests.iter().map(|r| (r.measure, r.q, r.dur_q, r.up, r.whole_bar)).collect();
         assert_eq!(rests, vec![(0, 1.0, 1.0, true, false), (0, 2.0, 2.0, true, false), (0, 1.0, 2.0, false, false), (1, 4.0, 4.0, true, true)]);
     }

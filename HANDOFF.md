@@ -118,8 +118,8 @@ The hardware tasks (HW-*) have a step-by-step plan in `docs/hardware-test-plan.m
 | **AUD-12** [#49](https://github.com/pKasprowicz/roll-model/issues/49) | The Sound page's latency (the driver's ~10 ms) is a lower bound; the measured end-to-end delay was 45 ms: **done on `develop`**: the page adds the fixed 22 ms endpoint buffer (`SYSTEM_BUFFER_MS`, Windows) and says "at least" (still about 13 ms short of the 45 measured), and shows the calibrated latency beside it | code |
 | **AUD-13** [#50](https://github.com/pKasprowicz/roll-model/issues/50) | Repeat `examples/audio_latency.rs` with the Realtek vendor driver and the USB interface (E3), and compare enhancements on/off: **done 2026-10-31**: the vendor and inbox drivers and the enhancements give the same 45.16 ms; the USB Audio Box gives about 150 ms in a loopback (hub or direct port), most of it on its input side (cross runs: 119 and 68 ms). No manual tip follows. Not run: the doubled sound starts of E2 (`tools/audio_baseline.ps1`), because nothing depends on it. Details in `docs/audio-latency-study.md` | device |
 | **AUD-14** [#51](https://github.com/pKasprowicz/roll-model/issues/51) | Audio on Linux and macOS: does `BufferSize::Fixed` give a smaller buffer? Needs those machines | device |
-| **IMP-1** [#52](https://github.com/pKasprowicz/roll-model/issues/52) | Seam extraction: the import becomes four stages (`sniff`, `unwrap`, `parse`, `finish`) with a neutral `RawScore`; snapshot tests of the MusicXML import first; `loader.rs` goes | code |
-| **IMP-2** [#53](https://github.com/pKasprowicz/roll-model/issues/53) | Detection and UI: `EXTENSIONS`, "Open score…", drop messages, "export as MusicXML" hints for Guitar Pro, MuseScore and Sibelius | code |
+| **IMP-1** [#52](https://github.com/pKasprowicz/roll-model/issues/52) | Seam extraction: the import becomes four stages (`sniff`, `unwrap`, `parse`, `finish`) with a neutral `RawScore`; snapshot tests of the MusicXML import first; `loader.rs` goes. **Done 2026-11-01 on `develop`**: `core/src/import/`, snapshots in `core/tests/snapshots/`; the issue closes with the merge to `main` | code |
+| **IMP-2** [#53](https://github.com/pKasprowicz/roll-model/issues/53) | Detection and UI: `EXTENSIONS`, "Open score…", drop messages, "export as MusicXML" hints for Guitar Pro, MuseScore and Sibelius. **Partly done in IMP-1**: `EXTENSIONS`, the sniffer and the "export as MusicXML" error texts; left: the button text, the drop handler, README and manual | code |
 | **IMP-3** [#54](https://github.com/pKasprowicz/roll-model/issues/54) | MIDI reader with `midly`: drum part choice, tempo, time signature, `Limits`, malformed-input tests | code |
 | **IMP-4** [#55](https://github.com/pKasprowicz/roll-model/issues/55) | Quantiser and velocity: offset removal, per-beat grid, report, accents and ghosts relative to the lane, flams collapsed and counted, `.mid` sample | code |
 | **IMP-5** [#56](https://github.com/pKasprowicz/roll-model/issues/56) | Quality of the export route: our own drum exports from MuseScore 4, Guitar Pro 8, Sibelius, Dorico; fix the MusicXML importer; list the tested programs | code, device |
@@ -207,7 +207,7 @@ Checked on 2026-10-30, while the repository was still private. Every commit and 
 
 MIDI is the only new format; other programs go through their MusicXML export. All decisions, the pipeline design, the quantiser and the tasks are in [`docs/input-formats-analysis.md`](docs/input-formats-analysis.md) (theory in `docs/input-formats-decision-brief.md`). Order: IMP-1, 2, 3, 4, then 6 and 5; a release after IMP-4 and IMP-6 is 0.10.0.
 
-- [ ] **IMP-1** ([#52](https://github.com/pKasprowicz/roll-model/issues/52)) Seam extraction: the import becomes four stages (`sniff`, `unwrap`, `parse`, `finish`) with a neutral `RawScore`; snapshot tests of the MusicXML import first; `loader.rs` goes.
+- [x] **IMP-1** ([#52](https://github.com/pKasprowicz/roll-model/issues/52)) Seam extraction: the import becomes four stages (`sniff`, `unwrap`, `parse`, `finish`) with a neutral `RawScore`; snapshot tests of the MusicXML import first; `loader.rs` goes.
 - [ ] **IMP-2** ([#53](https://github.com/pKasprowicz/roll-model/issues/53)) Detection and UI: `EXTENSIONS`, "Open score…", drop messages, "export as MusicXML" hints for Guitar Pro, MuseScore and Sibelius.
 - [ ] **IMP-3** ([#54](https://github.com/pKasprowicz/roll-model/issues/54)) MIDI reader with `midly`: drum part choice, tempo, time signature, `Limits`, malformed-input tests.
 - [ ] **IMP-4** ([#55](https://github.com/pKasprowicz/roll-model/issues/55)) Quantiser and velocity: offset removal, per-beat grid, report, accents and ghosts relative to the lane, flams collapsed and counted, `.mid` sample.
@@ -323,8 +323,7 @@ The application was renamed from "Drum Tutor" to **Roll Model** (crate and binar
 main.rs        eframe entry; optional CLI arg = file to open
 app.rs         DrumApp state + Score/Results/Settings tabs; take lifecycle
 render.rs      Draws score staff + "You" staff per system; layout, hit-testing
-loader.rs      Read .musicxml/.xml (UTF-8/16) and .mxl (zip)
-musicxml.rs    MusicXML -> Score; repeats/voltas unrolled in playback_order()
+import/        Opening a score file: sniff (format), container (.mxl, UTF-8/16), ir (RawScore), musicxml (parser), finish (Score)
 xml.rs         Dependency-free XML DOM parser
 score.rs       Score, Measure, ScoreNote, Rest, TempoMap (q <-> seconds)
 notation.rs    What a printed page shows that the score does not store: `analyse` (beams, flags, tuplets from the onsets), `rest_glyphs` (how a rest is written), `pause_bars` (bars that end with a pause, for the row break)
@@ -427,5 +426,5 @@ config.rs      key = value settings file, auto-saved when Config changes
   - the synthesised kit (`synth.rs`): bounded, decaying, deterministic samples, the spectral guard for the cymbals, the WAV loader (bit depths, channels, resampling, bad files) and the kit's fallback to the built-in sound;
   - mixer settings (`Config::effective_gain`, clamping and defaults of the new keys) and the listing of sound outputs.
 - Listening has no automated test of the real outputs. To check them on Windows, play the sample with `cargo run --release` and read the per-application peak meter of the default output device (Core Audio `IAudioSessionManager2` → `IAudioMeterInformation`, e.g. from PowerShell with C# COM interop): the `roll-model` session must stay silent until about 0.5 s after pressing `L` and be silent again after stopping. The device-wide meter also hears every other application, so use the per-application one.
-- `examples/basic_rock_beat.musicxml` is generated in MuseScore style (4 bars, 100 BPM, `midi-unpitched` instruments, accents, a tom fill). Tests depend on its exact contents. If you edit it, update `musicxml::tests::parses_sample`.
+- `examples/basic_rock_beat.musicxml` is generated in MuseScore style (4 bars, 100 BPM, `midi-unpitched` instruments, accents, a tom fill). Tests depend on its exact contents. If you edit it, update `import::musicxml::tests::parses_sample` and the snapshots (`UPDATE_SNAPSHOTS=1`, see `core/tests/musicxml_import.rs`).
 - There are no UI tests. Add real-world exports (MuseScore 4, Guitar Pro 8, Sibelius) to `examples/` as you find edge cases.

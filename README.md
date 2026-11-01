@@ -213,7 +213,7 @@ What counts as the public interface: the settings file keys, the CSV export colu
 | File | Purpose |
 |---|---|
 | `core/src/xml.rs` | Small dependency-free XML parser |
-| `core/src/musicxml.rs` | MusicXML → score (measures, notes, tempo map, repeats) |
+| `core/src/import/` | Opening a score file: `sniff` finds the format, `container` unpacks `.mxl`, `musicxml` reads the XML into a neutral `RawScore`, `finish` builds the score (measures, notes, tempo map, repeats) |
 | `core/src/drums.rs` | Drum instruments, General MIDI and Roland note maps, staff positions |
 | `core/src/score.rs` | Score model and tempo map (beats ↔ seconds) |
 | `core/src/rudiments.rs` | The 40 PAS rudiments as stroke patterns and the builder that turns one into a score (no GUI or MIDI) |

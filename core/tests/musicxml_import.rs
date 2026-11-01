@@ -7,8 +7,7 @@ use std::fmt::Write as _;
 use std::io::{Cursor, Write as _};
 use std::path::{Path, PathBuf};
 
-use roll_model_core::loader;
-use roll_model_core::musicxml::{parse_musicxml, ParseOptions};
+use roll_model_core::import::{check_invariants, import_bytes, load_score, ImportError, ImportOptions, Limits};
 use roll_model_core::score::Score;
 
 const SAMPLE: &str = include_str!("../../examples/basic_rock_beat.musicxml");
@@ -16,11 +15,20 @@ const SAMPLE: &str = include_str!("../../examples/basic_rock_beat.musicxml");
 // The two functions the tests go through, so a change of the import's API touches only these.
 
 fn parse(text: &str, expand_repeats: bool) -> Result<Score, String> {
-    parse_musicxml(text, &ParseOptions { expand_repeats }).map_err(|e| e.to_string())
+    parse_named(text, "", expand_repeats)
+}
+
+fn parse_named(text: &str, name: &str, expand_repeats: bool) -> Result<Score, String> {
+    let options = ImportOptions::default().with_repeats(expand_repeats);
+    let loaded = import_bytes(text.as_bytes(), name, &options).map_err(|e| e.to_string())?;
+    check_invariants(&loaded.score).unwrap();
+    Ok(loaded.score)
 }
 
 fn load(path: &Path) -> Result<Score, String> {
-    loader::load_score(path, &ParseOptions::default()).map_err(|e| e.to_string())
+    let loaded = load_score(path, &ImportOptions::default()).map_err(|e| e.to_string())?;
+    check_invariants(&loaded.score).unwrap();
+    Ok(loaded.score)
 }
 
 // Snapshots.
@@ -267,7 +275,7 @@ fn what_is_not_a_readable_score_says_why() {
     ];
     let mut out = String::new();
     for (name, text) in cases {
-        writeln!(out, "{name}: {}", parse(text, true).unwrap_err()).unwrap();
+        writeln!(out, "{name}: {}", parse_named(text, "bad.musicxml", true).unwrap_err()).unwrap();
     }
     check("parse_errors", &out);
 }
@@ -339,4 +347,16 @@ fn files_of_every_container_and_encoding() {
     let missing = std::env::temp_dir().join("roll-model-import-there-is-no-such-file.musicxml");
     writeln!(out, "missing: error={}", load(&missing).is_err()).unwrap();
     check("files", &out);
+}
+
+#[test]
+fn bytes_that_are_not_a_readable_score_say_what_they_are() {
+    let say = |bytes: &[u8], name: &str| import_bytes(bytes, name, &ImportOptions::default()).unwrap_err().to_string();
+    assert_eq!(say(b"just some words", "notes.txt"), "not a score file this program reads (it opens .musicxml, .xml, .mxl)");
+    assert_eq!(say(b"PK\x03\x04", "song.mscz"), "MuseScore files are not read directly; export the score as MusicXML from MuseScore and open that file");
+    assert_eq!(say(b"\x18FICHIER GUITAR PRO v5.00", "song"), "Guitar Pro files are not read directly; export the score as MusicXML from Guitar Pro and open that file");
+    let mut tight = ImportOptions::default();
+    tight.limits = Limits { max_bytes: 10, ..Limits::default() };
+    let err = import_bytes(b"<score-partwise/>, much longer than ten bytes", "x.musicxml", &tight).unwrap_err();
+    assert!(matches!(err, ImportError::TooLarge(_)), "{err:?}");
 }

@@ -102,7 +102,7 @@ python3 tools/build_notices.py      # target/notices/THIRD_PARTY_NOTICES.txt</co
 <li><strong>Branches.</strong> <code>main</code> holds releases, <code>develop</code> the work in progress, <code>feature/&lt;name&gt;</code> branches are merged into <code>develop</code> with a merge commit. Moving the tag <code>preview</code> onto a commit of <code>develop</code> and pushing it builds a pre-release.</li>
 <li><strong>Versioning</strong> is SemVer. The version lives in <code>Cargo.toml</code> and <code>core/Cargo.toml</code> (bump <code>Cargo.lock</code> with them), release tags are <code>vX.Y.Z</code>. Every user-visible change goes under <code>[Unreleased]</code> in <code>CHANGELOG.md</code>.</li>
 <li><strong>Commit messages</strong> are <code>feat:</code>, <code>fix:</code>, <code>docs:</code>, <code>chore:</code>, <code>test:</code>, <code>ci:</code> followed by a sentence.</li>
-<li><strong>Keep the core crate pure.</strong> The crate <code>core/</code> (<code>roll-model-core</code>) holds <code>analysis.rs</code>, <code>musicxml.rs</code>, <code>notation.rs</code>, <code>score.rs</code>, <code>drums.rs</code>, <code>xml.rs</code>, <code>rudiments.rs</code>, <code>trigger.rs</code>, <code>controller/</code> and <code>controller_layout.rs</code>, <code>loader.rs</code> and <code>config.rs</code>. It cannot depend on the app crate, and its manifest lists no GUI, MIDI or audio crate, so the compiler enforces what used to be a convention. That is what makes it testable without devices (<code>cargo test -p roll-model-core</code>, with integration tests in <code>core/tests/</code>).</li>
+<li><strong>Keep the core crate pure.</strong> The crate <code>core/</code> (<code>roll-model-core</code>) holds <code>analysis.rs</code>, <code>notation.rs</code>, <code>score.rs</code>, <code>drums.rs</code>, <code>xml.rs</code>, <code>rudiments.rs</code>, <code>trigger.rs</code>, <code>controller/</code> and <code>controller_layout.rs</code>, <code>import/</code> (opening score files) and <code>config.rs</code>. It cannot depend on the app crate, and its manifest lists no GUI, MIDI or audio crate, so the compiler enforces what used to be a convention. That is what makes it testable without devices (<code>cargo test -p roll-model-core</code>, with integration tests in <code>core/tests/</code>).</li>
 <li><strong>Time is quarter notes.</strong> Score positions are quarter notes (<code>q</code>); convert to seconds only through <code>TempoMap</code>.</li>
 <li><strong>Style.</strong> Write code that reads like the code around it: same comment density, naming, idiom. Doc comments say <em>why</em> and what the caller can rely on; a test name is a sentence describing behaviour.</li>
 <li><strong>Update the docs with the code.</strong> <code>HANDOFF.md</code> (status, architecture list, conventions), the README, the manual template and, if behaviour is user visible, the changelog. This guide's code excerpts update themselves; its prose does not.</li>
@@ -148,13 +148,13 @@ python3 tools/build_notices.py      # target/notices/THIRD_PARTY_NOTICES.txt</co
   <rect x="164" y="204" width="130" height="30" rx="5" fill="none" stroke="currentColor"/><text x="174" y="224">metronome.rs</text>
   <rect x="304" y="204" width="130" height="30" rx="5" fill="none" stroke="currentColor"/><text x="314" y="224">playback.rs</text>
   <rect x="444" y="204" width="130" height="30" rx="5" fill="none" stroke="currentColor"/><text x="454" y="224">control.rs</text>
-  <rect x="584" y="204" width="156" height="30" rx="5" fill="none" stroke="currentColor"/><text x="594" y="224">synth.rs, loader.rs</text>
+  <rect x="584" y="204" width="156" height="30" rx="5" fill="none" stroke="currentColor"/><text x="594" y="224">synth.rs, import/</text>
   <rect x="10" y="280" width="740" height="120" rx="8" fill="currentColor" opacity=".22"/>
   <text x="24" y="302" font-weight="700">Pure core &mdash; no GUI, no MIDI, no audio; fully unit-tested</text>
   <rect x="24" y="314" width="110" height="30" rx="5" fill="none" stroke="currentColor"/><text x="34" y="334">score.rs</text>
   <rect x="144" y="314" width="110" height="30" rx="5" fill="none" stroke="currentColor"/><text x="154" y="334">drums.rs</text>
   <rect x="264" y="314" width="110" height="30" rx="5" fill="none" stroke="currentColor"/><text x="274" y="334">analysis.rs</text>
-  <rect x="384" y="314" width="110" height="30" rx="5" fill="none" stroke="currentColor"/><text x="394" y="334">musicxml.rs</text>
+  <rect x="384" y="314" width="110" height="30" rx="5" fill="none" stroke="currentColor"/><text x="394" y="334">import/</text>
   <rect x="504" y="314" width="110" height="30" rx="5" fill="none" stroke="currentColor"/><text x="514" y="334">xml.rs</text>
   <rect x="624" y="314" width="116" height="30" rx="5" fill="none" stroke="currentColor"/><text x="634" y="334">rudiments.rs</text>
   <rect x="24" y="354" width="140" height="30" rx="5" fill="none" stroke="currentColor"/><text x="34" y="374">controller/</text>
@@ -194,7 +194,7 @@ python3 tools/build_notices.py      # target/notices/THIRD_PARTY_NOTICES.txt</co
   </g>
   <text x="20" y="40">Drum module</text><text x="20" y="58" opacity=".7">midir callback thread</text>
   <text x="20" y="140">Control surface</text><text x="20" y="158" opacity=".7">midir callback thread</text>
-  <text x="20" y="240">Score / rudiment</text><text x="20" y="258" opacity=".7">loader, musicxml</text>
+  <text x="20" y="240">Score / rudiment</text><text x="20" y="258" opacity=".7">import</text>
   <text x="207" y="125" font-weight="700">DrumApp</text><text x="207" y="145">UI thread, one frame</text><text x="207" y="165" opacity=".7">state, take, config,</text><text x="207" y="182" opacity=".7">owns the audio stream</text>
   <text x="207" y="280">Screen</text><text x="207" y="297" opacity=".7">render.rs</text>
   <text x="405" y="40">Metronome thread</text><text x="405" y="58" opacity=".7">take, calibration</text>
@@ -991,7 +991,7 @@ ring  = tempo -&gt; cc 20 scale=127      # a plain value 0..scale instead</code>
 <tr><td>Sampled drum kits</td><td><span class="pill">medium</span></td><td><code>synth.rs</code> (<code>Kit</code>), Settings &rarr; Sound</td><td>WAV overrides per instrument exist; a kit is a folder of them plus a selector.</td></tr>
 <tr><td>Orchestrating a rudiment around the kit</td><td><span class="pill">medium</span></td><td><code>Rudiment::build</code></td><td>Give <code>build</code> a map from hand or stroke index to <code>Lane</code>; the grader already matches by lane and the renderer already uses the lane's staff position.</td></tr>
 <tr><td>Ties, beams on the metronome's staff, rests in program-made scores</td><td><span class="pill">medium</span></td><td><code>notation.rs</code>, <code>render.rs</code>, <code>rudiments.rs</code></td><td>Beams, flags, tuplets and printed rests are done; what is left needs note lengths on <code>ScoreNote</code> (the importer drops the tied notes now) or the rolling strip going through <code>notation::analyse</code>.</td></tr>
-<tr><td>Following D.S./D.C./coda jumps</td><td><span class="pill">medium</span></td><td><code>musicxml.rs</code> (<code>playback_order</code>)</td><td>The importer already unrolls repeats and voltas.</td></tr>
+<tr><td>Following D.S./D.C./coda jumps</td><td><span class="pill">medium</span></td><td><code>import/finish.rs</code> (<code>playback_order</code>)</td><td>The importer already unrolls repeats and voltas.</td></tr>
 <tr><td>Merging the two timing threads</td><td><span class="pill hard">large</span></td><td><code>metronome.rs</code>, <code>playback.rs</code></td><td>The click sound is shared now (<code>audio/click.rs</code>); what is left is two loops that sleep, click and check stop. Touching them risks take timing, which works today.</td></tr>
 <tr><td>A command-line tool on the core (grade a MIDI file against a score)</td><td><span class="pill">medium</span></td><td><code>core/</code>, a new member of the workspace</td><td>The core crate has no GUI, MIDI or audio dependency, so a tool can depend on it alone; <code>core/tests/practice_session.rs</code> shows the calls.</td></tr>
 <tr><td>UI language, themes, accessibility</td><td><span class="pill hard">large</span></td><td>all UI strings</td><td>Strings are literals in the UI code; a string table is needed first.</td></tr>

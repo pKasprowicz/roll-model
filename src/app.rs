@@ -25,10 +25,9 @@ use crate::analysis::{Expected, Hit, Report};
 use crate::config::{Config, Paths, RowLayout};
 use crate::control::Control;
 use crate::drums::Lane;
-use crate::loader::load_score;
+use crate::import::{load_score, ImportOptions, Loaded};
 use crate::metronome::Metronome;
 use crate::midi::{self, EventQueue, InputHandle, RawEvent};
-use crate::musicxml::ParseOptions;
 use crate::playback::{Player, Ramp};
 use crate::render::{self};
 use crate::score::Score;
@@ -446,7 +445,7 @@ impl DrumApp {
 
     fn open_dialog(&mut self) {
         if let Some(p) = rfd::FileDialog::new()
-            .add_filter("MusicXML", &["musicxml", "xml", "mxl"])
+            .add_filter("MusicXML", crate::import::EXTENSIONS)
             .pick_file()
         {
             self.open_file(&p);
@@ -524,9 +523,9 @@ impl DrumApp {
         self.activate(Source::Score);
         self.stop_take(false);
         self.stop_listen();
-        let opts = ParseOptions { expand_repeats: self.cfg.expand_repeats };
+        let opts = ImportOptions::default().with_repeats(self.cfg.expand_repeats);
         match load_score(path, &opts) {
-            Ok(score) => {
+            Ok(Loaded { score, .. }) => {
                 self.view.status = format!(
                     "Loaded \"{}\": {} measures, {} notes, {:.0} BPM",
                     score.title,

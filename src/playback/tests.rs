@@ -1,6 +1,6 @@
 use super::*;
 use crate::analysis::expected_notes;
-use crate::musicxml::{parse_musicxml, ParseOptions};
+use crate::import::{import_bytes, ImportOptions};
 use crate::synth::SAMPLE_RATE;
 
 fn note(lane: Lane, t: f64) -> Expected {
@@ -283,7 +283,7 @@ fn mix(cues: &[Cue], lead_sec: f64, volume: f32) -> Vec<f32> {
 
 #[test]
 fn sample_score_renders_a_note_at_every_onset() {
-    let score = parse_musicxml(include_str!("../../examples/basic_rock_beat.musicxml"), &ParseOptions::default()).unwrap();
+    let score = import_bytes(include_bytes!("../../examples/basic_rock_beat.musicxml"), "basic_rock_beat.musicxml", &ImportOptions::default()).unwrap().score;
     let expected = expected_notes(&score, 0, score.measures.len() - 1, 1.0);
     let clicks = score.click_track(0, score.measures.len() - 1, 1.0, 4, true);
     let all = cues(&expected, &clicks);
