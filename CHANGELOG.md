@@ -6,6 +6,13 @@ All notable changes are recorded here. The format follows [Keep a Changelog](htt
 
 ## [Unreleased]
 
+## [0.10.1] - 2026-11-01
+
+Big score files no longer freeze the window while they load. Nothing else changes for users; behind the scenes the importer gained a test for drum exports that name one instrument and no General MIDI numbers (the shape Sibelius is said to write).
+
+### Changed
+- **A score file over 1 MiB is read on another thread**, so a big file does not freeze the window while it loads; the status line says "Loading…" until it is there (task IMP-8). Smaller files, which is every real score so far, load at once as before.
+
 ## [0.10.0] - 2026-11-01
 
 MIDI files open as scores. Drop a `.mid` file on the window and its drum notes are laid out on bars and a grid, with accents and ghost notes read from the velocities; a new MIDI import menu beside Layout changes the grid, the offset and where the first bar starts. Behind it the file opening was rebuilt as a pipeline that a further format can join, files from Guitar Pro, MuseScore, Sibelius, Finale and Dorico now say to export MusicXML, and MusicXML measure repeats are no longer empty bars.

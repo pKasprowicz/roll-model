@@ -2,12 +2,19 @@
 //! Score tab. A MIDI file has no bars and no exact positions of its own, so how its notes are laid
 //! out is a choice the user can change without opening the file again.
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
+use std::sync::mpsc;
 
-use crate::import::{Format, Grid, ImportOptions, Loaded, MidiOptions};
+use crate::import::{Format, Grid, ImportError, ImportOptions, Loaded, MidiOptions};
 use crate::widgets;
 
 use super::{DrumApp, Source};
+
+/// A file being read on another thread; the result arrives on `rx`.
+pub(super) struct PendingLoad {
+    path: PathBuf,
+    rx: mpsc::Receiver<Result<Loaded, ImportError>>,
+}
 
 impl DrumApp {
     /// The options for the next import.
@@ -18,6 +25,39 @@ impl DrumApp {
     /// Whether the score on screen was read from a MIDI file, so that its import can be adjusted.
     pub(super) fn is_midi_score(&self) -> bool {
         self.source == Source::Score && self.score_path.is_some() && self.score_report.as_ref().is_some_and(|r| r.format == Format::Midi)
+    }
+
+    /// Starts reading `path` on another thread; `poll_loading` puts the score on screen when it is
+    /// done. A file asked for before that one finishes replaces it.
+    pub(super) fn start_loading(&mut self, path: &Path) {
+        let (tx, rx) = mpsc::channel();
+        let (file, options) = (path.to_path_buf(), self.import_options());
+        std::thread::spawn(move || {
+            let _ = tx.send(crate::import::load_score(&file, &options));
+        });
+        let name = path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+        self.view.status = format!("Loading {name}…");
+        self.loading = Some(PendingLoad { path: path.to_path_buf(), rx });
+    }
+
+    /// Picks up the result of a background load once it is there.
+    pub(super) fn poll_loading(&mut self) {
+        let Some(pending) = self.loading.take() else { return };
+        let result = match pending.rx.try_recv() {
+            Ok(result) => result,
+            Err(mpsc::TryRecvError::Empty) => {
+                self.loading = Some(pending);
+                return;
+            }
+            Err(mpsc::TryRecvError::Disconnected) => Err(ImportError::Read("reading the file stopped unexpectedly".into())),
+        };
+        match result {
+            Ok(loaded) => self.install(loaded, &pending.path, false),
+            Err(e) => {
+                self.view.status.clear();
+                self.view.error = Some(format!("Could not load {}: {e}", pending.path.display()));
+            }
+        }
     }
 
     /// Reads the score on screen from its file again with the current import settings; the

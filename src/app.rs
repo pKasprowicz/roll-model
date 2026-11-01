@@ -239,6 +239,10 @@ pub struct DrumApp {
     score_report: Option<crate::import::Report>,
     /// How a MIDI file is laid out; the Score tab's "MIDI import" menu changes it.
     midi_options: crate::import::MidiOptions,
+    /// A big file being read on another thread.
+    loading: Option<import_menu::PendingLoad>,
+    /// Files over this many bytes are read on another thread, so the window does not freeze.
+    background_bytes: u64,
 
     range_from: usize,
     range_to: usize,
@@ -321,6 +325,8 @@ impl DrumApp {
             score_path: None,
             score_report: None,
             midi_options: crate::import::MidiOptions::default(),
+            loading: None,
+            background_bytes: 1 << 20,
             range_from: 0,
             range_to: 0,
             tempo_pct: 100.0,
@@ -531,6 +537,11 @@ impl DrumApp {
         self.stop_take(false);
         self.stop_listen();
         self.midi_options = crate::import::MidiOptions::default();
+        if std::fs::metadata(path).is_ok_and(|m| m.len() > self.background_bytes) {
+            self.start_loading(path);
+            return;
+        }
+        self.loading = None;
         match load_score(path, &self.import_options()) {
             Ok(loaded) => self.install(loaded, path, false),
             Err(e) => self.view.error = Some(format!("Could not load {}: {e}", path.display())),
@@ -625,6 +636,7 @@ impl DrumApp {
     /// lifecycles of takes, Listen, the metronome, auditions and the calibration.
     fn update_state(&mut self, ctx: &egui::Context, key_taken: bool) {
         self.sync_source();
+        self.poll_loading();
         self.drain_midi();
         self.update_controller();
         if !key_taken {
@@ -816,6 +828,41 @@ mod tests {
         // A MusicXML score has no such menu.
         app.open_file(&sample());
         assert!(!app.is_midi_score());
+    }
+
+    #[test]
+    fn a_big_file_is_read_on_another_thread_and_arrives_later() {
+        let mut app = DrumApp::with_config(Config::default());
+        app.background_bytes = 0;
+        app.open_file(&sample());
+        assert!(app.score.is_none(), "not there yet");
+        assert!(app.loading.is_some());
+        assert!(app.view.status.starts_with("Loading"), "{}", app.view.status);
+        for _ in 0..500 {
+            app.poll_loading();
+            if app.loading.is_none() {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+        assert!(app.loading.is_none(), "finished");
+        assert!(app.score.is_some() && app.view.tab == Tab::Score);
+        assert_eq!(app.cfg.recent_files.len(), 1);
+
+        // A file that cannot be read says so, and the loaded score stays.
+        let bad = std::env::temp_dir().join(format!("roll-model-bad-{}.mid", std::process::id()));
+        std::fs::write(&bad, b"MThd not a midi file").unwrap();
+        app.open_file(&bad);
+        for _ in 0..500 {
+            app.poll_loading();
+            if app.loading.is_none() {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+        let _ = std::fs::remove_file(&bad);
+        assert!(app.view.error.as_deref().is_some_and(|e| e.contains("Could not load")), "{:?}", app.view.error);
+        assert!(app.score.is_some(), "the loaded score stays");
     }
 
     #[test]

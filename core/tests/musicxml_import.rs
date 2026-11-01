@@ -388,3 +388,34 @@ fn measure_repeats_copy_the_music_of_the_measures_before() {
     assert_eq!(lanes, expected);
     check("measure_repeat", &dump(&s));
 }
+
+#[test]
+fn a_drum_set_written_as_one_instrument_is_read_from_the_staff_positions() {
+    // The shape of a Sibelius or Dolet export: one "Drum Set" instrument, no General MIDI numbers,
+    // so every note is told apart by where it sits on the staff and by its notehead.
+    let n = |step: &str, octave: u32, head: &str, dur: u32| {
+        format!("<note><unpitched><display-step>{step}</display-step><display-octave>{octave}</display-octave></unpitched><duration>{dur}</duration><instrument id=\"P1-I1\"/><voice>1</voice><notehead>{head}</notehead></note>")
+    };
+    let text = format!(
+        "<score-partwise><part-list><score-part id=\"P1\"><part-name>Drum Set</part-name><score-instrument id=\"P1-I1\"><instrument-name>Drum Set</instrument-name></score-instrument><midi-instrument id=\"P1-I1\"><midi-channel>10</midi-channel><midi-program>1</midi-program></midi-instrument></score-part></part-list><part id=\"P1\">{}</part></score-partwise>",
+        measure(
+            "1",
+            &format!(
+                "{FOUR_FOUR}{}{}{}{}{}{}{}{}",
+                n("G", 5, "x", 2),
+                n("F", 4, "normal", 2),
+                n("G", 5, "x", 2),
+                n("C", 5, "normal", 2),
+                n("A", 5, "x", 2),
+                n("E", 5, "normal", 2),
+                n("D", 5, "normal", 2),
+                n("A", 4, "normal", 2),
+            ),
+        )
+    );
+    let s = parse(&text, true).unwrap();
+    let lanes: Vec<String> = s.notes.iter().map(|n| format!("{:?}", n.lane)).collect();
+    assert_eq!(lanes[..4], ["HiHatClosed", "Kick", "HiHatClosed", "Snare"], "{lanes:?}");
+    assert!(s.warnings.iter().any(|w| w.contains("guessed from staff position")), "{:?}", s.warnings);
+    check("one_instrument_by_staff", &dump(&s));
+}

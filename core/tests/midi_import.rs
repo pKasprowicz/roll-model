@@ -240,7 +240,7 @@ fn real_files() {
             let path = entry.path();
             if path.is_dir() {
                 walk(&path, out);
-            } else if path.extension().is_some_and(|e| ["mid", "midi", "xml", "musicxml", "mxl"].iter().any(|x| e == *x)) {
+            } else if path.extension().is_some_and(|e| ["mid", "midi", "xml", "musicxml", "mxl", "mscz"].iter().any(|x| e == *x)) {
                 out.push(path);
             }
         }
@@ -338,4 +338,31 @@ fn the_first_bar_does_not_start_later_when_the_time_signature_changes() {
     let s = import_bytes(&bytes, "x.mid", &options).unwrap().score;
     assert_eq!(s.measures[0].len_q, 4.0);
     assert!(s.warnings.iter().any(|w| w.contains("cannot start later")), "{:?}", s.warnings);
+}
+
+/// Compares two files of the same music: `ROLL_MODEL_A` and `ROLL_MODEL_B`.
+#[test]
+#[ignore]
+fn compare_two_files() {
+    let (Some(a), Some(b)) = (std::env::var_os("ROLL_MODEL_A"), std::env::var_os("ROLL_MODEL_B")) else { return };
+    let mut options = ImportOptions::default();
+    if std::env::var_os("ROLL_MODEL_GRID32").is_some() {
+        options.midi.grid = roll_model_core::import::Grid::ThirtySecond;
+    }
+    let load = |p: &std::ffi::OsString| roll_model_core::import::load_score(std::path::Path::new(p), &options).unwrap().score;
+    let (a, b) = (load(&a), load(&b));
+    let key = |s: &roll_model_core::score::Score| -> Vec<(i64, String)> { s.notes.iter().map(|n| ((n.q * 1000.0).round() as i64, format!("{:?}", n.lane))).collect() };
+    let (ka, kb) = (key(&a), key(&b));
+    println!("A: {} notes, bars {}, first q {:?}, last q {:?}", ka.len(), a.measures.len(), ka.first(), ka.last());
+    println!("B: {} notes, bars {}, first q {:?}, last q {:?}", kb.len(), b.measures.len(), kb.first(), kb.last());
+    let sa: std::collections::HashSet<_> = ka.iter().cloned().collect();
+    let sb: std::collections::HashSet<_> = kb.iter().cloned().collect();
+    let only_a: Vec<_> = ka.iter().filter(|k| !sb.contains(k)).take(12).collect();
+    let only_b: Vec<_> = kb.iter().filter(|k| !sa.contains(k)).take(12).collect();
+    println!("only in A: {} e.g. {only_a:?}", ka.iter().filter(|k| !sb.contains(k)).count());
+    println!("only in B: {} e.g. {only_b:?}", kb.iter().filter(|k| !sa.contains(k)).count());
+    for (name, s) in [("A", &a), ("B", &b)] {
+        let lens: Vec<String> = s.measures.iter().take(14).map(|m| format!("{}:{}/{}", m.len_q, m.beats, m.beat_type)).collect();
+        println!("{name} first bars: {lens:?}; tempo {:?}", s.tempo);
+    }
 }
