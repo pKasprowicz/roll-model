@@ -1,0 +1,58 @@
+title: Basic Rock Beat
+part: Drumset
+tempo: TempoMap { points: [(0.0, 100.0)] }
+measure 0: #1 start=0.000000 len=4.000000 4/4
+measure 1: #2 start=4.000000 len=4.000000 4/4
+measure 2: #3 start=8.000000 len=4.000000 4/4
+measure 3: #4 start=12.000000 len=4.000000 4/4
+note q=0.000000 m=0 Kick step=1 head=Normal accent=false ghost=false grace=false/0 stem=Some(false)
+note q=0.000000 m=0 HiHatClosed step=9 head=X accent=false ghost=false grace=false/0 stem=Some(true)
+note q=0.500000 m=0 HiHatClosed step=9 head=X accent=false ghost=false grace=false/0 stem=Some(true)
+note q=1.000000 m=0 Snare step=5 head=Normal accent=false ghost=false grace=false/0 stem=Some(true)
+note q=1.000000 m=0 HiHatClosed step=9 head=X accent=false ghost=false grace=false/0 stem=Some(true)
+note q=1.500000 m=0 HiHatClosed step=9 head=X accent=false ghost=false grace=false/0 stem=Some(true)
+note q=2.000000 m=0 Kick step=1 head=Normal accent=false ghost=false grace=false/0 stem=Some(false)
+note q=2.000000 m=0 HiHatClosed step=9 head=X accent=false ghost=false grace=false/0 stem=Some(true)
+note q=2.500000 m=0 HiHatClosed step=9 head=X accent=false ghost=false grace=false/0 stem=Some(true)
+note q=3.000000 m=0 Snare step=5 head=Normal accent=false ghost=false grace=false/0 stem=Some(true)
+note q=3.000000 m=0 HiHatClosed step=9 head=X accent=false ghost=false grace=false/0 stem=Some(true)
+note q=3.500000 m=0 HiHatClosed step=9 head=X accent=false ghost=false grace=false/0 stem=Some(true)
+note q=4.000000 m=1 Kick step=1 head=Normal accent=false ghost=false grace=false/0 stem=Some(false)
+note q=4.000000 m=1 HiHatClosed step=9 head=X accent=false ghost=false grace=false/0 stem=Some(true)
+note q=4.500000 m=1 HiHatClosed step=9 head=X accent=false ghost=false grace=false/0 stem=Some(true)
+note q=5.000000 m=1 Snare step=5 head=Normal accent=false ghost=false grace=false/0 stem=Some(true)
+note q=5.000000 m=1 HiHatClosed step=9 head=X accent=false ghost=false grace=false/0 stem=Some(true)
+note q=5.500000 m=1 HiHatClosed step=9 head=X accent=false ghost=false grace=false/0 stem=Some(true)
+note q=6.000000 m=1 Kick step=1 head=Normal accent=false ghost=false grace=false/0 stem=Some(false)
+note q=6.000000 m=1 HiHatClosed step=9 head=X accent=false ghost=false grace=false/0 stem=Some(true)
+note q=6.500000 m=1 HiHatClosed step=9 head=X accent=false ghost=false grace=false/0 stem=Some(true)
+note q=7.000000 m=1 Snare step=5 head=Normal accent=false ghost=false grace=false/0 stem=Some(true)
+note q=7.000000 m=1 HiHatClosed step=9 head=X accent=false ghost=false grace=false/0 stem=Some(true)
+note q=7.500000 m=1 HiHatClosed step=9 head=X accent=false ghost=false grace=false/0 stem=Some(true)
+note q=8.000000 m=2 Kick step=1 head=Normal accent=false ghost=false grace=false/0 stem=Some(false)
+note q=8.000000 m=2 HiHatClosed step=9 head=X accent=false ghost=false grace=false/0 stem=Some(true)
+note q=8.500000 m=2 HiHatClosed step=9 head=X accent=false ghost=false grace=false/0 stem=Some(true)
+note q=9.000000 m=2 Snare step=5 head=Normal accent=false ghost=false grace=false/0 stem=Some(true)
+note q=9.000000 m=2 HiHatClosed step=9 head=X accent=false ghost=false grace=false/0 stem=Some(true)
+note q=9.500000 m=2 HiHatClosed step=9 head=X accent=false ghost=false grace=false/0 stem=Some(true)
+note q=10.000000 m=2 Kick step=1 head=Normal accent=false ghost=false grace=false/0 stem=Some(false)
+note q=10.000000 m=2 HiHatClosed step=9 head=X accent=false ghost=false grace=false/0 stem=Some(true)
+note q=10.500000 m=2 HiHatClosed step=9 head=X accent=false ghost=false grace=false/0 stem=Some(true)
+note q=11.000000 m=2 Snare step=5 head=Normal accent=false ghost=false grace=false/0 stem=Some(true)
+note q=11.000000 m=2 HiHatClosed step=9 head=X accent=false ghost=false grace=false/0 stem=Some(true)
+note q=11.500000 m=2 HiHatClosed step=9 head=X accent=false ghost=false grace=false/0 stem=Some(true)
+note q=12.000000 m=3 Kick step=1 head=Normal accent=false ghost=false grace=false/0 stem=Some(false)
+note q=12.000000 m=3 Crash1 step=10 head=X accent=false ghost=false grace=false/0 stem=Some(true)
+note q=13.000000 m=3 Snare step=5 head=Normal accent=true ghost=false grace=false/0 stem=Some(true)
+note q=13.500000 m=3 Snare step=5 head=Normal accent=false ghost=false grace=false/0 stem=Some(true)
+note q=14.000000 m=3 Tom1 step=7 head=Normal accent=false ghost=false grace=false/0 stem=Some(true)
+note q=14.500000 m=3 Tom1 step=7 head=Normal accent=false ghost=false grace=false/0 stem=Some(true)
+note q=15.000000 m=3 Tom3 step=3 head=Normal accent=false ghost=false grace=false/0 stem=Some(true)
+note q=15.500000 m=3 Tom3 step=3 head=Normal accent=true ghost=false grace=false/0 stem=Some(true)
+rest q=1.000000 m=0 dur=1.000000 up=false whole_bar=false
+rest q=3.000000 m=0 dur=1.000000 up=false whole_bar=false
+rest q=5.000000 m=1 dur=1.000000 up=false whole_bar=false
+rest q=7.000000 m=1 dur=1.000000 up=false whole_bar=false
+rest q=9.000000 m=2 dur=1.000000 up=false whole_bar=false
+rest q=11.000000 m=2 dur=1.000000 up=false whole_bar=false
+rest q=13.000000 m=3 dur=3.000000 up=false whole_bar=false
