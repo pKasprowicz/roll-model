@@ -65,7 +65,6 @@ fn roundtrip() {
         metro_bpm: 133.5,
         metro_beats: 7,
         metro_sub: Subdivision::Triplets,
-        metro_preview: false,
         hihat_cc_max: 90,
         controller_preset: "Behringer X-Touch Mini".into(),
         controller_port: "X-TOUCH".into(),
@@ -295,4 +294,10 @@ fn the_midi_clock_is_off_by_default_and_its_start_is_stored_by_name() {
         "an unknown name keeps the default"
     );
     assert!(!Config::from_text("latency_ms = 5\n").midi_clock, "an old file loads");
+}
+
+#[test]
+fn the_setting_of_the_removed_metronome_preview_is_ignored_in_an_old_file() {
+    let c = Config::from_text("metro_preview = true\nmetro_bpm = 90\n");
+    assert_eq!(c.metro_bpm, 90.0, "the rest of the file is read");
 }

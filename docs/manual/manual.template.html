@@ -365,8 +365,6 @@ cargo build --release --no-default-features          # without the sound card (d
 <li>Changes while it runs take effect after a moment.</li>
 </ul>
 <p>The metronome plays through the click output chosen on <em>Settings &rarr; Sound</em> (the sound card and/or MIDI) and uses the click volume.</p>
-<h3>Rolling preview</h3>
-<p>Below the lights, the <strong>rolling preview</strong> scrolls notes past a fixed line, so you can play along with the click. With a score or rudiment loaded it shows the practice range (repeating at the metronome's tempo, the first note arriving on the first beat); with none it shows the click pattern of the bar. <em>Match score tempo and bar</em> sets the tempo and the beats per bar to the score's so the click lines up with the bars. <em>Show the notes</em> hides the preview.</p>
 </section>
 
 <section id="results">
@@ -690,7 +688,7 @@ ring  = tempo -&gt; cc 20 scale=127      # a plain value 0 to 127 instead of Mac
 <tr><td><code>bars_per_row</code>, <code>layout_align_bar</code>, <code>break_at_pause</code></td><td>Score layout</td></tr>
 <tr><td><code>recent</code> (repeated)</td><td>Recent scores, newest first</td></tr>
 <tr><td><code>layout</code> (repeated)</td><td>Row layout of a score: bars per row, the bar that starts a row, and the file</td></tr>
-<tr><td><code>metro_bpm</code>, <code>metro_beats</code>, <code>metro_sub</code>, <code>metro_preview</code>, <code>metro_ramp_bpm</code>, <code>metro_ramp_bars</code></td><td>Metronome tab</td></tr>
+<tr><td><code>metro_bpm</code>, <code>metro_beats</code>, <code>metro_sub</code>, <code>metro_ramp_bpm</code>, <code>metro_ramp_bars</code></td><td>Metronome tab</td></tr>
 <tr><td><code>ramp_percent</code>, <code>ramp_passes</code></td><td>Tempo ramp of Listen</td></tr>
 <tr><td><code>controller_preset</code>, <code>controller_port</code></td><td>Control surface</td></tr>
 <tr><td><code>rudiment</code>, <code>rudiment_repeats</code>, <code>rudiment_nard_only</code>, <code>rudiment_ladder</code></td><td>Rudiments tab</td></tr>

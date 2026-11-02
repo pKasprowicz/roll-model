@@ -95,12 +95,6 @@ impl MetroState {
         (beat >= 0.0).then(|| (beat.floor(), beat.fract() as f32))
     }
 
-    /// The beats of the starting tempo gone by at `now`, negative before the start; `None` when it
-    /// does not run.
-    pub(super) fn beats_at(&self, now: Instant) -> Option<f64> {
-        self.run.as_ref().map(|r| r.beats_at(now))
-    }
-
     /// One look, every frame: `key` is what the metronome would play now.
     pub(super) fn poll(&mut self, key: MetroKey, now: Instant, delay: Duration) -> Polled {
         let restart = self.run.as_mut().is_some_and(|run| {
@@ -143,7 +137,6 @@ mod tests {
         let m = running(t0 + Duration::from_millis(500));
         assert!(m.is_running());
         assert_eq!(m.beat_at(t0), None, "the lead before the first click");
-        assert!(m.beats_at(t0).unwrap() < 0.0);
     }
 
     #[test]

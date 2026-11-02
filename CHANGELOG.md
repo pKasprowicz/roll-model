@@ -6,6 +6,9 @@ All notable changes are recorded here. The format follows [Keep a Changelog](htt
 
 ## [Unreleased]
 
+### Removed
+- **The rolling notes under the beat lights on the Metronome tab**, with *Show the notes* and *Match score tempo and bar*: they added nothing to a click track. The `metro_preview` line of an older settings file is ignored.
+
 ## [0.10.5] - 2026-11-02
 
 The program can send **MIDI clock** to the MIDI output from Listen and the Metronome tab, so a device that follows an external clock runs at the played tempo; it is not tried on a device yet. The rest is more of the code review of 0.10.1: the take, the metronome, the drum module's MIDI input and Listen are state types of their own with their own tests, the Manage window's Learn is a state machine tested without a window, and a few per-frame costs are gone.

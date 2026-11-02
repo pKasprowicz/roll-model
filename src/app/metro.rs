@@ -8,16 +8,13 @@ use egui::{pos2, vec2, RichText, Sense, Stroke};
 
 use super::metro_state::{MetroKey, Run};
 use super::session::{nothing_audible, Heard};
-use super::{DrumApp, Source, RESTART_DELAY};
+use super::{DrumApp, RESTART_DELAY};
 use crate::config::{limits, Subdivision};
 use crate::controller::Action;
 use crate::metronome::HAS_AUDIO;
 use crate::playback::{self, PlayOptions, Player};
 use crate::practice::Ramp;
-use crate::render;
-use crate::score::Score;
 use crate::theme;
-use crate::units::Quarters;
 use crate::widgets;
 
 impl DrumApp {
@@ -139,72 +136,6 @@ impl DrumApp {
         );
         ui.add_space(16.0);
         self.beat_lights(ui);
-        self.rolling_preview(ui);
-    }
-
-    /// Where the rolling preview is, in quarters from the start of the score: the
-    /// practice range repeats, and the metronome's first beat is its first note.
-    fn metro_preview_pos(&self, start_q: Quarters, len_q: Quarters) -> f64 {
-        match self.metro_run.beats_at(self.shown_now()) {
-            Some(beats) => start_q.0 + beats.rem_euclid(len_q.0.max(1e-6)),
-            None => start_q.0,
-        }
-    }
-
-    /// The loaded score, or with none the metronome's own bar, scrolling past a
-    /// fixed line at the metronome's tempo.
-    fn rolling_preview(&mut self, ui: &mut egui::Ui) {
-        ui.add_space(16.0);
-        let click_bar = self.practice.score.is_none().then(|| Score::click_bar(self.cfg.metro_beats, self.cfg.metro_sub.parts()));
-        let Some(score) = click_bar.as_ref().or(self.practice.score.as_ref()) else { return };
-        let last = score.measures().len().saturating_sub(1);
-        let (a, b) = match click_bar {
-            Some(_) => (0, 0),
-            None => (self.practice.range_from.min(last), self.practice.range_to.clamp(self.practice.range_from.min(last), last)),
-        };
-        let (start_q, len_q) = (score.measures()[a].start_q, score.measures()[b].end_q() - score.measures()[a].start_q);
-        // A rudiment is practised at a tempo in BPM; the free metronome plays at that tempo.
-        let tempo_factor = if self.source == Source::Rudiments { self.practice.tempo.scale(score.tempo.bpm_at(start_q)) } else { 1.0 };
-        let (score_bpm, bar_q) = (score.tempo.bpm_at(start_q) * tempo_factor, score.measures()[a].len_q);
-        let description = match click_bar {
-            Some(_) => "no score loaded: the click pattern".to_string(),
-            None => format!("\"{}\", bars {}–{} repeating", score.title, a + 1, b + 1),
-        };
-        let has_score = click_bar.is_none();
-
-        let mut match_score = false;
-        ui.horizontal(|ui| {
-            ui.checkbox(&mut self.cfg.metro_preview, "Show the notes");
-            if self.cfg.metro_preview {
-                widgets::hint(ui, description);
-                if has_score {
-                    match_score = ui
-                        .button("Match score tempo and bar")
-                        .on_hover_text("Set the tempo and beats per bar to the score's, so the click lines up with the bars")
-                        .clicked();
-                }
-            }
-        });
-        if match_score {
-            self.cfg.metro_bpm = (score_bpm as f32).clamp(20.0, 300.0);
-            self.cfg.metro_beats = (bar_q.0.round() as u32).clamp(1, 12);
-        }
-        if !self.cfg.metro_preview {
-            return;
-        }
-        let pos_q = self.metro_preview_pos(start_q, len_q);
-        if let Some(score) = click_bar.as_ref().or(self.practice.score.as_ref()) {
-            render::rolling(ui, &render::RollingView { score, range: (a, b), pos_q });
-        }
-        ui.label(
-            RichText::new(if has_score {
-                "The practice range of the Score tab (or the rudiment of the Rudiments tab) repeats at the metronome's tempo; the first note arrives on the first beat. Change the range on the Score tab."
-            } else {
-                "Every click of the bar rolls by: the first beat (accent), the other beats, and the softer subdivisions in brackets. Load a score to play its notes instead."
-            })
-            .small()
-            .weak(),
-        );
     }
 
     /// One circle per beat of the bar; the current beat lights up and fades.

@@ -362,12 +362,10 @@ impl Score {
         track
     }
 
-    /// Staff position/notehead used for a lane in this file (so played notes
-    /// are drawn the way the score draws the same instrument).
-    /// One bar of a click track as a score, for the metronome's preview: a note
-    /// on every click (`parts` per beat), the first beat accented and the
-    /// subdivisions in brackets (soft).
-    pub fn click_bar(beats: u32, parts: u32) -> Score {
+    /// One bar of a click track as a score, a fixture for the tests: a note on every click
+    /// (`parts` per beat), the first beat accented and the subdivisions in brackets (soft).
+    #[cfg(test)]
+    pub(crate) fn click_bar(beats: u32, parts: u32) -> Score {
         let (beats, parts) = (beats.max(1), parts.max(1));
         let mut notes = Vec::new();
         for b in 0..beats {
@@ -399,6 +397,8 @@ impl Score {
         }
     }
 
+    /// Staff position and notehead used for a lane in this file (so played notes are drawn the way the
+    /// score draws the same instrument).
     pub fn staff_for_lane(&self, lane: Lane) -> (i32, NoteHead) {
         self.notes.iter().find(|n| n.lane == lane && !n.is_grace()).map(|n| (n.staff_step, n.head)).unwrap_or_else(|| lane.default_staff())
     }

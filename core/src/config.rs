@@ -80,8 +80,6 @@ pub struct Config {
     pub metro_bpm: f32,
     pub metro_beats: u32,
     pub metro_sub: Subdivision,
-    /// Show the loaded score rolling by on the Metronome tab.
-    pub metro_preview: bool,
     /// The free metronome gets faster by `metro_ramp_bpm` (0 = off) every `metro_ramp_bars` bars.
     pub metro_ramp_bpm: u32,
     pub metro_ramp_bars: usize,
@@ -178,7 +176,6 @@ impl Default for Config {
             metro_bpm: 100.0,
             metro_beats: 4,
             metro_sub: Subdivision::None,
-            metro_preview: true,
             metro_ramp_bpm: 0,
             metro_ramp_bars: 4,
             controller_preset: DEFAULT_CONTROLLER.to_string(),
@@ -550,7 +547,6 @@ const KEYS: &[Key] = &[
     key!("metro_bpm", c.metro_bpm, within(limits::METRO_BPM)),
     key!("metro_beats", c.metro_beats, number(1, 12)),
     key!("metro_sub", c.metro_sub, SubdivisionName),
-    key!("metro_preview", c.metro_preview, Flag),
     key!("metro_ramp_bpm", c.metro_ramp_bpm, within(limits::METRO_RAMP_BPM)),
     key!("metro_ramp_bars", c.metro_ramp_bars, within(limits::METRO_RAMP_BARS)),
     key!("controller_preset", c.controller_preset, Text),
