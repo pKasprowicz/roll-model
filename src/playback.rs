@@ -24,6 +24,7 @@ use crate::audio::click::ClickBank;
 use crate::audio::mixer::NO_GROUP;
 use crate::audio::resample::resample;
 use crate::audio::EngineHandle;
+use crate::config::Subdivision;
 use crate::control::{ClickLevel, Control, ErrorLog};
 use crate::drums::Lane;
 use crate::metronome::{at, wait_until, AUDIO_LOOKAHEAD};
@@ -168,47 +169,6 @@ pub fn cues(expected: &[Expected], clicks: &[(f64, bool)]) -> Vec<Cue> {
         .collect();
     v.sort_by(|a, b| a.t.total_cmp(&b.t)); // stable
     v
-}
-
-/// How a beat of the free metronome is divided.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Subdivision {
-    None,
-    Eighths,
-    Triplets,
-    Sixteenths,
-}
-
-impl Subdivision {
-    pub const ALL: [Subdivision; 4] = [Subdivision::None, Subdivision::Eighths, Subdivision::Triplets, Subdivision::Sixteenths];
-
-    pub fn label(self) -> &'static str {
-        match self {
-            Subdivision::None => "none",
-            Subdivision::Eighths => "eighths",
-            Subdivision::Triplets => "triplets",
-            Subdivision::Sixteenths => "sixteenths",
-        }
-    }
-
-    /// Clicks per beat.
-    pub fn parts(self) -> u32 {
-        match self {
-            Subdivision::None => 1,
-            Subdivision::Eighths => 2,
-            Subdivision::Triplets => 3,
-            Subdivision::Sixteenths => 4,
-        }
-    }
-
-    /// Position in `ALL`, as stored in the settings file.
-    pub fn index(self) -> usize {
-        Subdivision::ALL.iter().position(|s| *s == self).unwrap_or(0)
-    }
-
-    pub fn from_index(i: usize) -> Subdivision {
-        Subdivision::ALL.get(i).copied().unwrap_or(Subdivision::None)
-    }
 }
 
 /// One bar of the free metronome and its length in seconds: an accent on the

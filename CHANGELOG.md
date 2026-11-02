@@ -6,7 +6,8 @@ All notable changes are recorded here. The format follows [Keep a Changelog](htt
 
 ## [Unreleased]
 
-### Changed
+### Changed- The metronome subdivision is saved by name (`metro_sub = triplets`) and not by its position in a list (RV-41); a settings file from an earlier version, with the number, is still read.
+
 - **The on-screen buttons Record, Stop, Listen, click, notes, loop and the metronome Start/Stop follow the same rules as the keys and the controller** (RV-12): while a take records, the tempo, range and mode buttons refuse with "Locked while a take is recording." or do nothing, as the keys did; the metronome Start button no longer ends a recording.
 - The ramp settings in the settings file are kept in the ranges of their sliders (RV-40); the ladder tooltip takes its numbers from the code.
 

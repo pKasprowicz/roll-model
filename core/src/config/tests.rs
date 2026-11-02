@@ -65,7 +65,7 @@ fn roundtrip() {
         layout_align_bar: 5,
         metro_bpm: 133.5,
         metro_beats: 7,
-        metro_sub: 2,
+        metro_sub: Subdivision::Triplets,
         metro_preview: false,
         hihat_cc_max: 90,
         controller_preset: "Behringer X-Touch Mini".into(),
@@ -144,7 +144,7 @@ fn mixer_layout_and_metronome_settings_are_clamped_and_default_when_missing() {
          gain.Ride = 9\ngain.Snare = abc\ngain.Nope = 1\nmute.Kick = true\nmute.Snare = maybe\naudio_output =\n",
     );
     assert_eq!((c.bars_per_row, c.layout_align_bar), (limits::BARS_PER_ROW.hi, 9999));
-    assert_eq!((c.metro_bpm, c.metro_beats, c.metro_sub), (20.0, 1, 3));
+    assert_eq!((c.metro_bpm, c.metro_beats, c.metro_sub), (20.0, 1, Subdivision::None), "an unknown subdivision keeps the default");
     assert_eq!(c.gain_of(Lane::Ride), MAX_LANE_GAIN);
     assert_eq!(c.gain_of(Lane::Snare), 1.0, "an unreadable gain keeps the default");
     assert!(c.lane_mute.contains(&Lane::Kick) && !c.lane_mute.contains(&Lane::Snare));
@@ -255,4 +255,19 @@ fn the_display_follows_the_latency_only_when_it_is_meant_for_this_engine() {
     assert_eq!(Config { sync_display: false, ..c.clone() }.display_delay(2), 0.0);
     assert_eq!(Config { latency_ms: -20.0, latency_engine: 2, ..Default::default() }.display_delay(2), 0.0, "early is not drawn");
     assert_eq!(Config { latency_ms: 200.0, latency_engine: 2, ..Default::default() }.display_delay(2), 0.15);
+}
+
+#[test]
+fn the_subdivision_is_stored_by_name_and_the_old_numbers_still_read() {
+    let mut c = Config { metro_sub: Subdivision::Triplets, ..Config::default() };
+    let text = c.to_text();
+    assert!(text.contains("metro_sub = triplets"), "{text}");
+    assert_eq!(Config::from_text(&text).metro_sub, Subdivision::Triplets);
+    // Files up to 0.10.3 stored the position in the list: 0 none, 1 eighths, 2 triplets, 3 sixteenths.
+    for (old, now) in [("0", Subdivision::None), ("1", Subdivision::Eighths), ("2", Subdivision::Triplets), ("3", Subdivision::Sixteenths)]
+    {
+        assert_eq!(Config::from_text(&format!("metro_sub = {old}\n")).metro_sub, now);
+    }
+    c.metro_sub = Subdivision::Sixteenths;
+    assert_eq!(Config::from_text("metro_sub = sixteenths\n").metro_sub, c.metro_sub);
 }

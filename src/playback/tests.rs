@@ -107,10 +107,6 @@ fn metronome_bar_has_an_accent_beats_and_soft_subdivisions() {
     assert_eq!(metronome_cues(60.0, 4, Subdivision::Triplets).0.len(), 12);
     assert_eq!(metronome_cues(60.0, 2, Subdivision::Sixteenths).0.len(), 8);
     assert_eq!(metronome_cues(60.0, 0, Subdivision::None).0.len(), 1, "at least one beat");
-    for s in Subdivision::ALL {
-        assert_eq!(Subdivision::from_index(s.index()), s);
-    }
-    assert_eq!(Subdivision::from_index(99), Subdivision::None);
 }
 
 #[test]

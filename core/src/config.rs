@@ -71,8 +71,7 @@ pub struct Config {
     /// The free metronome.
     pub metro_bpm: f32,
     pub metro_beats: u32,
-    /// Index into `playback::Subdivision::ALL`.
-    pub metro_sub: usize,
+    pub metro_sub: Subdivision,
     /// Show the loaded score rolling by on the Metronome tab.
     pub metro_preview: bool,
     /// The free metronome gets faster by `metro_ramp_bpm` (0 = off) every `metro_ramp_bars` bars.
@@ -165,7 +164,7 @@ impl Default for Config {
             lane_mute: BTreeSet::new(),
             metro_bpm: 100.0,
             metro_beats: 4,
-            metro_sub: 0,
+            metro_sub: Subdivision::None,
             metro_preview: true,
             metro_ramp_bpm: 0,
             metro_ramp_bars: 4,
@@ -354,6 +353,67 @@ impl<T: Numeric> Setting<T> for Number<T> {
     }
 }
 
+/// How a beat of the free metronome is divided.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Subdivision {
+    None,
+    Eighths,
+    Triplets,
+    Sixteenths,
+}
+
+impl Subdivision {
+    pub const ALL: [Subdivision; 4] = [Subdivision::None, Subdivision::Eighths, Subdivision::Triplets, Subdivision::Sixteenths];
+
+    /// Its name on the screen.
+    pub fn label(self) -> &'static str {
+        match self {
+            Subdivision::None => "none",
+            Subdivision::Eighths => "eighths",
+            Subdivision::Triplets => "triplets",
+            Subdivision::Sixteenths => "sixteenths",
+        }
+    }
+
+    /// Clicks per beat.
+    pub fn parts(self) -> u32 {
+        match self {
+            Subdivision::None => 1,
+            Subdivision::Eighths => 2,
+            Subdivision::Triplets => 3,
+            Subdivision::Sixteenths => 4,
+        }
+    }
+
+    /// Its name in the settings file: the label, which no reordering of `ALL` changes.
+    pub fn name(self) -> &'static str {
+        self.label()
+    }
+
+    /// From the name in the file, or from the position in the order of 0.10 and before, when the
+    /// file stored the number.
+    pub fn from_name(text: &str) -> Option<Subdivision> {
+        let text = text.trim();
+        Subdivision::ALL
+            .iter()
+            .copied()
+            .find(|s| s.name() == text)
+            .or_else(|| text.parse::<usize>().ok().and_then(|i| Subdivision::ALL.get(i).copied()))
+    }
+}
+
+/// A subdivision by name.
+struct SubdivisionName;
+
+impl Setting<Subdivision> for SubdivisionName {
+    fn read(&self, slot: &mut Subdivision, text: &str) {
+        *slot = Subdivision::from_name(text).unwrap_or(*slot);
+    }
+    fn write(&self, value: &Subdivision) -> String {
+        value.name().to_string()
+    }
+}
+
 impl Setting<Lane> for LaneName {
     fn read(&self, slot: &mut Lane, text: &str) {
         *slot = Lane::from_name(text).filter(|l| *l != Lane::Other).unwrap_or(*slot);
@@ -427,7 +487,7 @@ const KEYS: &[Key] = &[
     key!("layout_align_bar", c.layout_align_bar, number(0, 9999)),
     key!("metro_bpm", c.metro_bpm, within(limits::METRO_BPM)),
     key!("metro_beats", c.metro_beats, number(1, 12)),
-    key!("metro_sub", c.metro_sub, number(0, 3)),
+    key!("metro_sub", c.metro_sub, SubdivisionName),
     key!("metro_preview", c.metro_preview, Flag),
     key!("metro_ramp_bpm", c.metro_ramp_bpm, within(limits::METRO_RAMP_BPM)),
     key!("metro_ramp_bars", c.metro_ramp_bars, within(limits::METRO_RAMP_BARS)),

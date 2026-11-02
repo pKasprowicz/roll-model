@@ -8,10 +8,10 @@ use egui::{pos2, vec2, RichText, Sense, Stroke};
 
 use super::debounce::Debounce;
 use super::{DrumApp, Source, RESTART_DELAY};
-use crate::config::limits;
+use crate::config::{limits, Subdivision};
 use crate::controller::Action;
 use crate::metronome::HAS_AUDIO;
-use crate::playback::{self, PlayOptions, Player, Ramp, Subdivision};
+use crate::playback::{self, PlayOptions, Player, Ramp};
 use crate::render;
 use crate::score::Score;
 use crate::theme;
@@ -26,13 +26,13 @@ pub(super) struct Run {
     bar_sec: f64,
     ramp: Ramp,
     /// Tenths of a BPM, beats per bar, subdivision: a change restarts it.
-    signature: (i32, u32, usize),
+    signature: (i32, u32, Subdivision),
     /// A changed signature, waited for until it has settled.
-    restart: Debounce<(i32, u32, usize)>,
+    restart: Debounce<(i32, u32, Subdivision)>,
 }
 
 impl DrumApp {
-    fn metro_signature(&self) -> (i32, u32, usize) {
+    fn metro_signature(&self) -> (i32, u32, Subdivision) {
         ((self.cfg.metro_bpm * 10.0).round() as i32, self.cfg.metro_beats, self.cfg.metro_sub)
     }
 
@@ -79,7 +79,7 @@ impl DrumApp {
             });
             return;
         }
-        let sub = Subdivision::from_index(self.cfg.metro_sub);
+        let sub = self.cfg.metro_sub;
         let bpm = self.cfg.metro_bpm as f64;
         let (cues, bar_len) = playback::metronome_cues(bpm, self.cfg.metro_beats, sub);
         self.sync_control();
@@ -151,7 +151,7 @@ impl DrumApp {
             ui.horizontal(|ui| {
                 ui.label("subdivision");
                 for s in Subdivision::ALL {
-                    ui.selectable_value(&mut self.cfg.metro_sub, s.index(), s.label());
+                    ui.selectable_value(&mut self.cfg.metro_sub, s, s.label());
                 }
             });
             widgets::slider(ui, "volume", &mut self.cfg.click_volume, limits::CLICK_VOLUME.range(), "", 0.02);
@@ -192,11 +192,7 @@ impl DrumApp {
     /// fixed line at the metronome's tempo.
     fn rolling_preview(&mut self, ui: &mut egui::Ui) {
         ui.add_space(16.0);
-        let click_bar = self
-            .practice
-            .score
-            .is_none()
-            .then(|| Score::click_bar(self.cfg.metro_beats, Subdivision::from_index(self.cfg.metro_sub).parts()));
+        let click_bar = self.practice.score.is_none().then(|| Score::click_bar(self.cfg.metro_beats, self.cfg.metro_sub.parts()));
         let Some(score) = click_bar.as_ref().or(self.practice.score.as_ref()) else { return };
         let last = score.measures.len().saturating_sub(1);
         let (a, b) = match click_bar {
