@@ -12,7 +12,7 @@ A Rust desktop program (eframe/egui 0.29) that loads a MusicXML or MIDI drum sco
 
 ## The two crates
 
-- `core/` (`roll-model-core`): everything that needs no window, MIDI port or sound card: `score`, `units`, `analysis`, `practice`, `practice_tempo`, `rudiments`, `import` (MusicXML and MIDI to `Score`), `notation`, `drums`, `trigger`, `controller` and `controller_layout`, `config`, `progress`, `export`, `stats`, `xml`. It does file I/O (settings, progress, presets, score files) and no device I/O; it must not depend on the app crate or on eframe, midir or cpal.
+- `core/` (`roll-model-core`): everything that needs no window, MIDI port or sound card: `score`, `units`, `analysis`, `practice`, `practice_tempo`, `rudiments`, `import` (MusicXML and MIDI to `Score`), `notation`, `drums`, `trigger`, `controller` and `controller_layout`, `config`, `cues` and `clock` (what a run plays, and the MIDI clock of it), `progress`, `export`, `stats`, `xml`. It does file I/O (settings, progress, presets, score files) and no device I/O; it must not depend on the app crate or on eframe, midir or cpal.
 - the app (`roll-model`): `app/` (state and the tabs), `render.rs` (the score drawn with egui's painter), `theme.rs`, `midi.rs`, `audio/` (the engine: mixer, clock, resampling, cpal backend), `playback.rs` (the scheduler of Listen, the metronome tab and auditions), `metronome.rs` (the other scheduler: takes and calibration; the two are to become one, RV-30), `control.rs` (atomics shared with the sound threads), `synth.rs` (the software kit), `log.rs`, `sync.rs`, `widgets.rs`.
 
 ## Invariants worth knowing

@@ -12,9 +12,11 @@
 //! temporary folder), and `import::load_score` opens a file. Everything else is a function of its arguments.
 
 pub mod analysis;
+pub mod clock;
 pub mod config;
 pub mod controller;
 pub mod controller_layout;
+pub mod cues;
 pub mod drums;
 pub mod export;
 pub mod import;

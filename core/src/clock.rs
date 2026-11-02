@@ -3,8 +3,8 @@
 //! messages are cues like the clicks and the notes, so they ride the same scheduler: a tempo
 //! change of the score, the ramp and the practice tempo move them with the music.
 
-use super::{Cue, Sound};
 use crate::config::ClockStart;
+use crate::cues::{Cue, Sound};
 use crate::score::TempoMap;
 use crate::units::Quarters;
 

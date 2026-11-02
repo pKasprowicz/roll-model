@@ -2,7 +2,10 @@ use std::cell::{Cell, RefCell};
 
 use super::*;
 use crate::analysis::expected_notes;
+use crate::analysis::Expected;
+use crate::config::Subdivision;
 use crate::import::{import_bytes, ImportOptions};
+use crate::score::Dynamic;
 use crate::synth::SAMPLE_RATE;
 use crate::units::Seconds;
 
@@ -77,48 +80,6 @@ fn play(cue: &Cue, opts: &PlayOptions, control: &SoundSwitches) -> Vec<Ev> {
     let mut sink = Fake::default();
     dispatch(cue, Instant::now(), opts, control, &mut sink);
     sink.events
-}
-
-#[test]
-fn cues_are_ordered_and_clicks_lead_at_ties() {
-    let mut ghost = note(Lane::Snare, 1.0);
-    ghost.dynamic = Dynamic::Ghost;
-    let mut accent = note(Lane::Crash1, 0.0);
-    accent.dynamic = Dynamic::Accent;
-    let c = cues(
-        &[ghost, accent, note(Lane::Kick, 0.0)],
-        &[Click { t: Seconds(-1.0), accent: true }, Click { t: Seconds(0.0), accent: true }, Click { t: Seconds(1.0), accent: false }],
-    );
-    let times: Vec<f64> = c.iter().map(|c| c.t).collect();
-    assert_eq!(times, vec![-1.0, 0.0, 0.0, 0.0, 1.0, 1.0]);
-    assert_eq!(c[1].sound, Sound::Click { level: ClickLevel::Accent }); // the click, then the two notes
-    assert_eq!(c[2].sound, Sound::Drum { lane: Lane::Crash1, velocity: 120 });
-    assert_eq!(c[3].sound, Sound::Drum { lane: Lane::Kick, velocity: 90 });
-    assert_eq!(c[4].sound, Sound::Click { level: ClickLevel::Beat });
-    assert_eq!(c[5].sound, Sound::Drum { lane: Lane::Snare, velocity: 45 });
-}
-
-#[test]
-fn metronome_bar_has_an_accent_beats_and_soft_subdivisions() {
-    let (bar, len) = metronome_cues(120.0, 3, Subdivision::Eighths);
-    assert!((len - 1.5).abs() < 1e-9, "three beats at 120 BPM");
-    let levels: Vec<ClickLevel> = bar
-        .iter()
-        .map(|c| match c.sound {
-            Sound::Click { level } => level,
-            _ => panic!("only clicks"),
-        })
-        .collect();
-    use ClickLevel::*;
-    assert_eq!(levels, [Accent, Sub, Beat, Sub, Beat, Sub]);
-    let times: Vec<f64> = bar.iter().map(|c| c.t).collect();
-    for (got, want) in times.iter().zip([0.0, 0.25, 0.5, 0.75, 1.0, 1.25]) {
-        assert!((got - want).abs() < 1e-9, "{got} vs {want}");
-    }
-    assert_eq!(metronome_cues(60.0, 4, Subdivision::None).0.len(), 4);
-    assert_eq!(metronome_cues(60.0, 4, Subdivision::Triplets).0.len(), 12);
-    assert_eq!(metronome_cues(60.0, 2, Subdivision::Sixteenths).0.len(), 8);
-    assert_eq!(metronome_cues(60.0, 0, Subdivision::None).0.len(), 1, "at least one beat");
 }
 
 #[test]

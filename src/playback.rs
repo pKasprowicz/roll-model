@@ -19,22 +19,18 @@ use std::time::{Duration, Instant};
 
 use midir::MidiOutputConnection;
 
-use crate::analysis::Expected;
 use crate::audio::click::ClickBank;
 use crate::audio::mixer::NO_GROUP;
 use crate::audio::resample::resample;
 use crate::audio::EngineHandle;
-use crate::config::Subdivision;
 use crate::control::{ErrorLog, SoundSwitches};
 use crate::drums::Lane;
 use crate::metronome::{at, wait_until, AUDIO_LOOKAHEAD};
 use crate::practice::{ClickLevel, Ramp};
-use crate::score::Click;
-use crate::score::Dynamic;
 use crate::synth::{velocity_gain, Kit, SAMPLE_RATE};
 
-mod clock;
-pub use clock::{clock_cues, metronome_clock, with_clock, ClockMsg, ClockOptions};
+pub use crate::clock::{clock_cues, metronome_clock, with_clock, ClockMsg, ClockOptions};
+pub use crate::cues::{cues, metronome_cues, Cue, Sound};
 
 /// A cue whose turn comes later than this (the thread stalled, or the sound
 /// device took long to open) is dropped instead of being played as a burst.
@@ -42,26 +38,6 @@ const MAX_LATE: Duration = Duration::from_millis(250);
 /// How long the last notes may ring out after the final cue (the longest
 /// cymbal sample is two seconds).
 const TAIL: Duration = Duration::from_millis(2200);
-
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub enum Sound {
-    Click {
-        level: ClickLevel,
-    },
-    Drum {
-        lane: Lane,
-        velocity: u8,
-    },
-    /// A message of the MIDI clock (see `clock.rs`).
-    Clock(ClockMsg),
-}
-
-/// Something to play `t` seconds after the player's zero (negative = count-in).
-#[derive(Clone, Copy, Debug)]
-pub struct Cue {
-    pub t: f64,
-    pub sound: Sound,
-}
 
 /// What is fixed for one run of the player. Everything that can change while
 /// it plays is in the shared [`SoundSwitches`] instead.
@@ -92,50 +68,6 @@ pub struct PlayOptions {
     pub ramp: Ramp,
     /// Send the clock the cues carry to the MIDI output; `None` when it is not wanted.
     pub clock: Option<ClockOptions>,
-}
-
-/// MIDI velocity for a score note.
-pub fn velocity_for(e: &Expected) -> u8 {
-    if e.dynamic == Dynamic::Ghost {
-        45
-    } else if e.dynamic == Dynamic::Accent {
-        120
-    } else if e.grace {
-        70
-    } else {
-        90
-    }
-}
-
-/// The notes of a take and its click track as one list ordered by time. At
-/// the same instant the click comes first.
-pub fn cues(expected: &[Expected], clicks: &[Click]) -> Vec<Cue> {
-    let mut v: Vec<Cue> = clicks
-        .iter()
-        .map(|c| Cue { t: c.t.0, sound: Sound::Click { level: ClickLevel::from_accent(c.accent) } })
-        .chain(expected.iter().map(|e| Cue { t: e.t.0, sound: Sound::Drum { lane: e.lane, velocity: velocity_for(e) } }))
-        .collect();
-    v.sort_by(|a, b| a.t.total_cmp(&b.t)); // stable
-    v
-}
-
-/// One bar of the free metronome and its length in seconds: an accent on the
-/// first beat, normal clicks on the other beats, soft clicks between them.
-pub fn metronome_cues(bpm: f64, beats: u32, sub: Subdivision) -> (Vec<Cue>, f64) {
-    let beat_sec = 60.0 / bpm.max(1.0);
-    let parts = sub.parts();
-    let mut v = Vec::new();
-    for b in 0..beats.max(1) {
-        for s in 0..parts {
-            let level = match (b, s) {
-                (0, 0) => ClickLevel::Accent,
-                (_, 0) => ClickLevel::Beat,
-                _ => ClickLevel::Sub,
-            };
-            v.push(Cue { t: (b * parts + s) as f64 * beat_sec / parts as f64, sound: Sound::Click { level } });
-        }
-    }
-    (v, beats.max(1) as f64 * beat_sec)
 }
 
 /// Where the sound goes. The real one drives the devices; tests record calls. `when` is the moment
@@ -491,7 +423,7 @@ impl Sink for DeviceSink {
         }
         self.held.retain(|h| !matches!(h.what, Held::Clock(_)));
         if let Some(conn) = self.midi.as_mut() {
-            if let Err(e) = conn.send(&[clock::STOP]) {
+            if let Err(e) = conn.send(&[crate::clock::STOP]) {
                 self.errors.midi_failed(e);
             }
         }
