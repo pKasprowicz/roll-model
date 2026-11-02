@@ -368,8 +368,7 @@ pub fn analyze_with_model(
     order.sort_by(|a, b| hits[*a].t.total_cmp(&hits[*b].t));
     let sorted_t: Vec<Seconds> = order.iter().map(|&i| hits[i].t).collect();
 
-    // Candidate pairs: (cost, expected idx, hit idx, wrong_pad)
-    let mut cands: Vec<(Seconds, usize, usize, bool)> = Vec::new();
+    let mut cands: Vec<Candidate> = Vec::new();
     for (ei, e) in expected.iter().enumerate() {
         let win = wins[ei];
         let lo = sorted_t.partition_point(|t| *t < e.t - win);
@@ -380,18 +379,18 @@ pub fn analyze_with_model(
             }
             let dt = (h.t - e.t).abs();
             if h.lane == e.lane {
-                cands.push((dt, ei, hi, false));
+                cands.push(Candidate { cost: dt, expected: ei, hit: hi, wrong_pad: false });
             } else if h.lane.related(e.lane) {
-                cands.push((dt + model.related_pad_penalty, ei, hi, true));
+                cands.push(Candidate { cost: dt + model.related_pad_penalty, expected: ei, hit: hi, wrong_pad: true });
             }
         }
     }
-    cands.sort_by(|a, b| a.0.total_cmp(&b.0));
+    cands.sort_by(|a, b| a.cost.total_cmp(&b.cost));
 
     let mut results = vec![NoteResult { outcome: Outcome::Graded(Grade::Missed), hit: None, dt: None }; expected.len()];
     let mut hit_match: Vec<Option<usize>> = vec![None; hits.len()];
     let mut e_taken = vec![false; expected.len()];
-    for (_, ei, hi, wrong) in cands {
+    for Candidate { expected: ei, hit: hi, wrong_pad: wrong, .. } in cands {
         if e_taken[ei] || hit_match[hi].is_some() {
             continue;
         }
@@ -419,6 +418,15 @@ pub fn analyze_with_model(
     let mut r = Report { results, expected: expected.to_vec(), hit_match, ..Default::default() };
     summarize(&mut r, hits, model);
     r
+}
+
+/// A hit that could be the one for a note: how far it is (the pairs with the smallest cost are
+/// matched first), and whether it is on a related pad rather than the right one.
+struct Candidate {
+    cost: Seconds,
+    expected: usize,
+    hit: usize,
+    wrong_pad: bool,
 }
 
 fn mean_std(v: &[f64]) -> (f64, f64) {

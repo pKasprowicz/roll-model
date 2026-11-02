@@ -121,17 +121,47 @@ fn hat(secs: f32, tau: f32, cutoff: f32, noise: &mut Noise) -> Vec<f32> {
 /// for a ride, a few strong partials that ring (the "ping").
 struct Cymbal {
     secs: f32,
-    /// A cluster of inharmonic partials spread over `lo..hi` Hz: (count, lo, hi, gain, decay
-    /// time in seconds at the low end). Higher partials die faster.
-    cluster: (usize, f32, f32, f32, f32),
-    /// Strong single partials: (Hz, gain, decay time).
-    pings: &'static [(f32, f32, f32)],
-    /// Filtered noise: (gain, high-pass Hz, low-pass Hz, decay time).
-    wash: (f32, f32, f32, f32),
+    cluster: Cluster,
+    pings: &'static [Ping],
+    wash: Wash,
     /// Gain of the stick/mallet transient.
     stick: f32,
-    /// A slow wobble of the whole sound (Hz, depth 0..1), for a trashy china.
-    wobble: (f32, f32),
+    /// For a trashy china.
+    wobble: Wobble,
+}
+
+/// A cluster of inharmonic partials spread over `lo..hi` Hz. Higher partials die faster.
+struct Cluster {
+    count: usize,
+    lo: f32,
+    hi: f32,
+    gain: f32,
+    /// Decay time in seconds at the low end.
+    decay: f32,
+}
+
+/// A strong single partial.
+struct Ping {
+    hz: f32,
+    gain: f32,
+    /// Decay time in seconds.
+    decay: f32,
+}
+
+/// Filtered noise.
+struct Wash {
+    gain: f32,
+    high_pass: f32,
+    low_pass: f32,
+    /// Decay time in seconds.
+    decay: f32,
+}
+
+/// A slow wobble of the whole sound.
+struct Wobble {
+    hz: f32,
+    /// 0..1.
+    depth: f32,
 }
 
 fn cymbal(c: &Cymbal, noise: &mut Noise) -> Vec<f32> {
@@ -156,7 +186,7 @@ fn cymbal(c: &Cymbal, noise: &mut Noise) -> Vec<f32> {
         }
     };
     let mut partials: Vec<Partial> = Vec::new();
-    let (count, lo, hi, gain, tau) = c.cluster;
+    let Cluster { count, lo, hi, gain, decay: tau } = c.cluster;
     for i in 0..count {
         // Log-spaced with a jitter, so no two cymbals share a grid of partials.
         let pos = ((i as f32 + 0.5 + 0.4 * noise.next()) / count as f32).clamp(0.0, 1.0);
@@ -165,11 +195,11 @@ fn cymbal(c: &Cymbal, noise: &mut Noise) -> Vec<f32> {
         partials.push(partial(hz, amp, tau * (1.15 - 0.85 * pos), noise.next() * std::f32::consts::PI));
     }
     let cluster_scale = 1.0 / (count.max(1) as f64).sqrt();
-    for (hz, amp, ping_tau) in c.pings {
-        partials.push(partial(*hz, *amp * (count.max(1) as f32).sqrt(), *ping_tau, noise.next() * std::f32::consts::PI));
+    for ping in c.pings {
+        partials.push(partial(ping.hz, ping.gain * (count.max(1) as f32).sqrt(), ping.decay, noise.next() * std::f32::consts::PI));
     }
 
-    let (wash_gain, wash_hp, wash_lp, wash_tau) = c.wash;
+    let Wash { gain: wash_gain, high_pass: wash_hp, low_pass: wash_lp, decay: wash_tau } = c.wash;
     // Two poles each: a steep enough band that the noise is not a white hiss.
     let (mut hp1, mut hp2) = (HighPass::new(wash_hp), HighPass::new(wash_hp));
     let (mut lp1, mut lp2) = (LowPass::new(wash_lp), LowPass::new(wash_lp));
@@ -186,7 +216,7 @@ fn cymbal(c: &Cymbal, noise: &mut Noise) -> Vec<f32> {
         let attack = 1.0 - decay(t, 0.0015);
         let wash = lp2.process(lp1.process(hp2.process(hp1.process(noise.next())))) * wash_gain * decay(t, wash_tau);
         let tick = tick_hp.process(noise.next()) * decay(t, 0.004) * c.stick;
-        let wobble = 1.0 - c.wobble.1 * 0.5 * (1.0 - (TAU * c.wobble.0 * t).cos());
+        let wobble = 1.0 - c.wobble.depth * 0.5 * (1.0 - (TAU * c.wobble.hz * t).cos());
         ((sum * cluster_scale) as f32 + wash) * attack * wobble + tick
     })
 }
@@ -247,74 +277,80 @@ pub fn render(lane: Lane) -> Vec<f32> {
         Lane::Crash1 => cymbal(
             &Cymbal {
                 secs: 2.0,
-                cluster: (40, 1500.0, 11000.0, 1.0, 1.0),
+                cluster: Cluster { count: 40, lo: 1500.0, hi: 11000.0, gain: 1.0, decay: 1.0 },
                 pings: &[],
-                wash: (0.8, 1500.0, 9000.0, 0.55),
+                wash: Wash { gain: 0.8, high_pass: 1500.0, low_pass: 9000.0, decay: 0.55 },
                 stick: 0.6,
-                wobble: (0.0, 0.0),
+                wobble: Wobble { hz: 0.0, depth: 0.0 },
             },
             n,
         ),
         Lane::Crash2 => cymbal(
             &Cymbal {
                 secs: 1.8,
-                cluster: (36, 1700.0, 12000.0, 1.0, 0.8),
+                cluster: Cluster { count: 36, lo: 1700.0, hi: 12000.0, gain: 1.0, decay: 0.8 },
                 pings: &[],
-                wash: (0.8, 1700.0, 10000.0, 0.45),
+                wash: Wash { gain: 0.8, high_pass: 1700.0, low_pass: 10000.0, decay: 0.45 },
                 stick: 0.6,
-                wobble: (0.0, 0.0),
+                wobble: Wobble { hz: 0.0, depth: 0.0 },
             },
             n,
         ),
         Lane::China => cymbal(
             &Cymbal {
                 secs: 1.4,
-                cluster: (36, 2000.0, 12000.0, 1.0, 0.5),
+                cluster: Cluster { count: 36, lo: 2000.0, hi: 12000.0, gain: 1.0, decay: 0.5 },
                 pings: &[],
-                wash: (1.0, 2000.0, 11000.0, 0.3),
+                wash: Wash { gain: 1.0, high_pass: 2000.0, low_pass: 11000.0, decay: 0.3 },
                 stick: 0.7,
-                wobble: (80.0, 0.5),
+                wobble: Wobble { hz: 80.0, depth: 0.5 },
             },
             n,
         ),
         Lane::Splash => cymbal(
             &Cymbal {
                 secs: 0.7,
-                cluster: (28, 3000.0, 12000.0, 1.0, 0.18),
+                cluster: Cluster { count: 28, lo: 3000.0, hi: 12000.0, gain: 1.0, decay: 0.18 },
                 pings: &[],
-                wash: (0.8, 3000.0, 11000.0, 0.12),
+                wash: Wash { gain: 0.8, high_pass: 3000.0, low_pass: 11000.0, decay: 0.12 },
                 stick: 0.5,
-                wobble: (0.0, 0.0),
+                wobble: Wobble { hz: 0.0, depth: 0.0 },
             },
             n,
         ),
         Lane::Ride => cymbal(
             &Cymbal {
                 secs: 1.4,
-                cluster: (28, 2500.0, 9500.0, 0.45, 0.6),
+                cluster: Cluster { count: 28, lo: 2500.0, hi: 9500.0, gain: 0.45, decay: 0.6 },
                 // The ping, and a little body underneath it.
                 pings: &[
-                    (3150.0, 0.30, 0.8),
-                    (4230.0, 0.22, 0.7),
-                    (5440.0, 0.18, 0.6),
-                    (6900.0, 0.12, 0.45),
-                    (900.0, 0.10, 0.5),
-                    (1480.0, 0.08, 0.45),
+                    Ping { hz: 3150.0, gain: 0.30, decay: 0.8 },
+                    Ping { hz: 4230.0, gain: 0.22, decay: 0.7 },
+                    Ping { hz: 5440.0, gain: 0.18, decay: 0.6 },
+                    Ping { hz: 6900.0, gain: 0.12, decay: 0.45 },
+                    Ping { hz: 900.0, gain: 0.10, decay: 0.5 },
+                    Ping { hz: 1480.0, gain: 0.08, decay: 0.45 },
                 ],
-                wash: (0.18, 3000.0, 10000.0, 0.3),
+                wash: Wash { gain: 0.18, high_pass: 3000.0, low_pass: 10000.0, decay: 0.3 },
                 stick: 0.5,
-                wobble: (0.0, 0.0),
+                wobble: Wobble { hz: 0.0, depth: 0.0 },
             },
             n,
         ),
         Lane::RideBell => cymbal(
             &Cymbal {
                 secs: 1.0,
-                cluster: (16, 3000.0, 9000.0, 0.35, 0.3),
-                pings: &[(1050.0, 0.40, 0.35), (1585.0, 0.25, 0.3), (2100.0, 0.20, 0.3), (2890.0, 0.15, 0.25), (4300.0, 0.10, 0.2)],
-                wash: (0.1, 3000.0, 10000.0, 0.2),
+                cluster: Cluster { count: 16, lo: 3000.0, hi: 9000.0, gain: 0.35, decay: 0.3 },
+                pings: &[
+                    Ping { hz: 1050.0, gain: 0.40, decay: 0.35 },
+                    Ping { hz: 1585.0, gain: 0.25, decay: 0.3 },
+                    Ping { hz: 2100.0, gain: 0.20, decay: 0.3 },
+                    Ping { hz: 2890.0, gain: 0.15, decay: 0.25 },
+                    Ping { hz: 4300.0, gain: 0.10, decay: 0.2 },
+                ],
+                wash: Wash { gain: 0.1, high_pass: 3000.0, low_pass: 10000.0, decay: 0.2 },
                 stick: 0.6,
-                wobble: (0.0, 0.0),
+                wobble: Wobble { hz: 0.0, depth: 0.0 },
             },
             n,
         ),
