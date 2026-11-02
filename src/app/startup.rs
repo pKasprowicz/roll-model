@@ -453,13 +453,13 @@ mod tests {
     fn the_first_frame_only_shows_the_splash_and_the_splash_stays_after_the_last_step() {
         let ctx = egui::Context::default();
         let mut app = starting(Some(sample()));
-        assert!(app.score.is_none());
+        assert!(app.practice.score.is_none());
         assert_eq!(frame(&mut app, &ctx), Flow::Starting, "the first frame draws the splash");
-        assert!(app.score.is_none(), "and runs nothing");
+        assert!(app.practice.score.is_none(), "and runs nothing");
         let starting = 1 + run_steps(&mut app, &ctx);
         assert_eq!(starting, 7, "one frame to show each of the 7 steps");
         assert!(app.startup.as_ref().is_some_and(|s| s.is_finished()), "the splash is still there to be read");
-        assert!(app.score.is_some(), "the score given on the command line is open");
+        assert!(app.practice.score.is_some(), "the score given on the command line is open");
         assert!(app.view.tab == super::super::Tab::Score);
         assert_eq!(app.audio_devices, ["Speakers"]);
         assert_eq!(app.startup.as_ref().unwrap().log.len(), 7, "every step left a line");

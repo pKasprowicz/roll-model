@@ -61,7 +61,7 @@ pub(super) fn histogram(ui: &mut egui::Ui, dts: &[f64], window_ms: f64) {
 impl DrumApp {
     pub(super) fn results_tab(&mut self, ui: &mut egui::Ui) {
         egui::ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| {
-            let Some(take) = self.take.as_ref() else {
+            let Some(take) = self.practice.take.as_ref() else {
                 ui.label("Record a take on the Score or Rudiments tab to see the analysis here.");
                 return;
             };
@@ -163,7 +163,7 @@ impl DrumApp {
                 self.export_csv();
             }
 
-            if !self.history.is_empty() {
+            if !self.practice.history.is_empty() {
                 ui.add_space(8.0);
                 ui.heading("Session history");
                 egui::Grid::new("history").num_columns(7).striped(true).show(ui, |ui| {
@@ -171,7 +171,7 @@ impl DrumApp {
                         ui.label(RichText::new(h).strong());
                     }
                     ui.end_row();
-                    for t in self.history.iter().rev() {
+                    for t in self.practice.history.iter().rev() {
                         ui.label(t.number.to_string());
                         ui.label(t.range.as_str());
                         ui.label(format!("{:.0}", t.bpm));
@@ -187,7 +187,7 @@ impl DrumApp {
     }
 
     pub(super) fn export_csv(&mut self) {
-        let (Some(take), Some(score)) = (self.take.as_ref(), self.score.as_ref()) else { return };
+        let (Some(take), Some(score)) = (self.practice.take.as_ref(), self.practice.score.as_ref()) else { return };
         let Some(path) = rfd::FileDialog::new().add_filter("CSV", &["csv"]).set_file_name(format!("take_{}.csv", take.number)).save_file()
         else {
             return;

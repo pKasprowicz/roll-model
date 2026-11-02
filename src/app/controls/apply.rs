@@ -74,7 +74,7 @@ pub(super) fn nudged_volume(v: f32, steps: i32) -> f32 {
 impl DrumApp {
     /// Tempo controls act on the metronome while its tab is open (or no score is loaded).
     pub(super) fn tempo_is_metronome(&self) -> bool {
-        self.view.tab == Tab::Metronome || self.score.is_none()
+        self.view.tab == Tab::Metronome || self.practice.score.is_none()
     }
 
     /// The range of the practice tempo: percent of the written tempo, or BPM for a rudiment.
@@ -104,24 +104,24 @@ impl DrumApp {
 
     pub(super) fn controller_state(&self) -> State {
         let c = &self.cfg;
-        let measures = self.score.as_ref().map_or(0, |s| s.measures.len());
+        let measures = self.practice.score.as_ref().map_or(0, |s| s.measures.len());
         let along = |i: usize| if measures > 1 { i as f32 / (measures - 1) as f32 } else { 0.0 };
         let range = self.tempo_range();
         let tempo = if self.tempo_is_metronome() {
             (c.metro_bpm - METRO_RANGE.0) / (METRO_RANGE.1 - METRO_RANGE.0)
         } else {
-            (self.tempo_pct - range.0) / (range.1 - range.0)
+            (self.practice.tempo_pct - range.0) / (range.1 - range.0)
         };
         let mut s = State {
-            record: self.take.as_ref().is_some_and(|t| t.running),
+            record: self.practice.take.as_ref().is_some_and(|t| t.running),
             listen: self.playback.listen.is_some(),
             click: c.metronome_during_take,
             looping: self.playback.looping,
             notes: self.playback.notes,
             metronome: self.metro_run.run.is_some(),
             tempo: tempo.clamp(0.0, 1.0),
-            range_from: along(self.range_from),
-            range_to: along(self.range_to),
+            range_from: along(self.practice.range_from),
+            range_to: along(self.practice.range_to),
             click_volume: c.click_volume,
             music_volume: c.playback_volume,
             count_in: c.count_in_bars as f32 / 2.0,
@@ -145,7 +145,7 @@ impl DrumApp {
     }
 
     pub(super) fn take_running(&self) -> bool {
-        self.take.as_ref().is_some_and(|t| t.running)
+        self.practice.take.as_ref().is_some_and(|t| t.running)
     }
 
     /// Whether a change of tempo, range or score is allowed now; says why not.
@@ -169,8 +169,8 @@ impl DrumApp {
         let running = self.take_running();
         match action {
             Action::Record if running => self.stop_take(false),
-            Action::Record if self.score.is_some() => self.start_take(),
-            Action::Listen if !running && self.score.is_some() => {
+            Action::Record if self.practice.score.is_some() => self.start_take(),
+            Action::Listen if !running && self.practice.score.is_some() => {
                 if self.playback.listen.is_some() {
                     self.stop_listen();
                 } else {
@@ -178,7 +178,7 @@ impl DrumApp {
                 }
             }
             Action::Record | Action::Listen => {
-                if self.score.is_none() {
+                if self.practice.score.is_none() {
                     self.view.status = "Open a score first.".into();
                 }
             }
@@ -210,15 +210,15 @@ impl DrumApp {
                 } else if self.source == Source::Rudiments {
                     self.reset_rudiment_tempo();
                 } else {
-                    self.tempo_pct = 100.0;
+                    self.practice.tempo_pct = 100.0;
                 }
                 self.view.status = "Tempo reset.".into();
             }
             Action::PrevRudiment if self.unlocked() => self.step_rudiment(-1),
             Action::NextRudiment if self.unlocked() => self.step_rudiment(1),
             Action::DiscardTake if self.unlocked() => {
-                if let Some(take) = self.take.take() {
-                    self.history.retain(|h| h.number != take.number);
+                if let Some(take) = self.practice.take.take() {
+                    self.practice.history.retain(|h| h.number != take.number);
                     self.view.status = format!("Take {} discarded.", take.number);
                 }
             }
@@ -237,7 +237,7 @@ impl DrumApp {
 
     pub(super) fn turn(&mut self, action: Action, steps: i32) {
         let tempo_here = self.tempo_is_metronome();
-        let measures = self.score.as_ref().map_or(0, |s| s.measures.len());
+        let measures = self.practice.score.as_ref().map_or(0, |s| s.measures.len());
         let one = steps.signum();
         match action {
             Action::Tempo if self.unlocked() => {
@@ -246,19 +246,20 @@ impl DrumApp {
                     self.view.status = format!("Metronome {:.0} BPM", self.cfg.metro_bpm);
                 } else {
                     let range = self.tempo_range();
-                    self.tempo_pct = (self.tempo_pct.round() + steps as f32).clamp(range.0, range.1);
+                    self.practice.tempo_pct = (self.practice.tempo_pct.round() + steps as f32).clamp(range.0, range.1);
                     self.view.status = match self.source {
-                        Source::Rudiments => format!("Tempo {:.0} BPM", self.tempo_pct),
-                        Source::Score => format!("Tempo {:.0} %", self.tempo_pct),
+                        Source::Rudiments => format!("Tempo {:.0} BPM", self.practice.tempo_pct),
+                        Source::Score => format!("Tempo {:.0} %", self.practice.tempo_pct),
                     };
                 }
             }
             Action::RangeFrom if measures > 0 && self.unlocked() => {
-                self.range_from = (self.range_from as i32 + steps).clamp(0, self.range_to as i32) as usize;
+                self.practice.range_from = (self.practice.range_from as i32 + steps).clamp(0, self.practice.range_to as i32) as usize;
                 self.status_range();
             }
             Action::RangeTo if measures > 0 && self.unlocked() => {
-                self.range_to = (self.range_to as i32 + steps).clamp(self.range_from as i32, measures as i32 - 1) as usize;
+                self.practice.range_to =
+                    (self.practice.range_to as i32 + steps).clamp(self.practice.range_from as i32, measures as i32 - 1) as usize;
                 self.status_range();
             }
             Action::ClickVolume => self.cfg.click_volume = nudged_volume(self.cfg.click_volume, steps),
@@ -285,7 +286,7 @@ impl DrumApp {
 
     pub(super) fn set(&mut self, action: Action, x: f32) {
         let x = x.clamp(0.0, 1.0);
-        let measures = self.score.as_ref().map_or(0, |s| s.measures.len());
+        let measures = self.practice.score.as_ref().map_or(0, |s| s.measures.len());
         let bar = |x: f32| (x * measures.saturating_sub(1) as f32).round() as usize;
         match action {
             Action::Tempo if self.unlocked() => {
@@ -293,11 +294,11 @@ impl DrumApp {
                     self.cfg.metro_bpm = (METRO_RANGE.0 + x * (METRO_RANGE.1 - METRO_RANGE.0)).round();
                 } else {
                     let range = self.tempo_range();
-                    self.tempo_pct = (range.0 + x * (range.1 - range.0)).round();
+                    self.practice.tempo_pct = (range.0 + x * (range.1 - range.0)).round();
                 }
             }
-            Action::RangeFrom if measures > 0 && self.unlocked() => self.range_from = bar(x).min(self.range_to),
-            Action::RangeTo if measures > 0 && self.unlocked() => self.range_to = bar(x).max(self.range_from),
+            Action::RangeFrom if measures > 0 && self.unlocked() => self.practice.range_from = bar(x).min(self.practice.range_to),
+            Action::RangeTo if measures > 0 && self.unlocked() => self.practice.range_to = bar(x).max(self.practice.range_from),
             Action::ClickVolume => self.cfg.click_volume = x,
             Action::MusicVolume => self.cfg.playback_volume = x,
             Action::CountIn => self.cfg.count_in_bars = (x * 2.0).round() as u32,
@@ -316,9 +317,9 @@ impl DrumApp {
     }
 
     pub(super) fn status_range(&mut self) {
-        if let Some(score) = self.score.as_ref() {
+        if let Some(score) = self.practice.score.as_ref() {
             let number = |i: usize| score.measures.get(i).map(|m| m.number.clone()).unwrap_or_default();
-            self.view.status = format!("Measures {}–{}", number(self.range_from), number(self.range_to));
+            self.view.status = format!("Measures {}–{}", number(self.practice.range_from), number(self.practice.range_to));
         }
     }
 
@@ -343,29 +344,29 @@ impl DrumApp {
         if self.tempo_is_metronome() {
             self.cfg.metro_bpm = (bpm as f32).clamp(METRO_RANGE.0, METRO_RANGE.1);
             self.view.status = format!("Metronome {:.0} BPM (tapped)", self.cfg.metro_bpm);
-        } else if let Some(score) = self.score.as_ref() {
-            let written = score.tempo.bpm_at(score.measures[self.range_from.min(score.measures.len() - 1)].start_q);
+        } else if let Some(score) = self.practice.score.as_ref() {
+            let written = score.tempo.bpm_at(score.measures[self.practice.range_from.min(score.measures.len() - 1)].start_q);
             let range = self.tempo_range();
-            self.tempo_pct = (bpm / written * 100.0).clamp(f64::from(range.0), f64::from(range.1)).round() as f32;
+            self.practice.tempo_pct = (bpm / written * 100.0).clamp(f64::from(range.0), f64::from(range.1)).round() as f32;
             self.view.status = match self.source {
-                Source::Rudiments => format!("Tempo {:.0} BPM (tapped)", self.tempo_pct),
-                Source::Score => format!("Tempo {:.0} % = {bpm:.0} BPM (tapped)", self.tempo_pct),
+                Source::Rudiments => format!("Tempo {:.0} BPM (tapped)", self.practice.tempo_pct),
+                Source::Score => format!("Tempo {:.0} % = {bpm:.0} BPM (tapped)", self.practice.tempo_pct),
             };
         }
     }
 
     pub(super) fn move_range(&mut self, forward: bool) {
-        let Some(n) = self.score.as_ref().map(|s| s.measures.len()) else { return };
-        if let Some((from, to)) = shifted_range(self.range_from, self.range_to, n, forward) {
-            self.range_from = from;
-            self.range_to = to;
+        let Some(n) = self.practice.score.as_ref().map(|s| s.measures.len()) else { return };
+        if let Some((from, to)) = shifted_range(self.practice.range_from, self.practice.range_to, n, forward) {
+            self.practice.range_from = from;
+            self.practice.range_to = to;
             self.status_range();
         }
     }
 
     /// Loops the measure the last take went worst in.
     pub(super) fn loop_worst_bar(&mut self) {
-        let worst = match (self.take.as_ref(), self.score.as_ref()) {
+        let worst = match (self.practice.take.as_ref(), self.practice.score.as_ref()) {
             (Some(take), Some(score)) => {
                 let extra: Vec<usize> = take
                     .hits
@@ -382,8 +383,8 @@ impl DrumApp {
             None => self.view.status = "Record a take first.".into(),
             Some(None) => self.view.status = "The last take had no mistakes to practise.".into(),
             Some(Some(m)) => {
-                self.range_from = m;
-                self.range_to = m;
+                self.practice.range_from = m;
+                self.practice.range_to = m;
                 self.playback.looping = true;
                 self.status_range();
                 self.start_listen();

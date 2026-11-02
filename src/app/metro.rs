@@ -201,17 +201,20 @@ impl DrumApp {
     /// fixed line at the metronome's tempo.
     fn rolling_preview(&mut self, ui: &mut egui::Ui) {
         ui.add_space(16.0);
-        let click_bar =
-            self.score.is_none().then(|| Score::click_bar(self.cfg.metro_beats, Subdivision::from_index(self.cfg.metro_sub).parts()));
-        let Some(score) = click_bar.as_ref().or(self.score.as_ref()) else { return };
+        let click_bar = self
+            .practice
+            .score
+            .is_none()
+            .then(|| Score::click_bar(self.cfg.metro_beats, Subdivision::from_index(self.cfg.metro_sub).parts()));
+        let Some(score) = click_bar.as_ref().or(self.practice.score.as_ref()) else { return };
         let last = score.measures.len().saturating_sub(1);
         let (a, b) = match click_bar {
             Some(_) => (0, 0),
-            None => (self.range_from.min(last), self.range_to.clamp(self.range_from.min(last), last)),
+            None => (self.practice.range_from.min(last), self.practice.range_to.clamp(self.practice.range_from.min(last), last)),
         };
         let (start_q, len_q) = (score.measures[a].start_q, score.measures[b].end_q() - score.measures[a].start_q);
         // A rudiment is written at a fixed tempo; its practice tempo in percent is its BPM.
-        let tempo_factor = if self.source == Source::Rudiments { f64::from(self.tempo_pct) / 100.0 } else { 1.0 };
+        let tempo_factor = if self.source == Source::Rudiments { f64::from(self.practice.tempo_pct) / 100.0 } else { 1.0 };
         let (score_bpm, bar_q) = (score.tempo.bpm_at(start_q) * tempo_factor, score.measures[a].len_q);
         let description = match click_bar {
             Some(_) => "no score loaded: the click pattern".to_string(),
@@ -240,7 +243,7 @@ impl DrumApp {
             return;
         }
         let pos_q = self.metro_preview_pos(start_q, len_q);
-        if let Some(score) = click_bar.as_ref().or(self.score.as_ref()) {
+        if let Some(score) = click_bar.as_ref().or(self.practice.score.as_ref()) {
             render::rolling(ui, &render::RollingView { score, range: (a, b), pos_q });
         }
         ui.label(

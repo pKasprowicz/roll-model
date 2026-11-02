@@ -10,13 +10,13 @@ use super::{DrumApp, Source, TAKE_LINE_HEIGHT};
 
 impl DrumApp {
     pub(super) fn score_tab(&mut self, ui: &mut egui::Ui) {
-        let Some(score) = self.score.as_ref() else {
+        let Some(score) = self.practice.score.as_ref() else {
             self.welcome_panel(ui);
             return;
         };
         let n_measures = score.measures.len();
-        let running = self.take.as_ref().is_some_and(|t| t.running);
-        let base_bpm = score.tempo.bpm_at(score.measures[self.range_from.min(n_measures - 1)].start_q);
+        let running = self.practice.take.as_ref().is_some_and(|t| t.running);
+        let base_bpm = score.tempo.bpm_at(score.measures[self.practice.range_from.min(n_measures - 1)].start_q);
         let title = score.title.clone();
         let part = score.part_name.clone();
         let warnings = score.warnings.clone();
@@ -38,19 +38,19 @@ impl DrumApp {
             self.transport_row(ui, running, n_measures);
             ui.horizontal(|ui| {
                 ui.add_enabled_ui(!running, |ui| {
-                    let mut from = self.range_from + 1;
-                    let mut to = self.range_to + 1;
+                    let mut from = self.practice.range_from + 1;
+                    let mut to = self.practice.range_to + 1;
                     ui.label("Measures");
                     widgets::slider(ui, "from", &mut from, 1..=n_measures, "", 1.0);
                     widgets::slider(ui, "to", &mut to, 1..=n_measures, "", 1.0);
-                    self.range_from = from - 1;
-                    self.range_to = (to - 1).max(self.range_from);
+                    self.practice.range_from = from - 1;
+                    self.practice.range_to = (to - 1).max(self.practice.range_from);
                 });
             });
             ui.horizontal(|ui| {
                 ui.add_enabled_ui(!running, |ui| {
-                    widgets::slider(ui, "tempo", &mut self.tempo_pct, 25.0..=150.0, "%", 1.0);
-                    ui.label(format!("= {:.0} BPM", base_bpm * self.tempo_pct as f64 / 100.0));
+                    widgets::slider(ui, "tempo", &mut self.practice.tempo_pct, 25.0..=150.0, "%", 1.0);
+                    ui.label(format!("= {:.0} BPM", base_bpm * self.practice.tempo_pct as f64 / 100.0));
                 });
                 self.playback_switches(ui, running);
             });
@@ -109,6 +109,7 @@ impl DrumApp {
                 ui.checkbox(&mut self.cfg.break_at_pause, "new row after a pause")
                     .on_hover_text("A bar that ends with a rest (and no note in any voice during it) is the last of its row; the score goes on in the next row.");
                 let printed = self
+                    .practice
                     .score
                     .as_ref()
                     .and_then(|s| s.measures.get(self.cfg.layout_align_bar.wrapping_sub(1)))
@@ -152,7 +153,7 @@ impl DrumApp {
         // than the rest), also with no take, so nothing below it moves when a take starts or ends.
         ui.horizontal(|ui| {
             ui.set_min_height(TAKE_LINE_HEIGHT);
-            if let Some(take) = self.take.as_ref() {
+            if let Some(take) = self.practice.take.as_ref() {
                 let r = &take.report;
                 if take.running {
                     let el = signed_secs(self.shown_now(), take.zero);
@@ -209,8 +210,8 @@ impl DrumApp {
         let played = self.played_notes();
         let grades = self.note_grades();
         let listen_q = self.listen_playhead();
-        let score = self.score.as_ref().unwrap();
-        let playhead = match (self.take.as_ref().filter(|t| t.running), listen_q) {
+        let score = self.practice.score.as_ref().unwrap();
+        let playhead = match (self.practice.take.as_ref().filter(|t| t.running), listen_q) {
             (Some(t), _) => Some(score_q(score, t, signed_secs(self.shown_now(), t.zero))),
             (None, q) => q,
         };
@@ -219,7 +220,7 @@ impl DrumApp {
             grades: &grades,
             played: &played,
             playhead_q: playhead,
-            range: (self.range_from, self.range_to),
+            range: (self.practice.range_from, self.practice.range_to),
             zoom: self.cfg.zoom,
             follow: self.follow && (running || self.playback.listen.is_some()),
             layout: LayoutOpts {
@@ -232,11 +233,11 @@ impl DrumApp {
         self.view.fit_bars = out.fit_bars;
         if let (Some((mi, shift)), false) = (out.clicked_measure, running) {
             if shift {
-                self.range_to = mi.max(self.range_from);
+                self.practice.range_to = mi.max(self.practice.range_from);
             } else {
-                self.range_from = mi;
-                if self.range_to < mi {
-                    self.range_to = n_measures - 1;
+                self.practice.range_from = mi;
+                if self.practice.range_to < mi {
+                    self.practice.range_to = n_measures - 1;
                 }
             }
         }
