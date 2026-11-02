@@ -55,7 +55,8 @@ pub struct PartInfo {
 
 #[derive(Clone, Debug, Default)]
 pub struct RawScore {
-    pub title: String,
+    /// The title the file gives, if it gives one.
+    pub title: Option<String>,
     pub part_name: String,
     pub parts: Vec<PartInfo>,
     /// Index into `parts` of the part that was read.

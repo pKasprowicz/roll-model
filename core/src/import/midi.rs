@@ -316,7 +316,7 @@ pub fn build(data: MidiData, opts: &ImportOptions) -> Result<RawScore, ImportErr
         warnings.push(format!("{} notes of the same instrument fell on one place (flams, double hits) and were merged", report.merged));
     }
     Ok(RawScore {
-        title: "Untitled".into(),
+        title: None,
         part_name: "Drums".into(),
         parts: vec![PartInfo { name: "Drums".into(), drums: true }],
         part_used: 0,

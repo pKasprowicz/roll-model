@@ -178,8 +178,9 @@ pub fn import_bytes(bytes: &[u8], name: &str, opts: &ImportOptions) -> Result<Lo
         Format::Midi => midi::parse(bytes, opts)?,
     };
     let report = Report { format, parts: raw.parts.clone(), part_used: raw.part_used, midi: raw.midi.clone() };
+    let untitled = raw.title.is_none();
     let mut score = finish::finish(raw, opts)?;
-    if score.title == "Untitled" {
+    if untitled {
         if let Some(stem) = Path::new(name).file_stem() {
             score.title = stem.to_string_lossy().into_owned();
         }

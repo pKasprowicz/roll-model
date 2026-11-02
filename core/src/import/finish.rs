@@ -43,7 +43,12 @@ pub fn finish(raw: RawScore, opts: &ImportOptions) -> Result<Score, ImportError>
         return Err(ImportError::TooLarge(format!("more than {} measures once the repeats are played out", limits.max_measures)));
     }
 
-    let mut score = Score { title: raw.title, part_name: raw.part_name, warnings: raw.warnings, ..Default::default() };
+    let mut score = Score {
+        title: raw.title.unwrap_or_else(|| "Untitled".into()),
+        part_name: raw.part_name,
+        warnings: raw.warnings,
+        ..Default::default()
+    };
     let mut tempo_pts = Vec::new();
     let mut q = Quarters::ZERO;
     for &mi in &order {

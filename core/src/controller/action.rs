@@ -62,7 +62,7 @@ pub enum Out {
     Cc(u8),
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Action {
     // Buttons
     Record,

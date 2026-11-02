@@ -29,8 +29,7 @@ pub fn parse(text: &str, opts: &ImportOptions) -> Result<RawScore, ImportError> 
         .map(|e| e.text())
         .filter(|t| !t.is_empty())
         .or_else(|| root.child_text("movement-title").filter(|t| !t.is_empty()))
-        .or_else(|| root.children_named("credit").filter_map(|c| c.child_text("credit-words")).find(|t| !t.is_empty()))
-        .unwrap_or_else(|| "Untitled".to_string());
+        .or_else(|| root.children_named("credit").filter_map(|c| c.child_text("credit-words")).find(|t| !t.is_empty()));
 
     // part id -> (name, instrument id -> lane)
     let mut part_names: HashMap<String, String> = HashMap::new();

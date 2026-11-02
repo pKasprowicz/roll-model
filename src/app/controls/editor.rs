@@ -78,7 +78,7 @@ pub(super) struct EditorState {
     /// Limit a learned control to the MIDI channel it sent on.
     pub(super) remember_channel: bool,
     /// How a value's cc is read, chosen before it is learned (by the action's name).
-    pub(super) kinds: BTreeMap<String, Reading>,
+    pub(super) kinds: BTreeMap<Action, Reading>,
     pub(super) notice: String,
     /// A preset whose lights are being changed (a number dragged): the file it belongs to and the
     /// preset as it is now. The file is written when the drag ends, not on every frame of it.
@@ -110,15 +110,11 @@ impl EditorState {
     /// How a value's cc is read for `action` when nothing is bound yet: the choice made in the
     /// table, or (absolute, except for the lists, which are only turned).
     pub(super) fn chosen_kind(&self, action: Action) -> Reading {
-        self.kinds.get(&action.text()).copied().unwrap_or(if action.is_browse() {
-            Reading::Relative(Encoding::Mackie)
-        } else {
-            Reading::Absolute
-        })
+        self.kinds.get(&action).copied().unwrap_or(if action.is_browse() { Reading::Relative(Encoding::Mackie) } else { Reading::Absolute })
     }
 
     pub(super) fn choose_kind(&mut self, action: Action, reading: Reading) {
-        self.kinds.insert(action.text(), reading);
+        self.kinds.insert(action, reading);
     }
 
     /// What the editor was doing belongs to the preset that was chosen: drop it when another is.
@@ -1312,7 +1308,7 @@ bind = note 36 -> record
         assert_eq!((tempo.input.src, tempo.input.channel, tempo.reading), (controller::Src::Cc(13), None, Reading::Absolute));
         // The channel is remembered when asked for, and a relative choice is kept for the knob.
         app.controller.editor.remember_channel = true;
-        app.controller.editor.kinds.insert(Action::RangeFrom.text(), Reading::Relative(Encoding::Twos));
+        app.controller.editor.kinds.insert(Action::RangeFrom, Reading::Relative(Encoding::Twos));
         app.controller.editor.learning = Some(Action::RangeFrom);
         assert!(app.learn_message(controller::Msg::Cc { ch: 2, cc: 14, val: 1 }));
         let from = saved().binds.iter().find(|b| b.action == Action::RangeFrom).cloned().unwrap();
