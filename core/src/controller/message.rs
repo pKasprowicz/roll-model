@@ -3,11 +3,25 @@
 /// A MIDI message from the controller. Channels are 1-based.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Msg {
-    NoteOn { ch: u8, note: u8, vel: u8 },
-    NoteOff { ch: u8, note: u8 },
-    Cc { ch: u8, cc: u8, val: u8 },
+    NoteOn {
+        ch: u8,
+        note: u8,
+        vel: u8,
+    },
+    NoteOff {
+        ch: u8,
+        note: u8,
+    },
+    Cc {
+        ch: u8,
+        cc: u8,
+        val: u8,
+    },
     /// 14-bit pitch bend (0..=16383): the faders of a Mackie Control.
-    Bend { ch: u8, value: u16 },
+    Bend {
+        ch: u8,
+        value: u16,
+    },
 }
 
 pub fn parse(bytes: &[u8]) -> Option<Msg> {
@@ -85,7 +99,8 @@ impl Encoding {
             return None;
         }
         [Encoding::Mackie, Encoding::Twos, Encoding::Offset, Encoding::SignBit2].into_iter().find(|e| {
-            clockwise.iter().all(|v| (1..=MOST_STEPS).contains(&e.decode(*v))) && counter.iter().all(|v| (-MOST_STEPS..=-1).contains(&e.decode(*v)))
+            clockwise.iter().all(|v| (1..=MOST_STEPS).contains(&e.decode(*v)))
+                && counter.iter().all(|v| (-MOST_STEPS..=-1).contains(&e.decode(*v)))
         })
     }
 
@@ -120,7 +135,6 @@ impl Encoding {
         }
     }
 }
-
 
 /// How a control reports itself: by its position (a knob, a fader) or by how far it was turned
 /// (an endless encoder, which counts in one of the `Encoding`s).

@@ -106,11 +106,7 @@ mod tests {
     /// Runs one egui frame with `events`; the same context is reused so layer
     /// and pointer state carry over between frames, as in the app.
     fn frame(ctx: &egui::Context, events: Vec<Event>, ui_fn: impl FnOnce(&mut Ui)) {
-        let input = RawInput {
-            screen_rect: Some(Rect::from_min_size(Pos2::ZERO, vec2(900.0, 600.0))),
-            events,
-            ..Default::default()
-        };
+        let input = RawInput { screen_rect: Some(Rect::from_min_size(Pos2::ZERO, vec2(900.0, 600.0))), events, ..Default::default() };
         let mut ui_fn = Some(ui_fn);
         let _ = ctx.run(input, |ctx| {
             if let Some(f) = ui_fn.take() {

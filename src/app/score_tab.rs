@@ -1,6 +1,5 @@
 //! The Score tab: the transport row, the switches and the score itself.
 
-
 use egui::{Color32, RichText};
 
 use crate::render::{self, LayoutOpts, ScoreView};
@@ -201,7 +200,8 @@ impl DrumApp {
         });
         // On a line of its own: it grows while the trigger waits for the second hit.
         if let Some((text, armed)) = self.trigger_hint() {
-            let (color, text) = if armed { (render::GREEN, format!("{text}: waiting for the second hit")) } else { (ui.visuals().weak_text_color(), text) };
+            let (color, text) =
+                if armed { (render::GREEN, format!("{text}: waiting for the second hit")) } else { (ui.visuals().weak_text_color(), text) };
             ui.label(RichText::new(text.trim_start_matches("· ")).small().color(color));
         }
         ui.separator();
@@ -222,12 +222,13 @@ impl DrumApp {
             range: (self.range_from, self.range_to),
             zoom: self.cfg.zoom,
             follow: self.follow && (running || self.playback.listen.is_some()),
-            layout: LayoutOpts { bars_per_row: self.cfg.bars_per_row, align_bar: self.cfg.layout_align_bar, break_at_pause: self.cfg.break_at_pause },
+            layout: LayoutOpts {
+                bars_per_row: self.cfg.bars_per_row,
+                align_bar: self.cfg.layout_align_bar,
+                break_at_pause: self.cfg.break_at_pause,
+            },
         };
-        let out = egui::ScrollArea::vertical()
-            .auto_shrink([false, false])
-            .show(ui, |ui| render::show(ui, &view))
-            .inner;
+        let out = egui::ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| render::show(ui, &view)).inner;
         self.view.fit_bars = out.fit_bars;
         if let (Some((mi, shift)), false) = (out.clicked_measure, running) {
             if shift {

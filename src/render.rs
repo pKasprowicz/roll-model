@@ -159,12 +159,7 @@ fn typical_len_q(score: &Score) -> f64 {
             None => counts.push((m.len_q, 1)),
         }
     }
-    counts
-        .into_iter()
-        .max_by(|a, b| a.1.cmp(&b.1).then(a.0.total_cmp(&b.0)))
-        .map(|c| c.0)
-        .unwrap_or(4.0)
-        .max(0.25)
+    counts.into_iter().max_by(|a, b| a.1.cmp(&b.1).then(a.0.total_cmp(&b.0))).map(|c| c.0).unwrap_or(4.0).max(0.25)
 }
 
 /// The rows when each holds `per_row` bars: the score is cut after every bar in `pauses` (not the
@@ -231,7 +226,11 @@ fn layout(score: &Score, width: f32, zoom: f32, opts: LayoutOpts) -> Layout {
         let natural: f32 = (*a..*b).map(|i| score.measures[i].len_q as f32 * ppq + 2.0 * MEASURE_PAD).sum();
         let stretch = if fixed {
             // Same width as the other rows; only squeeze a row that is too wide.
-            if natural > line_w { line_w / natural } else { 1.0 }
+            if natural > line_w {
+                line_w / natural
+            } else {
+                1.0
+            }
         } else if si < last || natural > 0.75 * line_w {
             // Justify full lines; leave a short last line at natural width.
             line_w / natural
@@ -355,7 +354,10 @@ pub fn rolling(ui: &mut Ui, view: &RollingView) {
             while bq < m.len_q - 1e-6 {
                 let x = x_of(m.start_q + bq + shift);
                 let first = bq == 0.0;
-                clipped.line_segment([pos2(x, top), pos2(x, bot)], Stroke::new(if first { 1.4_f32 } else { 1.0 }, if first { line_col } else { grid_col }));
+                clipped.line_segment(
+                    [pos2(x, top), pos2(x, bot)],
+                    Stroke::new(if first { 1.4_f32 } else { 1.0 }, if first { line_col } else { grid_col }),
+                );
                 if first {
                     clipped.text(pos2(x + 3.0, top - 14.0), Align2::LEFT_TOP, &m.number, FontId::proportional(9.0), weak);
                 }
@@ -497,7 +499,13 @@ impl Canvas<'_> {
                 p.rect_filled(Rect::from_min_max(pos2(x - 5.0, y - 3.5), pos2(x + 5.0, y)), 0.0, color);
             }
             RestKind::Quarter => {
-                let zigzag = vec![pos2(x + 1.0, y - 8.0), pos2(x - 2.5, y - 3.5), pos2(x + 2.0, y + 0.5), pos2(x - 2.0, y + 4.5), pos2(x + 1.5, y + 8.0)];
+                let zigzag = vec![
+                    pos2(x + 1.0, y - 8.0),
+                    pos2(x - 2.5, y - 3.5),
+                    pos2(x + 2.0, y + 0.5),
+                    pos2(x - 2.0, y + 4.5),
+                    pos2(x + 1.5, y + 8.0),
+                ];
                 p.add(Shape::line(zigzag, stroke));
             }
             RestKind::Flagged(n) => {
@@ -781,7 +789,9 @@ pub fn show(ui: &mut Ui, view: &ScoreView) -> ViewOutput {
         if response.clicked() {
             if let Some(pp) = response.interact_pointer_pos() {
                 if pp.y >= rows.y0 && pp.y < rows.y0 + SYS_H {
-                    let at = (a..b).find(|&mi| pp.x >= frame.origin.x + lay.measures[mi].x0 && pp.x < frame.origin.x + lay.measures[mi].x0 + lay.measures[mi].w);
+                    let at = (a..b).find(|&mi| {
+                        pp.x >= frame.origin.x + lay.measures[mi].x0 && pp.x < frame.origin.x + lay.measures[mi].x0 + lay.measures[mi].w
+                    });
                     if let Some(mi) = at {
                         out.clicked_measure = Some((mi, ui.input(|i| i.modifiers.shift)));
                     }
@@ -864,7 +874,13 @@ fn draw_measure_marks(f: &Frame, rows: &Rows, mi: usize) {
 
     painter.text(pos2(mx0 + 2.0, rows.y0 + 14.0), Align2::LEFT_TOP, &m.number, FontId::proportional(9.0), cv.weak);
     if mi == 0 || score.measures[mi - 1].beats != m.beats || score.measures[mi - 1].beat_type != m.beat_type {
-        painter.text(pos2(mx0 + 14.0, rows.y0 + 14.0), Align2::LEFT_TOP, format!("{}/{}", m.beats, m.beat_type), FontId::proportional(9.0), cv.weak);
+        painter.text(
+            pos2(mx0 + 14.0, rows.y0 + 14.0),
+            Align2::LEFT_TOP,
+            format!("{}/{}", m.beats, m.beat_type),
+            FontId::proportional(9.0),
+            cv.weak,
+        );
     }
     // barlines
     let thick = mi + 1 == score.measures.len();

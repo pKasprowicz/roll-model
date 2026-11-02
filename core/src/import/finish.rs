@@ -26,13 +26,7 @@ pub fn finish(raw: RawScore, opts: &ImportOptions) -> Result<Score, ImportError>
     for &mi in &order {
         let rm = &raw.measures[mi];
         let idx = score.measures.len();
-        score.measures.push(Measure {
-            number: rm.number.clone(),
-            start_q: q,
-            len_q: rm.len_q,
-            beats: rm.beats,
-            beat_type: rm.beat_type,
-        });
+        score.measures.push(Measure { number: rm.number.clone(), start_q: q, len_q: rm.len_q, beats: rm.beats, beat_type: rm.beat_type });
         for n in &rm.notes {
             score.notes.push(ScoreNote {
                 q: q + n.offset_q,

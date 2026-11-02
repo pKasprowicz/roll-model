@@ -20,12 +20,12 @@ use std::time::{Duration, Instant};
 use midir::MidiOutputConnection;
 
 use crate::analysis::Expected;
-use crate::control::{ClickLevel, Control, ErrorLog};
-use crate::drums::Lane;
 use crate::audio::click::ClickBank;
 use crate::audio::mixer::NO_GROUP;
 use crate::audio::resample::resample;
 use crate::audio::EngineHandle;
+use crate::control::{ClickLevel, Control, ErrorLog};
+use crate::drums::Lane;
 use crate::metronome::{at, wait_until, AUDIO_LOOKAHEAD};
 use crate::synth::{velocity_gain, Kit, SAMPLE_RATE};
 
@@ -411,7 +411,6 @@ impl Drop for Player {
         self.stop();
     }
 }
-
 
 fn note_on_off(conn: &mut MidiOutputConnection, channel: u8, note: u8, velocity: u8) {
     let _ = conn.send(&[0x90 | channel, note, velocity.clamp(1, 127)]);

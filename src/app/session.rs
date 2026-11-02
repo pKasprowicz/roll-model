@@ -111,12 +111,8 @@ impl DrumApp {
         let Some(plan) = self.plan_run(true) else { return };
         let Some(score) = self.score.as_ref() else { return };
         let expected = expected_notes(score, plan.from, plan.to, plan.scale);
-        self.view.status = format!(
-            "Recording measures {}–{} at {:.0} BPM",
-            score.measures[plan.from].number,
-            score.measures[plan.to].number,
-            plan.bpm
-        );
+        self.view.status =
+            format!("Recording measures {}–{} at {:.0} BPM", score.measures[plan.from].number, score.measures[plan.to].number, plan.bpm);
         self.metronome = Some(Metronome::start(plan.zero, plan.clicks, self.click_options(), Some(self.playback.control.clone())));
         self.takes_started += 1;
         self.take = Some(Take {
@@ -202,12 +198,7 @@ impl DrumApp {
         self.view.status = if expected.is_empty() {
             "There are no notes in the selected measures; only the click plays.".into()
         } else {
-            format!(
-                "Listening to measures {}–{} at {:.0} BPM",
-                score.measures[plan.from].number,
-                score.measures[plan.to].number,
-                plan.bpm
-            )
+            format!("Listening to measures {}–{} at {:.0} BPM", score.measures[plan.from].number, score.measures[plan.to].number, plan.bpm)
         };
         let cues = playback::cues(&expected, &plan.clicks);
         self.playback.player = Some(Player::start(plan.zero, cues, plan.end_sec, opts, self.playback.control.clone()));
@@ -327,9 +318,10 @@ impl DrumApp {
         self.ensure_audio();
         let opts = self.play_options();
         if !opts.audio && !opts.midi_drums {
-            self.view.error = Some(Self::nothing_audible(&PlayOptions { click_audio: false, click_midi: false, ..opts }).unwrap_or_else(|| {
-                "Switch on a sound output for Listen on the Sound page of Settings to hear the instruments.".into()
-            }));
+            self.view.error =
+                Some(Self::nothing_audible(&PlayOptions { click_audio: false, click_midi: false, ..opts }).unwrap_or_else(|| {
+                    "Switch on a sound output for Listen on the Sound page of Settings to hear the instruments.".into()
+                }));
             return;
         }
         if let Some(mut p) = self.playback.audition.take() {
@@ -369,18 +361,11 @@ impl DrumApp {
             self.view.status = "Take stopped before any notes were due — nothing to grade.".into();
             return;
         }
-        let bpm = self
-            .score
-            .as_ref()
-            .map(|s| s.tempo.bpm_at(s.measures[take.from].start_q) * take.tempo_scale)
-            .unwrap_or(0.0);
+        let bpm = self.score.as_ref().map(|s| s.tempo.bpm_at(s.measures[take.from].start_q) * take.tempo_scale).unwrap_or(0.0);
         let range = if take.adaptive {
             take.label.clone()
         } else {
-            self.score
-                .as_ref()
-                .map(|s| format!("{}–{}", s.measures[take.from].number, s.measures[take.to].number))
-                .unwrap_or_default()
+            self.score.as_ref().map(|s| format!("{}–{}", s.measures[take.from].number, s.measures[take.to].number)).unwrap_or_default()
         };
         let clean = completed && take.adaptive && r.overall >= CLEAN_TAKE;
         self.history.push(TakeSummary {
@@ -448,13 +433,7 @@ impl DrumApp {
         // Skip the first 4 clicks (getting into the groove).
         let mut offsets: Vec<f64> = cal.beats[4..]
             .iter()
-            .filter_map(|b| {
-                cal.hits
-                    .iter()
-                    .map(|h| h - b)
-                    .filter(|d| d.abs() < 0.25)
-                    .min_by(|x, y| x.abs().total_cmp(&y.abs()))
-            })
+            .filter_map(|b| cal.hits.iter().map(|h| h - b).filter(|d| d.abs() < 0.25).min_by(|x, y| x.abs().total_cmp(&y.abs())))
             .collect();
         self.calibration = None;
         self.metronome = None;

@@ -70,7 +70,12 @@ mod tests {
         score.measures[0].number = "7,b".into(); // a printed number as odd as a file may hold
         let expected = expected_notes(&score, 0, 0, 1.0);
         // The second note is missed, the third is 20 ms late, and an extra crash comes.
-        let mut hits: Vec<Hit> = expected.iter().enumerate().filter(|(i, _)| *i != 1).map(|(i, e)| Hit { t: e.t + if i == 2 { 0.02 } else { 0.0 }, note: 38, velocity: 90, lane: e.lane }).collect();
+        let mut hits: Vec<Hit> = expected
+            .iter()
+            .enumerate()
+            .filter(|(i, _)| *i != 1)
+            .map(|(i, e)| Hit { t: e.t + if i == 2 { 0.02 } else { 0.0 }, note: 38, velocity: 90, lane: e.lane })
+            .collect();
         hits.push(Hit { t: 0.1, note: 49, velocity: 100, lane: Lane::Crash1 });
         let report = analyze(&expected, &hits, &Tolerances::default(), f64::INFINITY);
         let csv = take_csv(&score, &expected, &hits, &report);

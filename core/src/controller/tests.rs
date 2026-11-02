@@ -1,6 +1,6 @@
-use super::mapper::Learned;
 use super::action::ACTIONS;
 use super::mapper::ring_value;
+use super::mapper::Learned;
 use super::*;
 
 fn note(n: u8) -> Msg {
@@ -373,7 +373,10 @@ fn a_pressed_control_is_learned_the_way_its_action_needs() {
     assert_eq!((knob.input.src, knob.reading), (Src::Cc(13), Reading::Absolute));
     let endless = learn(cc(14, 65), Action::Tempo, Reading::Relative(t), false).unwrap();
     assert_eq!(endless.reading, Reading::Relative(t));
-    assert_eq!(learn(Msg::Bend { ch: 3, value: 5 }, Action::Tempo, Reading::Absolute, true).map(|l| (l.input.src, l.input.channel)), Some((Src::Bend(3), None)));
+    assert_eq!(
+        learn(Msg::Bend { ch: 3, value: 5 }, Action::Tempo, Reading::Absolute, true).map(|l| (l.input.src, l.input.channel)),
+        Some((Src::Bend(3), None))
+    );
     // The lists are only turned, so they are always relative.
     assert!(learn(cc(15, 1), Action::Score, Reading::Absolute, false).unwrap().reading.is_relative());
     assert_eq!(learn(Msg::Bend { ch: 1, value: 5 }, Action::Score, Reading::Absolute, false), None);
@@ -619,7 +622,10 @@ fn layers_are_added_and_removed_with_what_belongs_to_them() {
     assert_eq!(p.add_layer("B", Src::Note(85)), Ok(()));
     assert_eq!(p.add_layer("A", Src::Note(86)), Err(LayerError::Taken("A".into())));
     assert_eq!(p.add_layer("C", Src::Note(85)), Err(LayerError::ControlInUse("it selects layer B".into())));
-    assert!(matches!(p.add_layer("C", Src::Note(1)), Err(LayerError::ControlInUse(_))), "a control that does something cannot select a layer");
+    assert!(
+        matches!(p.add_layer("C", Src::Note(1)), Err(LayerError::ControlInUse(_))),
+        "a control that does something cannot select a layer"
+    );
     assert_eq!(p.add_layer("two words", Src::Note(9)), Err(LayerError::BadName));
     assert_eq!(p.add_layer("", Src::Note(9)), Err(LayerError::BadName));
     assert!(matches!(p.add_layer("Record", Src::Note(9)), Err(LayerError::Reserved(_))));

@@ -397,10 +397,8 @@ fn summarize(r: &mut Report, hits: &[Hit]) {
         Some(_) => (0.55, 0.25, 0.10, 0.10),
         None => (0.60, 0.28, 0.12, 0.0),
     };
-    let overall = w_acc * r.accuracy
-        + w_time * r.timing_score
-        + w_extra * (1.0 - r.extra_penalty)
-        + w_dyn * r.dynamics_score.unwrap_or(0.0);
+    let overall =
+        w_acc * r.accuracy + w_time * r.timing_score + w_extra * (1.0 - r.extra_penalty) + w_dyn * r.dynamics_score.unwrap_or(0.0);
     // Timing credit only counts as far as notes were actually played.
     let played_fraction = (r.evaluated - r.missed) as f64 / r.evaluated as f64;
     r.overall = (100.0 * (overall - (1.0 - played_fraction) * (w_time + w_extra) * 0.5)).clamp(0.0, 100.0);

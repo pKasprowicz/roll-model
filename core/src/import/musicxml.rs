@@ -15,9 +15,10 @@ pub fn parse(text: &str, opts: &ImportOptions) -> Result<RawScore, ImportError> 
     let root = xml::parse(text).map_err(|e| parse_error(format!("XML error: {e}")))?;
     match root.name.as_str() {
         "score-partwise" => {}
-        "score-timewise" => {
-            return Err(parse_error("score-timewise MusicXML is not supported; export as partwise (the default in MuseScore, Sibelius, Dorico, Finale, Guitar Pro)".into()))
-        }
+        "score-timewise" => return Err(parse_error(
+            "score-timewise MusicXML is not supported; export as partwise (the default in MuseScore, Sibelius, Dorico, Finale, Guitar Pro)"
+                .into(),
+        )),
         other => return Err(parse_error(format!("not a MusicXML score (root element <{other}>)"))),
     }
 
@@ -27,11 +28,7 @@ pub fn parse(text: &str, opts: &ImportOptions) -> Result<RawScore, ImportError> 
         .map(|e| e.text())
         .filter(|t| !t.is_empty())
         .or_else(|| root.child_text("movement-title").filter(|t| !t.is_empty()))
-        .or_else(|| {
-            root.children_named("credit")
-                .filter_map(|c| c.child_text("credit-words"))
-                .find(|t| !t.is_empty())
-        })
+        .or_else(|| root.children_named("credit").filter_map(|c| c.child_text("credit-words")).find(|t| !t.is_empty()))
         .unwrap_or_else(|| "Untitled".to_string());
 
     // part id -> (name, instrument id -> lane)
@@ -54,11 +51,7 @@ pub fn parse(text: &str, opts: &ImportOptions) -> Result<RawScore, ImportError> 
                     let lane = gm_lane(n - 1);
                     // GM can't tell e.g. "Tom 1" vs a custom name; prefer the
                     // name when GM says "Other".
-                    let lane = if lane == Lane::Other {
-                        names.get(iid).and_then(|nm| lane_from_name(nm)).unwrap_or(lane)
-                    } else {
-                        lane
-                    };
+                    let lane = if lane == Lane::Other { names.get(iid).and_then(|nm| lane_from_name(nm)).unwrap_or(lane) } else { lane };
                     instruments.insert(iid.to_string(), lane);
                 }
             }
@@ -77,10 +70,8 @@ pub fn parse(text: &str, opts: &ImportOptions) -> Result<RawScore, ImportError> 
         return Err(parse_error("the file contains no parts".into()));
     }
     let name_of = |p: &Element| part_names.get(p.attr("id").unwrap_or_default()).cloned().unwrap_or_default();
-    let is_drums = |p: &Element| {
-        p.find("unpitched").is_some()
-            || p.find("clef").and_then(|c| c.child_text("sign")).is_some_and(|s| s == "percussion")
-    };
+    let is_drums =
+        |p: &Element| p.find("unpitched").is_some() || p.find("clef").and_then(|c| c.child_text("sign")).is_some_and(|s| s == "percussion");
     let parts: Vec<PartInfo> = elements.iter().map(|p| PartInfo { name: name_of(p), drums: is_drums(p) }).collect();
     // The part that was asked for, else the first with unpitched notes, else the first with a
     // percussion clef, else the first.
@@ -101,12 +92,8 @@ pub fn parse(text: &str, opts: &ImportOptions) -> Result<RawScore, ImportError> 
 }
 
 fn parse_f64(s: &str) -> Option<f64> {
-    let t: String = s
-        .trim()
-        .chars()
-        .skip_while(|c| !c.is_ascii_digit() && *c != '.')
-        .take_while(|c| c.is_ascii_digit() || *c == '.')
-        .collect();
+    let t: String =
+        s.trim().chars().skip_while(|c| !c.is_ascii_digit() && *c != '.').take_while(|c| c.is_ascii_digit() || *c == '.').collect();
     t.parse().ok()
 }
 
@@ -151,11 +138,7 @@ fn direction_tempo(dir: &Element) -> Option<f64> {
     Some(per_min * mult)
 }
 
-fn parse_measures(
-    part: &Element,
-    instruments: &HashMap<String, Lane>,
-    warnings: &mut Vec<String>,
-) -> Vec<RawMeasure> {
+fn parse_measures(part: &Element, instruments: &HashMap<String, Lane>, warnings: &mut Vec<String>) -> Vec<RawMeasure> {
     let mut out = Vec::new();
     let mut divisions = 1.0f64;
     let mut beats = 4u32;
@@ -167,10 +150,7 @@ fn parse_measures(
     let mut repeating: Option<usize> = None;
 
     for m in part.children_named("measure") {
-        let mut rm = RawMeasure {
-            number: m.attr("number").unwrap_or_default().to_string(),
-            ..Default::default()
-        };
+        let mut rm = RawMeasure { number: m.attr("number").unwrap_or_default().to_string(), ..Default::default() };
         let mut pos = 0.0f64; // in divisions
         let mut max_pos = 0.0f64;
         let mut last_start = 0.0f64;
@@ -185,10 +165,8 @@ fn parse_measures(
                         }
                     }
                     if let Some(t) = el.child("time") {
-                        let b: u32 = t
-                            .child_text("beats")
-                            .map(|s| s.split('+').filter_map(|x| x.trim().parse::<u32>().ok()).sum())
-                            .unwrap_or(0);
+                        let b: u32 =
+                            t.child_text("beats").map(|s| s.split('+').filter_map(|x| x.trim().parse::<u32>().ok()).sum()).unwrap_or(0);
                         let bt = t.child_text("beat-type").and_then(|s| s.trim().parse::<u32>().ok());
                         if b > 0 {
                             beats = b;
@@ -272,9 +250,7 @@ fn parse_measures(
                     if el.has_child("cue") {
                         continue;
                     }
-                    let tie_stop = el
-                        .children_named("tie")
-                        .any(|t| t.attr("type") == Some("stop"));
+                    let tie_stop = el.children_named("tie").any(|t| t.attr("type") == Some("stop"));
                     if tie_stop {
                         continue;
                     }
@@ -310,9 +286,7 @@ fn parse_measures(
         out.push(rm);
     }
     if unknown_instruments > 0 {
-        warnings.push(format!(
-            "{unknown_instruments} notes had no recognisable instrument; guessed from staff position"
-        ));
+        warnings.push(format!("{unknown_instruments} notes had no recognisable instrument; guessed from staff position"));
     }
     // A rest belongs to the hands or the feet by its voice; a voice without notes is the hands' if
     // it is the first.
@@ -326,13 +300,7 @@ fn voice_of(note: &Element) -> String {
     note.child_text("voice").map(|v| v.trim().to_string()).unwrap_or_else(|| "1".to_string())
 }
 
-fn parse_note(
-    el: &Element,
-    offset_q: f64,
-    grace: bool,
-    instruments: &HashMap<String, Lane>,
-    unknown: &mut usize,
-) -> Option<RawNote> {
+fn parse_note(el: &Element, offset_q: f64, grace: bool, instruments: &HashMap<String, Lane>, unknown: &mut usize) -> Option<RawNote> {
     let (step, octave) = if let Some(u) = el.child("unpitched") {
         (u.child_text("display-step"), u.child_text("display-octave"))
     } else if let Some(p) = el.child("pitch") {
@@ -350,13 +318,8 @@ fn parse_note(
     let ghost = nh.and_then(|h| h.attr("parentheses")) == Some("yes");
 
     let notations = el.child("notations");
-    let accent = notations
-        .map(|n| n.find("accent").is_some() || n.find("strong-accent").is_some())
-        .unwrap_or(false);
-    let open = notations
-        .and_then(|n| n.child("technical"))
-        .map(|t| t.has_child("open") || t.has_child("open-string"))
-        .unwrap_or(false);
+    let accent = notations.map(|n| n.find("accent").is_some() || n.find("strong-accent").is_some()).unwrap_or(false);
+    let open = notations.and_then(|n| n.child("technical")).map(|t| t.has_child("open") || t.has_child("open-string")).unwrap_or(false);
 
     let inst = el.child("instrument").and_then(|i| i.attr("id"));
     let mut lane = match inst.and_then(|id| instruments.get(id)) {
@@ -382,7 +345,13 @@ fn parse_note(
         offset_q,
         lane,
         staff_step: pos.unwrap_or(default_step),
-        head: if nh.is_some() { head } else if pos.is_none() { default_head } else { head },
+        head: if nh.is_some() {
+            head
+        } else if pos.is_none() {
+            default_head
+        } else {
+            head
+        },
         accent,
         ghost,
         grace,
@@ -430,11 +399,8 @@ mod tests {
         // one missed kick and one extra crash.
         let exp = expected_notes(&s, 1, 3, 0.8);
         assert!((exp[0].t).abs() < 1e-9, "range starts at t=0");
-        let mut hits: Vec<Hit> = exp
-            .iter()
-            .skip(1)
-            .map(|e| Hit { t: e.t + 0.012, note: 0, velocity: if e.accent { 120 } else { 80 }, lane: e.lane })
-            .collect();
+        let mut hits: Vec<Hit> =
+            exp.iter().skip(1).map(|e| Hit { t: e.t + 0.012, note: 0, velocity: if e.accent { 120 } else { 80 }, lane: e.lane }).collect();
         hits.push(Hit { t: 1.1, note: 49, velocity: 100, lane: Lane::Crash1 });
         let r = analyze(&exp, &hits, &Tolerances::default(), f64::INFINITY);
         assert_eq!(r.results[0].grade, Grade::Missed);
@@ -452,8 +418,11 @@ mod tests {
 
     #[test]
     fn printed_rests_are_kept_with_their_voice_and_hidden_ones_are_not() {
-        let note = |voice: u32, step: &str, stem: &str| format!("<note><unpitched><display-step>{step}</display-step><display-octave>5</display-octave></unpitched><duration>2</duration><voice>{voice}</voice><stem>{stem}</stem></note>");
-        let rest = |voice: u32, dur: u32, extra: &str| format!("<note><rest{extra}/><duration>{dur}</duration><voice>{voice}</voice></note>");
+        let note = |voice: u32, step: &str, stem: &str| {
+            format!("<note><unpitched><display-step>{step}</display-step><display-octave>5</display-octave></unpitched><duration>2</duration><voice>{voice}</voice><stem>{stem}</stem></note>")
+        };
+        let rest =
+            |voice: u32, dur: u32, extra: &str| format!("<note><rest{extra}/><duration>{dur}</duration><voice>{voice}</voice></note>");
         let hidden = "<note print-object=\"no\"><rest/><duration>2</duration><voice>2</voice></note>";
         let body = format!(
             "<measure number=\"1\"><attributes><divisions>2</divisions><time><beats>4</beats><beat-type>4</beat-type></time></attributes>             {}{}{}<backup><duration>8</duration></backup>{}{}{hidden}</measure>             <measure number=\"2\">{}</measure>",
@@ -467,6 +436,9 @@ mod tests {
         let xml = format!("<score-partwise><part-list><score-part id=\"P1\"><part-name>D</part-name></score-part></part-list><part id=\"P1\">{body}</part></score-partwise>");
         let s = parse_sample(&xml);
         let rests: Vec<(usize, f64, f64, bool, bool)> = s.rests.iter().map(|r| (r.measure, r.q, r.dur_q, r.up, r.whole_bar)).collect();
-        assert_eq!(rests, vec![(0, 1.0, 1.0, true, false), (0, 2.0, 2.0, true, false), (0, 1.0, 2.0, false, false), (1, 4.0, 4.0, true, true)]);
+        assert_eq!(
+            rests,
+            vec![(0, 1.0, 1.0, true, false), (0, 2.0, 2.0, true, false), (0, 1.0, 2.0, false, false), (1, 4.0, 4.0, true, true)]
+        );
     }
 }

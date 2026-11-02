@@ -371,7 +371,10 @@ impl Preset {
         }
         let lower = name.to_ascii_lowercase();
         let words = ["note", "cc", "bend", "ch", "rel", "abs", "on", "off", "scale", "mackie", "twos", "offset", "signbit2"];
-        if words.contains(&lower.as_str()) || ACTIONS.iter().any(|i| i.name == lower) || ["mute", "solo", "gain", "audition"].contains(&lower.as_str()) {
+        if words.contains(&lower.as_str())
+            || ACTIONS.iter().any(|i| i.name == lower)
+            || ["mute", "solo", "gain", "audition"].contains(&lower.as_str())
+        {
             return Err(LayerError::Reserved(name.to_string()));
         }
         if self.layers.iter().any(|l| l.0 == name) {
@@ -482,7 +485,8 @@ pub fn load_preset(name: &str, dir: Option<&Path>) -> Result<Preset, LoadPresetE
     let mut preset = match &source {
         PresetSource::BuiltIn(text) => Preset::parse(text),
         PresetSource::File(path) => {
-            let text = std::fs::read_to_string(path).map_err(|e| LoadPresetError::Unreadable { path: path.clone(), reason: e.to_string() })?;
+            let text =
+                std::fs::read_to_string(path).map_err(|e| LoadPresetError::Unreadable { path: path.clone(), reason: e.to_string() })?;
             Preset::parse(&text)
         }
     };

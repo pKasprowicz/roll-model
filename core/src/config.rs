@@ -614,7 +614,11 @@ impl Config {
                     if let (Some(bars), Some(align), Some(path)) = (parts.next(), parts.next(), parts.next()) {
                         if let (Ok(bars), Ok(align)) = (bars.parse::<usize>(), align.parse::<usize>()) {
                             let layout = RowLayout { bars_per_row: bars.min(16), align_bar: align.min(9999) };
-                            if !path.is_empty() && c.layouts.len() < MAX_LAYOUTS && c.layout_of(path).is_none() && layout != RowLayout::default() {
+                            if !path.is_empty()
+                                && c.layouts.len() < MAX_LAYOUTS
+                                && c.layout_of(path).is_none()
+                                && layout != RowLayout::default()
+                            {
                                 c.layouts.push((path.to_string(), layout));
                             }
                         }

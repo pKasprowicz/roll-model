@@ -7,10 +7,10 @@ use crate::controller::{Action, Command};
 use crate::drums::Lane;
 use crate::rudiments::{Lead, MAX_REPEATS};
 
-use super::*;
+use super::super::{rudiment, DrumApp, Source, Tab};
 use super::apply::{register_tap, shifted_range, worst_measure, TAPS_KEPT};
 use super::page::copy_preset;
-use super::super::{rudiment, DrumApp, Source, Tab};
+use super::*;
 
 fn sample() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("examples").join("basic_rock_beat.musicxml")
@@ -343,7 +343,14 @@ fn the_controller_page_draws_with_and_without_a_controller() {
     // The built-in presets come first; the user's own (a folder this test does not control) follow.
     assert_eq!(
         app.controller.presets[..6],
-        ["Behringer X-Touch Mini", "Behringer X-Touch Compact", "Novation Launch Control XL", "Korg nanoKONTROL2", "Akai MPK Mini", "Arturia BeatStep"]
+        [
+            "Behringer X-Touch Mini",
+            "Behringer X-Touch Compact",
+            "Novation Launch Control XL",
+            "Korg nanoKONTROL2",
+            "Akai MPK Mini",
+            "Arturia BeatStep"
+        ]
     );
     assert_eq!(app.controller.kinds["Behringer X-Touch Mini"], controller::PresetKind::Mackie);
     assert_eq!(app.controller.kinds["Korg nanoKONTROL2"], controller::PresetKind::Midi);

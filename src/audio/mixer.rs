@@ -97,7 +97,14 @@ impl Default for Mixer {
 
 impl Mixer {
     pub fn new() -> Mixer {
-        Mixer { voices: Vec::with_capacity(MAX_VOICES), pending: Vec::with_capacity(MAX_PENDING), frame: 0, next_due: u64::MAX, counters: Counters::default(), graveyard: None }
+        Mixer {
+            voices: Vec::with_capacity(MAX_VOICES),
+            pending: Vec::with_capacity(MAX_PENDING),
+            frame: 0,
+            next_due: u64::MAX,
+            counters: Counters::default(),
+            graveyard: None,
+        }
     }
 
     /// A mixer that hands the samples of finished sounds to `graveyard`.
@@ -339,7 +346,8 @@ mod tests {
     fn a_choked_voice_fades_out_and_ends() {
         let mut m = Mixer::new();
         let open = Command::Play(Trigger { run: 1, start_frame: 0, sample: constant(1.0, 10_000), gain: 1.0, group: 4, chokes: 0 });
-        let closed = Command::Play(Trigger { run: 1, start_frame: 1000, sample: constant(0.0, 1), gain: 1.0, group: NO_GROUP, chokes: 1 << 4 });
+        let closed =
+            Command::Play(Trigger { run: 1, start_frame: 1000, sample: constant(0.0, 1), gain: 1.0, group: NO_GROUP, chokes: 1 << 4 });
         m.apply(open);
         m.apply(closed);
         let out = render_mono(&mut m, 2000);

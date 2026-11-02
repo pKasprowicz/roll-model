@@ -10,8 +10,15 @@ pub enum Ev {
     /// Numerator and the power of two of the denominator (3 = an eighth).
     TimeSig(u8, u8),
     TrackName(String),
-    NoteOn { ch: u8, key: u8, vel: u8 },
-    NoteOff { ch: u8, key: u8 },
+    NoteOn {
+        ch: u8,
+        key: u8,
+        vel: u8,
+    },
+    NoteOff {
+        ch: u8,
+        key: u8,
+    },
 }
 
 fn vlq(mut value: u32, out: &mut Vec<u8>) {

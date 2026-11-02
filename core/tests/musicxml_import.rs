@@ -40,8 +40,7 @@ fn check(name: &str, actual: &str) {
         std::fs::write(&path, actual).unwrap();
         return;
     }
-    let want = std::fs::read_to_string(&path)
-        .unwrap_or_else(|_| panic!("no snapshot {}; run with UPDATE_SNAPSHOTS=1", path.display()));
+    let want = std::fs::read_to_string(&path).unwrap_or_else(|_| panic!("no snapshot {}; run with UPDATE_SNAPSHOTS=1", path.display()));
     // Git may have turned the line ends into CRLF on Windows.
     assert_eq!(want.replace("\r\n", "\n"), actual, "snapshot {name}");
 }
@@ -114,24 +113,30 @@ fn repeat_score() -> String {
     let first_end = "<barline location=\"right\"><ending number=\"1\" type=\"stop\"/><repeat direction=\"backward\"/></barline>";
     let second = "<barline location=\"left\"><ending number=\"2\" type=\"start\"/></barline>";
     let second_end = "<barline location=\"right\"><ending number=\"2\" type=\"stop\"/></barline>";
-    score(&[
-        measure("1", &format!("{FOUR_FOUR}{fwd}{}{}", note("K", 2, ""), note("S", 2, ""))),
-        measure("2", &note("H", 4, "")),
-        measure("3", &format!("{first}{}{first_end}", note("S", 8, ""))),
-        measure("4", &format!("{second}{}{second_end}", note("C", 8, ""))),
-        measure("5", &note("K", 8, "")),
-    ].concat())
+    score(
+        &[
+            measure("1", &format!("{FOUR_FOUR}{fwd}{}{}", note("K", 2, ""), note("S", 2, ""))),
+            measure("2", &note("H", 4, "")),
+            measure("3", &format!("{first}{}{first_end}", note("S", 8, ""))),
+            measure("4", &format!("{second}{}{second_end}", note("C", 8, ""))),
+            measure("5", &note("K", 8, "")),
+        ]
+        .concat(),
+    )
 }
 
 fn tempo_score() -> String {
     let at_start = "<direction><sound tempo=\"90\"/></direction>";
     let half_note = "<direction><direction-type><metronome><beat-unit>half</beat-unit><per-minute>60</per-minute></metronome></direction-type><offset>2</offset></direction>";
     let mid_bar = "<sound tempo=\"150\"/>";
-    score(&[
-        measure("1", &format!("{FOUR_FOUR}{at_start}{}", note("K", 8, ""))),
-        measure("2", &format!("{half_note}{}", note("S", 8, ""))),
-        measure("3", &format!("{}{mid_bar}{}", note("H", 4, ""), note("H", 4, ""))),
-    ].concat())
+    score(
+        &[
+            measure("1", &format!("{FOUR_FOUR}{at_start}{}", note("K", 8, ""))),
+            measure("2", &format!("{half_note}{}", note("S", 8, ""))),
+            measure("3", &format!("{}{mid_bar}{}", note("H", 4, ""), note("H", 4, ""))),
+        ]
+        .concat(),
+    )
 }
 
 fn kitchen_sink_score() -> String {
@@ -145,24 +150,27 @@ fn kitchen_sink_score() -> String {
     let no_instrument = "<note><unpitched><display-step>G</display-step><display-octave>5</display-octave></unpitched><duration>2</duration><voice>1</voice><notehead>x</notehead></note>";
     let six_eight = "<attributes><time><beats>6</beats><beat-type>8</beat-type></time></attributes>";
     let two_plus_three = "<attributes><time><beats>2+3</beats><beat-type>8</beat-type></time></attributes>";
-    score(&[
-        // A pickup bar of one beat.
-        format!("<measure number=\"0\" implicit=\"yes\">{FOUR_FOUR}{}</measure>", note("S", 2, "")),
-        measure(
-            "1",
-            &format!(
-                "{}{grace}{}{}{}{}{chord_kick}{}{cue}",
-                note("H", 2, accent),
-                note("S", 2, ghost),
-                note("H", 2, open),
-                note("H", 2, tie_stop),
-                note("K", 2, ""),
-                note("K", 2, ""), // the same instant as the chord above: one note survives
+    score(
+        &[
+            // A pickup bar of one beat.
+            format!("<measure number=\"0\" implicit=\"yes\">{FOUR_FOUR}{}</measure>", note("S", 2, "")),
+            measure(
+                "1",
+                &format!(
+                    "{}{grace}{}{}{}{}{chord_kick}{}{cue}",
+                    note("H", 2, accent),
+                    note("S", 2, ghost),
+                    note("H", 2, open),
+                    note("H", 2, tie_stop),
+                    note("K", 2, ""),
+                    note("K", 2, ""), // the same instant as the chord above: one note survives
+                ),
             ),
-        ),
-        measure("2", &format!("{six_eight}{}{}", note("K", 3, ""), note("S", 3, ""))),
-        measure("3", &format!("{two_plus_three}{no_instrument}{}", note("C", 2, ""))),
-    ].concat())
+            measure("2", &format!("{six_eight}{}{}", note("K", 3, ""), note("S", 3, ""))),
+            measure("3", &format!("{two_plus_three}{no_instrument}{}", note("C", 2, ""))),
+        ]
+        .concat(),
+    )
 }
 
 fn triplet_score() -> String {
@@ -188,21 +196,24 @@ fn voices_score() -> String {
     };
     let rest = |voice: u32, dur: u32, extra: &str| format!("<note><rest{extra}/><duration>{dur}</duration><voice>{voice}</voice></note>");
     let hidden = "<note print-object=\"no\"><rest/><duration>2</duration><voice>2</voice></note>";
-    score(&[
-        measure(
-            "1",
-            &format!(
-                "{FOUR_FOUR}{}{}{}<backup><duration>8</duration></backup>{}{}{hidden}",
-                n(1, "H", "G", 5, "up"),
-                rest(1, 2, ""),
-                rest(1, 4, ""),
-                n(2, "K", "F", 4, "down"),
-                rest(2, 4, ""),
+    score(
+        &[
+            measure(
+                "1",
+                &format!(
+                    "{FOUR_FOUR}{}{}{}<backup><duration>8</duration></backup>{}{}{hidden}",
+                    n(1, "H", "G", 5, "up"),
+                    rest(1, 2, ""),
+                    rest(1, 4, ""),
+                    n(2, "K", "F", 4, "down"),
+                    rest(2, 4, ""),
+                ),
             ),
-        ),
-        measure("2", &rest(1, 8, " measure=\"yes\"")),
-        measure("3", &format!("<forward><duration>4</duration></forward>{}", n(1, "S", "C", 5, "up"))),
-    ].concat())
+            measure("2", &rest(1, 8, " measure=\"yes\"")),
+            measure("3", &format!("<forward><duration>4</duration></forward>{}", n(1, "S", "C", 5, "up"))),
+        ]
+        .concat(),
+    )
 }
 
 #[test]
@@ -351,8 +362,14 @@ fn files_of_every_container_and_encoding() {
 fn bytes_that_are_not_a_readable_score_say_what_they_are() {
     let say = |bytes: &[u8], name: &str| import_bytes(bytes, name, &ImportOptions::default()).unwrap_err().to_string();
     assert_eq!(say(b"just some words", "notes.txt"), "not a score file this program reads (it opens .musicxml, .xml, .mxl, .mid, .midi)");
-    assert_eq!(say(b"PK\x03\x04", "song.mscz"), "MuseScore files are not read directly; export the score as MusicXML from MuseScore and open that file");
-    assert_eq!(say(b"\x18FICHIER GUITAR PRO v5.00", "song"), "Guitar Pro files are not read directly; export the score as MusicXML from Guitar Pro and open that file");
+    assert_eq!(
+        say(b"PK\x03\x04", "song.mscz"),
+        "MuseScore files are not read directly; export the score as MusicXML from MuseScore and open that file"
+    );
+    assert_eq!(
+        say(b"\x18FICHIER GUITAR PRO v5.00", "song"),
+        "Guitar Pro files are not read directly; export the score as MusicXML from Guitar Pro and open that file"
+    );
     let mut tight = ImportOptions::default();
     tight.limits = Limits { max_bytes: 10, ..Limits::default() };
     let err = import_bytes(b"<score-partwise/>, much longer than ten bytes", "x.musicxml", &tight).unwrap_err();
@@ -361,21 +378,25 @@ fn bytes_that_are_not_a_readable_score_say_what_they_are() {
 
 #[test]
 fn measure_repeats_copy_the_music_of_the_measures_before() {
-    let start = |n: &str| format!("<attributes><measure-style><measure-repeat type=\"start\">{n}</measure-repeat></measure-style></attributes>");
+    let start =
+        |n: &str| format!("<attributes><measure-style><measure-repeat type=\"start\">{n}</measure-repeat></measure-style></attributes>");
     let stop = "<attributes><measure-style><measure-repeat type=\"stop\"/></measure-style></attributes>";
     let whole_bar_rest = "<note><rest measure=\"yes\"/><duration>8</duration><voice>1</voice></note>";
     // bar 1 kick, bar 2 and 3 = "%" (one bar back, the second with a rest written in it), bar 4 snare,
     // bars 5 and 6 are a one-bar group again, bars 7 and 8 repeat bars 5 and 6 two at a time.
-    let text = score(&[
-        measure("1", &format!("{FOUR_FOUR}{}", note("K", 2, ""))),
-        measure("2", &start("1")),
-        measure("3", whole_bar_rest),
-        measure("4", &format!("{stop}{}", note("S", 2, ""))),
-        measure("5", &note("H", 2, "")),
-        measure("6", &note("C", 2, "")),
-        measure("7", &start("2")),
-        measure("8", ""),
-    ].concat());
+    let text = score(
+        &[
+            measure("1", &format!("{FOUR_FOUR}{}", note("K", 2, ""))),
+            measure("2", &start("1")),
+            measure("3", whole_bar_rest),
+            measure("4", &format!("{stop}{}", note("S", 2, ""))),
+            measure("5", &note("H", 2, "")),
+            measure("6", &note("C", 2, "")),
+            measure("7", &start("2")),
+            measure("8", ""),
+        ]
+        .concat(),
+    );
     let s = parse(&text, true).unwrap();
     let lanes: Vec<(usize, String)> = s.notes.iter().map(|n| (n.measure, format!("{:?}", n.lane))).collect();
     let expected: Vec<(usize, String)> =

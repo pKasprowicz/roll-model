@@ -152,7 +152,11 @@ fn mixer_layout_and_metronome_settings_are_clamped_and_default_when_missing() {
     let old = Config::from_text("latency_ms = 5\n");
     assert_eq!((old.bars_per_row, old.layout_align_bar, old.metro_bpm, old.metro_beats), (0, 0, 100.0, 4));
     assert!(old.lane_gain.is_empty() && old.lane_mute.is_empty() && old.audio_output.is_empty());
-    assert_eq!((old.controller_preset.as_str(), old.controller_port.as_str()), (DEFAULT_CONTROLLER, ""), "the X-Touch Mini unless another is chosen");
+    assert_eq!(
+        (old.controller_preset.as_str(), old.controller_port.as_str()),
+        (DEFAULT_CONTROLLER, ""),
+        "the X-Touch Mini unless another is chosen"
+    );
     assert!(Config::from_text("controller_preset = \n").controller_preset.is_empty(), "\"none\" stays chosen");
     // Defaults are not written out for the mixer.
     assert!(!Config::default().to_text().contains("gain."));

@@ -229,11 +229,7 @@ mod tests {
                 }
             }
             assert!(starts.len() >= 90, "drift {drift}: only {} sounds played", starts.len());
-            let errors_ms: Vec<f64> = starts
-                .iter()
-                .zip(&wanted)
-                .map(|(frame, t)| (*frame as f64 * frame_secs + w0 - t) * 1000.0)
-                .collect();
+            let errors_ms: Vec<f64> = starts.iter().zip(&wanted).map(|(frame, t)| (*frame as f64 * frame_secs + w0 - t) * 1000.0).collect();
             let worst = errors_ms.iter().fold(0.0f64, |m, e| m.max(e.abs()));
             println!("drift {drift:+.0e}: {} sounds, worst onset error {worst:.3} ms", starts.len());
             assert!(worst < 0.5, "drift {drift}: worst onset error {worst:.3} ms of {} sounds", starts.len());

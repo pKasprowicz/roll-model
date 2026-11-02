@@ -146,12 +146,10 @@ fn level_of(d: f64) -> u8 {
     if d >= 1.0 - EPS {
         return 0;
     }
-    const KNOWN: [(f64, u8); 8] = [(1.0 / 2.0, 1), (1.0 / 3.0, 1), (1.0 / 4.0, 2), (1.0 / 6.0, 2), (1.0 / 8.0, 3), (1.0 / 12.0, 3), (1.0 / 16.0, 4), (1.0 / 24.0, 4)];
+    const KNOWN: [(f64, u8); 8] =
+        [(1.0 / 2.0, 1), (1.0 / 3.0, 1), (1.0 / 4.0, 2), (1.0 / 6.0, 2), (1.0 / 8.0, 3), (1.0 / 12.0, 3), (1.0 / 16.0, 4), (1.0 / 24.0, 4)];
     let d = d.max(1.0 / 64.0);
-    KNOWN
-        .iter()
-        .min_by(|a, b| (d / a.0).ln().abs().total_cmp(&(d / b.0).ln().abs()))
-        .map_or(1, |k| k.1)
+    KNOWN.iter().min_by(|a, b| (d / a.0).ln().abs().total_cmp(&(d / b.0).ln().abs())).map_or(1, |k| k.1)
 }
 
 /// The number over a group whose onsets do not fall on a sixteenth grid: 3 for thirds (and for
@@ -268,12 +266,25 @@ mod tests {
     use crate::score::{Measure, ScoreNote};
 
     fn note(q: f64, lane: Lane) -> ScoreNote {
-        ScoreNote { q, measure: (q / 4.0) as usize, lane, staff_step: 4, head: NoteHead::Normal, accent: false, ghost: false, grace: false, grace_order: 0, hand: None, stem_up: None }
+        ScoreNote {
+            q,
+            measure: (q / 4.0) as usize,
+            lane,
+            staff_step: 4,
+            head: NoteHead::Normal,
+            accent: false,
+            ghost: false,
+            grace: false,
+            grace_order: 0,
+            hand: None,
+            stem_up: None,
+        }
     }
 
     fn score_of(beats: u32, beat_type: u32, bars: usize, notes: Vec<ScoreNote>) -> Score {
         let len = f64::from(beats) * 4.0 / f64::from(beat_type);
-        let measures = (0..bars).map(|i| Measure { number: (i + 1).to_string(), start_q: i as f64 * len, len_q: len, beats, beat_type }).collect();
+        let measures =
+            (0..bars).map(|i| Measure { number: (i + 1).to_string(), start_q: i as f64 * len, len_q: len, beats, beat_type }).collect();
         let mut notes = notes;
         for n in &mut notes {
             n.measure = (n.q / len + EPS).floor() as usize;

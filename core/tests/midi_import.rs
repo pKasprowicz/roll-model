@@ -90,7 +90,8 @@ fn tempo_changes_and_a_new_time_signature_are_kept() {
     let mut conductor = vec![(0, Ev::Tempo(500_000)), (0, Ev::TimeSig(4, 2))];
     conductor.push((3840, Ev::TimeSig(3, 2)));
     conductor.push((3840, Ev::Tempo(666_667)));
-    let drums = track_of(&[(0.0, KICK, 100), (4.0, SNARE, 100), (8.0, KICK, 100), (9.0, HAT, 100), (10.0, SNARE, 100), (11.0, KICK, 100)], 9);
+    let drums =
+        track_of(&[(0.0, KICK, 100), (4.0, SNARE, 100), (8.0, KICK, 100), (9.0, HAT, 100), (10.0, SNARE, 100), (11.0, KICK, 100)], 9);
     let loaded = open(&write_smf(1, PPQ, &[conductor, drums])).unwrap();
     let s = loaded.score;
     let lens: Vec<(f64, u32, u32)> = s.measures.iter().map(|m| (m.len_q, m.beats, m.beat_type)).collect();
@@ -250,7 +251,8 @@ fn real_files() {
     walk(std::path::Path::new(&dir), &mut files);
     files.sort();
     let (mut ok, mut failed, mut warnings) = (0, 0, std::collections::BTreeMap::<String, usize>::new());
-    let (mut free, mut offsets, mut shifts, mut merged, mut notes, mut accents, mut ghosts, mut moved) = (0, Vec::new(), Vec::new(), 0, 0, 0, 0, 0);
+    let (mut free, mut offsets, mut shifts, mut merged, mut notes, mut accents, mut ghosts, mut moved) =
+        (0, Vec::new(), Vec::new(), 0, 0, 0, 0, 0);
     let mut subdivisions = std::collections::BTreeMap::<u32, usize>::new();
     for path in &files {
         match roll_model_core::import::load_score(path, &ImportOptions::default()) {
@@ -261,7 +263,14 @@ fn real_files() {
                     for n in &loaded.score.notes {
                         *lanes.entry(format!("{:?}", n.lane)).or_default() += 1;
                     }
-                    println!("FILE {}: {} bars, {:.0} BPM, {} accents {} ghosts, {lanes:?}", path.file_name().unwrap().to_string_lossy(), loaded.score.measures.len(), loaded.score.tempo.bpm_at(0.0), loaded.score.notes.iter().filter(|n| n.accent).count(), loaded.score.notes.iter().filter(|n| n.ghost).count());
+                    println!(
+                        "FILE {}: {} bars, {:.0} BPM, {} accents {} ghosts, {lanes:?}",
+                        path.file_name().unwrap().to_string_lossy(),
+                        loaded.score.measures.len(),
+                        loaded.score.tempo.bpm_at(0.0),
+                        loaded.score.notes.iter().filter(|n| n.accent).count(),
+                        loaded.score.notes.iter().filter(|n| n.ghost).count()
+                    );
                 }
                 if let Some(m) = &loaded.report.midi {
                     free += usize::from(m.free_time);
@@ -278,8 +287,15 @@ fn real_files() {
                 ghosts += loaded.score.notes.iter().filter(|n| n.ghost).count();
                 check_invariants(&loaded.score).unwrap_or_else(|e| panic!("{}: {e}", path.display()));
                 for w in &loaded.score.warnings {
-                    if w.contains("No drum notes") || w.contains("no recognisable") { println!("NOTE {}: {w}", path.file_name().unwrap().to_string_lossy()); }
-                    let key: String = w.split_once("(keys").map_or(w.clone(), |(_, k)| format!("keys{}", k.split(")").next().unwrap_or(""))).chars().filter(|c| !c.is_ascii_alphabetic() || true).collect();
+                    if w.contains("No drum notes") || w.contains("no recognisable") {
+                        println!("NOTE {}: {w}", path.file_name().unwrap().to_string_lossy());
+                    }
+                    let key: String = w
+                        .split_once("(keys")
+                        .map_or(w.clone(), |(_, k)| format!("keys{}", k.split(")").next().unwrap_or("")))
+                        .chars()
+                        .filter(|c| !c.is_ascii_alphabetic() || true)
+                        .collect();
                     *warnings.entry(key).or_default() += 1;
                 }
             }
@@ -293,8 +309,21 @@ fn real_files() {
     offsets.sort_by(f64::total_cmp);
     shifts.sort_by(f64::total_cmp);
     let pct = |v: &Vec<f64>, p: usize| v.get(v.len().saturating_sub(1) * p / 100).copied().unwrap_or(0.0);
-    println!("free time: {free}; offset ms p5/p50/p95: {:.1} {:.1} {:.1}; max shift ms p50/p90/max: {:.1} {:.1} {:.1}", pct(&offsets, 5), pct(&offsets, 50), pct(&offsets, 95), pct(&shifts, 50), pct(&shifts, 90), pct(&shifts, 100));
-    println!("notes {notes}, moved over {} ms: {moved}, merged: {merged}, accents {accents} ({:.1}%), ghosts {ghosts} ({:.1}%)", roll_model_core::import::MOVED_MS, accents as f64 * 100.0 / notes.max(1) as f64, ghosts as f64 * 100.0 / notes.max(1) as f64);
+    println!(
+        "free time: {free}; offset ms p5/p50/p95: {:.1} {:.1} {:.1}; max shift ms p50/p90/max: {:.1} {:.1} {:.1}",
+        pct(&offsets, 5),
+        pct(&offsets, 50),
+        pct(&offsets, 95),
+        pct(&shifts, 50),
+        pct(&shifts, 90),
+        pct(&shifts, 100)
+    );
+    println!(
+        "notes {notes}, moved over {} ms: {moved}, merged: {merged}, accents {accents} ({:.1}%), ghosts {ghosts} ({:.1}%)",
+        roll_model_core::import::MOVED_MS,
+        accents as f64 * 100.0 / notes.max(1) as f64,
+        ghosts as f64 * 100.0 / notes.max(1) as f64
+    );
     println!("beats by subdivision: {subdivisions:?}");
     for (w, n) in warnings {
         println!("{n:5} x {w}");
@@ -351,7 +380,9 @@ fn compare_two_files() {
     }
     let load = |p: &std::ffi::OsString| roll_model_core::import::load_score(std::path::Path::new(p), &options).unwrap().score;
     let (a, b) = (load(&a), load(&b));
-    let key = |s: &roll_model_core::score::Score| -> Vec<(i64, String)> { s.notes.iter().map(|n| ((n.q * 1000.0).round() as i64, format!("{:?}", n.lane))).collect() };
+    let key = |s: &roll_model_core::score::Score| -> Vec<(i64, String)> {
+        s.notes.iter().map(|n| ((n.q * 1000.0).round() as i64, format!("{:?}", n.lane))).collect()
+    };
     let (ka, kb) = (key(&a), key(&b));
     println!("A: {} notes, bars {}, first q {:?}, last q {:?}", ka.len(), a.measures.len(), ka.first(), ka.last());
     println!("B: {} notes, bars {}, first q {:?}, last q {:?}", kb.len(), b.measures.len(), kb.first(), kb.last());

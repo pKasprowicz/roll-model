@@ -146,7 +146,14 @@ fn cymbal(c: &Cymbal, noise: &mut Noise) -> Vec<f32> {
     }
     let partial = |hz: f32, amp: f32, tau: f32, phase: f32| {
         let w = TAU as f64 * hz as f64 / SR as f64;
-        Partial { re: (phase as f64).cos(), im: (phase as f64).sin(), cos: w.cos(), sin: w.sin(), amp: amp as f64, decay: (-1.0 / (tau as f64 * SR as f64)).exp() }
+        Partial {
+            re: (phase as f64).cos(),
+            im: (phase as f64).sin(),
+            cos: w.cos(),
+            sin: w.sin(),
+            amp: amp as f64,
+            decay: (-1.0 / (tau as f64 * SR as f64)).exp(),
+        }
     };
     let mut partials: Vec<Partial> = Vec::new();
     let (count, lo, hi, gain, tau) = c.cluster;
@@ -238,19 +245,47 @@ pub fn render(lane: Lane) -> Vec<f32> {
         Lane::Tom3 => pitched(110.0, 0.7, 0.04, 0.21, 0.65, 0.2, n),
         Lane::Tom4 => pitched(85.0, 0.7, 0.045, 0.24, 0.75, 0.2, n),
         Lane::Crash1 => cymbal(
-            &Cymbal { secs: 2.0, cluster: (40, 1500.0, 11000.0, 1.0, 1.0), pings: &[], wash: (0.8, 1500.0, 9000.0, 0.55), stick: 0.6, wobble: (0.0, 0.0) },
+            &Cymbal {
+                secs: 2.0,
+                cluster: (40, 1500.0, 11000.0, 1.0, 1.0),
+                pings: &[],
+                wash: (0.8, 1500.0, 9000.0, 0.55),
+                stick: 0.6,
+                wobble: (0.0, 0.0),
+            },
             n,
         ),
         Lane::Crash2 => cymbal(
-            &Cymbal { secs: 1.8, cluster: (36, 1700.0, 12000.0, 1.0, 0.8), pings: &[], wash: (0.8, 1700.0, 10000.0, 0.45), stick: 0.6, wobble: (0.0, 0.0) },
+            &Cymbal {
+                secs: 1.8,
+                cluster: (36, 1700.0, 12000.0, 1.0, 0.8),
+                pings: &[],
+                wash: (0.8, 1700.0, 10000.0, 0.45),
+                stick: 0.6,
+                wobble: (0.0, 0.0),
+            },
             n,
         ),
         Lane::China => cymbal(
-            &Cymbal { secs: 1.4, cluster: (36, 2000.0, 12000.0, 1.0, 0.5), pings: &[], wash: (1.0, 2000.0, 11000.0, 0.3), stick: 0.7, wobble: (80.0, 0.5) },
+            &Cymbal {
+                secs: 1.4,
+                cluster: (36, 2000.0, 12000.0, 1.0, 0.5),
+                pings: &[],
+                wash: (1.0, 2000.0, 11000.0, 0.3),
+                stick: 0.7,
+                wobble: (80.0, 0.5),
+            },
             n,
         ),
         Lane::Splash => cymbal(
-            &Cymbal { secs: 0.7, cluster: (28, 3000.0, 12000.0, 1.0, 0.18), pings: &[], wash: (0.8, 3000.0, 11000.0, 0.12), stick: 0.5, wobble: (0.0, 0.0) },
+            &Cymbal {
+                secs: 0.7,
+                cluster: (28, 3000.0, 12000.0, 1.0, 0.18),
+                pings: &[],
+                wash: (0.8, 3000.0, 11000.0, 0.12),
+                stick: 0.5,
+                wobble: (0.0, 0.0),
+            },
             n,
         ),
         Lane::Ride => cymbal(
@@ -258,7 +293,14 @@ pub fn render(lane: Lane) -> Vec<f32> {
                 secs: 1.4,
                 cluster: (28, 2500.0, 9500.0, 0.45, 0.6),
                 // The ping, and a little body underneath it.
-                pings: &[(3150.0, 0.30, 0.8), (4230.0, 0.22, 0.7), (5440.0, 0.18, 0.6), (6900.0, 0.12, 0.45), (900.0, 0.10, 0.5), (1480.0, 0.08, 0.45)],
+                pings: &[
+                    (3150.0, 0.30, 0.8),
+                    (4230.0, 0.22, 0.7),
+                    (5440.0, 0.18, 0.6),
+                    (6900.0, 0.12, 0.45),
+                    (900.0, 0.10, 0.5),
+                    (1480.0, 0.08, 0.45),
+                ],
                 wash: (0.18, 3000.0, 10000.0, 0.3),
                 stick: 0.5,
                 wobble: (0.0, 0.0),

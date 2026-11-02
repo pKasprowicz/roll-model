@@ -23,7 +23,10 @@ pub enum PresetError {
     FaderOnlyValue,
     OnlyTurned(String),
     FaderChannel(u8),
-    CannotBeShown { action: String, ring: bool },
+    CannotBeShown {
+        action: String,
+        ring: bool,
+    },
     BadLightNumber(String),
     RingTakesScale(String),
     LightTakesOnOff,
@@ -50,7 +53,9 @@ impl std::fmt::Display for PresetError {
             PresetError::FaderOnlyValue => write!(f, "a fader can only set a value"),
             PresetError::OnlyTurned(action) => write!(f, "\"{action}\" is only turned: add \"rel\""),
             PresetError::FaderChannel(c) => write!(f, "a fader's channel is in \"bend {c}\", not in \"ch\""),
-            PresetError::CannotBeShown { action, ring } => write!(f, "\"{action}\" cannot be shown by a {}", if *ring { "ring" } else { "light" }),
+            PresetError::CannotBeShown { action, ring } => {
+                write!(f, "\"{action}\" cannot be shown by a {}", if *ring { "ring" } else { "light" })
+            }
             PresetError::BadLightNumber(word) => write!(f, "\"{word}\": expected a number from 0 to 127"),
             PresetError::RingTakesScale(name) => write!(f, "\"{name}=\" is for a light; a ring takes \"scale=\""),
             PresetError::LightTakesOnOff => write!(f, "\"scale=\" is for a ring; a light takes \"on=\" and \"off=\""),
@@ -80,7 +85,9 @@ impl std::fmt::Display for LayerError {
             LayerError::BadName => write!(f, "A layer needs a name of one word, without spaces or #."),
             LayerError::Reserved(word) => write!(f, "\"{word}\" is a word of the preset format; choose another name."),
             LayerError::Taken(name) => write!(f, "There is a layer called \"{name}\" already."),
-            LayerError::ControlInUse(what) => write!(f, "That control already selects or does something ({what}); clear it first, or press another."),
+            LayerError::ControlInUse(what) => {
+                write!(f, "That control already selects or does something ({what}); clear it first, or press another.")
+            }
         }
     }
 }

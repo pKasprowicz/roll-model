@@ -148,7 +148,10 @@ fn analyze(path: &str, bar_ms: f64) -> Result<(), String> {
             println!("{}", f.report());
             Ok(())
         }
-        None => Err(format!("too few sound starts ({}) or they do not repeat every {bar_ms} ms: was the metronome running and audible?", times.len())),
+        None => Err(format!(
+            "too few sound starts ({}) or they do not repeat every {bar_ms} ms: was the metronome running and audible?",
+            times.len()
+        )),
     }
 }
 
@@ -167,7 +170,11 @@ impl Fold {
         for (pos, n, std, spread) in &self.places {
             s += &format!("    at {pos:7.1} ms   {n:4} starts   std {std:5.2} ms   spread {spread:5.2} ms\n");
         }
-        s += &format!("  onset jitter       pooled std {:.2} ms, widest spread {:.2} ms", self.pooled_std_ms, self.places.iter().map(|p| p.3).fold(0.0, f64::max));
+        s += &format!(
+            "  onset jitter       pooled std {:.2} ms, widest spread {:.2} ms",
+            self.pooled_std_ms,
+            self.places.iter().map(|p| p.3).fold(0.0, f64::max)
+        );
         s
     }
 }
@@ -175,24 +182,24 @@ impl Fold {
 /// Groups starts by their place in a bar (each is `(time, place)`); the cut is at the widest empty
 /// stretch so no group is split by the end of the bar.
 fn group(ph: &[(f64, f64)], bar: f64) -> Option<Vec<Vec<(f64, f64)>>> {
-        let mut sorted = ph.to_vec();
-        sorted.sort_by(|a, b| a.1.total_cmp(&b.1));
-        let n = sorted.len();
-        let cut = (0..n).max_by(|&i, &j| {
-            let gap = |k: usize| (sorted[(k + 1) % n].1 - sorted[k].1).rem_euclid(bar);
-            gap(i).total_cmp(&gap(j))
-        })? + 1;
-        sorted.rotate_left(cut % n);
-        let mut groups: Vec<Vec<(f64, f64)>> = Vec::new();
-        let mut prev: Option<f64> = None;
-        for (t, p) in sorted {
-            let unwrapped = prev.map_or(p, |q| q + (p - q).rem_euclid(bar));
-            if prev.is_none() || unwrapped - prev.unwrap() > CLUSTER_GAP_SECS {
-                groups.push(Vec::new());
-            }
-            groups.last_mut().unwrap().push((t, unwrapped));
-            prev = Some(unwrapped);
+    let mut sorted = ph.to_vec();
+    sorted.sort_by(|a, b| a.1.total_cmp(&b.1));
+    let n = sorted.len();
+    let cut = (0..n).max_by(|&i, &j| {
+        let gap = |k: usize| (sorted[(k + 1) % n].1 - sorted[k].1).rem_euclid(bar);
+        gap(i).total_cmp(&gap(j))
+    })? + 1;
+    sorted.rotate_left(cut % n);
+    let mut groups: Vec<Vec<(f64, f64)>> = Vec::new();
+    let mut prev: Option<f64> = None;
+    for (t, p) in sorted {
+        let unwrapped = prev.map_or(p, |q| q + (p - q).rem_euclid(bar));
+        if prev.is_none() || unwrapped - prev.unwrap() > CLUSTER_GAP_SECS {
+            groups.push(Vec::new());
         }
+        groups.last_mut().unwrap().push((t, unwrapped));
+        prev = Some(unwrapped);
+    }
     Some(groups)
 }
 

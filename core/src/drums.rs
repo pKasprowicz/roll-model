@@ -282,7 +282,11 @@ pub fn lane_from_name(name: &str) -> Option<Lane> {
     } else if has("splash") {
         Lane::Splash
     } else if has("crash") {
-        if has("2") || has("ii") || has("right") { Lane::Crash2 } else { Lane::Crash1 }
+        if has("2") || has("ii") || has("right") {
+            Lane::Crash2
+        } else {
+            Lane::Crash1
+        }
     } else if has("cowbell") {
         Lane::Cowbell
     } else if has("tom") {
@@ -340,15 +344,15 @@ impl NoteMap {
         let pairs: &[(u8, Lane)] = &[
             (36, Lane::Kick),
             (35, Lane::Kick),
-            (38, Lane::Snare),       // head
-            (40, Lane::Snare),       // rim shot
-            (37, Lane::CrossStick),  // cross stick
+            (38, Lane::Snare),      // head
+            (40, Lane::Snare),      // rim shot
+            (37, Lane::CrossStick), // cross stick
             (48, Lane::Tom1),
-            (50, Lane::Tom1),        // rim
+            (50, Lane::Tom1), // rim
             (45, Lane::Tom2),
-            (47, Lane::Tom2),        // rim
+            (47, Lane::Tom2), // rim
             (43, Lane::Tom3),
-            (58, Lane::Tom3),        // rim
+            (58, Lane::Tom3), // rim
             (41, Lane::Tom4),
             (39, Lane::Tom4),        // rim
             (42, Lane::HiHatClosed), // closed bow
@@ -357,16 +361,14 @@ impl NoteMap {
             (26, Lane::HiHatOpen),   // open edge
             (44, Lane::HiHatPedal),
             (49, Lane::Crash1),
-            (55, Lane::Crash1),      // edge
+            (55, Lane::Crash1), // edge
             (57, Lane::Crash2),
-            (52, Lane::Crash2),      // edge
-            (51, Lane::Ride),        // bow
-            (59, Lane::Ride),        // edge
+            (52, Lane::Crash2), // edge
+            (51, Lane::Ride),   // bow
+            (59, Lane::Ride),   // edge
             (53, Lane::RideBell),
         ];
-        NoteMap {
-            map: pairs.iter().copied().collect(),
-        }
+        NoteMap { map: pairs.iter().copied().collect() }
     }
 
     pub fn lane(&self, note: u8) -> Option<Lane> {
@@ -374,11 +376,7 @@ impl NoteMap {
     }
 
     pub fn notes_for(&self, lane: Lane) -> Vec<u8> {
-        self.map
-            .iter()
-            .filter(|(_, l)| **l == lane)
-            .map(|(n, _)| *n)
-            .collect()
+        self.map.iter().filter(|(_, l)| **l == lane).map(|(n, _)| *n).collect()
     }
 
     /// The note to send to a sound module so it plays `lane`: the standard
@@ -407,10 +405,7 @@ impl NoteMap {
 
 /// Parses "36, 35 40" into note numbers (ignores garbage).
 pub fn parse_note_list(s: &str) -> Vec<u8> {
-    s.split(|c: char| c == ',' || c.is_whitespace())
-        .filter_map(|t| t.trim().parse::<u8>().ok())
-        .filter(|n| *n < 128)
-        .collect()
+    s.split(|c: char| c == ',' || c.is_whitespace()).filter_map(|t| t.trim().parse::<u8>().ok()).filter(|n| *n < 128).collect()
 }
 
 pub fn format_note_list(notes: &[u8]) -> String {

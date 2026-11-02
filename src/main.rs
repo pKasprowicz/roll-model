@@ -8,8 +8,8 @@ mod metronome;
 mod midi;
 mod playback;
 mod render;
-mod synth;
 mod sync;
+mod synth;
 mod widgets;
 
 use std::path::PathBuf;
@@ -27,9 +27,5 @@ fn main() -> eframe::Result<()> {
             .with_min_inner_size([760.0, 480.0]),
         ..Default::default()
     };
-    eframe::run_native(
-        "Roll Model",
-        options,
-        Box::new(move |cc| Ok(Box::new(app::DrumApp::new(cc, initial)))),
-    )
+    eframe::run_native("Roll Model", options, Box::new(move |cc| Ok(Box::new(app::DrumApp::new(cc, initial)))))
 }

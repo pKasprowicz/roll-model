@@ -22,13 +22,13 @@ fn perfect_take_scores_high() {
 fn grading_and_matching() {
     let e = vec![exp(0.0, Lane::Kick), exp(0.5, Lane::Snare), exp(1.0, Lane::HiHatClosed), exp(1.5, Lane::Tom1), exp(2.0, Lane::Kick)];
     let h = vec![
-        hit(0.010, Lane::Kick),       // perfect
-        hit(0.540, Lane::Snare),      // good
-        hit(1.010, Lane::HiHatOpen),  // wrong pad
+        hit(0.010, Lane::Kick),      // perfect
+        hit(0.540, Lane::Snare),     // good
+        hit(1.010, Lane::HiHatOpen), // wrong pad
         // tom1 missed
-        hit(2.090, Lane::Kick),       // ok
-        hit(3.000, Lane::Snare),      // extra? beyond last eval + 0.2 -> ignored
-        hit(1.2, Lane::Ride),         // extra
+        hit(2.090, Lane::Kick),  // ok
+        hit(3.000, Lane::Snare), // extra? beyond last eval + 0.2 -> ignored
+        hit(1.2, Lane::Ride),    // extra
     ];
     let r = analyze(&e, &h, &Tolerances::default(), f64::INFINITY);
     let g: Vec<Grade> = r.results.iter().map(|x| x.grade).collect();

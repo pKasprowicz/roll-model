@@ -1,13 +1,13 @@
 //! What a controller command does in the application: the state the lights show, and every action.
 
-use std::path::Path;
-use std::time::{Duration, Instant};
+use super::super::{rudiment, DrumApp, Source, Tab};
 use crate::analysis::Report;
 use crate::config::{Config, MAX_LANE_GAIN};
 use crate::controller::{self, Action, Command, State, GROUPS};
 use crate::rudiments::{Lead, MAX_REPEATS};
 use crate::score::Score;
-use super::super::{rudiment, DrumApp, Source, Tab};
+use std::path::Path;
+use std::time::{Duration, Instant};
 
 /// Taps further apart than this start a new tap tempo.
 pub(super) const TAP_GAP: Duration = Duration::from_secs(2);

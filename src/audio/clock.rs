@@ -125,7 +125,6 @@ impl Shared {
         let wall = at.saturating_duration_since(self.origin).as_secs_f64();
         Some(((wall - self.intercept()) * self.rate as f64).round().max(0.0) as u64)
     }
-
 }
 
 #[cfg(test)]

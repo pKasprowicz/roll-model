@@ -46,7 +46,10 @@ pub enum MidiError {
     Backend(String),
     InputNotFound(String),
     OutputNotFound(String),
-    OpenInput { port: String, reason: String },
+    OpenInput {
+        port: String,
+        reason: String,
+    },
     OpenOutput(String),
 }
 
@@ -98,8 +101,7 @@ pub fn connect_input(wanted: &str, queue: EventQueue) -> Result<InputHandle, Mid
     mi.ignore(Ignore::All);
     let ports = mi.ports();
     let names: Vec<String> = ports.iter().map(|p| mi.port_name(p).unwrap_or_default()).collect();
-    let idx = pick(names.iter().map(|s| s.as_str()).enumerate(), wanted)
-        .ok_or_else(|| MidiError::InputNotFound(wanted.to_string()))?;
+    let idx = pick(names.iter().map(|s| s.as_str()).enumerate(), wanted).ok_or_else(|| MidiError::InputNotFound(wanted.to_string()))?;
     let port = ports[idx].clone();
     let port_name = names[idx].clone();
     let mut pedal: Option<u8> = None;
@@ -154,8 +156,7 @@ pub fn connect_controller(wanted: &str, queue: MessageQueue) -> Result<Controlle
     mi.ignore(Ignore::All);
     let ports = mi.ports();
     let names: Vec<String> = ports.iter().map(|p| mi.port_name(p).unwrap_or_default()).collect();
-    let idx = pick(names.iter().map(|s| s.as_str()).enumerate(), wanted)
-        .ok_or_else(|| MidiError::InputNotFound(wanted.to_string()))?;
+    let idx = pick(names.iter().map(|s| s.as_str()).enumerate(), wanted).ok_or_else(|| MidiError::InputNotFound(wanted.to_string()))?;
     let port_name = names[idx].clone();
     let conn = mi
         .connect(
@@ -180,11 +181,9 @@ pub fn connect_output(wanted: &str) -> Result<MidiOutputConnection, MidiError> {
     let mo = MidiOutput::new("roll-model").map_err(|e| MidiError::Backend(e.to_string()))?;
     let ports = mo.ports();
     let names: Vec<String> = ports.iter().map(|p| mo.port_name(p).unwrap_or_default()).collect();
-    let idx = pick(names.iter().map(|s| s.as_str()).enumerate(), wanted)
-        .ok_or_else(|| MidiError::OutputNotFound(wanted.to_string()))?;
+    let idx = pick(names.iter().map(|s| s.as_str()).enumerate(), wanted).ok_or_else(|| MidiError::OutputNotFound(wanted.to_string()))?;
     let port = ports[idx].clone();
-    mo.connect(&port, "roll-model-out")
-        .map_err(|e| MidiError::OpenOutput(e.to_string()))
+    mo.connect(&port, "roll-model-out").map_err(|e| MidiError::OpenOutput(e.to_string()))
 }
 
 /// Standard note name, e.g. 36 -> "C2" (Roland/Yamaha convention, C4 = 60).

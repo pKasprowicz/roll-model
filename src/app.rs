@@ -448,9 +448,7 @@ impl DrumApp {
         if !self.cfg.keyboard_input || widgets::typing(ctx) {
             return;
         }
-        let pressed: Vec<Lane> = ctx.input(|i| {
-            KEYBOARD_PADS.iter().filter(|(k, _, _)| i.key_pressed(*k)).map(|(_, l, _)| *l).collect()
-        });
+        let pressed: Vec<Lane> = ctx.input(|i| KEYBOARD_PADS.iter().filter(|(k, _, _)| i.key_pressed(*k)).map(|(_, l, _)| *l).collect());
         for lane in pressed {
             let note = self.cfg.note_map.notes_for(lane).first().copied().unwrap_or(0);
             self.handle_event(RawEvent { at: Instant::now(), note, velocity: 100, channel: 10, hihat: None });
@@ -460,10 +458,7 @@ impl DrumApp {
     // ---------------------------------------------------------------- files
 
     fn open_dialog(&mut self) {
-        if let Some(p) = rfd::FileDialog::new()
-            .add_filter("Scores (MusicXML, MIDI)", crate::import::EXTENSIONS)
-            .pick_file()
-        {
+        if let Some(p) = rfd::FileDialog::new().add_filter("Scores (MusicXML, MIDI)", crate::import::EXTENSIONS).pick_file() {
             self.open_file(&p);
         }
     }
@@ -582,26 +577,24 @@ impl DrumApp {
                     None => ui.label(RichText::new("⏺ no MIDI input").color(render::RED)),
                 };
                 if let Some((text, connected)) = self.controller.label(!self.cfg.controller_preset.is_empty()) {
-                    let indicator = egui::Label::new(RichText::new(text).color(if connected { render::GREEN } else { render::RED })).sense(egui::Sense::click());
-                    let response = ui.add(indicator).on_hover_cursor(egui::CursorIcon::PointingHand).on_hover_text("Click to see what the controller's controls do");
+                    let indicator = egui::Label::new(RichText::new(text).color(if connected { render::GREEN } else { render::RED }))
+                        .sense(egui::Sense::click());
+                    let response = ui
+                        .add(indicator)
+                        .on_hover_cursor(egui::CursorIcon::PointingHand)
+                        .on_hover_text("Click to see what the controller's controls do");
                     if response.clicked() {
                         self.toggle_controller_help();
                     }
                 }
                 if let Some((ev, lane)) = self.midi.monitor.front() {
                     if ev.at.elapsed() < Duration::from_millis(1500) {
-                        ui.label(format!(
-                            "{} · note {} · vel {}",
-                            lane.map(|l| l.label()).unwrap_or("unmapped"),
-                            ev.note,
-                            ev.velocity
-                        ));
+                        ui.label(format!("{} · note {} · vel {}", lane.map(|l| l.label()).unwrap_or("unmapped"), ev.note, ev.velocity));
                     }
                 }
             });
         });
     }
-
 }
 
 impl eframe::App for DrumApp {

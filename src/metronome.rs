@@ -43,10 +43,8 @@ impl Metronome {
         let stop = Arc::new(AtomicBool::new(false));
         let errors = ErrorLog::default();
         let (stop2, errors2) = (stop.clone(), errors.clone());
-        let handle = std::thread::Builder::new()
-            .name("metronome".into())
-            .spawn(move || run(zero, clicks, opts, control, stop2, errors2))
-            .ok();
+        let handle =
+            std::thread::Builder::new().name("metronome".into()).spawn(move || run(zero, clicks, opts, control, stop2, errors2)).ok();
         Metronome { stop, errors, handle }
     }
 
@@ -156,7 +154,8 @@ fn run(
             let _ = engine.play(run, target, sound, gain, NO_GROUP, 0);
         }
         if let Some(conn) = midi.as_mut() {
-            let delay = if engine.is_some() { midi_delay_before_next(opts.midi_delay, times.get(i + 1).map(|n| n - t)) } else { Duration::ZERO };
+            let delay =
+                if engine.is_some() { midi_delay_before_next(opts.midi_delay, times.get(i + 1).map(|n| n - t)) } else { Duration::ZERO };
             if !wait_until(target + delay, &stop) {
                 break;
             }

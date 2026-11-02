@@ -84,7 +84,14 @@ impl DrumApp {
         // Half a second of lead: the sound device needs time to open.
         let zero = Instant::now() + Duration::from_millis(500);
         self.metro_run.player = Some(Player::start(zero, cues, bar_len, opts, self.metro_run.control.clone()));
-        self.metro_run.run = Some(Run { zero, beat_sec: 60.0 / bpm, bar_sec: bar_len, ramp: self.metro_ramp(), signature: self.metro_signature(), pending: None });
+        self.metro_run.run = Some(Run {
+            zero,
+            beat_sec: 60.0 / bpm,
+            bar_sec: bar_len,
+            ramp: self.metro_ramp(),
+            signature: self.metro_signature(),
+            pending: None,
+        });
         self.view.status = format!("Metronome: {bpm:.0} BPM, {} beats per bar", self.cfg.metro_beats);
         let ramp = self.metro_ramp();
         if ramp.every > 0 {
@@ -167,9 +174,11 @@ impl DrumApp {
         });
         ui.add_space(8.0);
         ui.label(
-            RichText::new("Changes while it runs take effect after a moment. The first beat of each bar is accented; subdivisions are softer.")
-                .small()
-                .weak(),
+            RichText::new(
+                "Changes while it runs take effect after a moment. The first beat of each bar is accented; subdivisions are softer.",
+            )
+            .small()
+            .weak(),
         );
         ui.add_space(16.0);
         self.beat_lights(ui);
@@ -192,10 +201,8 @@ impl DrumApp {
     /// fixed line at the metronome's tempo.
     fn rolling_preview(&mut self, ui: &mut egui::Ui) {
         ui.add_space(16.0);
-        let click_bar = self
-            .score
-            .is_none()
-            .then(|| Score::click_bar(self.cfg.metro_beats, Subdivision::from_index(self.cfg.metro_sub).parts()));
+        let click_bar =
+            self.score.is_none().then(|| Score::click_bar(self.cfg.metro_beats, Subdivision::from_index(self.cfg.metro_sub).parts()));
         let Some(score) = click_bar.as_ref().or(self.score.as_ref()) else { return };
         let last = score.measures.len().saturating_sub(1);
         let (a, b) = match click_bar {

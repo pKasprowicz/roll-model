@@ -13,7 +13,6 @@ use std::collections::{BTreeMap, VecDeque};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
-
 use super::DrumApp;
 use crate::controller::{self, Action, Mapper};
 use crate::midi::{self, ControllerHandle, MessageQueue};
@@ -145,7 +144,8 @@ impl DrumApp {
             }
         }
         let dir = self.paths.controllers_dir();
-        self.controller.kinds = names.iter().filter_map(|n| controller::load_preset(n, dir.as_deref()).ok().map(|p| (n.clone(), p.kind))).collect();
+        self.controller.kinds =
+            names.iter().filter_map(|n| controller::load_preset(n, dir.as_deref()).ok().map(|p| (n.clone(), p.kind))).collect();
         self.controller.presets = names;
     }
 
@@ -260,5 +260,4 @@ impl DrumApp {
             Watch::Connect => self.connect_controller(),
         }
     }
-
 }

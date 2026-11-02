@@ -283,7 +283,10 @@ fn mix(cues: &[Cue], lead_sec: f64, volume: f32) -> Vec<f32> {
 
 #[test]
 fn sample_score_renders_a_note_at_every_onset() {
-    let score = import_bytes(include_bytes!("../../examples/basic_rock_beat.musicxml"), "basic_rock_beat.musicxml", &ImportOptions::default()).unwrap().score;
+    let score =
+        import_bytes(include_bytes!("../../examples/basic_rock_beat.musicxml"), "basic_rock_beat.musicxml", &ImportOptions::default())
+            .unwrap()
+            .score;
     let expected = expected_notes(&score, 0, score.measures.len() - 1, 1.0);
     let clicks = score.click_track(0, score.measures.len() - 1, 1.0, 4, true);
     let all = cues(&expected, &clicks);
@@ -449,7 +452,13 @@ fn the_first_cue_of_a_looped_pass_is_handed_over_ahead_of_its_time_too() {
     // because the player waited for the end of the pass before it began the next one.
     let control = Control::new();
     control.set_looping(true);
-    let mut sink = Early { lookahead: Duration::from_millis(30), told: Vec::new(), due: None, flushed_at: Vec::new(), stop_after: Some((control.clone(), 6)) };
+    let mut sink = Early {
+        lookahead: Duration::from_millis(30),
+        told: Vec::new(),
+        due: None,
+        flushed_at: Vec::new(),
+        stop_after: Some((control.clone(), 6)),
+    };
     let zero = Instant::now() + Duration::from_millis(100);
     run_with(zero, &[click(0.0), click(0.1)], 0.2, &opts(), &control, &AtomicBool::new(false), &mut sink, Duration::ZERO);
     assert!(sink.told.len() >= 6, "{} cues", sink.told.len());
@@ -466,8 +475,16 @@ fn midi_is_delayed_only_for_what_also_sounds_through_the_sound_card() {
     let both = PlayOptions { engine: Some(engine), midi_delay: Duration::from_millis(40), ..opts() };
     let ms = Duration::from_millis;
     assert_eq!(midi_delays(&both, true), (ms(40), ms(40)), "the click and the drums sound twice");
-    assert_eq!(midi_delays(&PlayOptions { click_audio: false, ..both.clone() }, true), (Duration::ZERO, ms(40)), "a MIDI-only click is not moved");
+    assert_eq!(
+        midi_delays(&PlayOptions { click_audio: false, ..both.clone() }, true),
+        (Duration::ZERO, ms(40)),
+        "a MIDI-only click is not moved"
+    );
     assert_eq!(midi_delays(&PlayOptions { audio: false, ..both.clone() }, true), (ms(40), Duration::ZERO), "MIDI-only drums are not moved");
     assert_eq!(midi_delays(&both, false).0, Duration::ZERO, "no click in this run");
-    assert_eq!(midi_delays(&PlayOptions { engine: None::<EngineHandle>, ..both }, true), (Duration::ZERO, Duration::ZERO), "no open output, nothing to line up with");
+    assert_eq!(
+        midi_delays(&PlayOptions { engine: None::<EngineHandle>, ..both }, true),
+        (Duration::ZERO, Duration::ZERO),
+        "no open output, nothing to line up with"
+    );
 }

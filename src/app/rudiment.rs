@@ -259,11 +259,8 @@ impl DrumApp {
         let current = self.cfg.rudiment;
         egui::ScrollArea::vertical().max_height(380.0).show(ui, |ui| {
             for family in Family::ALL {
-                let items: Vec<&Rudiment> = self
-                    .listed_rudiments()
-                    .into_iter()
-                    .filter(|r| r.family == family && r.matches(&self.rud.filter))
-                    .collect();
+                let items: Vec<&Rudiment> =
+                    self.listed_rudiments().into_iter().filter(|r| r.family == family && r.matches(&self.rud.filter)).collect();
                 if items.is_empty() {
                     continue;
                 }

@@ -55,9 +55,7 @@ mod tests {
     /// The largest difference from the ideal sine, leaving out the ends where the window is cut.
     fn worst_error(got: &[f32], freq: f64, rate: u32) -> f64 {
         let edge = 40;
-        (edge..got.len() - edge)
-            .map(|i| (got[i] as f64 - (2.0 * PI * freq * i as f64 / rate as f64).sin()).abs())
-            .fold(0.0, f64::max)
+        (edge..got.len() - edge).map(|i| (got[i] as f64 - (2.0 * PI * freq * i as f64 / rate as f64).sin()).abs()).fold(0.0, f64::max)
     }
 
     #[test]

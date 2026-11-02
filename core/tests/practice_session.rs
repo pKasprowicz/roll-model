@@ -3,7 +3,7 @@
 
 use roll_model_core::analysis::{analyze, expected_notes, Hit, Tolerances};
 use roll_model_core::config::Config;
-use roll_model_core::controller::{self, Action, Mapper, Msg, Command, State};
+use roll_model_core::controller::{self, Action, Command, Mapper, Msg, State};
 use roll_model_core::import::{import_bytes, ImportOptions};
 
 const SAMPLE: &str = include_str!("../../examples/basic_rock_beat.musicxml");
