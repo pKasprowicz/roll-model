@@ -1,0 +1,25 @@
+name: Idea
+description: Something Roll Model could do, or do better
+labels: ["idea"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks. Ideas are read, but not all are taken up; the ones that are appear on the
+        [roadmap](https://pkasprowicz.github.io/roll-model/diary/roadmap/) of the development diary.
+  - type: textarea
+    id: what
+    attributes:
+      label: What would you like to do?
+      description: Describe what you want to be able to do while practising, not how the program should do it.
+    validations:
+      required: true
+  - type: textarea
+    id: why
+    attributes:
+      label: Why does it matter?
+      description: What do you do today instead, and what is hard about it?
+  - type: input
+    id: setup
+    attributes:
+      label: Your drum module or controller, if it matters

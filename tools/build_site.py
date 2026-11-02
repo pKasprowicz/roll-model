@@ -3,8 +3,9 @@
 
     python3 tools/build_site.py [--label LABEL] [--out DIR]
 
-DIR gets index.html (a start page that links to both documents), manual/index.html
-(the user manual) and developer/index.html (the developer guide). The two documents
+DIR gets index.html (a start page that links to the documents and the diary), manual/index.html
+(the user manual), developer/index.html (the developer guide) and diary/ (the development diary:
+build_diary.py). The two documents
 are made by build_manual.py and build_devguide.py, the scripts the release uses for
 its files, so the site and the release archives hold the same pages. Standard
 library only.
@@ -19,6 +20,7 @@ from pathlib import Path
 
 TOOLS = Path(__file__).resolve().parent
 sys.path.insert(0, str(TOOLS))
+import build_diary  # noqa: E402
 import build_manual  # noqa: E402  (its version() and style() are shared)
 
 ROOT = build_manual.ROOT
@@ -50,6 +52,10 @@ def main() -> None:
     out = Path(args.out)
     build_document("build_manual.py", args.label, out / "manual" / "index.html")
     build_document("build_devguide.py", args.label, out / "developer" / "index.html")
+    try:
+        diary = build_diary.build(out, args.label or f"v{build_manual.version()}", build_diary.fetch_issues())
+    except ValueError as e:
+        sys.exit(f"diary: {e}")
 
     ver = build_manual.version()
     text = TEMPLATE.read_text(encoding="utf-8")
@@ -67,7 +73,7 @@ def main() -> None:
     if left:
         sys.exit(f"unfilled placeholders: {sorted(set(left))}")
     (out / "index.html").write_text(text, encoding="utf-8", newline="\n")
-    print(f"wrote {out}: index.html, manual/index.html, developer/index.html (version {ver})")
+    print(f"wrote {out}: index.html, manual/index.html, developer/index.html, diary/ ({len(diary)} files) (version {ver})")
 
 
 if __name__ == "__main__":

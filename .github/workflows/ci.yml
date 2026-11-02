@@ -60,4 +60,10 @@ jobs:
       # behind broke the 0.10.3 release only after the tag, so it is built here too.
       - name: Build the site
         if: runner.os == 'Linux'
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: python3 tools/build_site.py --out site
+      # The diary's builder: entries, the roadmap made from the issues, the feed.
+      - name: Test the diary builder
+        if: runner.os == 'Linux'
+        run: python3 -m unittest discover -s tools -p "test_*.py"

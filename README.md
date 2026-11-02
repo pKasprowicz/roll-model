@@ -29,6 +29,10 @@ python3 tools/build_devguide.py    # writes target/devguide/roll-model-developer
 
 If a refactoring renames an item the guide shows, that command fails and names the snippet to update.
 
+## Development diary
+
+What changed, what is being worked on and what may come, for people who use the program: <https://pkasprowicz.github.io/roll-model/diary/>, with a feed and a roadmap that is made from the issue labels (`roadmap:now`, `roadmap:next`, `roadmap:later`, `idea`). Entries are Markdown files in `docs/diary/`; see `docs/diary/README.md`. Have an idea? Use the *Idea* issue form.
+
 Both are published on GitHub Pages, behind a start page that links to them (<https://pkasprowicz.github.io/roll-model/>). `python3 tools/build_site.py` builds that site into `target/site/`; the `Pages` workflow deploys it whenever `main` changes, and `main` only receives releases, so it shows the latest release. The release files are built as before.
 
 ## Build and run

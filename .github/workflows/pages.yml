@@ -1,15 +1,20 @@
 name: Pages
 
-# The documentation site: a start page, the user manual and the developer guide.
-# It follows `main`, which only receives releases, so it shows the latest release.
-# The release files themselves are built by release.yml, not here.
+# The documentation site: a start page, the user manual, the developer guide and the development
+# diary. It follows `main`, which only receives releases, so the manuals show the latest release.
+# The diary does not wait for a release: its entries are taken from `develop`, and its roadmap is
+# made from the issues, so it is rebuilt every day and when diary.yml asks for it (an entry was
+# pushed to `develop`). The release files themselves are built by release.yml, not here.
 on:
   push:
     branches: [main]
+  schedule:
+    - cron: "17 4 * * *"
   workflow_dispatch:
 
 permissions:
   contents: read
+  issues: read
 
 # One deployment at a time; a running one finishes rather than being cut off.
 concurrency:
@@ -22,8 +27,19 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
       - uses: actions/configure-pages@v5
-      - run: python3 tools/build_site.py --out site
+      # The entries of the diary come from `develop`, where they are written.
+      - name: Take the diary from develop
+        run: |
+          git fetch origin develop
+          git checkout origin/develop -- docs/diary || echo "no diary on develop"
+      - name: Build the site
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 tools/build_site.py --out site
       - uses: actions/upload-pages-artifact@v4
         with:
           path: site

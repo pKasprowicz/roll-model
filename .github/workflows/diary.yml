@@ -1,0 +1,22 @@
+name: Diary
+
+# A diary entry pushed to `develop` goes live without waiting for a release: this asks the Pages
+# workflow, which follows `main`, to build the site again (it takes docs/diary from `develop`).
+on:
+  push:
+    branches: [develop]
+    paths:
+      - "docs/diary/**"
+
+permissions:
+  actions: write
+
+jobs:
+  publish:
+    name: Rebuild the site
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ask the Pages workflow
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run pages.yml --repo "${{ github.repository }}" --ref main

@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{TITLE}} · Roll Model</title>
+<meta name="description" content="{{DESCRIPTION}}">
+<link rel="alternate" type="application/atom+xml" title="Roll Model: development diary" href="{{BASE}}diary/feed.xml">
+<style>
+{{STYLE}}
+main.diary { max-width: 44rem; margin: 0 auto; padding: 2rem 1.2rem 4rem; }
+.diary nav.top { display: flex; flex-wrap: wrap; gap: .4rem 1.2rem; padding-bottom: .8rem; margin-bottom: 1.6rem; border-bottom: 1px solid var(--line); font-size: .95rem; }
+.diary nav.top .here { font-weight: 600; }
+.diary h1 { margin: 0 0 .6rem; font-size: 2rem; }
+.diary h2 { font-size: 1.35rem; margin-top: 2.2rem; }
+.diary .when { color: var(--muted); font-size: .9rem; margin: 0; }
+.diary ul.entries { list-style: none; padding: 0; }
+.diary ul.entries li { margin: 1.1rem 0; }
+.diary ul.entries .sum { color: var(--muted); }
+.diary ul.roadmap { padding-left: 1.2rem; }
+.diary ul.roadmap li { margin: .35rem 0; }
+.diary .related { margin-top: 2rem; color: var(--muted); font-size: .95rem; }
+.diary footer { margin-top: 3rem; padding-top: 1rem; border-top: 1px solid var(--line); color: var(--muted); font-size: .9rem; }
+</style>
+</head>
+<body>
+<main class="diary">
+<nav class="top">
+  <a href="{{BASE}}">Roll Model</a>
+  <a href="{{BASE}}diary/">Diary</a>
+  <a href="{{BASE}}diary/roadmap/">Roadmap</a>
+  <a href="{{BASE}}diary/feed.xml">Feed</a>
+  <a href="{{BASE}}manual/">Manual</a>
+</nav>
+{{BODY}}
+<footer>The diary of {{LABEL}}. Roll Model was made with extensive use of AI; see the README.</footer>
+</main>
+</body>
+</html>
