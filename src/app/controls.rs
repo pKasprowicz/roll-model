@@ -5,6 +5,7 @@
 
 mod apply;
 mod editor;
+mod learner;
 mod page;
 #[cfg(test)]
 mod tests;

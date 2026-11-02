@@ -5,12 +5,12 @@
 //! place in the running controller. The built-in presets are not edited: copy one first, or start
 //! a new preset. The editing itself (`assign`, `clear`, `to_text`) is in `controller.rs`.
 
-use std::collections::BTreeMap;
 use std::path::PathBuf;
 
 use egui::{RichText, ViewportBuilder, ViewportClass, ViewportId};
 
-use super::*;
+use super::learner::{action_order, Heard, Learner};
+use super::{controller, Action, DrumApp};
 use crate::controller::{Binding, Encoding, Light, Preset, Reading};
 use crate::theme;
 use crate::widgets;
@@ -34,50 +34,13 @@ pub(super) struct ManageView {
     pub(super) confirm_layer_delete: bool,
 }
 
-/// How many clicks to each side tell an encoder's encoding.
 /// What the Manage window says when a control is to be learned and there is no controller.
 const CONNECT_FIRST: &str = "Connect the controller first (Refresh and reconnect, above).";
-const DETECT_CLICKS: usize = 4;
-
-/// The values an encoder sent while its encoding is being found out.
-pub(super) struct Detect {
-    pub(super) action: Action,
-    /// The cc and channel of the first message; others are ignored.
-    cc: Option<(u8, u8)>,
-    clockwise: Vec<u8>,
-    counter: Vec<u8>,
-}
-
-impl Detect {
-    /// Turn to the right first, then to the left.
-    fn prompt(&self) -> String {
-        if self.clockwise.len() < DETECT_CLICKS {
-            format!(
-                "Turn the encoder for \"{}\" slowly to the RIGHT, {} clicks ({} so far)…",
-                self.action.title(),
-                DETECT_CLICKS,
-                self.clockwise.len()
-            )
-        } else {
-            format!("Now slowly to the LEFT, {} clicks ({} so far)…", DETECT_CLICKS, self.counter.len())
-        }
-    }
-}
 
 /// What the editor remembers between frames: the learn state machine and its choices.
 pub(super) struct EditorState {
-    /// The action that waits for the next control the device sends.
-    pub(super) learning: Option<Action>,
-    /// An encoder is being turned right and then left to find out how it counts.
-    pub(super) detecting: Option<Detect>,
-    /// The layer that waits for the button that selects it (the name it will have).
-    pub(super) learning_layer: Option<String>,
-    /// After a control is learned, wait for one for the next action in the list.
-    pub(super) keep_going: bool,
-    /// Limit a learned control to the MIDI channel it sent on.
-    pub(super) remember_channel: bool,
-    /// How a value's cc is read, chosen before it is learned (by the action's name).
-    pub(super) kinds: BTreeMap<Action, Reading>,
+    /// What waits for the next control the device sends, and the choices that go with it.
+    pub(super) learner: Learner,
     pub(super) notice: String,
     /// A preset whose lights are being changed (a number dragged): the file it belongs to and the
     /// preset as it is now. The file is written when the drag ends, not on every frame of it.
@@ -94,26 +57,24 @@ impl EditorState {
 
     /// Waits for the next control the device sends, for `action`.
     pub(super) fn start_learning(&mut self, action: Action) {
-        self.learning = Some(action);
-        self.learning_layer = None;
-        self.detecting = None;
+        self.learner.wait_for_control(action);
+        self.notice.clear();
+    }
+
+    /// Waits for the clicks of the encoder of `action`.
+    pub(super) fn start_detecting(&mut self, action: Action) {
+        self.learner.wait_for_clicks(action);
+        self.notice.clear();
+    }
+
+    /// Waits for the button of the layer to be called `name`.
+    pub(super) fn start_learning_layer(&mut self, name: String) {
+        self.learner.wait_for_layer(name);
         self.notice.clear();
     }
 
     pub(super) fn stop_learning(&mut self) {
-        self.learning = None;
-        self.learning_layer = None;
-        self.detecting = None;
-    }
-
-    /// How a value's cc is read for `action` when nothing is bound yet: the choice made in the
-    /// table, or (absolute, except for the lists, which are only turned).
-    pub(super) fn chosen_kind(&self, action: Action) -> Reading {
-        self.kinds.get(&action).copied().unwrap_or(if action.is_browse() { Reading::Relative(Encoding::Mackie) } else { Reading::Absolute })
-    }
-
-    pub(super) fn choose_kind(&mut self, action: Action, reading: Reading) {
-        self.kinds.insert(action, reading);
+        self.learner.stop();
     }
 
     /// What the editor was doing belongs to the preset that was chosen: drop it when another is.
@@ -129,17 +90,7 @@ impl EditorState {
 
 impl Default for EditorState {
     fn default() -> EditorState {
-        EditorState {
-            learning: None,
-            detecting: None,
-            learning_layer: None,
-            keep_going: true,
-            remember_channel: false,
-            kinds: BTreeMap::new(),
-            notice: String::new(),
-            draft: None,
-            view: ManageView::default(),
-        }
+        EditorState { learner: Learner::new(), notice: String::new(), draft: None, view: ManageView::default() }
     }
 }
 
@@ -187,11 +138,6 @@ fn control_text(b: &Binding) -> String {
         Some(ch) => format!("{} ch {ch}", b.input.src.text()),
         None => b.input.src.text(),
     }
-}
-
-/// The actions in the order the editor lists them.
-fn action_order() -> Vec<Action> {
-    Action::sections().into_iter().flat_map(|(_, actions)| actions).collect()
 }
 
 /// The preset could not be read or written; the reason is already on screen (`view.error`).
@@ -278,35 +224,42 @@ impl DrumApp {
         preset.layers.get(self.controller.editor.view.layer).map(|l| l.0.clone())
     }
 
-    /// While an action waits for its control, the next message from the device is taken for it
-    /// (and never acts). True if the message was used up. A message that cannot be the control
-    /// of that action (a release, a fader for a button) is used up and ignored.
+    /// While something waits for a control, the next message from the device is taken for it (and
+    /// never acts). True if the message was used up: a message that cannot be the control that
+    /// waits for it (a release, a fader for a button) is used up and ignored.
     pub(super) fn learn_message(&mut self, msg: controller::Msg) -> bool {
-        if self.controller.editor.detecting.is_some() {
-            return self.detect_message(msg);
-        }
-        if let Some(name) = self.controller.editor.learning_layer.clone() {
-            return self.learn_layer_button(&name, msg);
-        }
-        let Some(action) = self.controller.editor.learning else { return false };
-        let Some(preset) = self.preset_being_edited() else {
-            self.controller.editor.stop_learning();
-            return false;
+        let preset = if self.controller.editor.learner.control_waited_for().is_some() {
+            let Some(preset) = self.preset_being_edited() else {
+                self.controller.editor.stop_learning();
+                return false;
+            };
+            Some(preset)
+        } else {
+            None
         };
-        let layer = self.editor_layer(&preset);
-        let existing = preset
-            .bindings_of(layer.as_deref(), action)
-            .into_iter()
-            .find(|b| matches!(b.input.src, controller::Src::Cc(_)))
-            .map(|b| b.reading);
-        let reading = existing.unwrap_or_else(|| self.controller.editor.chosen_kind(action));
-        let Some(found) = controller::learn(msg, action, reading, self.controller.editor.remember_channel) else { return true };
-        let Ok(taken_from) = self.edit_preset(|p| p.assign(layer.as_deref(), action, found)) else {
+        let layer = preset.as_ref().and_then(|p| self.editor_layer(p));
+        let existing = |action| {
+            let bound = preset.as_ref()?.bindings_of(layer.as_deref(), action);
+            bound.into_iter().find(|b| matches!(b.input.src, controller::Src::Cc(_))).map(|b| b.reading)
+        };
+        match self.controller.editor.learner.feed(msg, existing) {
+            Heard::Unused => return false,
+            Heard::Ignored => {}
+            Heard::Control { action, found } => self.bind_learned(action, layer.as_deref(), found),
+            Heard::Layer { name, src } => self.add_learned_layer(&name, src),
+            Heard::Detected { action, encoding, clockwise, counter } => self.say_detected(action, encoding, &clockwise, &counter),
+        }
+        true
+    }
+
+    /// Saves the control that was learned for `action`, and says which it is.
+    fn bind_learned(&mut self, action: Action, layer: Option<&str>, found: controller::Learned) {
+        let Ok(taken_from) = self.edit_preset(|p| p.assign(layer, action, found)) else {
             // Not saved: say so, and do not go on to the next action as if it had been.
             let editor = &mut self.controller.editor;
-            editor.learning = None;
+            editor.stop_learning();
             editor.notice = format!("{}: not saved, see the message above", action.title());
-            return true;
+            return;
         };
         let mut notice =
             format!("{}: {}", action.title(), control_text(&Binding { layer: None, input: found.input, reading: found.reading, action }));
@@ -315,67 +268,33 @@ impl DrumApp {
         }
         let editor = &mut self.controller.editor;
         editor.notice = notice;
-        editor.learning = None;
-        if editor.keep_going {
-            let order = action_order();
-            editor.learning = order.iter().position(|a| *a == action).and_then(|i| order.get(i + 1)).copied();
-        }
-        true
+        editor.learner.bound(action);
     }
 
-    /// While an encoder is being turned right and then left: collects its values (the first cc
-    /// that arrives is the encoder, other messages are used up and ignored), and when there are
-    /// enough in both directions sets the kind of the action to the encoding that fits.
-    fn detect_message(&mut self, msg: controller::Msg) -> bool {
-        let controller::Msg::Cc { ch, cc, val } = msg else { return true };
-        let Some(d) = self.controller.editor.detecting.as_mut() else { return false };
-        if *d.cc.get_or_insert((cc, ch)) != (cc, ch) || val == 0 {
-            return true;
-        }
-        if d.clockwise.len() < DETECT_CLICKS {
-            d.clockwise.push(val);
-        } else {
-            d.counter.push(val);
-        }
-        if d.counter.len() < DETECT_CLICKS {
-            return true;
-        }
-        let Some(d) = self.controller.editor.detecting.take() else { return true };
-        match Encoding::guess(&d.clockwise, &d.counter) {
-            Some(encoding) => {
-                let reading = Reading::Relative(encoding);
-                self.controller.editor.choose_kind(d.action, reading);
-                if let Some(preset) = self.preset_being_edited() {
-                    let layer = self.editor_layer(&preset);
-                    if self.edit_preset(|p| p.set_reading(layer.as_deref(), d.action, reading)).is_err() {
-                        self.controller.editor.say(format!(
-                            "{} counts {}, but this could not be saved.",
-                            d.action.title(),
-                            kind_text(reading)
-                        ));
-                        return true;
-                    }
-                }
-                self.controller.editor.say(format!("{} counts {}.", d.action.title(), kind_text(reading)));
-            }
-            None => {
-                let seen = |v: &[u8]| v.iter().map(u8::to_string).collect::<Vec<_>>().join(" ");
-                self.controller.editor.say(format!(
-                    "Could not tell how it counts (right: {}; left: {}). Is it a knob that sends positions? Choose absolute then.",
-                    seen(&d.clockwise),
-                    seen(&d.counter)
-                ));
+    /// Saves the encoding that the clicks of an encoder showed, and says what they showed.
+    fn say_detected(&mut self, action: Action, encoding: Option<Encoding>, clockwise: &[u8], counter: &[u8]) {
+        let Some(encoding) = encoding else {
+            let seen = |v: &[u8]| v.iter().map(u8::to_string).collect::<Vec<_>>().join(" ");
+            self.controller.editor.say(format!(
+                "Could not tell how it counts (right: {}; left: {}). Is it a knob that sends positions? Choose absolute then.",
+                seen(clockwise),
+                seen(counter)
+            ));
+            return;
+        };
+        let reading = Reading::Relative(encoding);
+        if let Some(preset) = self.preset_being_edited() {
+            let layer = self.editor_layer(&preset);
+            if self.edit_preset(|p| p.set_reading(layer.as_deref(), action, reading)).is_err() {
+                self.controller.editor.say(format!("{} counts {}, but this could not be saved.", action.title(), kind_text(reading)));
+                return;
             }
         }
-        true
+        self.controller.editor.say(format!("{} counts {}.", action.title(), kind_text(reading)));
     }
 
-    /// While a layer waits for its button: the next press from the device is the button that
-    /// selects it. True if the message was used up (releases and faders are, and ignored).
-    fn learn_layer_button(&mut self, name: &str, msg: controller::Msg) -> bool {
-        // Any button press will do; the action only decides what kind of message counts.
-        let Some(found) = controller::learn(msg, Action::Stop, Reading::Absolute, false) else { return true };
-        let src = found.input.src;
+    /// Adds the layer `name` to the preset, selected by the button `src`.
+    fn add_learned_layer(&mut self, name: &str, src: controller::Src) {
         match self.edit_preset(|p| p.add_layer(name, src).map(|()| p.layers.len() - 1)) {
             Ok(Ok(index)) => {
                 let editor = &mut self.controller.editor;
@@ -391,7 +310,6 @@ impl DrumApp {
             }
             Err(EditFailed) => self.controller.editor.stop_learning(),
         }
-        true
     }
 
     /// A new, empty preset for the chosen port, to be taught by pressing the controls.
@@ -646,7 +564,6 @@ impl DrumApp {
 
     /// The table of actions.
     fn assignments_body(&mut self, ui: &mut egui::Ui) {
-        let mut op: Option<Op> = None;
         let Some(path) = self.editable_path() else {
             ui.separator();
             widgets::hint(ui, "Nothing to edit: a built-in preset cannot be changed. Copy it above, or start a new preset, then teach it your controls by pressing them.");
@@ -654,19 +571,57 @@ impl DrumApp {
         };
         let Some(preset) = self.preset_being_edited() else { return };
         ui.separator();
-        let connected = self.controller.is_connected();
         widgets::hint(ui, format!("Editing {}. Every change is saved at once.", path.display()));
-        ui.checkbox(&mut self.controller.editor.keep_going, "After learning a control, go on to the next action");
-        ui.checkbox(&mut self.controller.editor.remember_channel, "Limit a learned control to the MIDI channel it sends on");
+        let mut op = self.layer_rows(ui, &preset);
+        let layer = self.editor_layer(&preset);
+        if !self.controller.is_connected() {
+            ui.label(RichText::new("The controller is not connected: connect it to learn controls.").small().color(theme::AMBER));
+        }
+        self.waiting_banner(ui);
+
+        let learner = &self.controller.editor.learner;
+        let waiting_for = learner.control_waited_for();
+        for (section, (title, actions)) in Action::sections().into_iter().enumerate() {
+            egui::CollapsingHeader::new(title).default_open(section == 0).id_salt(("controller_editor_section", section)).show(ui, |ui| {
+                egui::Grid::new(("controller_editor_grid", section)).num_columns(4).striped(true).show(ui, |ui| {
+                    for action in actions {
+                        let bound = preset.bindings_of(layer.as_deref(), action);
+                        let row = ActionRow {
+                            action,
+                            bound: &bound,
+                            learning: waiting_for == Some(action),
+                            unbound_kind: learner.chosen_kind(action),
+                        };
+                        if let Some(clicked) = action_row(ui, &row) {
+                            op = Some(clicked);
+                        }
+                    }
+                });
+            });
+        }
+        if let Some(clicked) = lights_section(ui, &preset, layer.as_deref()) {
+            op = Some(clicked);
+        }
+        self.run_op(op);
+    }
+
+    /// The two choices that go with learning, then the layers: which one the table edits, adding one
+    /// (named, then its button learned) and deleting one. What was clicked, if anything.
+    fn layer_rows(&mut self, ui: &mut egui::Ui, preset: &Preset) -> Option<Op> {
+        let mut op = None;
+        let connected = self.controller.is_connected();
+        let editor = &mut self.controller.editor;
+        ui.checkbox(&mut editor.learner.keep_going, "After learning a control, go on to the next action");
+        ui.checkbox(&mut editor.learner.remember_channel, "Limit a learned control to the MIDI channel it sends on");
         ui.horizontal(|ui| {
             ui.label("Layer");
             for (i, (name, _)) in preset.layers.iter().enumerate() {
-                ui.selectable_value(&mut self.controller.editor.view.layer, i, name.as_str());
+                ui.selectable_value(&mut editor.view.layer, i, name.as_str());
             }
             if preset.layers.is_empty() {
                 ui.label(RichText::new("none: every control works on its own").weak());
             }
-            if !self.controller.editor.view.adding_layer
+            if !editor.view.adding_layer
                 && ui
                     .small_button("Add layer…")
                     .on_hover_text("A layer is a set of assignments that a button of the device switches to")
@@ -674,8 +629,8 @@ impl DrumApp {
             {
                 op = Some(Op::AddLayer);
             }
-            if let Some(name) = self.editor_layer(&preset) {
-                if self.controller.editor.view.confirm_layer_delete {
+            if let Some(name) = preset.layers.get(editor.view.layer).map(|l| l.0.clone()) {
+                if editor.view.confirm_layer_delete {
                     if ui.small_button(format!("Really delete layer {name} and what it does?")).clicked() {
                         op = Some(Op::DeleteLayer(name));
                     }
@@ -687,132 +642,46 @@ impl DrumApp {
                 }
             }
         });
-        if self.controller.editor.view.adding_layer {
-            ui.horizontal(|ui| {
-                ui.label("New layer's name");
-                ui.add(egui::TextEdit::singleline(&mut self.controller.editor.view.new_layer).desired_width(80.0).char_limit(24));
-                let waiting = self.controller.editor.learning_layer.is_some();
-                if waiting {
-                    if ui.button("Cancel").clicked() {
-                        op = Some(Op::Cancel);
-                    }
-                } else if ui
-                    .add_enabled(
-                        connected && !self.controller.editor.view.new_layer.trim().is_empty(),
-                        egui::Button::new("Learn its button"),
-                    )
-                    .clicked()
-                {
+        if !editor.view.adding_layer {
+            return op;
+        }
+        let waiting = editor.learner.layer_waited_for().map(str::to_string);
+        ui.horizontal(|ui| {
+            ui.label("New layer's name");
+            ui.add(egui::TextEdit::singleline(&mut editor.view.new_layer).desired_width(80.0).char_limit(24));
+            if waiting.is_some() {
+                if ui.button("Cancel").clicked() {
+                    op = Some(Op::Cancel);
+                }
+            } else {
+                let named = !editor.view.new_layer.trim().is_empty();
+                if ui.add_enabled(connected && named, egui::Button::new("Learn its button")).clicked() {
                     op = Some(Op::LearnLayer);
                 }
-                if !waiting && ui.small_button("Close").clicked() {
+                if ui.small_button("Close").clicked() {
                     op = Some(Op::CloseAddLayer);
                 }
-            });
-            if let Some(name) = self.controller.editor.learning_layer.clone() {
-                ui.label(
-                    RichText::new(format!("Press the button that selects layer \"{name}\" on the device…")).strong().color(theme::ACCENT),
-                );
             }
+        });
+        if let Some(name) = waiting {
+            ui.label(RichText::new(format!("Press the button that selects layer \"{name}\" on the device…")).strong().color(theme::ACCENT));
         }
-        let layer = self.editor_layer(&preset);
-        if !connected {
-            ui.label(RichText::new("The controller is not connected: connect it to learn controls.").small().color(theme::AMBER));
-        }
-        if let Some(d) = self.controller.editor.detecting.as_ref() {
-            ui.label(RichText::new(d.prompt()).strong().color(theme::ACCENT));
-        } else if let Some(action) = self.controller.editor.learning {
+        op
+    }
+
+    /// What the window asks of the user now: the control to press or the encoder to turn, or else
+    /// what it said last.
+    fn waiting_banner(&self, ui: &mut egui::Ui) {
+        let editor = &self.controller.editor;
+        if let Some(prompt) = editor.learner.prompt() {
+            ui.label(RichText::new(prompt).strong().color(theme::ACCENT));
+        } else if let Some(action) = editor.learner.control_waited_for() {
             ui.label(
                 RichText::new(format!("Press or turn the control for \"{}\" on the device…", action.title())).strong().color(theme::ACCENT),
             );
-        } else if !self.controller.editor.notice.is_empty() {
-            ui.label(RichText::new(self.controller.editor.notice.clone()).small());
+        } else if !editor.notice.is_empty() {
+            ui.label(RichText::new(editor.notice.clone()).small());
         }
-
-        for (section, (title, actions)) in Action::sections().into_iter().enumerate() {
-            egui::CollapsingHeader::new(title).default_open(section == 0).id_salt(("controller_editor_section", section)).show(ui, |ui| {
-                egui::Grid::new(("controller_editor_grid", section)).num_columns(4).striped(true).show(ui, |ui| {
-                    for action in actions {
-                        let bound = preset.bindings_of(layer.as_deref(), action);
-                        let learning = self.controller.editor.learning == Some(action);
-                        ui.label(if learning { RichText::new(action.title()).strong() } else { RichText::new(action.title()) })
-                            .on_hover_text(action.help());
-                        let controls = if bound.is_empty() {
-                            "—".to_string()
-                        } else {
-                            bound.iter().map(|b| control_text(b)).collect::<Vec<_>>().join(", ")
-                        };
-                        ui.label(RichText::new(controls).monospace());
-                        // How a value's cc is read: its binding's, or the choice made before learning it.
-                        if action.is_level() || action.is_browse() {
-                            let current = bound
-                                .iter()
-                                .find(|b| matches!(b.input.src, controller::Src::Cc(_)))
-                                .map(|b| b.reading)
-                                .unwrap_or_else(|| self.controller.editor.chosen_kind(action));
-                            ui.horizontal(|ui| {
-                                egui::ComboBox::from_id_salt(("controller_kind", action.text()))
-                                    .selected_text(kind_text(current))
-                                    .width(150.0)
-                                    .show_ui(ui, |ui| {
-                                        for reading in KINDS {
-                                            if action.is_browse() && !reading.is_relative() {
-                                                continue;
-                                            }
-                                            if ui.selectable_label(current == reading, kind_text(reading)).clicked() {
-                                                op = Some(Op::Kind(action, reading));
-                                            }
-                                        }
-                                    });
-                                if ui
-                                    .small_button("Detect")
-                                    .on_hover_text("Turn the encoder to the right and then to the left to find out how it counts")
-                                    .clicked()
-                                {
-                                    op = Some(Op::Detect(action));
-                                }
-                            });
-                        } else {
-                            ui.label("");
-                        }
-                        ui.horizontal(|ui| {
-                            if learning {
-                                if ui.button("Cancel").clicked() {
-                                    op = Some(Op::Cancel);
-                                }
-                            } else if ui.button("Learn").clicked() {
-                                op = Some(Op::Learn(action));
-                            }
-                            if !bound.is_empty() && ui.small_button("Clear").clicked() {
-                                op = Some(Op::Clear(action));
-                            }
-                        });
-                        ui.end_row();
-                    }
-                });
-            });
-        }
-        egui::CollapsingHeader::new("Lights and rings").default_open(!preset.lights.is_empty()).id_salt("controller_editor_lights").show(ui, |ui| {
-            widgets::hint(ui, "A light shows an action that is on (a button's LED); a ring shows a value around an encoder. Only actions that have a control are listed.");
-            egui::Grid::new("controller_editor_lights_grid").num_columns(2).striped(true).show(ui, |ui| {
-                for action in action_order() {
-                    if !(action.has_light() || action.is_level()) {
-                        continue;
-                    }
-                    let bound = preset.bindings_of(layer.as_deref(), action);
-                    let shown = preset.lights_of(layer.as_deref(), action, false).is_some() || preset.lights_of(layer.as_deref(), action, true).is_some();
-                    if bound.is_empty() && !shown {
-                        continue;
-                    }
-                    ui.label(action.title());
-                    if let Some(light_op) = light_cell(ui, &preset, layer.as_deref(), action, &bound) {
-                        op = Some(light_op);
-                    }
-                    ui.end_row();
-                }
-            });
-        });
-        self.run_op(op);
     }
 
     fn run_op(&mut self, op: Option<Op>) {
@@ -830,10 +699,7 @@ impl DrumApp {
                 if !self.controller.is_connected() {
                     self.controller.editor.say(CONNECT_FIRST);
                 } else {
-                    let editor = &mut self.controller.editor;
-                    editor.stop_learning();
-                    editor.notice.clear();
-                    editor.detecting = Some(Detect { action, cc: None, clockwise: Vec::new(), counter: Vec::new() });
+                    self.controller.editor.start_detecting(action);
                 }
             }
             Op::AddLight(action, ring) => {
@@ -866,10 +732,7 @@ impl DrumApp {
                 if !self.controller.is_connected() {
                     self.controller.editor.say(CONNECT_FIRST);
                 } else {
-                    let editor = &mut self.controller.editor;
-                    editor.stop_learning();
-                    editor.notice.clear();
-                    editor.learning_layer = Some(name);
+                    self.controller.editor.start_learning_layer(name);
                 }
             }
             Op::AskDeleteLayer(ask) => self.controller.editor.view.confirm_layer_delete = ask,
@@ -889,7 +752,7 @@ impl DrumApp {
                 }
             }
             Op::Kind(action, reading) => {
-                self.controller.editor.choose_kind(action, reading);
+                self.controller.editor.learner.choose_kind(action, reading);
                 if let Some(preset) = self.preset_being_edited() {
                     let layer = self.editor_layer(&preset);
                     let _ = self.edit_preset(|p| p.set_reading(layer.as_deref(), action, reading));
@@ -902,6 +765,91 @@ impl DrumApp {
             Op::Delete => self.delete_preset(),
         }
     }
+}
+
+/// One action of the table: what it is bound to, and how what it is bound to is read.
+struct ActionRow<'a> {
+    action: Action,
+    bound: &'a [&'a Binding],
+    /// The action waits for its control.
+    learning: bool,
+    /// How a value's cc is read when nothing is bound yet.
+    unbound_kind: Reading,
+}
+
+/// A row of the table of actions: the title, the controls, how a value is read (for the actions
+/// that have one) and the buttons. What was clicked, if anything.
+fn action_row(ui: &mut egui::Ui, row: &ActionRow) -> Option<Op> {
+    let ActionRow { action, bound, learning, unbound_kind } = *row;
+    let mut op = None;
+    ui.label(if learning { RichText::new(action.title()).strong() } else { RichText::new(action.title()) }).on_hover_text(action.help());
+    let controls = if bound.is_empty() { "—".to_string() } else { bound.iter().map(|b| control_text(b)).collect::<Vec<_>>().join(", ") };
+    ui.label(RichText::new(controls).monospace());
+    if action.is_level() || action.is_browse() {
+        let current = bound.iter().find(|b| matches!(b.input.src, controller::Src::Cc(_))).map(|b| b.reading).unwrap_or(unbound_kind);
+        ui.horizontal(|ui| {
+            egui::ComboBox::from_id_salt(("controller_kind", action.text())).selected_text(kind_text(current)).width(150.0).show_ui(
+                ui,
+                |ui| {
+                    for reading in KINDS.into_iter().filter(|r| !action.is_browse() || r.is_relative()) {
+                        if ui.selectable_label(current == reading, kind_text(reading)).clicked() {
+                            op = Some(Op::Kind(action, reading));
+                        }
+                    }
+                },
+            );
+            if ui
+                .small_button("Detect")
+                .on_hover_text("Turn the encoder to the right and then to the left to find out how it counts")
+                .clicked()
+            {
+                op = Some(Op::Detect(action));
+            }
+        });
+    } else {
+        ui.label("");
+    }
+    ui.horizontal(|ui| {
+        if learning {
+            if ui.button("Cancel").clicked() {
+                op = Some(Op::Cancel);
+            }
+        } else if ui.button("Learn").clicked() {
+            op = Some(Op::Learn(action));
+        }
+        if !bound.is_empty() && ui.small_button("Clear").clicked() {
+            op = Some(Op::Clear(action));
+        }
+    });
+    ui.end_row();
+    op
+}
+
+/// The section of the lights and rings: a row for each action that can have one and has a control.
+/// What was clicked, if anything.
+fn lights_section(ui: &mut egui::Ui, preset: &Preset, layer: Option<&str>) -> Option<Op> {
+    let mut op = None;
+    egui::CollapsingHeader::new("Lights and rings").default_open(!preset.lights.is_empty()).id_salt("controller_editor_lights").show(ui, |ui| {
+        widgets::hint(ui, "A light shows an action that is on (a button's LED); a ring shows a value around an encoder. Only actions that have a control are listed.");
+        egui::Grid::new("controller_editor_lights_grid").num_columns(2).striped(true).show(ui, |ui| {
+            for action in action_order() {
+                if !(action.has_light() || action.is_level()) {
+                    continue;
+                }
+                let bound = preset.bindings_of(layer, action);
+                let shown = preset.lights_of(layer, action, false).is_some() || preset.lights_of(layer, action, true).is_some();
+                if bound.is_empty() && !shown {
+                    continue;
+                }
+                ui.label(action.title());
+                if let Some(light_op) = light_cell(ui, preset, layer, action, &bound) {
+                    op = Some(light_op);
+                }
+                ui.end_row();
+            }
+        });
+    });
+    op
 }
 
 /// The light and the ring of an action in the table: what is there (with its numbers, which can be
@@ -1113,12 +1061,12 @@ bind = note 1 -> stop
         std::fs::create_dir(dir.join("Pads.txt.tmp")).unwrap(); // the write has no place to go
         let mut app = DrumApp::with_config(Config { controller_preset: "Pads".into(), ..Config::default() });
         app.paths = Paths::in_dir(dir.parent().unwrap().to_path_buf());
-        app.controller.editor.learning = Some(Action::Record);
-        app.controller.editor.keep_going = true;
+        app.controller.editor.start_learning(Action::Record);
+        app.controller.editor.learner.keep_going = true;
 
         assert!(app.learn_message(pressed(40)), "the press is used up");
         let editor = &app.controller.editor;
-        assert!(editor.learning.is_none(), "it does not go on to the next action as if this one was bound");
+        assert!(editor.learner.control_waited_for().is_none(), "it does not go on to the next action as if this one was bound");
         assert!(editor.notice.contains("not saved"), "{}", editor.notice);
         assert!(app.view.error.as_deref().is_some_and(|e| e.contains("Could not save")), "{:?}", app.view.error);
         let kept = controller::Preset::parse(&std::fs::read_to_string(dir.join("Pads.txt")).unwrap());
@@ -1141,12 +1089,10 @@ bind = cc 13 rel -> tempo
         app.paths = Paths::in_dir(dir.parent().unwrap().to_path_buf());
         let saved = || controller::Preset::parse(&std::fs::read_to_string(dir.join("Pads.txt")).unwrap());
         let cc = |cc: u8, val: u8| controller::Msg::Cc { ch: 1, cc, val };
-        let start = |app: &mut DrumApp| {
-            app.controller.editor.detecting = Some(Detect { action: Action::Tempo, cc: None, clockwise: Vec::new(), counter: Vec::new() })
-        };
+        let start = |app: &mut DrumApp| app.controller.editor.start_detecting(Action::Tempo);
 
         start(&mut app);
-        assert!(app.controller.editor.detecting.as_ref().unwrap().prompt().contains("RIGHT"));
+        assert!(app.controller.editor.learner.prompt().unwrap().contains("RIGHT"));
         // Other controls are used up and ignored, also the first cc that fixed the encoder.
         assert!(app.learn_message(pressed(36)));
         for v in [1, 1, 2] {
@@ -1154,13 +1100,13 @@ bind = cc 13 rel -> tempo
         }
         assert!(app.learn_message(cc(14, 99)), "another knob does not count");
         assert!(app.learn_message(cc(13, 1)));
-        assert!(app.controller.editor.detecting.as_ref().unwrap().prompt().contains("LEFT"));
+        assert!(app.controller.editor.learner.prompt().unwrap().contains("LEFT"));
         for v in [127, 127, 126, 127] {
             assert!(app.learn_message(cc(13, v)));
         }
-        assert!(app.controller.editor.detecting.is_none());
+        assert!(!app.controller.editor.learner.is_detecting());
         assert_eq!(saved().binds[0].reading, Reading::Relative(Encoding::Twos));
-        assert_eq!(app.controller.editor.chosen_kind(Action::Tempo), Reading::Relative(Encoding::Twos));
+        assert_eq!(app.controller.editor.learner.chosen_kind(Action::Tempo), Reading::Relative(Encoding::Twos));
         assert!(app.controller.editor.notice.contains("twos"), "{}", app.controller.editor.notice);
 
         // A knob that sends positions is not guessed at: nothing changes, and the numbers are shown.
@@ -1168,7 +1114,7 @@ bind = cc 13 rel -> tempo
         for v in [10, 40, 90, 100, 80, 20, 5, 60] {
             app.learn_message(cc(13, v));
         }
-        assert!(app.controller.editor.detecting.is_none());
+        assert!(!app.controller.editor.learner.is_detecting());
         assert_eq!(saved().binds[0].reading, Reading::Relative(Encoding::Twos));
         assert!(
             app.controller.editor.notice.contains("Could not tell") && app.controller.editor.notice.contains("10 40 90 100"),
@@ -1178,7 +1124,7 @@ bind = cc 13 rel -> tempo
         // Cancelling stops it.
         start(&mut app);
         app.run_op(Some(Op::Cancel));
-        assert!(app.controller.editor.detecting.is_none());
+        assert!(!app.controller.editor.learner.is_detecting());
     }
 
     #[test]
@@ -1197,20 +1143,20 @@ bind = note 36 -> record
         let saved = || controller::Preset::parse(&std::fs::read_to_string(dir.join("Pads.txt")).unwrap());
 
         // The layer waits for a button: a release and a fader are used up and change nothing.
-        app.controller.editor.learning_layer = Some("B".into());
+        app.controller.editor.start_learning_layer("B".into());
         assert!(app.learn_message(controller::Msg::NoteOn { ch: 1, note: 85, vel: 0 }));
         assert!(app.learn_message(controller::Msg::Bend { ch: 1, value: 100 }));
-        assert!(saved().layers.is_empty() && app.controller.editor.learning_layer.is_some());
+        assert!(saved().layers.is_empty() && app.controller.editor.learner.layer_waited_for().is_some());
         // A button that does something cannot select a layer: it says why and waits for another.
         assert!(app.learn_message(pressed(36)));
         assert!(app.controller.editor.notice.contains("Record"), "{}", app.controller.editor.notice);
-        assert!(saved().layers.is_empty() && app.controller.editor.learning_layer.is_some());
+        assert!(saved().layers.is_empty() && app.controller.editor.learner.layer_waited_for().is_some());
         // A free button does, and the new layer is the one shown.
         assert!(app.learn_message(pressed(85)));
         assert_eq!(saved().layers, vec![("B".to_string(), controller::Src::Note(85))]);
-        assert_eq!((app.controller.editor.learning_layer.clone(), app.controller.editor.view.layer), (None, 0));
+        assert_eq!((app.controller.editor.learner.layer_waited_for().map(str::to_string), app.controller.editor.view.layer), (None, 0));
         // Bindings on the layer go with it.
-        app.controller.editor.learning = Some(Action::Stop);
+        app.controller.editor.start_learning(Action::Stop);
         assert!(app.learn_message(pressed(40)));
         assert_eq!(saved().bindings_of(Some("B"), Action::Stop).len(), 1);
         app.run_op(Some(Op::DeleteLayer("B".into())));
@@ -1231,31 +1177,31 @@ bind = note 36 -> record
         // Nothing waits for a control: messages are not used up.
         assert!(!app.learn_message(pressed(36)));
         // Record waits; the first press binds it and the editor goes on to Listen.
-        app.controller.editor.learning = Some(Action::Record);
+        app.controller.editor.start_learning(Action::Record);
         assert!(app.learn_message(pressed(36)));
-        assert_eq!(app.controller.editor.learning, Some(Action::Listen));
+        assert_eq!(app.controller.editor.learner.control_waited_for(), Some(Action::Listen));
         assert_eq!(saved().bindings_of(None, Action::Record)[0].input.src, controller::Src::Note(36));
         // A release is used up and changes nothing; the next press binds Listen.
         assert!(app.learn_message(controller::Msg::NoteOn { ch: 1, note: 36, vel: 0 }));
-        assert_eq!(app.controller.editor.learning, Some(Action::Listen));
+        assert_eq!(app.controller.editor.learner.control_waited_for(), Some(Action::Listen));
         assert!(app.learn_message(pressed(37)));
         assert_eq!(saved().bindings_of(None, Action::Listen)[0].input.src, controller::Src::Note(37));
         // Pressing a used pad takes it from its action, and says so.
-        app.controller.editor.learning = Some(Action::Stop);
+        app.controller.editor.start_learning(Action::Stop);
         assert!(app.learn_message(pressed(36)));
         assert!(app.controller.editor.notice.contains("it was Record"), "{}", app.controller.editor.notice);
         assert!(saved().bindings_of(None, Action::Record).is_empty());
         // Without "go on", learning ends after one control.
-        app.controller.editor.keep_going = false;
-        app.controller.editor.learning = Some(Action::Tempo);
+        app.controller.editor.learner.keep_going = false;
+        app.controller.editor.start_learning(Action::Tempo);
         assert!(app.learn_message(controller::Msg::Cc { ch: 2, cc: 13, val: 40 }));
-        assert_eq!(app.controller.editor.learning, None);
+        assert_eq!(app.controller.editor.learner.control_waited_for(), None);
         let tempo = saved().binds.iter().find(|b| b.action == Action::Tempo).cloned().unwrap();
         assert_eq!((tempo.input.src, tempo.input.channel, tempo.reading), (controller::Src::Cc(13), None, Reading::Absolute));
         // The channel is remembered when asked for, and a relative choice is kept for the knob.
-        app.controller.editor.remember_channel = true;
-        app.controller.editor.kinds.insert(Action::RangeFrom, Reading::Relative(Encoding::Twos));
-        app.controller.editor.learning = Some(Action::RangeFrom);
+        app.controller.editor.learner.remember_channel = true;
+        app.controller.editor.learner.choose_kind(Action::RangeFrom, Reading::Relative(Encoding::Twos));
+        app.controller.editor.start_learning(Action::RangeFrom);
         assert!(app.learn_message(controller::Msg::Cc { ch: 2, cc: 14, val: 1 }));
         let from = saved().binds.iter().find(|b| b.action == Action::RangeFrom).cloned().unwrap();
         assert_eq!((from.input.channel, from.reading), (Some(2), Reading::Relative(Encoding::Twos)));
@@ -1284,7 +1230,7 @@ bind = note 36 -> record
         let copy = controller::Preset::parse(&std::fs::read_to_string(dir.join("Korg nanoKONTROL2 (copy).txt")).unwrap());
         assert_eq!(copy, controller::Preset::parse(controller::builtin_text("Korg nanoKONTROL2").unwrap()));
         // Editing the copy changes the copy only.
-        app.controller.editor.learning = Some(Action::Record);
+        app.controller.editor.start_learning(Action::Record);
         app.learn_message(controller::Msg::Cc { ch: 1, cc: 99, val: 127 });
         let edited = controller::Preset::parse(&std::fs::read_to_string(dir.join("Korg nanoKONTROL2 (copy).txt")).unwrap());
         assert_eq!(edited.bindings_of(None, Action::Record)[0].input.src, controller::Src::Cc(99));
@@ -1346,12 +1292,12 @@ bind = note 36 -> record
             ..Config::default()
         });
         app.paths = Paths::in_dir(dir.parent().unwrap().to_path_buf());
-        app.controller.editor.learning = Some(Action::Record);
+        app.controller.editor.start_learning(Action::Record);
         app.controller.editor.view.confirm_delete = true;
         app.select_preset("Pads".into());
         assert_eq!(app.cfg.controller_preset, "Pads");
         assert!(app.cfg.controller_port.is_empty(), "the preset's own port is used");
-        assert!(app.controller.editor.learning.is_none() && !app.controller.editor.view.confirm_delete);
+        assert!(app.controller.editor.learner.control_waited_for().is_none() && !app.controller.editor.view.confirm_delete);
         assert!(app.editable_path().is_some(), "and it is one that can be edited");
         // The window draws with the list on the left for a built-in and for an own preset, and for none.
         app.refresh_controllers();
@@ -1401,7 +1347,7 @@ bind = note 36 -> record
         app.controller.editor.view.adding_layer = true;
         app.controller.editor.view.new_layer = "B".into();
         frame(&mut app);
-        app.controller.editor.learning_layer = Some("B".into());
+        app.controller.editor.start_learning_layer("B".into());
         frame(&mut app);
         app.controller.editor.stop_learning();
         app.edit_preset(|p| p.add_layer("B", controller::Src::Note(85)).unwrap()).unwrap();

@@ -35,7 +35,7 @@ mod tests;
 
 pub use action::{Action, Out, Src, State};
 pub use error::{LayerError, LoadPresetError, PresetError};
-pub use mapper::{learn, Command, Mapper};
+pub use mapper::{learn, Command, Learned, Mapper};
 pub use message::{parse, Encoding, Msg, Reading};
 pub use preset::{
     builtin_text, custom_presets, load_preset, preset_source, Binding, Input, Light, Preset, PresetKind, PresetSource, BUILTIN,
