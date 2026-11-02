@@ -23,6 +23,7 @@ The hardware tasks (HW-*) have a step-by-step plan in `docs/hardware-test-plan.m
 | **HW-9** [#17](https://github.com/pKasprowicz/roll-model/issues/17) | Try the controller on the Rudiments tab | device |
 | **HW-10** [#15](https://github.com/pKasprowicz/roll-model/issues/15) | Try the rudiments with the V31 | device, ears |
 | **HW-11** [#16](https://github.com/pKasprowicz/roll-model/issues/16) | Time the start-up with the devices attached | device |
+| **HW-12** [#108](https://github.com/pKasprowicz/roll-model/issues/108) | Check the MIDI port opening and the drum-module parsing on the real devices (RV-32, commit 39f3f25) | device |
 | **CTL-1** | Create and delete layers in the Manage window | code |
 | **CTL-2** | Edit lights and LED rings in the Manage window | code |
 | **CTL-3** | Guess a relative encoder's encoding while learning | code |
