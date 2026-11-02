@@ -688,15 +688,15 @@ python3 tools/build_notices.py      # target/notices/THIRD_PARTY_NOTICES.txt</co
 </ul>
 
 <h3 id="sources">Practice sources</h3>
-<p>The Score tab and the Rudiments tab must each keep their own score, range, tempo, take and history, yet almost every method (<code>plan_run</code>, <code>start_take</code>, Listen, Results, the controller) works on "the" score. Instead of threading a session object through everything, <code>DrumApp</code> keeps <em>one</em> set of practice fields and parks the other source's in a struct; showing the other tab swaps them.</p>
-{{code:src/app.rs::struct Parked}}
+<p>The Score tab and the Rudiments tab must each keep their own score, range, tempo, take and history, yet almost every method (<code>plan_run</code>, <code>start_take</code>, Listen, Results, the controller) works on "the" score. Instead of threading a session object through everything, <code>DrumApp</code> keeps <em>one</em> set of practice fields and keeps the other source's in a second <code>Practice</code> of the same kind; showing the other tab swaps the two.</p>
+{{code:src/app.rs::struct Practice}}
 {{code:src/app.rs::fn activate}}
-<p>The destructuring pattern in <code>activate</code> names every field of <code>Parked</code>: add a field to the struct and forget the swap, and it does not compile. <code>sync_source()</code> runs every frame and after tab changes; <code>open_file</code> always activates the Score source. <code>score_gen</code> is bumped whenever a score is put in place, and Listen's restart signature includes it, so a new rudiment restarts a running Listen.</p>
+<p><code>activate</code> swaps the two <code>Practice</code> values as wholes, so a field added to the struct cannot be forgotten by the swap. <code>sync_source()</code> runs every frame and after tab changes; <code>open_file</code> always activates the Score source. <code>score_gen</code> is bumped whenever a score is put in place, and Listen's restart signature includes it, so a new rudiment restarts a running Listen.</p>
 <figure>
 <svg viewBox="0 0 760 170" role="img" aria-label="Practice source swap" xmlns="http://www.w3.org/2000/svg" font-family="system-ui, sans-serif" font-size="13">
   <rect x="20" y="20" width="330" height="130" rx="8" fill="none" stroke="currentColor" stroke-width="2"/><text x="34" y="44" font-weight="700">DrumApp (active source)</text>
-  <text x="34" y="68">score, score_path, range_*, tempo_pct,</text><text x="34" y="88">take, takes_started, history</text><text x="34" y="118" opacity=".8">source = Rudiments</text>
-  <rect x="410" y="20" width="330" height="130" rx="8" fill="none" stroke="currentColor" stroke-dasharray="6 4"/><text x="424" y="44" font-weight="700">Parked (the other source)</text>
+  <text x="34" y="68">practice: score, score_path, range_*, tempo,</text><text x="34" y="88">take, takes_started, history</text><text x="34" y="118" opacity=".8">source = Rudiments</text>
+  <rect x="410" y="20" width="330" height="130" rx="8" fill="none" stroke="currentColor" stroke-dasharray="6 4"/><text x="424" y="44" font-weight="700">parked (the other Practice)</text>
   <text x="424" y="68">score (the loaded file), its path,</text><text x="424" y="88">range, tempo, take, history</text>
   <path d="M352 70 L408 70 M408 100 L352 100" stroke="currentColor" fill="none"/><text x="358" y="62" font-size="11">swap</text>
 </svg>
