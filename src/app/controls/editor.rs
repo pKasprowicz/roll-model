@@ -1020,14 +1020,13 @@ mod tests {
 
     #[test]
     fn new_presets_never_overwrite() {
-        let dir = std::env::temp_dir().join(format!("roll-model-new-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&dir);
+        let guard = roll_model_core::testing::TempDir::new("new");
+        let dir = guard.path().to_path_buf();
         let a = unused_path(&dir, "My controller").unwrap();
         std::fs::write(&a, "x").unwrap();
         let b = unused_path(&dir, "My controller").unwrap();
         assert_ne!(a, b);
         assert!(b.to_string_lossy().ends_with("My controller 2.txt"));
-        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
@@ -1045,13 +1044,12 @@ mod tests {
         assert!(order.iter().position(|a| *a == Action::Tempo) < order.iter().position(|a| *a == Action::Gain(0)));
     }
 
-    fn temp_dir(tag: &str) -> PathBuf {
-        let dir = std::env::temp_dir().join(format!("roll-model-editor-{tag}-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&dir);
-        let dir = dir.join("settings");
-        let controllers = dir.join("controllers");
+    /// The `controllers` folder of a settings folder that is removed when the guard is dropped.
+    fn temp_dir(tag: &str) -> (roll_model_core::testing::TempDir, PathBuf) {
+        let guard = roll_model_core::testing::TempDir::new(&format!("editor-{tag}"));
+        let controllers = guard.path().join("settings").join("controllers");
         std::fs::create_dir_all(&controllers).unwrap();
-        controllers
+        (guard, controllers)
     }
 
     fn pressed(note: u8) -> controller::Msg {
@@ -1060,7 +1058,7 @@ mod tests {
 
     #[test]
     fn a_light_and_a_ring_are_added_on_the_control_of_the_action_and_edited() {
-        let dir = temp_dir("lights");
+        let (_guard, dir) = temp_dir("lights");
         std::fs::write(
             dir.join("Pads.txt"),
             "name = Pads
@@ -1102,12 +1100,11 @@ bind = cc 13 abs -> tempo
         let ctx = egui::Context::default();
         app.controller.editor.view.open = true;
         let _ = ctx.run(egui::RawInput::default(), |ctx| app.controller_editor_window(ctx));
-        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
     fn a_light_dragged_through_many_values_is_written_once_when_the_drag_ends() {
-        let dir = temp_dir("light-drag");
+        let (_guard, dir) = temp_dir("light-drag");
         std::fs::write(
             dir.join("Pads.txt"),
             "name = Pads
@@ -1147,12 +1144,11 @@ bind = note 36 -> record
         app.run_op(Some(Op::SetLight(again, false)));
         app.run_op(Some(Op::Clear(Action::Stop)));
         assert_eq!(on_disk().lights_of(None, Action::Record, false).unwrap().on, 9);
-        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
     fn learning_stops_and_says_so_when_the_preset_cannot_be_saved() {
-        let dir = temp_dir("learn-fails");
+        let (_guard, dir) = temp_dir("learn-fails");
         std::fs::write(
             dir.join("Pads.txt"),
             "name = Pads
@@ -1174,12 +1170,11 @@ bind = note 1 -> stop
         assert!(app.view.error.as_deref().is_some_and(|e| e.contains("Could not save")), "{:?}", app.view.error);
         let kept = controller::Preset::parse(&std::fs::read_to_string(dir.join("Pads.txt")).unwrap());
         assert!(kept.bindings_of(None, Action::Record).is_empty(), "the file is as it was");
-        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
     fn an_encoder_is_turned_right_and_left_to_find_out_how_it_counts() {
-        let dir = temp_dir("detect");
+        let (_guard, dir) = temp_dir("detect");
         std::fs::write(
             dir.join("Pads.txt"),
             "name = Pads
@@ -1231,12 +1226,11 @@ bind = cc 13 rel -> tempo
         start(&mut app);
         app.run_op(Some(Op::Cancel));
         assert!(app.controller.editor.detecting.is_none());
-        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
     fn a_layer_is_added_by_pressing_its_button_and_removed_with_what_it_does() {
-        let dir = temp_dir("layers");
+        let (_guard, dir) = temp_dir("layers");
         std::fs::write(
             dir.join("Pads.txt"),
             "name = Pads
@@ -1270,12 +1264,11 @@ bind = note 36 -> record
         assert!(saved().layers.is_empty() && saved().bindings_of(Some("B"), Action::Stop).is_empty());
         assert_eq!(saved().bindings_of(None, Action::Record).len(), 1, "what works on every layer stays");
         assert!(saved().warnings.is_empty(), "{:?}", saved().warnings);
-        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
     fn learning_binds_the_controls_one_after_the_other_and_saves_the_preset() {
-        let dir = temp_dir("learn");
+        let (_guard, dir) = temp_dir("learn");
         std::fs::write(dir.join("Pads.txt"), "name = Pads\nport = PADS\n").unwrap();
         let mut app = DrumApp::with_config(Config { controller_preset: "Pads".into(), ..Config::default() });
         app.paths = Paths::in_dir(dir.parent().unwrap().to_path_buf());
@@ -1316,12 +1309,11 @@ bind = note 36 -> record
         // The file is a normal preset: it parses without complaint and says what was learned.
         assert!(saved().warnings.is_empty(), "{:?}", saved().warnings);
         assert_eq!(saved().port, "PADS");
-        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
     fn a_new_preset_is_made_for_a_port_and_a_built_in_one_is_copied_to_be_edited() {
-        let dir = temp_dir("new");
+        let (_guard, dir) = temp_dir("new");
         let mut app = DrumApp::with_config(Config { controller_preset: "Behringer X-Touch Mini".into(), ..Config::default() });
         app.paths = Paths::in_dir(dir.parent().unwrap().to_path_buf());
         app.midi.inputs = vec!["Some Pad Controller".into()];
@@ -1345,7 +1337,6 @@ bind = note 36 -> record
         assert_eq!(edited.bindings_of(None, Action::Record)[0].input.src, controller::Src::Cc(99));
         let original = controller::Preset::parse(controller::builtin_text("Korg nanoKONTROL2").unwrap());
         assert_eq!(original.bindings_of(None, Action::Record)[0].input.src, controller::Src::Cc(45), "the built-in one is untouched");
-        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
@@ -1358,7 +1349,7 @@ bind = note 36 -> record
 
     #[test]
     fn a_preset_can_be_renamed_and_deleted_and_a_built_in_one_cannot() {
-        let dir = temp_dir("rename");
+        let (_guard, dir) = temp_dir("rename");
         std::fs::write(dir.join("Pads.txt"), "# my notes\nname = Pads\nport = PADS\nbind = note 1 -> record\n").unwrap();
         let mut app = DrumApp::with_config(Config { controller_preset: "Pads".into(), ..Config::default() });
         app.paths = Paths::in_dir(dir.parent().unwrap().to_path_buf());
@@ -1398,12 +1389,11 @@ bind = note 36 -> record
         app.rename_preset();
         app.delete_preset();
         assert_eq!(app.cfg.controller_preset, "Korg nanoKONTROL2");
-        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
     fn clicking_a_preset_in_the_list_chooses_it_and_shows_its_assignments() {
-        let dir = temp_dir("choose");
+        let (_guard, dir) = temp_dir("choose");
         std::fs::write(dir.join("Pads.txt"), "name = Pads\nport = PADS\nbind = note 1 -> record\n").unwrap();
         let mut app = DrumApp::with_config(Config {
             controller_preset: "Korg nanoKONTROL2".into(),
@@ -1429,18 +1419,16 @@ bind = note 36 -> record
                 });
             }
         }
-        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
     fn a_new_preset_needs_a_port() {
-        let dir = temp_dir("noport");
+        let (_guard, dir) = temp_dir("noport");
         let mut app = DrumApp::with_config(Config::default());
         app.paths = Paths::in_dir(dir.parent().unwrap().to_path_buf());
         app.new_learned_preset();
         assert!(app.controller.editor.notice.contains("No MIDI input"), "{}", app.controller.editor.notice);
         assert!(std::fs::read_dir(&dir).unwrap().next().is_none(), "nothing was written");
-        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
@@ -1457,7 +1445,7 @@ bind = note 36 -> record
         frame(&mut app);
         assert!(app.controller.editor.view.open, "it stays open");
         // Making a preset opens the editor on it.
-        let dir = temp_dir("window");
+        let (_guard, dir) = temp_dir("window");
         app.controller.editor.view.open = false;
         app.paths = Paths::in_dir(dir.parent().unwrap().to_path_buf());
         app.midi.inputs = vec!["Some Pad Controller".into()];
@@ -1474,7 +1462,6 @@ bind = note 36 -> record
         app.edit_preset(|p| p.add_layer("B", controller::Src::Note(85)).unwrap()).unwrap();
         app.controller.editor.view.confirm_layer_delete = true;
         frame(&mut app);
-        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

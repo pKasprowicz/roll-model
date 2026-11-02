@@ -3,9 +3,9 @@ use crate::practice_tempo::BPM_RANGE;
 
 #[test]
 fn settings_of_the_old_name_are_copied_to_the_new_folder_once() {
-    let base = std::env::temp_dir().join(format!("roll-model-migrate-{}", std::process::id()));
+    let guard = crate::testing::TempDir::new("migrate");
+    let base = guard.path().to_path_buf();
     let (old, new) = (base.join("DrumTutor"), base.join("RollModel"));
-    let _ = std::fs::remove_dir_all(&base);
     std::fs::create_dir_all(old.join("sounds")).unwrap();
     std::fs::write(old.join("config.txt"), "latency_ms = 7\nrecent = a.musicxml\n").unwrap();
     std::fs::write(old.join("sounds").join("Kick.wav"), b"wav").unwrap();
@@ -24,7 +24,6 @@ fn settings_of_the_old_name_are_copied_to_the_new_folder_once() {
     // Nothing to migrate is not an error.
     Config::migrate(&base.join("missing"), &base.join("other")).unwrap();
     assert!(!base.join("other").exists());
-    let _ = std::fs::remove_dir_all(&base);
 }
 
 #[test]

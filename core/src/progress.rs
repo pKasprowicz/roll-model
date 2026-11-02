@@ -77,8 +77,8 @@ mod tests {
 
     #[test]
     fn the_best_tempos_of_the_settings_file_are_taken_over_once() {
-        let dir = std::env::temp_dir().join(format!("roll-model-progress-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&dir);
+        let guard = crate::testing::TempDir::new("progress");
+        let dir = guard.path().to_path_buf();
         let paths = Paths::in_dir(dir.clone());
         let older = BTreeMap::from([(16u8, 90.0f32)]);
         let first = Progress::load(&paths, &older);
@@ -88,6 +88,5 @@ mod tests {
         changed.save(&paths).unwrap();
         assert_eq!(Progress::load(&paths, &older).best_bpm.get(&16), Some(&95.0), "the file wins from then on");
         assert!(!dir.join("progress.txt.tmp").exists(), "nothing is left beside it");
-        let _ = std::fs::remove_dir_all(&dir);
     }
 }

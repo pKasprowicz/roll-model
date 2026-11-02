@@ -919,8 +919,8 @@ mod tests {
 
     #[test]
     fn every_sound_problem_goes_to_the_log_and_the_first_is_shown_with_the_count_of_the_rest() {
-        let dir = std::env::temp_dir().join(format!("roll-model-sound-errors-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&dir);
+        let guard = roll_model_core::testing::TempDir::new("sound-errors");
+        let dir = guard.path().to_path_buf();
         let mut app = DrumApp::with_config(Config::default());
         app.log = crate::log::Log::at(Some(dir.join("roll-model.log")));
         app.report_sound_errors(vec![]);
@@ -932,7 +932,6 @@ mod tests {
         let log = std::fs::read_to_string(dir.join("roll-model.log")).unwrap();
         assert_eq!(log.lines().count(), 4);
         assert!(log.contains(" second") && log.contains(" third"), "{log}");
-        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
@@ -1009,8 +1008,8 @@ mod tests {
 
     #[test]
     fn changed_settings_are_written_after_a_short_wait_and_on_exit_not_every_frame() {
-        let dir = std::env::temp_dir().join(format!("roll-model-app-settings-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&dir);
+        let guard = roll_model_core::testing::TempDir::new("app-settings");
+        let dir = guard.path().to_path_buf();
         let mut app = DrumApp::with_config(Config::default());
         app.paths = crate::config::Paths::in_dir(dir.clone());
         let file = dir.join("config.txt");
@@ -1032,7 +1031,6 @@ mod tests {
         app.save_settings_if_changed();
         app.save_settings_now();
         assert!(std::fs::read_to_string(&file).unwrap().contains("zoom = 2.5"));
-        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

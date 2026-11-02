@@ -438,15 +438,14 @@ fn the_controller_page_draws_with_and_without_a_controller() {
 
 #[test]
 fn copies_of_a_preset_never_overwrite() {
-    let dir = std::env::temp_dir().join(format!("roll-model-copy-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&dir);
+    let guard = roll_model_core::testing::TempDir::new("copy");
+    let dir = guard.path().to_path_buf();
     let a = copy_preset(&dir, "Pads", "one").unwrap();
     let b = copy_preset(&dir, "Pads", "two").unwrap();
     assert_ne!(a, b);
     assert_eq!(std::fs::read_to_string(&a).unwrap(), "one");
     assert_eq!(std::fs::read_to_string(&b).unwrap(), "two");
     assert_eq!(controller::custom_presets(&dir).len(), 2);
-    let _ = std::fs::remove_dir_all(&dir);
 }
 
 #[test]

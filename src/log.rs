@@ -67,8 +67,8 @@ mod tests {
 
     #[test]
     fn lines_are_appended_and_a_long_file_is_kept_as_old() {
-        let dir = std::env::temp_dir().join(format!("roll-model-log-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&dir);
+        let guard = roll_model_core::testing::TempDir::new("log");
+        let dir = guard.path().to_path_buf();
         let path = dir.join("roll-model.log");
         let log = Log::at(Some(path.clone()));
         log.line("first");
@@ -81,6 +81,5 @@ mod tests {
         assert!(path.with_extension("log.old").exists());
         assert_eq!(std::fs::read_to_string(&path).unwrap().lines().count(), 1);
         Log::default().line("nowhere");
-        let _ = std::fs::remove_dir_all(&dir);
     }
 }

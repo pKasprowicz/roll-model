@@ -586,8 +586,8 @@ fn the_groups_cover_every_instrument_once() {
 
 #[test]
 fn custom_presets_are_read_from_a_folder() {
-    let dir = std::env::temp_dir().join(format!("roll-model-presets-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&dir);
+    let guard = crate::testing::TempDir::new("presets");
+    let dir = guard.path().to_path_buf();
     std::fs::create_dir_all(&dir).unwrap();
     std::fs::write(dir.join("My pads.txt"), "port = PADS\nbind = note 36 -> record\n").unwrap();
     std::fs::write(dir.join("readme.md"), "not a preset").unwrap();
@@ -603,7 +603,6 @@ fn custom_presets_are_read_from_a_folder() {
     assert!(load_preset("Nope", Some(&dir)).is_err());
     assert!(load_preset("Nope", None).is_err());
     assert!(custom_presets(&dir.join("missing")).is_empty());
-    let _ = std::fs::remove_dir_all(&dir);
 }
 
 #[test]

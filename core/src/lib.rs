@@ -24,6 +24,8 @@ pub mod progress;
 pub mod rudiments;
 pub mod score;
 pub mod stats;
+#[doc(hidden)]
+pub mod testing;
 pub mod trigger;
 pub mod units;
 pub mod xml;
