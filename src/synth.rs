@@ -557,13 +557,6 @@ mod tests {
         assert!(tail_energy(Lane::Crash1) > 4.0 * tail_energy(Lane::Splash), "after 0.4 s the splash has died away");
     }
 
-    fn temp_dir(name: &str) -> std::path::PathBuf {
-        let dir = std::env::temp_dir().join(format!("roll-model-test-{}-{name}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&dir);
-        std::fs::create_dir_all(&dir).unwrap();
-        dir
-    }
-
     /// Writes a WAV file whose frame `i` has the sample values `f(i)` (one per channel).
     fn write_wav(path: &Path, rate: u32, bits: u16, float: bool, frames: usize, f: impl Fn(usize) -> Vec<f32>) {
         let channels = f(0).len() as u16;
@@ -592,7 +585,8 @@ mod tests {
 
     #[test]
     fn wav_files_become_mono_samples_at_the_kit_rate() {
-        let dir = temp_dir("formats");
+        let guard = roll_model_core::testing::TempDir::new("formats");
+        let dir = guard.path().to_path_buf();
         let sine = |hz: f32, rate: u32| move |i: usize| (TAU * hz * i as f32 / rate as f32).sin() * 0.5;
         // 16-bit stereo at 22.05 kHz: the rate is doubled, the channels averaged.
         let p = dir.join("a.wav");
@@ -619,12 +613,12 @@ mod tests {
         let p = dir.join("d.wav");
         write_wav(&p, 11_025, 16, false, 1000, |i| vec![sine(100.0, 11_025)(i)]);
         assert!((load_wav(&p).unwrap().len() as i64 - 4000).abs() <= 4);
-        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
     fn unusable_wav_files_are_refused_with_a_reason() {
-        let dir = temp_dir("bad");
+        let guard = roll_model_core::testing::TempDir::new("bad");
+        let dir = guard.path().to_path_buf();
         std::fs::write(dir.join("junk.wav"), b"this is not a wave file at all").unwrap();
         assert!(load_wav(&dir.join("junk.wav")).unwrap_err().contains("not a readable WAV"));
         write_wav(&dir.join("silent.wav"), SAMPLE_RATE, 16, false, 1000, |_| vec![0.0]);
@@ -632,12 +626,12 @@ mod tests {
         write_wav(&dir.join("empty.wav"), SAMPLE_RATE, 16, false, 0, |_| vec![0.0]);
         assert!(load_wav(&dir.join("empty.wav")).is_err());
         assert!(load_wav(&dir.join("missing.wav")).is_err());
-        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
     fn the_kit_prefers_a_users_file_and_falls_back_with_a_warning() {
-        let dir = temp_dir("kit");
+        let guard = roll_model_core::testing::TempDir::new("kit");
+        let dir = guard.path().to_path_buf();
         // Kick: a good file, quiet on purpose; Snare: damaged; HiHatClosed: a too long one.
         write_wav(&dir.join("Kick.wav"), SAMPLE_RATE, 16, false, 4410, |i| vec![(TAU * 60.0 * i as f32 / SAMPLE_RATE as f32).sin() * 0.1]);
         std::fs::write(dir.join("Snare.wav"), b"RIFF broken").unwrap();
@@ -661,7 +655,6 @@ mod tests {
             assert!(warnings.is_empty());
             assert_eq!(**kit.sample(Lane::Kick).unwrap(), render(Lane::Kick));
         }
-        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

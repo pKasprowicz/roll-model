@@ -1,32 +1,28 @@
 //! The settings file on disk: how it is written, and what happens when it is damaged.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use roll_model_core::config::{Config, Paths};
+use roll_model_core::testing::TempDir;
 
 /// A folder that is removed when the test ends, even if it panics.
-struct Dir(PathBuf);
+struct Dir(TempDir);
 
 impl Dir {
     fn new(name: &str) -> Dir {
-        let dir = std::env::temp_dir().join(format!("roll-model-settings-{}-{name}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&dir);
-        std::fs::create_dir_all(&dir).unwrap();
-        Dir(dir)
+        Dir(TempDir::new(&format!("settings-{name}")))
+    }
+
+    fn path(&self) -> &Path {
+        self.0.path()
     }
 
     fn paths(&self) -> Paths {
-        Paths::in_dir(self.0.clone())
+        Paths::in_dir(self.path().to_path_buf())
     }
 
     fn file(&self) -> PathBuf {
-        self.0.join("config.txt")
-    }
-}
-
-impl Drop for Dir {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
+        self.path().join("config.txt")
     }
 }
 
@@ -40,7 +36,8 @@ fn saving_replaces_the_file_whole_and_leaves_nothing_beside_it() {
     zoomed(1.5).save(&dir.paths()).unwrap();
     zoomed(2.0).save(&dir.paths()).unwrap();
     assert_eq!(std::fs::read_to_string(dir.file()).unwrap(), zoomed(2.0).to_text());
-    let names: Vec<String> = std::fs::read_dir(&dir.0).unwrap().map(|e| e.unwrap().file_name().to_string_lossy().into_owned()).collect();
+    let names: Vec<String> =
+        std::fs::read_dir(dir.path()).unwrap().map(|e| e.unwrap().file_name().to_string_lossy().into_owned()).collect();
     assert_eq!(names, ["config.txt"], "no temporary file is left");
     assert_eq!(Config::load_from(&dir.paths()).zoom, 2.0);
 }
@@ -50,7 +47,7 @@ fn a_save_that_fails_leaves_the_old_file_alone() {
     let dir = Dir::new("fail");
     zoomed(1.5).save(&dir.paths()).unwrap();
     // Something that is not a file where the temporary file would go.
-    std::fs::create_dir(dir.0.join("config.txt.tmp")).unwrap();
+    std::fs::create_dir(dir.path().join("config.txt.tmp")).unwrap();
     assert!(zoomed(2.5).save(&dir.paths()).is_err());
     assert_eq!(Config::load_from(&dir.paths()).zoom, 1.5, "the file before is still there, whole");
 }
@@ -73,7 +70,7 @@ fn a_file_that_is_not_text_is_read_as_far_as_possible_and_kept_aside() {
     assert_eq!(config.zoom, 1.75, "the readable lines count");
     let notice = notice.expect("the user is told");
     assert!(notice.contains("config.txt.bad"), "{notice}");
-    assert_eq!(std::fs::read(dir.0.join("config.txt.bad")).unwrap(), bytes, "the original is kept");
+    assert_eq!(std::fs::read(dir.path().join("config.txt.bad")).unwrap(), bytes, "the original is kept");
 }
 
 #[test]

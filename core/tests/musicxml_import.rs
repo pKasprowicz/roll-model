@@ -9,6 +9,7 @@ use std::path::{Path, PathBuf};
 
 use roll_model_core::import::{check_invariants, import_bytes, load_score, ImportError, ImportOptions, Limits};
 use roll_model_core::score::{Score, Stem};
+use roll_model_core::testing::TempDir;
 
 const SAMPLE: &str = include_str!("../../examples/basic_rock_beat.musicxml");
 
@@ -318,21 +319,18 @@ fn utf16(text: &str, big_endian: bool) -> Vec<u8> {
     out
 }
 
-struct TempFile(PathBuf);
+/// A file of a folder that is removed with it.
+struct TempFile {
+    _dir: TempDir,
+    path: PathBuf,
+}
 
 impl TempFile {
     fn new(name: &str, bytes: &[u8]) -> TempFile {
-        let dir = std::env::temp_dir().join(format!("roll-model-import-{}", std::process::id()));
-        std::fs::create_dir_all(&dir).unwrap();
-        let path = dir.join(name);
+        let dir = TempDir::new("import");
+        let path = dir.path().join(name);
         std::fs::write(&path, bytes).unwrap();
-        TempFile(path)
-    }
-}
-
-impl Drop for TempFile {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_file(&self.0);
+        TempFile { _dir: dir, path }
     }
 }
 
@@ -356,7 +354,7 @@ fn files_of_every_container_and_encoding() {
     let mut out = String::new();
     for (name, bytes) in &cases {
         let file = TempFile::new(name, bytes);
-        match load(&file.0) {
+        match load(&file.path) {
             Ok(s) => writeln!(out, "{name}: ok title={:?} measures={} notes={}", s.title, s.measures().len(), s.notes().len()).unwrap(),
             Err(e) => writeln!(out, "{name}: error {e}").unwrap(),
         }

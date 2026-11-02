@@ -749,7 +749,8 @@ mod tests {
         assert_eq!(app.cfg.recent_files.len(), 1);
 
         // A file that cannot be read says so, and the loaded score stays.
-        let bad = std::env::temp_dir().join(format!("roll-model-bad-{}.mid", std::process::id()));
+        let bad_dir = roll_model_core::testing::TempDir::new("bad-midi");
+        let bad = bad_dir.path().join("bad.mid");
         std::fs::write(&bad, b"MThd not a midi file").unwrap();
         app.open_file(&bad);
         for _ in 0..500 {
@@ -759,7 +760,6 @@ mod tests {
             }
             std::thread::sleep(std::time::Duration::from_millis(10));
         }
-        let _ = std::fs::remove_file(&bad);
         assert!(app.view.error.as_deref().is_some_and(|e| e.contains("Could not load")), "{:?}", app.view.error);
         assert!(app.practice.score.is_some(), "the loaded score stays");
     }
