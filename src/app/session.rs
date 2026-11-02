@@ -8,10 +8,11 @@ use crate::drums::Lane;
 use crate::metronome::{ClickOptions, Metronome, HAS_AUDIO};
 use crate::playback::{self, PlayOptions, Player, Ramp};
 use crate::render::{HitStatus, PlayedNote};
+use crate::score::Click;
 use crate::score::Score;
 use crate::units::Seconds;
 
-use super::{Calibration, DrumApp, Listen, Plan, Source, Take, TakeSummary, CLEAN_TAKE, RESTART_DELAY};
+use super::{Calibration, DrumApp, Listen, ListenKey, Plan, Source, Take, TakeSummary, CLEAN_TAKE, RESTART_DELAY};
 
 pub(super) fn signed_secs(t: Instant, zero: Instant) -> Seconds {
     if t >= zero {
@@ -104,7 +105,7 @@ impl DrumApp {
         let zero = Instant::now() + Duration::from_secs_f64(lead + count_in_beats as f64 * beat_sec.0);
         let t0 = score.tempo.q_to_sec(m0.start_q, scale);
         let end_sec = score.tempo.q_to_sec(score.measures[to].end_q(), scale) - t0;
-        let clicks = score.click_track(from, to, scale, count_in_beats, true).into_iter().map(|(t, accent)| (t.0, accent)).collect();
+        let clicks = score.click_track(from, to, scale, count_in_beats, true);
         Some(Plan { from, to, scale, bpm, beat_sec, count_in_beats, zero, t0, end_sec, clicks })
     }
 
@@ -238,10 +239,7 @@ impl DrumApp {
             beat_sec: plan.beat_sec,
             count_in_beats: plan.count_in_beats,
             ramp,
-            from: plan.from,
-            to: plan.to,
-            tempo_key: self.practice.tempo.value().round() as i32,
-            gen: self.score_gen,
+            key: ListenKey { from: plan.from, to: plan.to, tempo: self.practice.tempo.value().round() as i32, score_gen: self.score_gen },
         });
     }
 
@@ -254,13 +252,18 @@ impl DrumApp {
     }
 
     /// The range and tempo Listen would start with now.
-    pub(super) fn listen_signature(&self) -> Option<(usize, usize, i32, u32)> {
+    pub(super) fn listen_signature(&self) -> Option<ListenKey> {
         let n = self.practice.score.as_ref()?.measures.len();
         if n == 0 {
             return None;
         }
         let from = self.practice.range_from.min(n - 1);
-        Some((from, self.practice.range_to.clamp(from, n - 1), self.practice.tempo.value().round() as i32, self.score_gen))
+        Some(ListenKey {
+            from,
+            to: self.practice.range_to.clamp(from, n - 1),
+            tempo: self.practice.tempo.value().round() as i32,
+            score_gen: self.score_gen,
+        })
     }
 
     pub(super) fn update_listen(&mut self) {
@@ -270,7 +273,7 @@ impl DrumApp {
         // Changing the range or the tempo while listening restarts it, without the count-in, once the
         // change has settled (a slider being dragged changes it on every frame).
         let wanted = match (self.playback.listen.as_ref(), self.listen_signature()) {
-            (Some(l), Some(sig)) if (l.from, l.to, l.tempo_key, l.gen) != sig => Some(sig),
+            (Some(l), Some(sig)) if l.key != sig => Some(sig),
             _ => None,
         };
         if self.playback.restart.poll(wanted, Instant::now(), RESTART_DELAY) {
@@ -462,7 +465,7 @@ impl DrumApp {
         let beat = 0.6; // 100 BPM
         let zero = Instant::now() + Duration::from_secs_f64(1.0);
         let beats: Vec<f64> = (0..16).map(|i| i as f64 * beat).collect();
-        let clicks = beats.iter().map(|t| (*t, false)).collect();
+        let clicks = beats.iter().map(|t| Click { t: Seconds(*t), accent: false }).collect();
         // No control: the calibration clicks must sound whatever the click switch says.
         // The calibration measures the whole delay, so its MIDI click is not moved.
         let opts = ClickOptions { midi_delay: Duration::ZERO, ..self.click_options() };

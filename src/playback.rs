@@ -28,6 +28,7 @@ use crate::config::Subdivision;
 use crate::control::{ClickLevel, Control, ErrorLog};
 use crate::drums::Lane;
 use crate::metronome::{at, wait_until, AUDIO_LOOKAHEAD};
+use crate::score::Click;
 use crate::score::Dynamic;
 use crate::synth::{velocity_gain, Kit, SAMPLE_RATE};
 
@@ -161,10 +162,10 @@ pub fn velocity_for(e: &Expected) -> u8 {
 
 /// The notes of a take and its click track as one list ordered by time. At
 /// the same instant the click comes first.
-pub fn cues(expected: &[Expected], clicks: &[(f64, bool)]) -> Vec<Cue> {
+pub fn cues(expected: &[Expected], clicks: &[Click]) -> Vec<Cue> {
     let mut v: Vec<Cue> = clicks
         .iter()
-        .map(|&(t, accent)| Cue { t, sound: Sound::Click { level: ClickLevel::from_accent(accent) } })
+        .map(|c| Cue { t: c.t.0, sound: Sound::Click { level: ClickLevel::from_accent(c.accent) } })
         .chain(expected.iter().map(|e| Cue { t: e.t.0, sound: Sound::Drum { lane: e.lane, velocity: velocity_for(e) } }))
         .collect();
     v.sort_by(|a, b| a.t.total_cmp(&b.t)); // stable

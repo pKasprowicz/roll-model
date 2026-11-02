@@ -26,14 +26,22 @@ pub(super) struct Run {
     bar_sec: f64,
     ramp: Ramp,
     /// Tenths of a BPM, beats per bar, subdivision: a change restarts it.
-    signature: (i32, u32, Subdivision),
+    signature: MetroKey,
     /// A changed signature, waited for until it has settled.
-    restart: Debounce<(i32, u32, Subdivision)>,
+    restart: Debounce<MetroKey>,
+}
+
+/// What the running metronome plays; a change of it restarts it once it has settled.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct MetroKey {
+    tempo_tenths: i32,
+    beats: u32,
+    subdivision: Subdivision,
 }
 
 impl DrumApp {
-    fn metro_signature(&self) -> (i32, u32, Subdivision) {
-        ((self.cfg.metro_bpm * 10.0).round() as i32, self.cfg.metro_beats, self.cfg.metro_sub)
+    fn metro_signature(&self) -> MetroKey {
+        MetroKey { tempo_tenths: (self.cfg.metro_bpm * 10.0).round() as i32, beats: self.cfg.metro_beats, subdivision: self.cfg.metro_sub }
     }
 
     /// The metronome gets `metro_ramp_bpm` faster every `metro_ramp_bars` bars.

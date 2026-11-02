@@ -18,14 +18,22 @@ const LADDER_STEP: f32 = 5.0;
 
 /// What the Rudiments tab remembers while the program runs (the chosen rudiment and its
 /// repetitions are settings, kept in `Config`).
+/// What a rudiment's score was built from: the rudiment, the repetitions and the lead.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct BuiltRudiment {
+    number: u8,
+    repeats: usize,
+    lead: Lead,
+}
+
 #[derive(Default)]
 pub(super) struct State {
     /// A lead other than the rudiment's own.
     pub lead: Option<Lead>,
     /// What is typed into the search box of the list.
     filter: String,
-    /// What the score was built from: rudiment, repetitions, lead.
-    built: Option<(u8, usize, Lead)>,
+    /// What the score was built from.
+    built: Option<BuiltRudiment>,
 }
 
 /// What the rudiment picker was asked for in one frame.
@@ -73,16 +81,16 @@ impl DrumApp {
             return;
         }
         let r = self.rudiment();
-        let params = (r.number, self.cfg.rudiment_repeats, self.rudiment_lead());
+        let params = BuiltRudiment { number: r.number, repeats: self.cfg.rudiment_repeats, lead: self.rudiment_lead() };
         if self.rud.built == Some(params) && self.practice.score.is_some() {
             return;
         }
-        let another = self.rud.built.is_none_or(|b| b.0 != params.0);
+        let another = self.rud.built.is_none_or(|b| b.number != params.number);
         if another {
             // The tempo of the rudiment that goes is kept before the next one's takes its place.
             self.remember_tempo();
         }
-        let score = r.build(params.1, params.2);
+        let score = r.build(params.repeats, params.lead);
         self.practice.range_from = 0;
         self.practice.range_to = score.measures.len() - 1;
         self.practice.score = Some(score);
@@ -99,7 +107,7 @@ impl DrumApp {
     /// Keeps the tempo of the rudiment in the settings, so it comes back next time; nothing is
     /// stored for a rudiment that is still at its starting tempo.
     pub(super) fn remember_tempo(&mut self) {
-        let (Source::Rudiments, Some((number, ..))) = (self.source, self.rud.built) else { return };
+        let (Source::Rudiments, Some(BuiltRudiment { number, .. })) = (self.source, self.rud.built) else { return };
         let Some(r) = rudiments::by_number(number) else { return };
         let bpm = self.practice.tempo.value().round();
         match self.cfg.rudiment_bpm.get(&number) {

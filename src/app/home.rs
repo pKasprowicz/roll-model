@@ -19,9 +19,15 @@ pub(super) fn shorten_start(s: &str, max: usize) -> String {
     }
 }
 
+/// What was clicked in a row of the recent-scores list.
+pub(super) struct RowClicks {
+    pub row: bool,
+    pub remove: bool,
+}
+
 /// One entry of the recent-scores list: the file name over its folder, a
-/// remove button on the right. Returns (row clicked, remove clicked).
-pub(super) fn recent_row(ui: &mut egui::Ui, path: &str, width: f32) -> (bool, bool) {
+/// remove button on the right.
+pub(super) fn recent_row(ui: &mut egui::Ui, path: &str, width: f32) -> RowClicks {
     let file = Path::new(path);
     let name = file.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_else(|| path.to_string());
     let folder = shorten_start(&file.parent().map(|d| d.display().to_string()).unwrap_or_default(), 78);
@@ -53,7 +59,7 @@ pub(super) fn recent_row(ui: &mut egui::Ui, path: &str, width: f32) -> (bool, bo
     let button = egui::Rect::from_center_size(egui::pos2(rect.right() - 26.0, rect.center().y), egui::vec2(30.0, 30.0));
     let remove = ui.put(button, egui::Button::new("×")).on_hover_text("Remove from the list").clicked();
     let clicked = response.on_hover_text(path).clicked();
-    (clicked, remove)
+    RowClicks { row: clicked, remove }
 }
 
 impl DrumApp {
@@ -100,7 +106,7 @@ impl DrumApp {
                     ui.label(RichText::new("Scores you open are listed here so you can come back to them.").weak());
                 }
                 for (i, path) in self.cfg.recent_files.iter().enumerate() {
-                    let (clicked, remove) = recent_row(ui, path, width);
+                    let RowClicks { row: clicked, remove } = recent_row(ui, path, width);
                     ui.add_space(6.0);
                     if remove {
                         forget = Some(i);

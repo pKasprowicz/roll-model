@@ -95,18 +95,24 @@ impl Controller {
 
     /// For the top bar, like the MIDI input indicator: the port and the layer
     /// in use, and whether the controller is connected. `None` if none is chosen.
-    pub(super) fn label(&self, chosen: bool) -> Option<(String, bool)> {
+    pub(super) fn label(&self, chosen: bool) -> Option<ControllerLabel> {
         match self.link.as_ref() {
-            Some(link) => Some((
-                match link.mapper.layer_name() {
+            Some(link) => Some(ControllerLabel {
+                text: match link.mapper.layer_name() {
                     Some(layer) => format!("⏺ {} · layer {layer}", link.handle.port_name),
                     None => format!("⏺ {}", link.handle.port_name),
                 },
-                true,
-            )),
-            None => chosen.then(|| ("⏺ no controller".to_string(), false)),
+                connected: true,
+            }),
+            None => chosen.then(|| ControllerLabel { text: "⏺ no controller".to_string(), connected: false }),
         }
     }
+}
+
+/// The controller's entry in the top bar.
+pub(super) struct ControllerLabel {
+    pub text: String,
+    pub connected: bool,
 }
 
 #[derive(Debug, PartialEq)]

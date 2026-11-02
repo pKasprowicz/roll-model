@@ -76,7 +76,10 @@ fn cues_are_ordered_and_clicks_lead_at_ties() {
     ghost.dynamic = Dynamic::Ghost;
     let mut accent = note(Lane::Crash1, 0.0);
     accent.dynamic = Dynamic::Accent;
-    let c = cues(&[ghost, accent, note(Lane::Kick, 0.0)], &[(-1.0, true), (0.0, true), (1.0, false)]);
+    let c = cues(
+        &[ghost, accent, note(Lane::Kick, 0.0)],
+        &[Click { t: Seconds(-1.0), accent: true }, Click { t: Seconds(0.0), accent: true }, Click { t: Seconds(1.0), accent: false }],
+    );
     let times: Vec<f64> = c.iter().map(|c| c.t).collect();
     assert_eq!(times, vec![-1.0, 0.0, 0.0, 0.0, 1.0, 1.0]);
     assert_eq!(c[1].sound, Sound::Click { level: ClickLevel::Accent }); // the click, then the two notes
@@ -337,8 +340,7 @@ fn sample_score_renders_a_note_at_every_onset() {
             .unwrap()
             .score;
     let expected = expected_notes(&score, 0, score.measures.len() - 1, 1.0);
-    let clicks: Vec<(f64, bool)> =
-        score.click_track(0, score.measures.len() - 1, 1.0, 4, true).into_iter().map(|(t, a)| (t.0, a)).collect();
+    let clicks = score.click_track(0, score.measures.len() - 1, 1.0, 4, true);
     let all = cues(&expected, &clicks);
     let lead = 2.4; // one count-in bar at 100 BPM
     let out = mix(&all, lead, 1.0);

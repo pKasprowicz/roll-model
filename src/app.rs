@@ -33,6 +33,7 @@ use crate::metronome::Metronome;
 use crate::midi::{self, EventQueue, InputHandle, RawEvent};
 use crate::playback::{Player, Ramp};
 use crate::practice_tempo::PracticeTempo;
+use crate::score::Click;
 use crate::score::Score;
 use crate::theme;
 use crate::units::{Millis, Seconds};
@@ -142,11 +143,18 @@ struct Listen {
     count_in_beats: u32,
     /// The tempo ramp it plays with (none: `every` is 0).
     ramp: Ramp,
-    /// What it was started with; a change of range or tempo (or of the score) restarts it.
+    /// What it was started with; a change of it restarts Listen.
+    key: ListenKey,
+}
+
+/// What Listen plays: the bars, the tempo (rounded, in the unit of the practice tempo) and which
+/// score (`score_gen`). A change of any restarts a running Listen once it has settled.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct ListenKey {
     from: usize,
     to: usize,
-    tempo_key: i32,
-    gen: u32,
+    tempo: i32,
+    score_gen: u32,
 }
 
 /// What a take or a playback of the selected range needs: where time zero is
@@ -162,7 +170,7 @@ struct Plan {
     t0: Seconds,
     end_sec: Seconds,
     /// Count-in and beat clicks, seconds from the first measure.
-    clicks: Vec<(f64, bool)>,
+    clicks: Vec<Click>,
 }
 
 struct TakeSummary {
@@ -214,7 +222,7 @@ struct Playback {
     notes: bool,
     looping: bool,
     /// Range and tempo changed while listening, and since when: restarts once it settles.
-    restart: debounce::Debounce<(usize, usize, i32, u32)>,
+    restart: debounce::Debounce<ListenKey>,
     /// Shared with the sound threads of Listen and of takes.
     control: Arc<Control>,
     /// Instruments soloed in the mixer (not saved).
@@ -599,7 +607,7 @@ impl DrumApp {
                     Some(h) => ui.label(RichText::new(format!("⏺ {}", h.port_name)).color(theme::GREEN)),
                     None => ui.label(RichText::new("⏺ no MIDI input").color(theme::RED)),
                 };
-                if let Some((text, connected)) = self.controller.label(!self.cfg.controller_preset.is_empty()) {
+                if let Some(controls::ControllerLabel { text, connected }) = self.controller.label(!self.cfg.controller_preset.is_empty()) {
                     let indicator = egui::Label::new(RichText::new(text).color(if connected { theme::GREEN } else { theme::RED }))
                         .sense(egui::Sense::click());
                     let response = ui

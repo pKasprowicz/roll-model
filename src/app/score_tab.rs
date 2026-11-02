@@ -2,6 +2,7 @@
 
 use egui::{Color32, RichText};
 
+use super::trigger::TriggerHint;
 use crate::config::limits;
 use crate::controller::Action;
 use crate::render::{self, LayoutOpts, ScoreView};
@@ -227,7 +228,7 @@ impl DrumApp {
             }
         });
         // On a line of its own: it grows while the trigger waits for the second hit.
-        if let Some((text, armed)) = self.trigger_hint() {
+        if let Some(TriggerHint { text, armed }) = self.trigger_hint() {
             let (color, text) =
                 if armed { (theme::GREEN, format!("{text}: waiting for the second hit")) } else { (ui.visuals().weak_text_color(), text) };
             ui.label(RichText::new(text.trim_start_matches("· ")).small().color(color));

@@ -11,6 +11,12 @@ use crate::drums::Lane;
 use crate::theme;
 use crate::trigger::{Sequence, Slot, WINDOW};
 
+/// The legend line about the start trigger: what it is, and whether it waits for its second hit.
+pub(super) struct TriggerHint {
+    pub text: String,
+    pub armed: bool,
+}
+
 impl DrumApp {
     fn trigger_sequence(&self) -> Sequence {
         Sequence { first: self.cfg.trigger_first, second: self.cfg.trigger_second }
@@ -54,13 +60,13 @@ impl DrumApp {
 
     /// For the legend line of the Score and Rudiments tabs: what the trigger is and whether it
     /// is waiting for its second hit.
-    pub(super) fn trigger_hint(&self) -> Option<(String, bool)> {
+    pub(super) fn trigger_hint(&self) -> Option<TriggerHint> {
         if !self.cfg.trigger_enabled {
             return None;
         }
         let s = self.trigger_sequence();
         let text = format!("· start trigger: {}, then {} within {:.1} s", s.first.label(), s.second.label(), WINDOW.as_secs_f32());
-        Some((text, self.trigger.armed(Instant::now())))
+        Some(TriggerHint { text, armed: self.trigger.armed(Instant::now()) })
     }
 
     /// The Start trigger section of Settings -> MIDI input.
@@ -95,7 +101,7 @@ impl DrumApp {
                 });
             }
         });
-        if let Some((text, armed)) = self.trigger_hint() {
+        if let Some(TriggerHint { text, armed }) = self.trigger_hint() {
             let color = if armed { theme::GREEN } else { ui.visuals().weak_text_color() };
             ui.label(RichText::new(text.trim_start_matches("· ")).small().color(color));
         }
@@ -150,7 +156,7 @@ mod tests {
         let mut app = app();
         let t0 = Instant::now();
         hit(&mut app, t0, Lane::Crash1, 0);
-        assert!(!recording(&app) && app.trigger_hint().unwrap().1, "armed after the first hit");
+        assert!(!recording(&app) && app.trigger_hint().unwrap().armed, "armed after the first hit");
         hit(&mut app, t0, Lane::Tom1, 300);
         assert!(recording(&app));
         assert!(app.view.status.contains("started by the trigger"), "{}", app.view.status);
