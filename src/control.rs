@@ -44,7 +44,7 @@ fn store(a: &AtomicU32, v: f32) {
     a.store(v.to_bits(), Relaxed);
 }
 
-pub struct Control {
+pub struct SoundSwitches {
     notes: AtomicBool,
     click: AtomicBool,
     looping: AtomicBool,
@@ -55,9 +55,9 @@ pub struct Control {
     lanes: [AtomicU32; Lane::ALL.len()],
 }
 
-impl Control {
-    pub fn new() -> Arc<Control> {
-        Arc::new(Control {
+impl SoundSwitches {
+    pub fn new() -> Arc<SoundSwitches> {
+        Arc::new(SoundSwitches {
             notes: AtomicBool::new(true),
             click: AtomicBool::new(true),
             looping: AtomicBool::new(false),
@@ -176,7 +176,7 @@ mod tests {
 
     #[test]
     fn defaults_and_round_trips() {
-        let c = Control::new();
+        let c = SoundSwitches::new();
         assert!(c.notes() && c.click() && !c.looping() && !c.music_done());
         for lane in Lane::ALL {
             assert_eq!(c.lane_gain(lane), 1.0);
@@ -194,7 +194,7 @@ mod tests {
 
     #[test]
     fn every_lane_has_its_own_slot() {
-        let c = Control::new();
+        let c = SoundSwitches::new();
         for (i, lane) in Lane::ALL.iter().enumerate() {
             c.set_lane_gain(*lane, i as f32 / 10.0);
         }

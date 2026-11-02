@@ -231,9 +231,9 @@ fn with_a_rudiment_the_range_controls_choose_repetitions_lead_and_rudiment() {
     assert_eq!(app.cfg.rudiment, 1);
 
     // The encoder that browses the recent scores browses the rudiments, one at a time.
-    app.apply_command(Command::Turn(Action::Score, 1));
+    app.apply_command(Command::Turn(Action::BrowseScores, 1));
     assert_eq!(app.cfg.rudiment, 2);
-    app.apply_command(Command::Turn(Action::Score, 50));
+    app.apply_command(Command::Turn(Action::BrowseScores, 50));
     assert_eq!(app.cfg.rudiment, 3);
     app.apply_command(Command::Press(Action::RangeForward));
     assert_eq!(app.cfg.rudiment, 4);
@@ -371,18 +371,18 @@ fn a_locked_change_says_so_once_and_changes_nothing() {
 #[test]
 fn recent_scores_are_browsed_and_opened() {
     let mut app = DrumApp::with_config(Config::default());
-    app.apply_command(Command::Turn(Action::Score, 1));
+    app.apply_command(Command::Turn(Action::BrowseScores, 1));
     assert!(app.view.status.contains("no recent"));
     let sample = sample().to_string_lossy().into_owned();
     app.cfg.recent_files = vec!["missing-1.musicxml".into(), sample, "missing-2.musicxml".into()];
-    app.apply_command(Command::Turn(Action::Score, 1));
+    app.apply_command(Command::Turn(Action::BrowseScores, 1));
     assert_eq!(app.controller.cursor, 1);
     assert!(app.view.status.contains("basic_rock_beat") && app.view.status.contains("2/3"), "{}", app.view.status);
-    app.apply_command(Command::Turn(Action::Score, 50));
+    app.apply_command(Command::Turn(Action::BrowseScores, 50));
     assert_eq!(app.controller.cursor, 2);
-    app.apply_command(Command::Turn(Action::Score, -50));
+    app.apply_command(Command::Turn(Action::BrowseScores, -50));
     assert_eq!(app.controller.cursor, 0);
-    app.apply_command(Command::Turn(Action::Score, 1));
+    app.apply_command(Command::Turn(Action::BrowseScores, 1));
     app.apply_command(Command::Press(Action::OpenScore));
     assert!(app.practice.score.is_some() && app.view.tab == Tab::Score);
 }

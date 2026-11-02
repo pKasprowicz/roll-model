@@ -113,7 +113,7 @@ struct MeasurePos {
     px_per_q: f32,
 }
 
-struct Layout {
+struct SystemLayout {
     systems: Vec<(usize, usize)>, // measure index range [a, b)
     measures: Vec<MeasurePos>,
     /// See `ViewOutput::fit_bars`.
@@ -170,7 +170,7 @@ fn fixed_rows(n: usize, per_row: usize, align: Option<usize>, pauses: &[bool]) -
     rows
 }
 
-fn layout(score: &Score, width: f32, zoom: f32, opts: LayoutOpts) -> Layout {
+fn layout(score: &Score, width: f32, zoom: f32, opts: LayoutOpts) -> SystemLayout {
     let n = score.measures.len();
     let pauses = if opts.break_at_pause { notation::pause_bars(score) } else { Vec::new() };
     let line_w = (width - LEFT - 8.0).max(200.0);
@@ -235,10 +235,10 @@ fn layout(score: &Score, width: f32, zoom: f32, opts: LayoutOpts) -> Layout {
             x += mw;
         }
     }
-    Layout { systems, measures, fit_bars }
+    SystemLayout { systems, measures, fit_bars }
 }
 
-impl Layout {
+impl SystemLayout {
     fn x_of(&self, score: &Score, mi: usize, q: f64) -> f32 {
         let mp = &self.measures[mi];
         mp.x0 + mp.pad + ((q - score.measures[mi].start_q.0) as f32) * mp.px_per_q
@@ -598,7 +598,7 @@ impl Canvas<'_> {
 /// What the drawing of the systems needs to know about the score being shown.
 struct Frame<'a> {
     view: &'a ScoreView<'a>,
-    lay: &'a Layout,
+    lay: &'a SystemLayout,
     cv: Canvas<'a>,
     /// Top left corner of the first system.
     origin: Pos2,
@@ -1006,7 +1006,7 @@ mod tests {
     const W: f32 = 1300.0;
     const FIXED: fn(usize, usize) -> LayoutOpts = |bars_per_row, align_bar| LayoutOpts { bars_per_row, align_bar, break_at_pause: false };
 
-    fn width_of(lay: &Layout, bar: usize) -> f32 {
+    fn width_of(lay: &SystemLayout, bar: usize) -> f32 {
         lay.measures[bar].w
     }
 

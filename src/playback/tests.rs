@@ -64,7 +64,7 @@ fn drum(lane: Lane, t: f64) -> Cue {
     Cue { t, sound: Sound::Drum { lane, velocity: 90 } }
 }
 
-fn play(cue: &Cue, opts: &PlayOptions, control: &Control) -> Vec<Ev> {
+fn play(cue: &Cue, opts: &PlayOptions, control: &SoundSwitches) -> Vec<Ev> {
     let mut sink = Fake::default();
     dispatch(cue, Instant::now(), opts, control, &mut sink);
     sink.events
@@ -114,7 +114,7 @@ fn metronome_bar_has_an_accent_beats_and_soft_subdivisions() {
 
 #[test]
 fn click_switch_mutes_the_music_but_not_the_count_in() {
-    let (o, c) = (opts(), Control::new());
+    let (o, c) = (opts(), SoundSwitches::new());
     c.set_click_volume(0.4);
     assert_eq!(play(&click(0.0), &o, &c), [Ev::MidiClick(ClickLevel::Beat), Ev::AudioClick(ClickLevel::Beat, 0.4)]);
     c.set_click(false);
@@ -127,7 +127,7 @@ fn click_switch_mutes_the_music_but_not_the_count_in() {
 
 #[test]
 fn click_goes_only_where_it_is_routed() {
-    let (mut o, c) = (opts(), Control::new());
+    let (mut o, c) = (opts(), SoundSwitches::new());
     o.click_midi = false;
     assert_eq!(play(&click(0.0), &o, &c), [Ev::AudioClick(ClickLevel::Beat, 0.5)]);
     o.click_audio = false;
@@ -136,7 +136,7 @@ fn click_goes_only_where_it_is_routed() {
 
 #[test]
 fn notes_switch_gives_a_click_track() {
-    let (o, c) = (opts(), Control::new());
+    let (o, c) = (opts(), SoundSwitches::new());
     c.set_notes(false);
     assert!(play(&drum(Lane::Kick, 0.0), &o, &c).is_empty());
     assert_eq!(play(&click(0.0), &o, &c).len(), 2, "the click keeps going");
@@ -146,7 +146,7 @@ fn notes_switch_gives_a_click_track() {
 
 #[test]
 fn instrument_gain_scales_the_sound_and_mutes() {
-    let (o, c) = (opts(), Control::new());
+    let (o, c) = (opts(), SoundSwitches::new());
     c.set_volume(0.5);
     c.set_lane_gain(Lane::Kick, 0.5);
     let full = velocity_gain(90);
@@ -167,7 +167,7 @@ fn instrument_gain_scales_the_sound_and_mutes() {
 
 #[test]
 fn drums_follow_the_output_switches() {
-    let (mut o, c) = (opts(), Control::new());
+    let (mut o, c) = (opts(), SoundSwitches::new());
     o.midi_drums = false;
     assert!(matches!(play(&drum(Lane::Kick, 0.0), &o, &c)[..], [Ev::AudioDrum(Lane::Kick, _)]));
     o.audio = false;
@@ -246,7 +246,7 @@ impl Clock for ManualClock<'_> {
 }
 
 /// Runs the whole player loop on this thread, a little in the future, with a fake output.
-fn run_fake(clock: &ManualClock, cues: &[Cue], pass_len: f64, control: &Control, stop: &AtomicBool) -> Vec<Ev> {
+fn run_fake(clock: &ManualClock, cues: &[Cue], pass_len: f64, control: &SoundSwitches, stop: &AtomicBool) -> Vec<Ev> {
     let mut sink = Fake::default();
     let zero = clock.now() + Duration::from_millis(60);
     run_with(&Run { zero, cues, pass_len, opts: &opts(), control, stop, tail: Duration::ZERO }, &mut sink, clock);
@@ -255,7 +255,7 @@ fn run_fake(clock: &ManualClock, cues: &[Cue], pass_len: f64, control: &Control,
 
 #[test]
 fn one_pass_plays_everything_once_and_reports_done() {
-    let c = Control::new();
+    let c = SoundSwitches::new();
     let cues = [click(-0.02), drum(Lane::Kick, 0.0), click(0.02)];
     let ev = run_fake(&ManualClock::new(), &cues, 0.05, &c, &AtomicBool::new(false));
     assert_eq!(ev.len(), 2 + 2 + 2, "count-in click, kick on two outputs, click");
@@ -264,7 +264,7 @@ fn one_pass_plays_everything_once_and_reports_done() {
 
 #[test]
 fn looping_repeats_until_switched_off_and_finishes_the_pass() {
-    let c = Control::new();
+    let c = SoundSwitches::new();
     c.set_looping(true);
     let cues = [click(-0.02), drum(Lane::Kick, 0.0), click(0.02)];
     let clock = ManualClock::new();
@@ -280,7 +280,7 @@ fn looping_repeats_until_switched_off_and_finishes_the_pass() {
 
 #[test]
 fn stopping_ends_the_loop_at_once() {
-    let c = Control::new();
+    let c = SoundSwitches::new();
     c.set_looping(true);
     let stop = AtomicBool::new(false);
     let clock = ManualClock::new();
@@ -292,7 +292,7 @@ fn stopping_ends_the_loop_at_once() {
 
 #[test]
 fn cues_that_are_far_too_late_are_dropped() {
-    let c = Control::new();
+    let c = SoundSwitches::new();
     let mut sink = Fake::default();
     let clock = ManualClock::new();
     // Zero is a second in the past, so the early cues are long overdue.
@@ -411,7 +411,7 @@ impl Sink for Stamps<'_> {
 
 #[test]
 fn the_player_squeezes_the_later_passes_of_a_ramp() {
-    let c = Control::new();
+    let c = SoundSwitches::new();
     c.set_looping(true);
     let clock = ManualClock::new();
     clock.at(Duration::from_millis(330), || c.set_looping(false));
@@ -449,7 +449,7 @@ struct Early<'a> {
     due: Option<Instant>,
     flushed_at: Vec<(Instant, Instant)>,
     /// Switches looping off once this many cues were handed over.
-    stop_after: Option<(Arc<Control>, usize)>,
+    stop_after: Option<(Arc<SoundSwitches>, usize)>,
 }
 
 impl Sink for Early<'_> {
@@ -497,7 +497,7 @@ fn a_sink_that_wants_its_cues_early_gets_them_ahead_of_their_time() {
             cues: &[click(0.0), click(0.2)],
             pass_len: 0.3,
             opts: &opts(),
-            control: &Control::new(),
+            control: &SoundSwitches::new(),
             stop: &AtomicBool::new(false),
             tail: Duration::ZERO,
         },
@@ -531,7 +531,7 @@ fn what_a_sink_holds_back_is_sent_at_its_time_while_the_player_waits_for_the_nex
             cues: &[click(0.0), click(0.3)],
             pass_len: 0.4,
             opts: &opts(),
-            control: &Control::new(),
+            control: &SoundSwitches::new(),
             stop: &AtomicBool::new(false),
             tail: Duration::ZERO,
         },
@@ -549,7 +549,7 @@ fn what_a_sink_holds_back_is_sent_at_its_time_while_the_player_waits_for_the_nex
 fn the_first_cue_of_a_looped_pass_is_handed_over_ahead_of_its_time_too() {
     // The bar of the metronome loops; its first click used to be handed over exactly at its time,
     // because the player waited for the end of the pass before it began the next one.
-    let control = Control::new();
+    let control = SoundSwitches::new();
     control.set_looping(true);
     let clock = ManualClock::new();
     let mut sink = Early {

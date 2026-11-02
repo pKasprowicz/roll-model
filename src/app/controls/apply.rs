@@ -93,10 +93,10 @@ fn locked_by_recording(action: Action) -> bool {
             | Action::Tempo
             | Action::RangeFrom
             | Action::RangeTo
-            | Action::Score
+            | Action::BrowseScores
             | Action::Repeats
             | Action::Lead
-            | Action::Rudiment
+            | Action::BrowseRudiments
     )
 }
 
@@ -118,7 +118,7 @@ impl DrumApp {
             Action::RangeTo => Action::Lead,
             Action::RangeBack => Action::PrevRudiment,
             Action::RangeForward => Action::NextRudiment,
-            Action::Score => Action::Rudiment,
+            Action::BrowseScores => Action::BrowseRudiments,
             other => other,
         }
     }
@@ -271,8 +271,8 @@ impl DrumApp {
             | Action::Gain(_)
             | Action::Repeats
             | Action::Lead
-            | Action::Score
-            | Action::Rudiment => {}
+            | Action::BrowseScores
+            | Action::BrowseRudiments => {}
         }
     }
 
@@ -310,7 +310,7 @@ impl DrumApp {
                 let g = self.cfg.gain_of(controller::group_lanes(i as usize)[0]);
                 self.set_group_gain(i as usize, (g + 0.05 * steps as f32).clamp(0.0, MAX_LANE_GAIN));
             }
-            Action::Score => self.browse_scores(steps),
+            Action::BrowseScores => self.browse_scores(steps),
             Action::Repeats => {
                 self.step_repeats(steps);
                 self.view.status = format!("{} repeats", self.cfg.rudiment_repeats);
@@ -319,7 +319,7 @@ impl DrumApp {
                 self.step_lead(one);
                 self.view.status = format!("{} hand leads", self.rudiment_lead().label());
             }
-            Action::Rudiment => self.step_rudiment(one),
+            Action::BrowseRudiments => self.step_rudiment(one),
             // A range with no measures has nothing to move.
             Action::RangeFrom | Action::RangeTo => {}
             // Buttons are pressed, not turned.
@@ -382,8 +382,8 @@ impl DrumApp {
             // A range with no measures has nothing to set.
             Action::RangeFrom | Action::RangeTo => {}
             // Browsed by turning only, and the buttons are pressed.
-            Action::Score
-            | Action::Rudiment
+            Action::BrowseScores
+            | Action::BrowseRudiments
             | Action::Record
             | Action::Listen
             | Action::Stop

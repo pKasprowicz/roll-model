@@ -665,7 +665,7 @@ mod tests {
         assert_eq!(press("Strip 8 · SELECT"), Some(Meaning::Action(Action::NextTab)));
         assert_eq!(press("Layer A button"), None);
         assert_eq!(turn("Side encoder 1"), None);
-        assert_eq!(turn("Encoder 8"), Some(Meaning::Action(Action::Score)));
+        assert_eq!(turn("Encoder 8"), Some(Meaning::Action(Action::BrowseScores)));
         assert_eq!(turn("Encoder 7"), None, "the seventh encoder is not used");
     }
 
@@ -676,7 +676,7 @@ mod tests {
         assert!(!is_lit(&preset, Some("A"), Action::Mute(0), false));
         assert!(is_lit(&preset, Some("B"), Action::Mute(0), false));
         assert!(is_lit(&preset, Some("A"), Action::Tempo, true));
-        assert!(!is_lit(&preset, Some("A"), Action::Score, true), "no ring shows the recent scores");
+        assert!(!is_lit(&preset, Some("A"), Action::BrowseScores, true), "no ring shows the recent scores");
         let (compact, _) = device(COMPACT);
         assert!(is_lit(&compact, None, Action::Mute(7), false) && is_lit(&compact, None, Action::Tempo, true));
     }

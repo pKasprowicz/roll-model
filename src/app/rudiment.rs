@@ -27,7 +27,7 @@ struct BuiltRudiment {
 }
 
 #[derive(Default)]
-pub(super) struct State {
+pub(super) struct TabState {
     /// A lead other than the rudiment's own.
     pub lead: Option<Lead>,
     /// What is typed into the search box of the list.

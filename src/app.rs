@@ -25,7 +25,7 @@ use egui::RichText;
 
 use crate::analysis::{Expected, Hit, Report, Window};
 use crate::config::{Config, Paths, RowLayout};
-use crate::control::Control;
+use crate::control::SoundSwitches;
 use crate::controller::Action;
 use crate::drums::Lane;
 use crate::import::load_score;
@@ -72,7 +72,7 @@ struct Practice {
     score: Option<Score>,
     score_path: Option<PathBuf>,
     /// What the import found out about the score, when it was read from a file.
-    score_report: Option<crate::import::Report>,
+    score_report: Option<crate::import::ImportReport>,
     /// How a MIDI file is laid out; the Score tab's "MIDI import" menu changes it.
     midi_options: crate::import::MidiOptions,
     range_from: usize,
@@ -224,19 +224,19 @@ struct Playback {
     /// Range and tempo changed while listening, and since when: restarts once it settles.
     restart: debounce::Debounce<ListenKey>,
     /// Shared with the sound threads of Listen and of takes.
-    control: Arc<Control>,
+    control: Arc<SoundSwitches>,
     /// Instruments soloed in the mixer (not saved).
     solo: BTreeSet<Lane>,
     /// One instrument played from the mixer; it has its own control so it never disturbs Listen.
     audition: Option<Player>,
-    audition_control: Arc<Control>,
+    audition_control: Arc<SoundSwitches>,
 }
 
 /// The free metronome tab's run, its sound thread and the settings that thread shares.
 struct MetroState {
     run: Option<metro::Run>,
     player: Option<Player>,
-    control: Arc<Control>,
+    control: Arc<SoundSwitches>,
 }
 
 pub struct DrumApp {
@@ -256,7 +256,7 @@ pub struct DrumApp {
     /// Counts the scores put in place, so that Listen notices a new one.
     score_gen: u32,
     /// The Rudiments tab's own state (the chosen rudiment itself is in `cfg`).
-    rud: rudiment::State,
+    rud: rudiment::TabState,
     /// The start trigger: two hits in a row start a recording; `trigger_learn` waits for the
     /// hit that chooses one of its two instruments.
     trigger: crate::trigger::Detector,
@@ -285,7 +285,7 @@ pub struct DrumApp {
     /// The free metronome tab.
     metro_run: MetroState,
 
-    /// The Mackie Control surface (X-Touch).
+    /// The Mackie SoundSwitches surface (X-Touch).
     controller: controls::Controller,
 
     /// The help screen of the controller, opened from its indicator in the top bar.
@@ -343,7 +343,7 @@ impl DrumApp {
             practice: Practice::new(),
             parked: Practice::new(),
             score_gen: 0,
-            rud: rudiment::State::default(),
+            rud: rudiment::TabState::default(),
             trigger: crate::trigger::Detector::default(),
             trigger_learn: None,
             loading: None,
@@ -367,15 +367,15 @@ impl DrumApp {
                 notes: true,
                 looping: false,
                 restart: Default::default(),
-                control: Control::new(),
+                control: SoundSwitches::new(),
                 solo: BTreeSet::new(),
                 audition: None,
-                audition_control: Control::new(),
+                audition_control: SoundSwitches::new(),
             },
             audio_devices: Vec::new(),
             audio_default: None,
             audio: audio_output::AudioOutput::default(),
-            metro_run: MetroState { run: None, player: None, control: Control::new() },
+            metro_run: MetroState { run: None, player: None, control: SoundSwitches::new() },
             controller: controls::Controller::new(),
             controller_help: None,
             startup: None,

@@ -23,7 +23,7 @@ pub const NO_GROUP: u8 = u8::MAX;
 /// A sound to start at a frame of the stream.
 #[derive(Clone)]
 pub struct Trigger {
-    /// The run this sound belongs to (a Listen, a take, one audition): [`Command::CancelRun`] ends all of them.
+    /// The run this sound belongs to (a Listen, a take, one audition): [`MixerCommand::CancelRun`] ends all of them.
     pub run: u32,
     /// The frame the first sample is rendered at.
     pub start_frame: u64,
@@ -38,7 +38,7 @@ pub struct Trigger {
 
 /// What the callback is told to do.
 #[derive(Clone)]
-pub enum Command {
+pub enum MixerCommand {
     Play(Trigger),
     /// Drops the waiting sounds of a run and fades out the ones that are playing.
     CancelRun(u32),
@@ -139,9 +139,9 @@ impl Mixer {
         self.pending.len()
     }
 
-    pub fn apply(&mut self, command: Command) {
+    pub fn apply(&mut self, command: MixerCommand) {
         match command {
-            Command::Play(trigger) => {
+            MixerCommand::Play(trigger) => {
                 if self.pending.len() >= MAX_PENDING {
                     self.counters.dropped_pending += 1;
                     return;
@@ -149,7 +149,7 @@ impl Mixer {
                 self.next_due = self.next_due.min(trigger.start_frame);
                 self.pending.push(trigger);
             }
-            Command::CancelRun(run) => {
+            MixerCommand::CancelRun(run) => {
                 let mut i = 0;
                 while i < self.pending.len() {
                     if self.pending[i].run == run {
@@ -257,8 +257,8 @@ mod tests {
         vec![value; frames].into()
     }
 
-    fn trigger(run: u32, start_frame: u64, sample: &Arc<[f32]>, gain: f32) -> Command {
-        Command::Play(Trigger { run, start_frame, sample: sample.clone(), gain, group: NO_GROUP, chokes: 0 })
+    fn trigger(run: u32, start_frame: u64, sample: &Arc<[f32]>, gain: f32) -> MixerCommand {
+        MixerCommand::Play(Trigger { run, start_frame, sample: sample.clone(), gain, group: NO_GROUP, chokes: 0 })
     }
 
     fn render_mono(m: &mut Mixer, frames: usize) -> Vec<f32> {
@@ -345,9 +345,9 @@ mod tests {
     #[test]
     fn a_choked_voice_fades_out_and_ends() {
         let mut m = Mixer::new();
-        let open = Command::Play(Trigger { run: 1, start_frame: 0, sample: constant(1.0, 10_000), gain: 1.0, group: 4, chokes: 0 });
+        let open = MixerCommand::Play(Trigger { run: 1, start_frame: 0, sample: constant(1.0, 10_000), gain: 1.0, group: 4, chokes: 0 });
         let closed =
-            Command::Play(Trigger { run: 1, start_frame: 1000, sample: constant(0.0, 1), gain: 1.0, group: NO_GROUP, chokes: 1 << 4 });
+            MixerCommand::Play(Trigger { run: 1, start_frame: 1000, sample: constant(0.0, 1), gain: 1.0, group: NO_GROUP, chokes: 1 << 4 });
         m.apply(open);
         m.apply(closed);
         let out = render_mono(&mut m, 2000);
@@ -362,8 +362,15 @@ mod tests {
     #[test]
     fn a_choke_leaves_other_groups_alone() {
         let mut m = Mixer::new();
-        m.apply(Command::Play(Trigger { run: 1, start_frame: 0, sample: constant(0.5, 3000), gain: 1.0, group: 7, chokes: 0 }));
-        m.apply(Command::Play(Trigger { run: 1, start_frame: 10, sample: constant(0.0, 1), gain: 1.0, group: NO_GROUP, chokes: 1 << 4 }));
+        m.apply(MixerCommand::Play(Trigger { run: 1, start_frame: 0, sample: constant(0.5, 3000), gain: 1.0, group: 7, chokes: 0 }));
+        m.apply(MixerCommand::Play(Trigger {
+            run: 1,
+            start_frame: 10,
+            sample: constant(0.0, 1),
+            gain: 1.0,
+            group: NO_GROUP,
+            chokes: 1 << 4,
+        }));
         let out = render_mono(&mut m, 2000);
         assert_eq!(out[1500], 0.5);
     }
@@ -376,7 +383,7 @@ mod tests {
         m.apply(trigger(2, 0, &constant(0.25, 5000), 1.0));
         m.apply(trigger(2, 3000, &constant(0.25, 100), 1.0));
         render_mono(&mut m, 500);
-        m.apply(Command::CancelRun(1));
+        m.apply(MixerCommand::CancelRun(1));
         assert_eq!(m.waiting(), 1, "only the other run's sound still waits");
         let out = render_mono(&mut m, 3500);
         assert_eq!(out[FADE_FRAMES as usize], 0.25, "run 1 has faded out, run 2 plays on");
@@ -419,7 +426,7 @@ mod tests {
         for k in 0..2000u64 {
             m.apply(trigger((k % 3) as u32, 480 * k / 2 + 37, &sample, 0.5));
             if k % 50 == 49 {
-                m.apply(Command::CancelRun((k % 3) as u32));
+                m.apply(MixerCommand::CancelRun((k % 3) as u32));
             }
             render_mono(&mut m, 240);
         }

@@ -104,9 +104,9 @@ pub enum Action {
     Repeats,
     Lead,
     /// Browses the recent scores; only turned.
-    Score,
+    BrowseScores,
     /// Browses the rudiments; only turned.
-    Rudiment,
+    BrowseRudiments,
 }
 
 /// How an action is used: pressed, set to a level (a fader, or a turned encoder), or turned through a list.
@@ -367,7 +367,7 @@ pub(super) const ACTIONS: &[Info] = &[
         light: false,
     },
     Info {
-        action: Action::Score,
+        action: Action::BrowseScores,
         name: "score",
         title: "Recent scores",
         help: "Browses the recent scores; push the encoder to open the one shown.",
@@ -375,7 +375,7 @@ pub(super) const ACTIONS: &[Info] = &[
         light: false,
     },
     Info {
-        action: Action::Rudiment,
+        action: Action::BrowseRudiments,
         name: "rudiment",
         title: "Rudiment",
         help: "Browses the rudiments.",

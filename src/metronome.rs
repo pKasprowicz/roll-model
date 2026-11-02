@@ -11,7 +11,7 @@ use std::time::{Duration, Instant};
 use crate::audio::click::ClickBank;
 use crate::audio::mixer::NO_GROUP;
 use crate::audio::EngineHandle;
-use crate::control::{ClickLevel, Control, ErrorLog};
+use crate::control::{ClickLevel, ErrorLog, SoundSwitches};
 use crate::score::Click;
 
 #[derive(Clone, Debug)]
@@ -19,7 +19,7 @@ pub struct ClickOptions {
     pub audio: bool,
     /// The open sound output; `None` when there is none to play through.
     pub engine: Option<EngineHandle>,
-    /// Used when no `Control` is given.
+    /// Used when no `SoundSwitches` is given.
     pub volume: f32,
     pub midi_port: Option<String>,
     pub midi_note: u8,
@@ -40,7 +40,7 @@ impl Metronome {
     /// `clicks`: in ascending order, seconds relative to `zero`.
     /// With a `control`, clicks at or after `zero` follow its click switch and
     /// volume while they play; the count-in before `zero` always sounds.
-    pub fn start(zero: Instant, clicks: Vec<Click>, opts: ClickOptions, control: Option<Arc<Control>>) -> Metronome {
+    pub fn start(zero: Instant, clicks: Vec<Click>, opts: ClickOptions, control: Option<Arc<SoundSwitches>>) -> Metronome {
         let stop = Arc::new(AtomicBool::new(false));
         let errors = ErrorLog::default();
         let (stop2, errors2) = (stop.clone(), errors.clone());
@@ -114,7 +114,14 @@ pub const HAS_AUDIO: bool = cfg!(feature = "audio");
 /// plus the lateness of a scheduling thread, so the engine can place it at its exact frame.
 pub(crate) const AUDIO_LOOKAHEAD: Duration = Duration::from_millis(30);
 
-fn run(zero: Instant, clicks: Vec<Click>, opts: ClickOptions, control: Option<Arc<Control>>, stop: Arc<AtomicBool>, errors: ErrorLog) {
+fn run(
+    zero: Instant,
+    clicks: Vec<Click>,
+    opts: ClickOptions,
+    control: Option<Arc<SoundSwitches>>,
+    stop: Arc<AtomicBool>,
+    errors: ErrorLog,
+) {
     let engine = opts.engine.clone().filter(|_| opts.audio);
     let bank = engine.as_ref().map(|e| ClickBank::new(e.shared().rate()));
     let run_id = engine.as_ref().map(|e| e.new_run());

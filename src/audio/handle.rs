@@ -9,7 +9,7 @@ use std::time::{Duration, Instant};
 use rtrb::{Consumer, Producer, RingBuffer};
 
 use super::clock::{Estimator, Shared};
-use super::mixer::{Command, Mixer, Trigger};
+use super::mixer::{Mixer, MixerCommand, Trigger};
 
 /// Commands that can wait for the callback.
 pub const QUEUE: usize = 1024;
@@ -29,7 +29,7 @@ pub enum PlayError {
 pub struct EngineHandle {
     shared: Arc<Shared>,
     // The queue has one producer; the scheduler threads take turns. Only the callback side must not lock.
-    queue: Arc<Mutex<Producer<Command>>>,
+    queue: Arc<Mutex<Producer<MixerCommand>>>,
     // What the callback is done with; emptied here so the last reference is let go of off the callback.
     graveyard: Arc<Mutex<Consumer<Arc<[f32]>>>>,
 }
@@ -66,15 +66,15 @@ impl EngineHandle {
     /// [`Trigger`]. The call does not wait: the sound is in the queue when it returns.
     pub fn play(&self, run: u32, at: Instant, sample: &Arc<[f32]>, gain: f32, group: u8, chokes: u32) -> Result<(), PlayError> {
         let start_frame = self.shared.frame_at(at).ok_or(PlayError::NotReady)?;
-        self.send(Command::Play(Trigger { run, start_frame, sample: sample.clone(), gain, group, chokes }))
+        self.send(MixerCommand::Play(Trigger { run, start_frame, sample: sample.clone(), gain, group, chokes }))
     }
 
     /// Ends the sounds of `run`: the waiting ones are dropped, the playing ones fade out.
     pub fn cancel_run(&self, run: u32) -> Result<(), PlayError> {
-        self.send(Command::CancelRun(run))
+        self.send(MixerCommand::CancelRun(run))
     }
 
-    fn send(&self, command: Command) -> Result<(), PlayError> {
+    fn send(&self, command: MixerCommand) -> Result<(), PlayError> {
         if let Ok(mut yard) = self.graveyard.try_lock() {
             while yard.pop().is_ok() {}
         }
@@ -87,7 +87,7 @@ impl EngineHandle {
 /// What the audio backend runs in its callback.
 pub struct Callback {
     shared: Arc<Shared>,
-    queue: Consumer<Command>,
+    queue: Consumer<MixerCommand>,
     mixer: Mixer,
     estimator: Estimator,
 }

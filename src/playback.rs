@@ -6,7 +6,7 @@
 //! MIDI connection, so the click and the drums can share one MIDI port.
 //!
 //! Settings that can change while playing (click on/off, notes on/off,
-//! volumes, per-instrument gain, looping) live in a shared [`Control`]. What
+//! volumes, per-instrument gain, looping) live in a shared [`SoundSwitches`]. What
 //! gets played for a cue is decided by [`dispatch`], which talks to a [`Sink`];
 //! the real sink drives the devices, the tests use a fake one.
 
@@ -25,7 +25,7 @@ use crate::audio::mixer::NO_GROUP;
 use crate::audio::resample::resample;
 use crate::audio::EngineHandle;
 use crate::config::Subdivision;
-use crate::control::{ClickLevel, Control, ErrorLog};
+use crate::control::{ClickLevel, ErrorLog, SoundSwitches};
 use crate::drums::Lane;
 use crate::metronome::{at, wait_until, AUDIO_LOOKAHEAD};
 use crate::score::Click;
@@ -119,7 +119,7 @@ impl Ramp {
 }
 
 /// What is fixed for one run of the player. Everything that can change while
-/// it plays is in the shared [`Control`] instead.
+/// it plays is in the shared [`SoundSwitches`] instead.
 #[derive(Clone, Debug)]
 pub struct PlayOptions {
     /// Play the drums through the sound card.
@@ -217,7 +217,7 @@ pub trait Sink {
 
 /// Decides what a cue sounds like, from the options and the live controls, and hands it to the
 /// sink to start at `when`.
-fn dispatch(cue: &Cue, when: Instant, opts: &PlayOptions, control: &Control, sink: &mut dyn Sink) {
+fn dispatch(cue: &Cue, when: Instant, opts: &PlayOptions, control: &SoundSwitches, sink: &mut dyn Sink) {
     match cue.sound {
         Sound::Click { level } => {
             // The count-in (before zero) always sounds; the click during the music can be switched off.
@@ -278,7 +278,7 @@ struct Run<'a> {
     cues: &'a [Cue],
     pass_len: f64,
     opts: &'a PlayOptions,
-    control: &'a Control,
+    control: &'a SoundSwitches,
     stop: &'a AtomicBool,
     /// How long the last sounds ring out after the music.
     tail: Duration,
@@ -366,7 +366,7 @@ pub struct Player {
 impl Player {
     /// Starts a thread that plays `cues` relative to `zero`; one pass is
     /// `pass_len` seconds long and repeats while `control.looping()` is on.
-    pub fn start(zero: Instant, cues: Vec<Cue>, pass_len: f64, opts: PlayOptions, control: Arc<Control>) -> Player {
+    pub fn start(zero: Instant, cues: Vec<Cue>, pass_len: f64, opts: PlayOptions, control: Arc<SoundSwitches>) -> Player {
         control.set_music_done(false);
         let stop = Arc::new(AtomicBool::new(false));
         let errors = ErrorLog::default();
@@ -529,7 +529,15 @@ impl Drop for DeviceSink {
     }
 }
 
-fn run(zero: Instant, cues: Vec<Cue>, pass_len: f64, opts: PlayOptions, control: Arc<Control>, stop: Arc<AtomicBool>, errors: ErrorLog) {
+fn run(
+    zero: Instant,
+    cues: Vec<Cue>,
+    pass_len: f64,
+    opts: PlayOptions,
+    control: Arc<SoundSwitches>,
+    stop: Arc<AtomicBool>,
+    errors: ErrorLog,
+) {
     let lanes = cues.iter().filter_map(|c| match c.sound {
         Sound::Drum { lane, .. } if opts.audio => Some(lane),
         _ => None,

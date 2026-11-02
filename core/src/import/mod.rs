@@ -1,4 +1,4 @@
-//! Opening a score file: bytes in, a [`Score`] and a [`Report`] out.
+//! Opening a score file: bytes in, a [`Score`] and a [`ImportReport`] out.
 //!
 //! ```text
 //! bytes --> sniff --> unwrap --> parse --> finish --> Loaded { score, report }
@@ -55,7 +55,7 @@ impl Default for Limits {
 pub struct ImportOptions {
     /// Play repeats and 1st/2nd endings out, so the score is the music as it is played.
     pub expand_repeats: bool,
-    /// Which part of the file to read (its place in `Report::parts`); `None` picks the drum part.
+    /// Which part of the file to read (its place in `ImportReport::parts`); `None` picks the drum part.
     pub part: Option<usize>,
     pub limits: Limits,
     pub midi: MidiOptions,
@@ -86,7 +86,7 @@ impl ImportOptions {
 
 /// What the import knows about the file besides the score.
 #[derive(Clone, Debug, PartialEq)]
-pub struct Report {
+pub struct ImportReport {
     pub format: Format,
     /// The parts the file holds.
     pub parts: Vec<PartInfo>,
@@ -99,7 +99,7 @@ pub struct Report {
 #[derive(Clone, Debug)]
 pub struct Loaded {
     pub score: Score,
-    pub report: Report,
+    pub report: ImportReport,
 }
 
 /// Why a file is not a score this program can open. The texts are what the user reads.
@@ -177,7 +177,7 @@ pub fn import_bytes(bytes: &[u8], name: &str, opts: &ImportOptions) -> Result<Lo
         Format::MusicXml => musicxml::parse(&container::musicxml_text(bytes, &opts.limits)?, opts)?,
         Format::Midi => midi::parse(bytes, opts)?,
     };
-    let report = Report { format, parts: raw.parts.clone(), part_used: raw.part_used, midi: raw.midi.clone() };
+    let report = ImportReport { format, parts: raw.parts.clone(), part_used: raw.part_used, midi: raw.midi.clone() };
     let untitled = raw.title.is_none();
     let mut score = finish::finish(raw, opts)?;
     if untitled {
