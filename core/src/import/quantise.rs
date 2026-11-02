@@ -214,7 +214,7 @@ pub fn quantise(ppq: u64, bars: &[Bar], tempo_points: &[(u64, u32)], onsets: &[(
         let fits = |n: u32| {
             let cell = b.beat as f64 / f64::from(n);
             let mut tol = (cell * TOLERANCE_CELL).min(TOLERANCE_MS / ms);
-            if n % 3 == 0 {
+            if n.is_multiple_of(3) {
                 tol *= TRIPLET_FACTOR;
             }
             members.iter().all(|&i| residual(shifted(onsets[i].0) - from, cell).abs() <= tol)
@@ -371,8 +371,7 @@ mod tests {
         for (i, p) in placed.iter().enumerate() {
             assert!((p.offset_q + (p.bar as f64) * 4.0 - i as f64 / 2.0).abs() < 1e-9);
         }
-        let mut opts = MidiOptions::default();
-        opts.remove_offset = false;
+        let opts = MidiOptions { remove_offset: false, ..MidiOptions::default() };
         let (_, kept) = run(&ticks, &opts);
         assert_eq!(kept.offset_ms, 0.0);
         assert!(kept.max_shift_ms > 24.0);
@@ -381,8 +380,7 @@ mod tests {
     #[test]
     fn the_grid_option_limits_how_fine_the_result_gets() {
         let ticks = [0, 120, 240, 360];
-        let mut opts = MidiOptions::default();
-        opts.grid = Grid::Eighth;
+        let opts = MidiOptions { grid: Grid::Eighth, ..MidiOptions::default() };
         let (placed, _) = run(&ticks, &opts);
         assert_eq!(offsets(&placed).iter().map(|p| p.1).collect::<Vec<_>>(), [0.0, 0.5, 1.0], "an eighth grid merges the sixteenths");
     }

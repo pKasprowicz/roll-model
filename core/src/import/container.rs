@@ -54,7 +54,7 @@ fn read_mxl(bytes: &[u8], limits: &Limits) -> Result<String, ImportError> {
 fn decode_text(bytes: &[u8]) -> String {
     let utf16 = |be: bool| {
         let units: Vec<u16> = bytes[2..]
-            .chunks_exact(2)
+            .as_chunks::<2>().0.iter()
             .map(|c| if be { u16::from_be_bytes([c[0], c[1]]) } else { u16::from_le_bytes([c[0], c[1]]) })
             .collect();
         String::from_utf16_lossy(&units)

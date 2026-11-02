@@ -177,7 +177,7 @@ fn lay_bars(data: &MidiData, last_tick: u64, limits: &Limits, first_bar_beats: u
     loop {
         let (_, beats, beat_type) = *signatures.iter().rev().find(|s| s.0 <= start).unwrap_or(&signatures[0]);
         let exact = data.ppq * 4 * u64::from(beats);
-        if exact % u64::from(beat_type) != 0 {
+        if !exact.is_multiple_of(u64::from(beat_type)) {
             inexact = true;
         }
         let len = (exact / u64::from(beat_type)).max(1);

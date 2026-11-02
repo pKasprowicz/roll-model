@@ -107,7 +107,7 @@ fn take_channel(words: &mut Vec<&str>) -> Result<Option<u8>, PresetError> {
     Ok(Some(n))
 }
 
-fn split_layer<'a>(words: &mut Vec<&'a str>, first_is_not: &[&str]) -> Option<String> {
+fn split_layer(words: &mut Vec<&str>, first_is_not: &[&str]) -> Option<String> {
     let first = words.first()?;
     if first_is_not.iter().any(|k| first.eq_ignore_ascii_case(k)) {
         return None;
@@ -252,7 +252,7 @@ impl Preset {
         self.binds
             .iter()
             .enumerate()
-            .filter(|(_, b)| b.input.src == src && channel.map_or(true, |c| b.input.channel.map_or(true, |bc| bc == c)))
+            .filter(|(_, b)| b.input.src == src && channel.is_none_or(|c| b.input.channel.is_none_or(|bc| bc == c)))
             .filter_map(|(i, b)| {
                 let layer_rank = if layer.is_some() && b.layer.as_deref() == layer {
                     2
@@ -409,7 +409,7 @@ impl Preset {
     /// Drops lines that name a layer the preset does not declare, and reports repeated controls.
     fn validate(&mut self) {
         let known: Vec<String> = self.layers.iter().map(|l| l.0.clone()).collect();
-        let ok = |l: &Option<String>| l.as_ref().map_or(true, |l| known.contains(l));
+        let ok = |l: &Option<String>| l.as_ref().is_none_or(|l| known.contains(l));
         let before = (self.binds.len(), self.lights.len());
         self.binds.retain(|b| ok(&b.layer));
         self.lights.retain(|l| ok(&l.layer));

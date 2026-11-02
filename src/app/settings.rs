@@ -196,7 +196,7 @@ impl DrumApp {
         };
         let calibrated = (self.cfg.latency_ms > 0.0 && !self.cfg.latency_is_stale(crate::audio::ENGINE_GENERATION)).then_some(self.cfg.latency_ms);
         let delay = delay_text(info.latency_ms, super::audio_output::SYSTEM_BUFFER_MS, calibrated);
-        widgets::hint(ui, &format!("Open: {} at {} Hz. {delay}", info.device, info.rate));
+        widgets::hint(ui, format!("Open: {} at {} Hz. {delay}", info.device, info.rate));
         if info.late + info.dropped > 0 {
             ui.label(RichText::new(format!("Sounds that came too late: {} (the worst by {:.1} ms), dropped: {}. The computer may be too busy for the output.", info.late, info.worst_late_ms, info.dropped)).small().color(render::AMBER));
         }

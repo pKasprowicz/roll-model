@@ -309,6 +309,8 @@ fn wait_for(wake: Instant, stop: &AtomicBool, sink: &mut dyn Sink) -> bool {
 /// Plays `cues` relative to `zero`, pass after pass while `control.looping()`
 /// stays on (a pass is `pass_len` seconds long). Sets `control.music_done()`
 /// when the last pass has reached its end, then lets the tail ring out.
+// The scheduler is one of the two this program has (RV-30 merges them); its inputs are not grouped yet.
+#[allow(clippy::too_many_arguments)]
 fn run_with(
     zero: Instant,
     cues: &[Cue],
@@ -395,7 +397,7 @@ impl Player {
 
     /// The last cue was played and the tail has rung out.
     pub fn is_finished(&self) -> bool {
-        self.handle.as_ref().map_or(true, |h| h.is_finished())
+        self.handle.as_ref().is_none_or(|h| h.is_finished())
     }
 
     /// Problems the thread ran into (no sound device, MIDI port missing).

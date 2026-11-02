@@ -147,7 +147,7 @@ fn draw(ui: &mut egui::Ui, preset: &Preset, layout: &Layout, layer: Option<&str>
     // As wide as the window allows, but a tall device (the Compact) is made to fit the screen's height too;
     // below `MIN_SCALE` the texts get too small, and the window scrolls instead.
     let max_height = (ui.ctx().screen_rect().height() - 250.0).max(300.0);
-    let scale = (ui.available_width().min(960.0).max(300.0) / layout.size.0).min(max_height / layout.size.1).max(MIN_SCALE);
+    let scale = (ui.available_width().clamp(300.0, 960.0) / layout.size.0).min(max_height / layout.size.1).max(MIN_SCALE);
     let width = layout.size.0 * scale;
     let (row, _) = ui.allocate_exact_size(Vec2::new(ui.available_width(), layout.size.1 * scale), Sense::hover());
     let area = Rect::from_center_size(row.center(), Vec2::new(width, layout.size.1 * scale));

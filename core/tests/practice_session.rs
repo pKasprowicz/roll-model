@@ -22,9 +22,7 @@ fn a_perfect_take_of_the_example_score_grades_perfect() {
 
 #[test]
 fn settings_survive_the_text_file() {
-    let mut config = Config::default();
-    config.zoom = 1.5;
-    config.controller_preset = "Korg nanoKONTROL2".to_string();
+    let config = Config { zoom: 1.5, controller_preset: "Korg nanoKONTROL2".to_string(), ..Config::default() };
     assert_eq!(Config::from_text(&config.to_text()), config);
 }
 

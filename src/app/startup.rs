@@ -420,9 +420,7 @@ mod tests {
 
     #[test]
     fn the_labels_say_what_is_being_connected() {
-        let mut cfg = Config::default();
-        cfg.midi_in_port = "V31".into();
-        cfg.controller_preset = "Behringer X-Touch Mini".into();
+        let mut cfg = Config { midi_in_port: "V31".into(), controller_preset: "Behringer X-Touch Mini".into(), ..Config::default() };
         assert!(label(Step::DrumInput, &cfg, None).contains("V31"));
         assert!(label(Step::Controller, &cfg, None).contains("X-Touch Mini"));
         assert!(label(Step::Score, &cfg, Some(Path::new("D:/scores/rock.musicxml"))).contains("rock.musicxml"));

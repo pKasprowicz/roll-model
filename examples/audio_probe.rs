@@ -26,6 +26,9 @@ const MIN_GAP_SECS: f64 = 0.012;
 /// Two starts further apart than this in the bar do not belong to the same place in it.
 const CLUSTER_GAP_SECS: f64 = 0.012;
 
+/// What the input callback collected: (seconds since the first block, channel 0 of the block).
+type Blocks = Vec<(f64, Vec<f32>)>;
+
 fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
     let result = match args.iter().map(String::as_str).collect::<Vec<_>>().as_slice() {
@@ -50,7 +53,7 @@ fn record(out: &str, seconds: f64) -> Result<(), String> {
     let config: cpal::StreamConfig = supported.into();
 
     // (seconds since the first block, channel 0 of the block); a tool, so a lock in the callback is fine.
-    let blocks: Arc<Mutex<Vec<(f64, Vec<f32>)>>> = Arc::default();
+    let blocks: Arc<Mutex<Blocks>> = Arc::default();
     let sink = blocks.clone();
     let mut first: Option<cpal::StreamInstant> = None;
     let stream = device
@@ -211,7 +214,7 @@ fn fold(times: &[f64], bar: f64) -> Option<Fold> {
     let (mx, my) = (xs.iter().sum::<f64>() / n, ys.iter().sum::<f64>() / n);
     let sxx: f64 = xs.iter().map(|x| (x - mx) * (x - mx)).sum();
     let bar = if sxx > 0.0 { xs.iter().zip(&ys).map(|(x, y)| (x - mx) * (y - my)).sum::<f64>() / sxx } else { bar };
-    if !(bar > 0.0) || (bar - bar.max(0.0)).abs() > 1.0 {
+    if bar.is_nan() || bar <= 0.0 || (bar - bar.max(0.0)).abs() > 1.0 {
         return None;
     }
 

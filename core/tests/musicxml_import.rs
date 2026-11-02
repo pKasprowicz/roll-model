@@ -139,7 +139,7 @@ fn kitchen_sink_score() -> String {
     let ghost = "<notehead parentheses=\"yes\">normal</notehead>";
     let open = "<notations><technical><open/></technical></notations>";
     let tie_stop = "<tie type=\"stop\"/>";
-    let grace = format!("<note><grace/><unpitched><display-step>C</display-step><display-octave>5</display-octave></unpitched><instrument id=\"S\"/><voice>1</voice></note>");
+    let grace = "<note><grace/><unpitched><display-step>C</display-step><display-octave>5</display-octave></unpitched><instrument id=\"S\"/><voice>1</voice></note>".to_string();
     let chord_kick = "<note><chord/><unpitched><display-step>F</display-step><display-octave>4</display-octave></unpitched><duration>2</duration><instrument id=\"K\"/><voice>1</voice></note>";
     let cue = "<note><cue/><unpitched><display-step>C</display-step><display-octave>5</display-octave></unpitched><duration>2</duration><instrument id=\"S\"/><voice>1</voice></note>";
     let no_instrument = "<note><unpitched><display-step>G</display-step><display-octave>5</display-octave></unpitched><duration>2</duration><voice>1</voice><notehead>x</notehead></note>";
@@ -239,11 +239,9 @@ fn voices_and_rests() {
 
 #[test]
 fn a_file_with_several_parts_uses_the_drum_part() {
-    let text = format!(
-        "<score-partwise><part-list><score-part id=\"P1\"><part-name>Piano</part-name></score-part><score-part id=\"P2\"><part-name>Drums</part-name></score-part></part-list>\
+    let text = "<score-partwise><part-list><score-part id=\"P1\"><part-name>Piano</part-name></score-part><score-part id=\"P2\"><part-name>Drums</part-name></score-part></part-list>\
          <part id=\"P1\"><measure number=\"1\"><attributes><divisions>1</divisions><clef><sign>G</sign></clef></attributes><note><pitch><step>C</step><octave>4</octave></pitch><duration>4</duration></note></measure></part>\
-         <part id=\"P2\"><measure number=\"1\"><attributes><divisions>1</divisions><clef><sign>percussion</sign></clef></attributes><note><unpitched><display-step>C</display-step><display-octave>5</display-octave></unpitched><duration>4</duration></note></measure></part></score-partwise>"
-    );
+         <part id=\"P2\"><measure number=\"1\"><attributes><divisions>1</divisions><clef><sign>percussion</sign></clef></attributes><note><unpitched><display-step>C</display-step><display-octave>5</display-octave></unpitched><duration>4</duration></note></measure></part></score-partwise>".to_string();
     check("two_parts", &dump(&parse(&text, true).unwrap()));
 }
 

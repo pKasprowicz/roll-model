@@ -494,7 +494,7 @@ mod tests {
         assert_eq!(m.playback_note(Lane::Cowbell), Some(56));
         assert_eq!(m.playback_note(Lane::Other), None);
         for lane in Lane::ALL {
-            assert!(lane.standard_note().map_or(true, |n| n < 128));
+            assert!(lane.standard_note().is_none_or(|n| n < 128));
         }
     }
 

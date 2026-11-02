@@ -62,7 +62,7 @@ impl DrumApp {
         if self.rud.built == Some(params) && self.score.is_some() {
             return;
         }
-        let another = self.rud.built.map_or(true, |b| b.0 != params.0);
+        let another = self.rud.built.is_none_or(|b| b.0 != params.0);
         let score = r.build(params.1, params.2);
         self.range_from = 0;
         self.range_to = score.measures.len() - 1;

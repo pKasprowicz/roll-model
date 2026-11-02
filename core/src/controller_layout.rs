@@ -515,7 +515,7 @@ mod tests {
 
     #[test]
     fn the_generated_picture_sorts_controls_by_what_they_are() {
-        let preset = Preset::parse(&crate::controller::builtin_text("Korg nanoKONTROL2").unwrap());
+        let preset = Preset::parse(crate::controller::builtin_text("Korg nanoKONTROL2").unwrap());
         let layout = generated(&preset).unwrap();
         let kind = |name: &str| layout.controls.iter().find(|c| c.name.contains(name)).unwrap_or_else(|| panic!("{name}")).kind;
         assert_eq!(kind("cc 16"), ControlKind::Encoder, "a knob that sets tempo");

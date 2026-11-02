@@ -1201,7 +1201,7 @@ mod tests {
         let score = score_of(&[4.0; 16]);
         let lay = layout(&score, 700.0, 1.0, FIXED(8, 0));
         let fit = lay.fit_bars.expect("8 bars do not fit 700 px");
-        assert!(fit < 8 && fit >= 1);
+        assert!((1..8).contains(&fit));
         assert!(lay.systems.iter().all(|(a, b)| b - a <= fit));
         // Every quarter note keeps at least the minimum width.
         assert!(lay.measures[0].px_per_q >= MIN_PPQ - 0.01, "{}", lay.measures[0].px_per_q);
