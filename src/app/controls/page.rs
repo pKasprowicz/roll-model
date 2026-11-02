@@ -5,20 +5,6 @@ use crate::controller::{self};
 use crate::theme;
 use crate::widgets;
 use egui::RichText;
-use std::path::Path;
-
-/// Writes `text` as "NAME (copy).txt" (or "(copy 2)", …) in `dir`; never overwrites.
-pub(super) fn copy_preset(dir: &Path, name: &str, text: &str) -> std::io::Result<std::path::PathBuf> {
-    std::fs::create_dir_all(dir)?;
-    let mut path = dir.join(format!("{name} (copy).txt"));
-    let mut n = 2;
-    while path.exists() {
-        path = dir.join(format!("{name} (copy {n}).txt"));
-        n += 1;
-    }
-    std::fs::write(&path, text)?;
-    Ok(path)
-}
 
 impl DrumApp {
     pub(in crate::app) fn settings_controller(&mut self, ui: &mut egui::Ui) {

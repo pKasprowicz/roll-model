@@ -10,7 +10,6 @@ use std::path::PathBuf;
 
 use egui::{RichText, ViewportBuilder, ViewportClass, ViewportId};
 
-use super::page::copy_preset;
 use super::*;
 use crate::controller::{Binding, Encoding, Light, Preset, Reading};
 use crate::theme;
@@ -412,7 +411,7 @@ impl DrumApp {
             return;
         };
         let text = format!("name = My controller\nport = {port}\n");
-        match unused_path(&dir, "My controller").and_then(|path| std::fs::write(&path, text).map(|_| path)) {
+        match controller::PresetStore::new(dir).create("My controller", &text) {
             Ok(path) => self.use_new_preset(&path, &format!("Saved {}", path.display())),
             Err(e) => self.view.error = Some(format!("Could not create the preset: {e}")),
         }
@@ -434,7 +433,7 @@ impl DrumApp {
             self.view.error = Some(format!("Could not read the preset \"{name}\"."));
             return;
         };
-        match copy_preset(&dir, &name, &text) {
+        match controller::PresetStore::new(dir).copy(&name, &text) {
             Ok(path) => self.use_new_preset(&path, &format!("Copied to {}", path.display())),
             Err(e) => self.view.error = Some(format!("Could not copy the preset: {e}")),
         }
@@ -614,29 +613,19 @@ impl DrumApp {
     fn rename_preset(&mut self) {
         let Some(old) = self.editable_path() else { return };
         let new = self.controller.editor.view.rename_to.trim().to_string();
-        let notice = match check_preset_name(&new) {
-            _ if new == self.cfg.controller_preset => Some("It already has that name.".to_string()),
-            Err(why) => Some(why.to_string()),
-            Ok(()) => None,
-        };
-        if let Some(notice) = notice {
-            self.controller.editor.say(notice);
+        if new == self.cfg.controller_preset {
+            self.controller.editor.say("It already has that name.");
             return;
         }
         let Some(dir) = self.preset_dir() else { return };
-        let target = dir.join(format!("{new}.txt"));
-        if target.exists() {
-            self.controller.editor.say("A preset with that name exists already.");
-            return;
-        }
-        let result = std::fs::rename(&old, &target);
-        match result {
-            Ok(()) => {
+        match controller::PresetStore::new(dir).rename(&old, &new) {
+            Ok(_) => {
                 self.refresh_controllers();
                 self.choose_preset(new.clone(), true);
                 self.controller.editor.say(format!("Renamed to {new}."));
             }
-            Err(e) => self.view.error = Some(format!("Could not rename the preset: {e}")),
+            Err(e @ (controller::RenameError::Name(_) | controller::RenameError::Exists)) => self.controller.editor.say(e.to_string()),
+            Err(controller::RenameError::Io(e)) => self.view.error = Some(format!("Could not rename the preset: {e}")),
         }
     }
 
@@ -645,7 +634,7 @@ impl DrumApp {
         self.controller.editor.view.confirm_delete = false;
         let Some(path) = self.editable_path() else { return };
         let name = self.cfg.controller_preset.clone();
-        match std::fs::remove_file(&path) {
+        match controller::PresetStore::new(path.parent().map(|p| p.to_path_buf()).unwrap_or_default()).delete(&path) {
             Ok(()) => {
                 self.refresh_controllers();
                 self.select_preset(String::new());
@@ -988,46 +977,10 @@ fn out_text(out: controller::Out) -> String {
     }
 }
 
-/// Why `name` cannot be the name of a preset file of the user's, if it cannot.
-fn check_preset_name(name: &str) -> Result<(), &'static str> {
-    if name.is_empty() {
-        Err("Type a name.")
-    } else if name.chars().any(|c| "\\/:*?\"<>|".contains(c) || c.is_control()) || name.starts_with('.') || name.ends_with('.') {
-        Err("A name cannot contain \\ / : * ? \" < > | or start or end with a dot.")
-    } else if controller::builtin_text(name).is_some() {
-        Err("That is the name of a built-in preset.")
-    } else {
-        Ok(())
-    }
-}
-
-/// "NAME.txt" in `dir`, or "NAME 2.txt", … if that exists; the folder is created.
-fn unused_path(dir: &std::path::Path, name: &str) -> std::io::Result<PathBuf> {
-    std::fs::create_dir_all(dir)?;
-    let mut path = dir.join(format!("{name}.txt"));
-    let mut n = 2;
-    while path.exists() {
-        path = dir.join(format!("{name} {n}.txt"));
-        n += 1;
-    }
-    Ok(path)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::config::{Config, Paths};
-
-    #[test]
-    fn new_presets_never_overwrite() {
-        let guard = roll_model_core::testing::TempDir::new("new");
-        let dir = guard.path().to_path_buf();
-        let a = unused_path(&dir, "My controller").unwrap();
-        std::fs::write(&a, "x").unwrap();
-        let b = unused_path(&dir, "My controller").unwrap();
-        assert_ne!(a, b);
-        assert!(b.to_string_lossy().ends_with("My controller 2.txt"));
-    }
 
     #[test]
     fn kinds_are_named_and_the_lists_have_no_absolute_kind() {
@@ -1337,14 +1290,6 @@ bind = note 36 -> record
         assert_eq!(edited.bindings_of(None, Action::Record)[0].input.src, controller::Src::Cc(99));
         let original = controller::Preset::parse(controller::builtin_text("Korg nanoKONTROL2").unwrap());
         assert_eq!(original.bindings_of(None, Action::Record)[0].input.src, controller::Src::Cc(45), "the built-in one is untouched");
-    }
-
-    #[test]
-    fn names_are_checked() {
-        assert!(check_preset_name("My pads 2").is_ok());
-        for bad in ["", "a/b", "a\\b", "what?", "a:b", ".hidden", "dot.", "Korg nanoKONTROL2", "x\ty"] {
-            assert!(check_preset_name(bad).is_err(), "{bad:?}");
-        }
     }
 
     #[test]
