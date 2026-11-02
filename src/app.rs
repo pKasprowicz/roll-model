@@ -3,6 +3,7 @@
 mod audio_output;
 mod controller_help;
 mod controls;
+mod debounce;
 mod home;
 mod import_menu;
 mod metro;
@@ -213,7 +214,7 @@ struct Playback {
     notes: bool,
     looping: bool,
     /// Range and tempo changed while listening, and since when: restarts once it settles.
-    pending: Option<((usize, usize, i32, u32), Instant)>,
+    restart: debounce::Debounce<(usize, usize, i32, u32)>,
     /// Shared with the sound threads of Listen and of takes.
     control: Arc<Control>,
     /// Instruments soloed in the mixer (not saved).
@@ -350,7 +351,7 @@ impl DrumApp {
                 player: None,
                 notes: true,
                 looping: false,
-                pending: None,
+                restart: Default::default(),
                 control: Control::new(),
                 solo: BTreeSet::new(),
                 audition: None,
@@ -475,7 +476,7 @@ impl DrumApp {
         }
         self.stop_take(false);
         self.stop_listen();
-        self.playback.pending = None;
+        self.playback.restart.cancel();
         std::mem::swap(&mut self.practice, &mut self.parked);
         self.source = source;
         self.score_gen += 1;

@@ -209,7 +209,7 @@ impl DrumApp {
         self.stop_listen();
         self.stop_metro();
         self.ensure_audio();
-        self.playback.pending = None;
+        self.playback.restart.cancel();
         let opts = self.play_options();
         if let Some(message) = Self::nothing_audible(&opts) {
             self.view.error = Some(message);
@@ -270,14 +270,8 @@ impl DrumApp {
             (Some(l), Some(sig)) if (l.from, l.to, l.tempo_key, l.gen) != sig => Some(sig),
             _ => None,
         };
-        match (wanted, self.playback.pending) {
-            (None, _) => self.playback.pending = None,
-            (Some(sig), Some((pending, since))) if pending == sig => {
-                if since.elapsed() >= RESTART_DELAY {
-                    self.begin_listen(false);
-                }
-            }
-            (Some(sig), _) => self.playback.pending = Some((sig, Instant::now())),
+        if self.playback.restart.poll(wanted, Instant::now(), RESTART_DELAY) {
+            self.begin_listen(false);
         }
         let Some(player) = self.playback.player.as_ref() else { return };
         if let Some(e) = player.take_errors().into_iter().next() {

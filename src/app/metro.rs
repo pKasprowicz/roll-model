@@ -6,6 +6,7 @@ use std::time::{Duration, Instant};
 
 use egui::{pos2, vec2, RichText, Sense, Stroke};
 
+use super::debounce::Debounce;
 use super::{DrumApp, Source, RESTART_DELAY};
 use crate::config::limits;
 use crate::controller::Action;
@@ -25,8 +26,8 @@ pub(super) struct Run {
     ramp: Ramp,
     /// Tenths of a BPM, beats per bar, subdivision: a change restarts it.
     signature: (i32, u32, usize),
-    /// A changed signature and since when it has been stable.
-    pending: Option<((i32, u32, usize), Instant)>,
+    /// A changed signature, waited for until it has settled.
+    restart: Debounce<(i32, u32, usize)>,
 }
 
 impl DrumApp {
@@ -90,7 +91,7 @@ impl DrumApp {
             bar_sec: bar_len,
             ramp: self.metro_ramp(),
             signature: self.metro_signature(),
-            pending: None,
+            restart: Debounce::default(),
         });
         self.view.status = format!("Metronome: {bpm:.0} BPM, {} beats per bar", self.cfg.metro_beats);
         let ramp = self.metro_ramp();
@@ -109,17 +110,10 @@ impl DrumApp {
     /// Restarts a running metronome once a changed tempo, bar length or subdivision has settled.
     pub(super) fn update_metro(&mut self) {
         let now_signature = self.metro_signature();
-        let mut restart = false;
-        if let Some(run) = self.metro_run.run.as_mut() {
-            if run.signature == now_signature {
-                run.pending = None;
-            } else {
-                match run.pending {
-                    Some((sig, since)) if sig == now_signature => restart = since.elapsed() >= RESTART_DELAY,
-                    _ => run.pending = Some((now_signature, Instant::now())),
-                }
-            }
-        }
+        let restart = self.metro_run.run.as_mut().is_some_and(|run| {
+            let changed = (run.signature != now_signature).then_some(now_signature);
+            run.restart.poll(changed, Instant::now(), RESTART_DELAY)
+        });
         if restart {
             self.start_metro();
         }
