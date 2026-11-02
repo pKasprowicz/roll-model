@@ -15,7 +15,6 @@ use egui::{RichText, ViewportBuilder, ViewportClass, ViewportId};
 use super::DrumApp;
 use crate::config::Config;
 use crate::metronome::HAS_AUDIO;
-use crate::midi;
 use crate::theme;
 use crate::widgets;
 
@@ -238,13 +237,12 @@ impl DrumApp {
                 }
             }
             Step::MidiPorts => {
-                self.midi.inputs = midi::list_inputs().unwrap_or_default();
-                self.midi.outputs = midi::list_outputs().unwrap_or_default();
+                self.midi.refresh_ports();
                 Line {
                     text: format!(
                         "Found {} and {}",
-                        count(self.midi.inputs.len(), "MIDI input"),
-                        count(self.midi.outputs.len(), "MIDI output")
+                        count(self.midi.inputs().len(), "MIDI input"),
+                        count(self.midi.outputs().len(), "MIDI output")
                     ),
                     ok: true,
                 }

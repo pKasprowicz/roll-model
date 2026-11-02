@@ -41,6 +41,14 @@ pub struct Config {
     pub click_midi: bool,
     pub click_note: u8,
     pub click_channel: u8,
+    /// Send MIDI clock (24 a quarter note, with Start and Stop) to the MIDI output while Listen or
+    /// the metronome plays, so a device that follows an external clock runs at the played tempo.
+    pub midi_clock: bool,
+    /// Where the clock's Start goes out: with the count-in, or at the downbeat of the music.
+    pub midi_clock_start: ClockStart,
+    /// Send the position of the first bar (Song Position Pointer, then Continue) when Listen starts
+    /// from the middle of the score, instead of Start.
+    pub midi_clock_position: bool,
     /// "Listen": play the score through the sound card (software drum kit).
     pub playback_audio: bool,
     pub playback_volume: f32,
@@ -148,6 +156,9 @@ impl Default for Config {
             click_midi: false,
             click_note: 76,
             click_channel: 10,
+            midi_clock: false,
+            midi_clock_start: ClockStart::CountIn,
+            midi_clock_position: false,
             playback_audio: true,
             playback_volume: 0.7,
             playback_midi: false,
@@ -404,6 +415,52 @@ impl Subdivision {
     }
 }
 
+/// Where the MIDI clock's Start goes out.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ClockStart {
+    /// With the first click of the count-in: the device runs through it.
+    CountIn,
+    /// A moment before the first beat of the music: the device starts on the downbeat.
+    Downbeat,
+}
+
+impl ClockStart {
+    pub const ALL: [ClockStart; 2] = [ClockStart::CountIn, ClockStart::Downbeat];
+
+    /// Its name on the screen.
+    pub fn label(self) -> &'static str {
+        match self {
+            ClockStart::CountIn => "with the count-in",
+            ClockStart::Downbeat => "at the first beat of the music",
+        }
+    }
+
+    /// Its name in the settings file.
+    pub fn name(self) -> &'static str {
+        match self {
+            ClockStart::CountIn => "count_in",
+            ClockStart::Downbeat => "downbeat",
+        }
+    }
+
+    pub fn from_name(text: &str) -> Option<ClockStart> {
+        let text = text.trim();
+        ClockStart::ALL.iter().copied().find(|s| s.name() == text)
+    }
+}
+
+/// A clock start by name.
+struct ClockStartName;
+
+impl Setting<ClockStart> for ClockStartName {
+    fn read(&self, slot: &mut ClockStart, text: &str) {
+        *slot = ClockStart::from_name(text).unwrap_or(*slot);
+    }
+    fn write(&self, value: &ClockStart) -> String {
+        value.name().to_string()
+    }
+}
+
 /// A subdivision by name.
 struct SubdivisionName;
 
@@ -476,6 +533,9 @@ const KEYS: &[Key] = &[
     key!("click_midi", c.click_midi, Flag),
     key!("click_note", c.click_note, number(0, 127)),
     key!("click_channel", c.click_channel, number(1, 16)),
+    key!("midi_clock", c.midi_clock, Flag),
+    key!("midi_clock_start", c.midi_clock_start, ClockStartName),
+    key!("midi_clock_position", c.midi_clock_position, Flag),
     key!("playback_audio", c.playback_audio, Flag),
     key!("playback_volume", c.playback_volume, number(0.0, 1.0)),
     key!("playback_midi", c.playback_midi, Flag),
@@ -751,7 +811,7 @@ impl Config {
     pub fn from_text(text: &str) -> Config {
         let mut c = Config::default();
         let mut map_seen = false;
-        let mut map = NoteMap { map: Default::default() };
+        let mut map = NoteMap::empty();
         for line in text.lines() {
             let line = line.trim();
             if line.is_empty() || line.starts_with('#') {

@@ -341,10 +341,15 @@ pub fn lane_from_staff(step: i32, head: NoteHead) -> Lane {
 /// MIDI note -> lane mapping for the input drum module.
 #[derive(Clone, Debug, PartialEq)]
 pub struct NoteMap {
-    pub map: BTreeMap<u8, Lane>,
+    map: BTreeMap<u8, Lane>,
 }
 
 impl NoteMap {
+    /// A map with no note in it.
+    pub fn empty() -> NoteMap {
+        NoteMap { map: BTreeMap::new() }
+    }
+
     /// Factory defaults of Roland V-Drums modules (TD-17/27/50, V51/V71/V31).
     /// Head and rim/edge zones send different notes; both map to the same lane.
     /// Verify against your kit's "Trigger > MIDI note" settings and use

@@ -16,6 +16,8 @@ enum Ev {
     MidiClick(ClickLevel),
     AudioDrum(Lane, f32),
     MidiDrum(u8, u8),
+    Clock(ClockMsg),
+    MusicEnded,
 }
 
 #[derive(Default)]
@@ -36,6 +38,12 @@ impl Sink for Fake {
     fn midi_drum(&mut self, note: u8, velocity: u8, _: Instant) {
         self.events.push(Ev::MidiDrum(note, velocity));
     }
+    fn midi_clock(&mut self, msg: ClockMsg, _: Instant) {
+        self.events.push(Ev::Clock(msg));
+    }
+    fn music_ended(&mut self) {
+        self.events.push(Ev::MusicEnded);
+    }
 }
 
 fn opts() -> PlayOptions {
@@ -53,6 +61,7 @@ fn opts() -> PlayOptions {
         midi_delay: Duration::ZERO,
         drum_notes: [(Lane::Kick, 36), (Lane::Snare, 38)].into_iter().collect(),
         ramp: Ramp::default(),
+        clock: Some(ClockOptions { start: crate::config::ClockStart::CountIn, position: false }),
     }
 }
 
@@ -258,7 +267,8 @@ fn one_pass_plays_everything_once_and_reports_done() {
     let c = SoundSwitches::new();
     let cues = [click(-0.02), drum(Lane::Kick, 0.0), click(0.02)];
     let ev = run_fake(&ManualClock::new(), &cues, 0.05, &c, &AtomicBool::new(false));
-    assert_eq!(ev.len(), 2 + 2 + 2, "count-in click, kick on two outputs, click");
+    assert_eq!(ev.len(), 2 + 2 + 2 + 1, "count-in click, kick on two outputs, click, and the end of the music");
+    assert_eq!(ev.last(), Some(&Ev::MusicEnded));
     assert!(c.music_done());
 }
 
@@ -339,8 +349,8 @@ fn sample_score_renders_a_note_at_every_onset() {
         import_bytes(include_bytes!("../../examples/basic_rock_beat.musicxml"), "basic_rock_beat.musicxml", &ImportOptions::default())
             .unwrap()
             .score;
-    let expected = expected_notes(&score, 0, score.measures.len() - 1, 1.0);
-    let clicks = score.click_track(0, score.measures.len() - 1, 1.0, 4, true);
+    let expected = expected_notes(&score, 0, score.measures().len() - 1, 1.0);
+    let clicks = score.click_track(0, score.measures().len() - 1, 1.0, 4, true);
     let all = cues(&expected, &clicks);
     let lead = 2.4; // one count-in bar at 100 BPM
     let out = mix(&all, lead, 1.0);
@@ -407,6 +417,7 @@ impl Sink for Stamps<'_> {
     fn midi_drum(&mut self, _: u8, _: u8, _: Instant) {
         self.0.push(self.1.now());
     }
+    fn midi_clock(&mut self, _: ClockMsg, _: Instant) {}
 }
 
 #[test]
@@ -465,6 +476,7 @@ impl Sink for Early<'_> {
     fn midi_click(&mut self, _: ClickLevel, _: Instant) {}
     fn audio_drum(&mut self, _: Lane, _: f32, _: Instant) {}
     fn midi_drum(&mut self, _: u8, _: u8, _: Instant) {}
+    fn midi_clock(&mut self, _: ClockMsg, _: Instant) {}
     fn lookahead(&self) -> Duration {
         self.lookahead
     }
@@ -600,4 +612,56 @@ fn midi_is_delayed_only_for_what_also_sounds_through_the_sound_card() {
         (Duration::ZERO, Duration::ZERO),
         "no open output, nothing to line up with"
     );
+}
+
+fn clock_events(ev: &[Ev]) -> Vec<ClockMsg> {
+    ev.iter().filter_map(|e| if let Ev::Clock(m) = e { Some(*m) } else { None }).collect()
+}
+
+#[test]
+fn a_clock_cue_goes_out_only_when_the_clock_is_wanted() {
+    let c = SoundSwitches::new();
+    let cue = Cue { t: 0.0, sound: Sound::Clock(ClockMsg::Tick) };
+    assert_eq!(play(&cue, &opts(), &c), [Ev::Clock(ClockMsg::Tick)]);
+    let off = PlayOptions { clock: None, ..opts() };
+    assert!(play(&cue, &off, &c).is_empty());
+    c.set_click(false);
+    c.set_notes(false);
+    assert_eq!(play(&cue, &opts(), &c), [Ev::Clock(ClockMsg::Tick)], "the click and the notes switches do not mute the clock");
+}
+
+#[test]
+fn a_run_sends_start_then_the_ticks_and_ends_with_the_end_of_the_music() {
+    let c = SoundSwitches::new();
+    let bar = with_clock(metronome_cues(600.0, 1, Subdivision::None).0, metronome_clock(600.0, 1));
+    let ev = run_fake(&ManualClock::new(), &bar, 0.1, &c, &AtomicBool::new(false));
+    let clock = clock_events(&ev);
+    assert_eq!(clock.first(), Some(&ClockMsg::Start));
+    assert_eq!(clock.iter().filter(|m| **m == ClockMsg::Tick).count(), 24, "a beat is 24 ticks");
+    assert_eq!(ev.last(), Some(&Ev::MusicEnded), "the sink is told last, to stop the clock");
+}
+
+#[test]
+fn a_looping_metronome_sends_start_once_and_goes_on_ticking() {
+    let c = SoundSwitches::new();
+    c.set_looping(true);
+    let bar = with_clock(metronome_cues(600.0, 1, Subdivision::None).0, metronome_clock(600.0, 1));
+    let clock = ManualClock::new();
+    clock.at(Duration::from_millis(460), || c.set_looping(false));
+    let ev = run_fake(&clock, &bar, 0.1, &c, &AtomicBool::new(false));
+    let messages = clock_events(&ev);
+    assert_eq!(messages.iter().filter(|m| **m == ClockMsg::Start).count(), 1, "later passes do not start it again");
+    assert!(messages.iter().filter(|m| **m == ClockMsg::Tick).count() >= 24 * 3, "several passes of ticks");
+}
+
+#[test]
+fn stopping_a_run_tells_the_sink_so_the_clock_can_be_stopped() {
+    let c = SoundSwitches::new();
+    c.set_looping(true);
+    let stop = AtomicBool::new(false);
+    let clock = ManualClock::new();
+    clock.at(Duration::from_millis(150), || stop.store(true, Ordering::Relaxed));
+    let bar = with_clock(metronome_cues(600.0, 1, Subdivision::None).0, metronome_clock(600.0, 1));
+    let ev = run_fake(&clock, &bar, 0.1, &c, &stop);
+    assert_eq!(ev.last(), Some(&Ev::MusicEnded));
 }

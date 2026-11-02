@@ -3,14 +3,16 @@
 use egui::{Color32, RichText};
 
 use super::trigger::TriggerHint;
+use crate::analysis::Grade;
 use crate::config::limits;
 use crate::controller::Action;
-use crate::render::{self, LayoutOpts, ScoreView};
+use crate::render::{self, LayoutOpts, PlayedNote, ScoreView};
 use crate::theme;
 use crate::units::Seconds;
 use crate::widgets;
 
-use super::session::{score_q, signed_secs};
+use super::session::score_q;
+use super::take::signed_secs;
 use super::{DrumApp, Source, TAKE_LINE_HEIGHT};
 
 impl DrumApp {
@@ -19,9 +21,9 @@ impl DrumApp {
             self.welcome_panel(ui);
             return;
         };
-        let n_measures = score.measures.len();
+        let n_measures = score.measures().len();
         let running = self.take_running();
-        let base_bpm = score.tempo.bpm_at(score.measures[self.practice.range_from.min(n_measures - 1)].start_q);
+        let base_bpm = score.tempo.bpm_at(score.measures()[self.practice.range_from.min(n_measures - 1)].start_q);
         let title = score.title.clone();
         let part = score.part_name.clone();
         let warnings = score.warnings.clone();
@@ -84,7 +86,7 @@ impl DrumApp {
                     self.press(Action::Record);
                 }
             }
-            if self.playback.listen.is_some() {
+            if self.playback.is_listening() {
                 if ui.button(RichText::new("⏹ Stop listening (L)").strong()).clicked() {
                     self.press(Action::Listen);
                 }
@@ -120,7 +122,7 @@ impl DrumApp {
                     .practice
                     .score
                     .as_ref()
-                    .and_then(|s| s.measures.get(self.cfg.layout_align_bar.wrapping_sub(1)))
+                    .and_then(|s| s.measures().get(self.cfg.layout_align_bar.wrapping_sub(1)))
                     .map(|m| m.number.clone());
                 if let Some(number) = printed {
                     widgets::hint(ui, format!("Bar {} of the score as shown, printed as bar {number} in the file.", self.cfg.layout_align_bar));
@@ -147,7 +149,7 @@ impl DrumApp {
             self.press(Action::Click);
         }
         ui.add_enabled_ui(!running, |ui| {
-            let mut notes = self.playback.notes;
+            let mut notes = self.playback.notes();
             if ui
                 .checkbox(&mut notes, "notes")
                 .on_hover_text("Play the notes of the score in Listen. Switch them off to use Listen as a click track.")
@@ -155,7 +157,7 @@ impl DrumApp {
             {
                 self.press(Action::Notes);
             }
-            let mut looping = self.playback.looping;
+            let mut looping = self.playback.looping();
             if ui
                 .checkbox(&mut looping, "loop")
                 .on_hover_text("Repeat the selected measures in Listen until it is stopped. Switching it off lets the current round finish.")
@@ -182,17 +184,17 @@ impl DrumApp {
         ui.horizontal(|ui| {
             ui.set_min_height(TAKE_LINE_HEIGHT);
             if let Some(take) = self.practice.take.as_ref() {
-                let r = &take.report;
-                if take.running {
-                    let el = signed_secs(self.shown_now(), take.zero);
+                let r = &take.report();
+                if take.is_running() {
+                    let el = signed_secs(self.shown_now(), take.zero());
                     if el < Seconds::ZERO {
-                        let beats_left = (-el / take.count_in_beat_sec).ceil() as i64;
+                        let beats_left = (-el / take.count_in_beat_sec()).ceil() as i64;
                         ui.label(RichText::new(format!("Count-in… {beats_left}")).size(22.0).strong().color(theme::ACCENT));
                     } else {
                         ui.label(RichText::new("⏺ REC").strong().color(theme::RED));
                     }
                 } else {
-                    ui.label(RichText::new(format!("Take {}", take.number)).strong());
+                    ui.label(RichText::new(format!("Take {}", take.number())).strong());
                 }
                 if r.evaluated > 0 {
                     ui.label(RichText::new(format!("{:.0} {}", r.overall, r.letter())).size(18.0).strong());
@@ -235,23 +237,23 @@ impl DrumApp {
         }
         ui.separator();
 
-        let played = self.played_notes();
-        let grades = self.note_grades();
+        let shown = self.take_shown();
+        let (played, grades): (&[PlayedNote], &[Option<Grade>]) = shown.as_deref().map_or((&[], &[]), |s| (&s.played, &s.grades));
         let listen_q = self.listen_playhead();
         let score = self.practice.score.as_ref().unwrap();
-        let playhead = match (self.practice.take.as_ref().filter(|t| t.running), listen_q) {
-            (Some(t), _) => Some(score_q(score, t, signed_secs(self.shown_now(), t.zero))),
+        let playhead = match (self.practice.take.as_ref().filter(|t| t.is_running()), listen_q) {
+            (Some(t), _) => Some(score_q(score, t, signed_secs(self.shown_now(), t.zero()))),
             (None, q) => q,
         };
         let view = ScoreView {
             score,
             score_gen: self.score_gen,
-            grades: &grades,
-            played: &played,
+            grades,
+            played,
             playhead_q: playhead,
             range: (self.practice.range_from, self.practice.range_to),
             zoom: self.cfg.zoom,
-            follow: self.follow && (running || self.playback.listen.is_some()),
+            follow: self.follow && (running || self.playback.is_listening()),
             layout: LayoutOpts {
                 bars_per_row: self.cfg.bars_per_row,
                 align_bar: self.cfg.layout_align_bar,

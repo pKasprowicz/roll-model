@@ -6,6 +6,16 @@ All notable changes are recorded here. The format follows [Keep a Changelog](htt
 
 ## [Unreleased]
 
+## [0.10.5] - 2026-11-02
+
+The program can send **MIDI clock** to the MIDI output from Listen and the Metronome tab, so a device that follows an external clock runs at the played tempo; it is not tried on a device yet. The rest is more of the code review of 0.10.1: the take, the metronome, the drum module's MIDI input and Listen are state types of their own with their own tests, the Manage window's Learn is a state machine tested without a window, and a few per-frame costs are gone.
+
+### Added
+- **MIDI clock to the MIDI output** (FEAT-6): 24 timing clocks to a quarter note with Start and Stop, from Listen and the Metronome tab, so a device that follows an external clock runs at the played tempo. Off by default; Settings → Sound. Takes do not send it yet, and it is not tried on a device yet.
+
+### Changed
+- The message when nothing is switched on to be heard is one text for Listen, the metronome and the instrument audition.
+
 ## [0.10.4] - 2026-11-02
 
 More of the code review of 0.10.1. Your best clean tempos now live in their own file, `progress.txt`, and the sound threads' problems are written to `roll-model.log`. The on-screen buttons follow the same rules as the keys and the controller, settings numbers stay inside the ranges the screen offers, the metronome subdivision is saved by name, and an imported drag keeps both of its grace notes. Under the surface: quarter notes, seconds and milliseconds are types, one scoring model holds every grading number, and the score view no longer recomputes its notation on every frame.

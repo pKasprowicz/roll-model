@@ -54,7 +54,7 @@ impl DrumApp {
     pub(super) fn poll_loading(&mut self) {
         let Some(pending) = self.loading.take() else { return };
         // A file that arrives while something is recording or playing waits; it must not stop that.
-        if self.take_running() || self.playback.listen.is_some() {
+        if self.take_running() || self.playback.is_listening() {
             self.loading = Some(pending);
             return;
         }
@@ -82,7 +82,7 @@ impl DrumApp {
     /// selected bars, the view and the layout stay.
     pub(super) fn reimport(&mut self) {
         let Some(path) = self.practice.score_path.clone() else { return };
-        self.stop_take(super::session::StopReason::Aborted);
+        self.stop_take(super::take::StopReason::Aborted);
         self.stop_listen();
         match crate::import::load_score(&path, &self.import_options()) {
             Ok(loaded) => {
@@ -103,12 +103,12 @@ impl DrumApp {
         let status = format!(
             "Loaded \"{}\": {} measures, {} notes, {:.0} BPM{}",
             score.title,
-            score.measures.len(),
-            score.notes.len(),
+            score.measures().len(),
+            score.notes().len(),
             score.tempo.bpm_at(Quarters::ZERO),
             report.midi.as_ref().map(|m| format!(" ({})", m.summary())).unwrap_or_default(),
         );
-        let last = score.measures.len().saturating_sub(1);
+        let last = score.measures().len().saturating_sub(1);
         if opened == Opened::Again {
             self.practice.range_from = self.practice.range_from.min(last);
             self.practice.range_to = self.practice.range_to.min(last);

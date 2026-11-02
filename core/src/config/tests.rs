@@ -280,3 +280,19 @@ fn the_default_volume_of_an_instrument_is_not_stored() {
     c.set_gain(Lane::Snare, 99.0);
     assert_eq!(c.gain_of(Lane::Snare), MAX_LANE_GAIN, "kept in range");
 }
+
+#[test]
+fn the_midi_clock_is_off_by_default_and_its_start_is_stored_by_name() {
+    let d = Config::default();
+    assert_eq!((d.midi_clock, d.midi_clock_start, d.midi_clock_position), (false, ClockStart::CountIn, false));
+    let c = Config { midi_clock: true, midi_clock_start: ClockStart::Downbeat, midi_clock_position: true, ..Config::default() };
+    let text = c.to_text();
+    assert!(text.contains("midi_clock_start = downbeat"), "{text}");
+    assert_eq!(Config::from_text(&text), c);
+    assert_eq!(
+        Config::from_text("midi_clock_start = nowhere\n").midi_clock_start,
+        ClockStart::CountIn,
+        "an unknown name keeps the default"
+    );
+    assert!(!Config::from_text("latency_ms = 5\n").midi_clock, "an old file loads");
+}

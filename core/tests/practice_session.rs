@@ -12,7 +12,7 @@ const SAMPLE: &str = include_str!("../../examples/basic_rock_beat.musicxml");
 #[test]
 fn a_perfect_take_of_the_example_score_grades_perfect() {
     let score = import_bytes(SAMPLE.as_bytes(), "sample.musicxml", &ImportOptions::default()).unwrap().score;
-    let last = score.measures.len() - 1;
+    let last = score.measures().len() - 1;
     let expected = expected_notes(&score, 0, last, 1.0);
     assert!(!expected.is_empty());
     let hits: Vec<Hit> = expected.iter().map(|e| Hit { t: e.t, note: 0, velocity: 100, lane: e.lane }).collect();

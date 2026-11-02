@@ -68,7 +68,7 @@ fn on_the_metronome_tab_the_tempo_controls_set_its_bpm() {
 #[test]
 fn range_encoders_keep_the_range_valid() {
     let mut app = app_with_score();
-    let last = app.practice.score.as_ref().unwrap().measures.len() - 1;
+    let last = app.practice.score.as_ref().unwrap().measures().len() - 1;
     assert_eq!((app.practice.range_from, app.practice.range_to), (0, last));
     app.apply_command(Command::Turn(Action::RangeFrom, 2));
     assert_eq!(app.practice.range_from, 2.min(last));
@@ -111,10 +111,10 @@ fn mixer_strips_control_groups_of_instruments() {
     assert!(app.cfg.lane_mute.is_empty());
 
     app.apply_command(Command::Press(Action::Solo(7)));
-    assert!(app.playback.solo.contains(&Lane::Ride) && app.controller_state().solo[7]);
-    assert_eq!(app.cfg.effective_gain(&app.playback.solo, Lane::Kick), 0.0);
+    assert!(app.playback.is_soloed(Lane::Ride) && app.controller_state().solo[7]);
+    assert_eq!(app.cfg.effective_gain(app.playback.solo(), Lane::Kick), 0.0);
     app.apply_command(Command::Press(Action::Solo(7)));
-    assert!(app.playback.solo.is_empty());
+    assert!(app.playback.solo().is_empty());
 }
 
 #[test]
@@ -145,10 +145,10 @@ fn switches_and_tabs() {
     let click = app.cfg.metronome_during_take;
     app.apply_command(Command::Press(Action::Click));
     assert_eq!(app.cfg.metronome_during_take, !click);
-    assert!(app.playback.notes && !app.playback.looping);
+    assert!(app.playback.notes() && !app.playback.looping());
     app.apply_command(Command::Press(Action::Loop));
     app.apply_command(Command::Press(Action::Notes));
-    assert!(!app.playback.notes && app.playback.looping);
+    assert!(!app.playback.notes() && app.playback.looping());
     let s = app.controller_state();
     assert!(s.looping && !s.notes && !s.record && !s.listen && !s.metronome);
 
@@ -185,7 +185,7 @@ fn with_a_rudiment_the_range_controls_choose_repetitions_lead_and_rudiment() {
     let repeats = app.cfg.rudiment_repeats;
     app.apply_command(Command::Turn(Action::RangeFrom, 3));
     assert_eq!(app.cfg.rudiment_repeats, repeats + 3);
-    assert_eq!(app.practice.score.as_ref().unwrap().measures.len(), repeats + 3);
+    assert_eq!(app.practice.score.as_ref().unwrap().measures().len(), repeats + 3);
     app.apply_command(Command::Turn(Action::RangeTo, 1));
     assert_eq!(app.rudiment_lead(), Lead::Left);
     app.apply_command(Command::Turn(Action::RangeTo, -1));
@@ -269,10 +269,10 @@ fn the_keys_and_the_controller_buttons_follow_the_same_rules() {
     press_key(&mut app, egui::Key::R);
     assert!(app.take_running());
     // The modes cannot be changed while the take records, by key or by button.
-    let looping = app.playback.looping;
+    let looping = app.playback.looping();
     press_key(&mut app, egui::Key::M);
     app.apply_command(Command::Press(Action::Loop));
-    assert!(app.metro_run.run.is_none() && app.playback.looping == looping);
+    assert!(!app.metro_run.is_running() && app.playback.looping() == looping);
     assert!(app.take_running());
     press_key(&mut app, egui::Key::R);
     assert!(!app.take_running(), "R stops the recording like the Record button");
@@ -331,12 +331,12 @@ fn loop_worst_bar_and_discard_need_a_take() {
     let mut app = app_with_score();
     app.apply_command(Command::Press(Action::LoopWorstBar));
     assert_eq!(app.view.status, "Record a take first.");
-    assert!(!app.playback.looping);
+    assert!(!app.playback.looping());
     app.apply_command(Command::Press(Action::DiscardTake));
     let mut closed = DrumApp::with_config(Config::default());
     closed.apply_command(Command::Press(Action::Record));
     assert_eq!(closed.view.status, "Open a score first.");
-    assert!(closed.practice.take.is_none() && closed.playback.listen.is_none());
+    assert!(closed.practice.take.is_none() && !closed.playback.is_listening());
 }
 
 #[test]
@@ -379,7 +379,7 @@ fn the_controller_page_draws_with_and_without_a_controller() {
 fn a_run_has_a_count_in_only_when_asked_for() {
     let mut app = app_with_score();
     app.cfg.count_in_bars = 1;
-    let beats = app.practice.score.as_ref().unwrap().measures[0].beats;
+    let beats = app.practice.score.as_ref().unwrap().measures()[0].beats;
     assert_eq!(app.plan_run(true).unwrap().count_in_beats, beats);
     assert_eq!(app.plan_run(false).unwrap().count_in_beats, 0, "this is what Listen asks for when its count-in is off");
     assert!(app.cfg.listen_count_in, "Listen has one by default");
