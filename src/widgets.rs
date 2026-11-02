@@ -3,7 +3,7 @@
 use std::ops::RangeInclusive;
 
 use egui::emath::Numeric;
-use egui::{vec2, Response, RichText, Ui, Vec2};
+use egui::{vec2, Color32, Response, RichText, Ui, Vec2};
 
 /// Whether a text field (also a slider's value box) is being typed in. Not the same as
 /// `ctx.wants_keyboard_input()`, which is also true while a button or slider has the focus (after
@@ -15,6 +15,11 @@ pub fn typing(ctx: &egui::Context) -> bool {
 /// A line of grey helper text (the "small" style): how every page explains itself.
 pub fn hint(ui: &mut Ui, text: impl Into<String>) -> Response {
     ui.label(RichText::new(text).small().weak())
+}
+
+/// A line of small text in `color`: a warning (`theme::AMBER`) or a state under a control.
+pub fn note(ui: &mut Ui, text: impl Into<String>, color: Color32) -> Response {
+    ui.label(RichText::new(text).small().color(color))
 }
 
 /// A slider with its `caption` in front of it:
@@ -259,10 +264,11 @@ mod tests {
         assert!(!typing_with_focus_on("nothing"));
     }
 
-    /// A convention that a rule of prose did not keep: every slider is a `Slider`, so that the
-    /// caption and the wheel behave the same everywhere.
+    /// Conventions that a rule of prose did not keep: every slider is a `Slider`, so that the
+    /// caption and the wheel behave the same everywhere, and small coloured text is a `note`.
     #[test]
-    fn no_slider_of_egui_is_made_outside_this_file() {
+    fn what_this_file_makes_is_not_made_by_hand_elsewhere() {
+        const BY_HAND: [(&str, &str); 2] = [("egui::Slider::new", "widgets::Slider"), (".small().color(", "widgets::note")];
         fn walk(dir: &std::path::Path, found: &mut Vec<String>) {
             for entry in std::fs::read_dir(dir).unwrap().flatten() {
                 let path = entry.path();
@@ -270,14 +276,16 @@ mod tests {
                     walk(&path, found);
                 } else if path.extension().is_some_and(|e| e == "rs") && !path.ends_with("widgets.rs") {
                     let text = std::fs::read_to_string(&path).unwrap();
-                    if text.contains("egui::Slider::new") {
-                        found.push(path.display().to_string());
+                    for (by_hand, instead) in BY_HAND {
+                        if text.contains(by_hand) {
+                            found.push(format!("{}: use {instead}, not {by_hand}", path.display()));
+                        }
                     }
                 }
             }
         }
         let mut found = Vec::new();
         walk(&std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src"), &mut found);
-        assert!(found.is_empty(), "use widgets::Slider instead of egui::Slider in {found:?}");
+        assert!(found.is_empty(), "{found:#?}");
     }
 }

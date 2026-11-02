@@ -35,7 +35,7 @@ impl DrumApp {
             }
         });
         for w in &warnings {
-            ui.label(RichText::new(format!("⚠ {w}")).small().color(theme::AMBER));
+            widgets::note(ui, format!("⚠ {w}"), theme::AMBER);
         }
         // Three plain rows (sliders don't wrap inside `horizontal_wrapped`), drawn larger than the
         // rest of the UI because they are used with the mouse from a drum stool. Slider captions
@@ -226,14 +226,14 @@ impl DrumApp {
             widgets::hint(ui, "· click a measure to start there, shift+click to set the end · mouse wheel over a slider fine-tunes it");
             if let Some(fit) = self.view.fit_bars {
                 let msg = format!("· {} bars per row do not fit at this width: showing {fit}", self.cfg.bars_per_row);
-                ui.label(RichText::new(msg).small().color(theme::AMBER));
+                widgets::note(ui, msg, theme::AMBER);
             }
         });
         // On a line of its own: it grows while the trigger waits for the second hit.
         if let Some(TriggerHint { text, armed }) = self.trigger_hint() {
             let (color, text) =
                 if armed { (theme::GREEN, format!("{text}: waiting for the second hit")) } else { (ui.visuals().weak_text_color(), text) };
-            ui.label(RichText::new(text.trim_start_matches("· ")).small().color(color));
+            widgets::note(ui, text.trim_start_matches("· "), color);
         }
         ui.separator();
 

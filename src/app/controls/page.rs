@@ -95,7 +95,7 @@ impl DrumApp {
         if let Some(link) = self.controller.link.as_ref() {
             let preset = link.mapper.preset();
             for w in &preset.warnings {
-                ui.label(RichText::new(format!("⚠ {w}")).small().color(theme::AMBER));
+                widgets::note(ui, format!("⚠ {w}"), theme::AMBER);
             }
             ui.add_space(6.0);
             let layer = link.mapper.layer_name().map(|l| format!("layer {l}")).unwrap_or_else(|| "no layers".into());

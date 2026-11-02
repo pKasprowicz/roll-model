@@ -587,7 +587,7 @@ impl DrumApp {
             }
         }
         if !custom && !self.controller.editor.notice.is_empty() {
-            ui.label(RichText::new(self.controller.editor.notice.clone()).small().color(theme::AMBER));
+            widgets::note(ui, self.controller.editor.notice.clone(), theme::AMBER);
         }
         self.run_op(op);
     }
@@ -640,7 +640,7 @@ impl DrumApp {
         let mut op = self.layer_rows(ui, &preset);
         let layer = self.editor_layer(&preset);
         if !self.controller.is_connected() {
-            ui.label(RichText::new("The controller is not connected: connect it to learn controls.").small().color(theme::AMBER));
+            widgets::note(ui, "The controller is not connected: connect it to learn controls.", theme::AMBER);
         }
         self.waiting_banner(ui);
 

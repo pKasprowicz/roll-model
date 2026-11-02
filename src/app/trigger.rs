@@ -10,6 +10,7 @@ use super::{DrumApp, Tab};
 use crate::drums::Lane;
 use crate::theme;
 use crate::trigger::{Sequence, Slot, WINDOW};
+use crate::widgets;
 
 /// The legend line about the start trigger: what it is, and whether it waits for its second hit.
 pub(super) struct TriggerHint {
@@ -103,7 +104,7 @@ impl DrumApp {
         });
         if let Some(TriggerHint { text, armed }) = self.trigger_hint() {
             let color = if armed { theme::GREEN } else { ui.visuals().weak_text_color() };
-            ui.label(RichText::new(text.trim_start_matches("· ")).small().color(color));
+            widgets::note(ui, text.trim_start_matches("· "), color);
         }
     }
 }
