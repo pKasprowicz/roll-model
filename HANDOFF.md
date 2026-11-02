@@ -171,7 +171,7 @@ The hardware tasks (HW-*) have a step-by-step plan in `docs/hardware-test-plan.m
 | **RV-80** [#101](https://github.com/pKasprowicz/roll-model/issues/101) | Timing tests use the wall clock (S2, effort M) | code |
 | **RV-81** [#102](https://github.com/pKasprowicz/roll-model/issues/102) | Tests through `DrumApp` (S3) | code |
 | **RV-82** [#103](https://github.com/pKasprowicz/roll-model/issues/103) | Missing tests for the failure paths found here | code |
-| **RV-85** [#104](https://github.com/pKasprowicz/roll-model/issues/104) | No formatter, no lint gate (S3, effort S) | code |
+| **RV-85** [#104](https://github.com/pKasprowicz/roll-model/issues/104) | No formatter, no lint gate (S3, effort S) — **done 2026-11-02**: rustfmt (`rustfmt.toml`), clippy clean, both checked by CI on Linux; the guide and manual builders still read source text, so the rudiment table is `#[rustfmt::skip]` | code |
 | **RV-90** [#105](https://github.com/pKasprowicz/roll-model/issues/105) | `HANDOFF.md` is too large, contradicts itself, and is mandatory reading (S2, effort M) | code |
 | **RV-91** [#106](https://github.com/pKasprowicz/roll-model/issues/106) | Comment style raises the cognitive load (S3) | code |
 

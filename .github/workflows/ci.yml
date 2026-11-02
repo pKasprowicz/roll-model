@@ -39,10 +39,17 @@ jobs:
       - name: Install Rust
         shell: bash
         run: |
-          rustup toolchain install ${{ matrix.toolchain }} --profile minimal
+          rustup toolchain install ${{ matrix.toolchain }} --profile minimal --component rustfmt --component clippy
           rustup default ${{ matrix.toolchain }}
           rustc -vV
       - uses: Swatinem/rust-cache@v2
+      # The code is rustfmt-formatted (rustfmt.toml) and clippy reports nothing; one system is enough for both.
+      - name: Format
+        if: runner.os == 'Linux'
+        run: cargo fmt --all --check
+      - name: Clippy
+        if: runner.os == 'Linux'
+        run: cargo clippy --all-targets --locked -- -D warnings
       # Release mode, like release.yml: the timing tests are unreliable in a debug build.
       - name: Test
         run: cargo test --release --locked
