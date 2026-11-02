@@ -5,7 +5,9 @@
 //! place in the running controller. The built-in presets are not edited: copy one first, or start
 //! a new preset. The editing itself (`assign`, `clear`, `to_text`) is in `controller.rs`.
 
-use std::path::PathBuf;
+use std::cell::RefCell;
+use std::path::{Path, PathBuf};
+use std::time::SystemTime;
 
 use egui::{RichText, ViewportBuilder, ViewportClass, ViewportId};
 
@@ -47,6 +49,26 @@ pub(super) struct EditorState {
     pub(super) draft: Option<(PathBuf, Preset)>,
     /// What the Manage window remembers about itself.
     pub(super) view: ManageView,
+    /// The folder looked at once for where the file of the chosen preset is, until Refresh.
+    file_of: RefCell<Option<(String, PathBuf, Option<PathBuf>)>>,
+    /// The chosen preset as it was read, for as long as its file is as it was.
+    read: RefCell<Option<Read>>,
+    /// How many times a preset was read from its file.
+    #[cfg(test)]
+    reads: std::cell::Cell<usize>,
+}
+
+/// A preset read from its file (or from the built-in text) and what the file looked like then.
+struct Read {
+    name: String,
+    file: Option<PathBuf>,
+    stamp: Option<(SystemTime, u64)>,
+    preset: Preset,
+}
+
+fn stamp_of(path: &Path) -> Option<(SystemTime, u64)> {
+    let meta = std::fs::metadata(path).ok()?;
+    Some((meta.modified().ok()?, meta.len()))
 }
 
 impl EditorState {
@@ -77,6 +99,12 @@ impl EditorState {
         self.learner.stop();
     }
 
+    /// The files of the presets are looked at again: one was made, renamed, removed or changed outside.
+    pub(super) fn forget_files(&self) {
+        *self.file_of.borrow_mut() = None;
+        *self.read.borrow_mut() = None;
+    }
+
     /// What the editor was doing belongs to the preset that was chosen: drop it when another is.
     pub(super) fn start_over(&mut self) {
         self.stop_learning();
@@ -90,7 +118,16 @@ impl EditorState {
 
 impl Default for EditorState {
     fn default() -> EditorState {
-        EditorState { learner: Learner::new(), notice: String::new(), draft: None, view: ManageView::default() }
+        EditorState {
+            learner: Learner::new(),
+            notice: String::new(),
+            draft: None,
+            view: ManageView::default(),
+            file_of: RefCell::new(None),
+            read: RefCell::new(None),
+            #[cfg(test)]
+            reads: std::cell::Cell::new(0),
+        }
     }
 }
 
@@ -152,10 +189,19 @@ impl DrumApp {
     /// The file of the chosen preset if it is one the user may edit: not a built-in one.
     pub(super) fn editable_path(&self) -> Option<PathBuf> {
         let dir = self.preset_dir()?;
-        match controller::preset_source(&self.cfg.controller_preset, Some(&dir))? {
-            controller::PresetSource::File(path) => Some(path),
-            controller::PresetSource::BuiltIn(_) => None,
+        let name = &self.cfg.controller_preset;
+        let mut known = self.controller.editor.file_of.borrow_mut();
+        if let Some((n, d, file)) = known.as_ref() {
+            if n == name && *d == dir {
+                return file.clone();
+            }
         }
+        let file = match controller::preset_source(name, Some(&dir)) {
+            Some(controller::PresetSource::File(path)) => Some(path),
+            _ => None,
+        };
+        *known = Some((name.clone(), dir, file.clone()));
+        file
     }
 
     /// The chosen preset as it is now, for the table: the one in use, or its file.
@@ -168,8 +214,27 @@ impl DrumApp {
         if let Some((preset, _)) = self.controller.live() {
             return Some(preset.clone());
         }
+        self.read_preset()
+    }
+
+    /// The chosen preset read from its file, once for as long as the file is as it was: the table
+    /// asks for it on every frame.
+    fn read_preset(&self) -> Option<Preset> {
         let dir = self.preset_dir()?;
-        controller::load_preset(&self.cfg.controller_preset, Some(&dir)).ok()
+        let name = &self.cfg.controller_preset;
+        let file = self.editable_path();
+        let stamp = file.as_deref().and_then(stamp_of);
+        let mut read = self.controller.editor.read.borrow_mut();
+        if let Some(r) = read.as_ref() {
+            if r.name == *name && r.file == file && r.stamp == stamp {
+                return Some(r.preset.clone());
+            }
+        }
+        #[cfg(test)]
+        self.controller.editor.reads.set(self.controller.editor.reads.get() + 1);
+        let preset = controller::load_preset(name, Some(&dir)).ok()?;
+        *read = Some(Read { name: name.clone(), file, stamp, preset: preset.clone() });
+        Some(preset)
     }
 
     /// Changes the chosen (custom) preset: reads its file, applies `change`, writes the file and
@@ -1001,6 +1066,54 @@ bind = cc 13 abs -> tempo
         let ctx = egui::Context::default();
         app.controller.editor.view.open = true;
         let _ = ctx.run(egui::RawInput::default(), |ctx| app.controller_editor_window(ctx));
+    }
+
+    #[test]
+    fn the_preset_is_read_from_its_file_once_for_as_long_as_the_file_is_as_it_was() {
+        let (_guard, dir) = temp_dir("read-once");
+        let file = dir.join("Pads.txt");
+        std::fs::write(
+            &file,
+            "name = Pads
+port = PADS
+bind = note 1 -> record
+",
+        )
+        .unwrap();
+        let mut app = DrumApp::with_config(Config { controller_preset: "Pads".into(), ..Config::default() });
+        app.paths = Paths::in_dir(dir.parent().unwrap().to_path_buf());
+        let ctx = egui::Context::default();
+        let frame = |app: &mut DrumApp| {
+            let _ = ctx.run(egui::RawInput::default(), |ctx| {
+                egui::CentralPanel::default().show(ctx, |ui| app.manage_ui(ui));
+            });
+        };
+        for _ in 0..5 {
+            frame(&mut app);
+        }
+        assert_eq!(app.controller.editor.reads.get(), 1, "five frames, one read");
+
+        // A change made by the window is seen at once, and is read again once.
+        app.run_op(Some(Op::Clear(Action::Record)));
+        assert!(app.preset_being_edited().unwrap().bindings_of(None, Action::Record).is_empty());
+        let reads = app.controller.editor.reads.get();
+        for _ in 0..3 {
+            frame(&mut app);
+        }
+        assert_eq!(app.controller.editor.reads.get(), reads, "the window's own change is what the table shows");
+
+        // A change made to the file from outside is seen once the file looks different.
+        std::fs::write(
+            &file,
+            "name = Pads
+port = PADS
+bind = note 1 -> record
+bind = note 2 -> stop
+",
+        )
+        .unwrap();
+        assert_eq!(app.preset_being_edited().unwrap().bindings_of(None, Action::Stop).len(), 1);
+        assert!(app.controller.editor.reads.get() > reads);
     }
 
     #[test]

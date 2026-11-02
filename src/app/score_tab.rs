@@ -3,9 +3,10 @@
 use egui::{Color32, RichText};
 
 use super::trigger::TriggerHint;
+use crate::analysis::Grade;
 use crate::config::limits;
 use crate::controller::Action;
-use crate::render::{self, LayoutOpts, ScoreView};
+use crate::render::{self, LayoutOpts, PlayedNote, ScoreView};
 use crate::theme;
 use crate::units::Seconds;
 use crate::widgets;
@@ -236,8 +237,8 @@ impl DrumApp {
         }
         ui.separator();
 
-        let played = self.played_notes();
-        let grades = self.note_grades();
+        let shown = self.take_shown();
+        let (played, grades): (&[PlayedNote], &[Option<Grade>]) = shown.as_deref().map_or((&[], &[]), |s| (&s.played, &s.grades));
         let listen_q = self.listen_playhead();
         let score = self.practice.score.as_ref().unwrap();
         let playhead = match (self.practice.take.as_ref().filter(|t| t.is_running()), listen_q) {
@@ -247,8 +248,8 @@ impl DrumApp {
         let view = ScoreView {
             score,
             score_gen: self.score_gen,
-            grades: &grades,
-            played: &played,
+            grades,
+            played,
             playhead_q: playhead,
             range: (self.practice.range_from, self.practice.range_to),
             zoom: self.cfg.zoom,

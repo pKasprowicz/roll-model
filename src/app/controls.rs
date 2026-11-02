@@ -152,6 +152,7 @@ impl DrumApp {
         self.controller.kinds =
             names.iter().filter_map(|n| controller::load_preset(n, dir.as_deref()).ok().map(|p| (n.clone(), p.kind))).collect();
         self.controller.presets = names;
+        self.controller.editor.forget_files();
     }
 
     /// Chooses a preset (`""`: none) as the one in use and connects its controller. The port

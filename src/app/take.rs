@@ -2,6 +2,8 @@
 //! hits it holds, how it is graded as it goes and when it is over. Nothing here knows the
 //! application; a take can be driven in a test with the times given to it.
 
+use std::cell::RefCell;
+use std::rc::Rc;
 use std::time::Instant;
 
 use crate::analysis::{analyze_with, Expected, Grade, Hit, Report, Tolerances, Window};
@@ -48,6 +50,13 @@ pub(super) struct Plan {
     pub(super) clicks: Vec<Click>,
 }
 
+/// What a take shows under and over the score, worked out once for as long as the take does not change.
+pub(super) struct Shown {
+    pub(super) played: Vec<PlayedNote>,
+    /// The grade of each note of the score; `None` for a note that is not graded (yet).
+    pub(super) grades: Vec<Option<Grade>>,
+}
+
 /// One recorded attempt over a measure range.
 pub(super) struct Take {
     number: usize,
@@ -70,6 +79,8 @@ pub(super) struct Take {
     graded_at: Option<(usize, Seconds)>,
     running: bool,
     count_in_beat_sec: Seconds,
+    /// What is shown of it, until a hit or the grading changes it.
+    shown: RefCell<Option<(usize, Rc<Shown>)>>,
 }
 
 impl Take {
@@ -91,6 +102,7 @@ impl Take {
             hits: Vec::new(),
             running: true,
             count_in_beat_sec: plan.beat_sec,
+            shown: RefCell::new(None),
         }
     }
 
@@ -125,6 +137,7 @@ impl Take {
     #[cfg(test)]
     pub(super) fn set_hits(&mut self, hits: Vec<Hit>) {
         self.hits = hits;
+        self.shown.take();
     }
 
     pub(super) fn zero(&self) -> Instant {
@@ -163,6 +176,7 @@ impl Take {
         let t = signed_secs(at, self.zero) - latency;
         if t > -self.count_in_beat_sec * 0.75 {
             self.hits.push(Hit { t, note, velocity, lane });
+            self.shown.take();
         }
     }
 
@@ -177,6 +191,7 @@ impl Take {
         if due {
             self.report = analyze_with(&self.expected, &self.hits, tol, elapsed, self.window);
             self.graded_at = Some((self.hits.len(), elapsed));
+            self.shown.take();
         }
         elapsed > self.end_sec + TAIL
     }
@@ -190,11 +205,26 @@ impl Take {
         self.running = false;
         let elapsed = if kind == StopReason::Completed { Seconds::INFINITY } else { signed_secs(now, self.zero) };
         self.report = analyze_with(&self.expected, &self.hits, tol, elapsed, self.window);
+        self.shown.take();
         true
     }
 
+    /// The hits drawn under the score and the grades drawn on its notes, as of the last hit or grading.
+    pub(super) fn shown(&self, score: &Score) -> Rc<Shown> {
+        let notes = score.notes().len();
+        let mut shown = self.shown.borrow_mut();
+        match shown.as_ref() {
+            Some((n, s)) if *n == notes => s.clone(),
+            _ => {
+                let s = Rc::new(Shown { played: self.played_notes(score), grades: self.grades(notes) });
+                *shown = Some((notes, s.clone()));
+                s
+            }
+        }
+    }
+
     /// The hits drawn under the score, each with how it was graded.
-    pub(super) fn played_notes(&self, score: &Score) -> Vec<PlayedNote> {
+    fn played_notes(&self, score: &Score) -> Vec<PlayedNote> {
         self.hits
             .iter()
             .enumerate()
@@ -213,7 +243,7 @@ impl Take {
     }
 
     /// How each note of the score was graded (`None`: not in the range, or not due yet).
-    pub(super) fn grades(&self, notes: usize) -> Vec<Option<Grade>> {
+    fn grades(&self, notes: usize) -> Vec<Option<Grade>> {
         let mut g = vec![None; notes];
         for (e, r) in self.expected.iter().zip(&self.report.results) {
             if let Some(slot) = g.get_mut(e.note_idx) {
@@ -308,6 +338,24 @@ mod tests {
     }
 
     #[test]
+    fn what_a_take_shows_is_worked_out_again_only_when_a_hit_or_a_grading_changes_it() {
+        let (score, zero) = (score(), Instant::now());
+        let tol = Tolerances::default();
+        let mut t = take(&score, zero);
+        let first = t.shown(&score);
+        assert!(first.played.is_empty() && first.grades.len() == score.notes().len());
+        assert!(Rc::ptr_eq(&first, &t.shown(&score)), "nothing changed");
+        t.record_hit(zero + Duration::from_millis(10), 36, 100, Lane::Snare, Seconds::ZERO);
+        let second = t.shown(&score);
+        assert!(!Rc::ptr_eq(&first, &second) && second.played.len() == 1, "a hit changes it");
+        assert!(!t.update(&tol, zero + Duration::from_millis(20)));
+        let third = t.shown(&score);
+        assert!(!Rc::ptr_eq(&second, &third), "so does the grading that follows the hit");
+        assert!(!t.update(&tol, zero + Duration::from_millis(30)), "too soon to grade again");
+        assert!(Rc::ptr_eq(&third, &t.shown(&score)), "and a frame in between does not");
+    }
+
+    #[test]
     fn finishing_grades_for_good_once_and_a_perfect_play_is_graded_perfect() {
         let (score, zero) = (score(), Instant::now());
         let tol = Tolerances::default();
@@ -323,7 +371,9 @@ mod tests {
         assert!(!t.finish(StopReason::Completed, &tol, zero), "already over");
         assert_eq!(t.grades(score.notes().len()).iter().flatten().count(), t.expected().len());
         assert!(t.measures_of_extra_hits(&score).is_empty());
-        assert_eq!(t.played_notes(&score).len(), t.hits().len());
+        let shown = t.shown(&score);
+        assert_eq!(shown.played.len(), t.hits().len());
+        assert!(Rc::ptr_eq(&shown, &t.shown(&score)), "the same until something changes");
         assert_eq!(t.range_text(&score), "1–4");
         assert!((t.bpm(&score) - 100.0).abs() < 1e-9);
     }

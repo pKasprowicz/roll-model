@@ -3,17 +3,18 @@
 
 use std::time::{Duration, Instant};
 
-use crate::analysis::{expected_notes, Grade, Window};
+use crate::analysis::{expected_notes, Window};
 use crate::drums::Lane;
 use crate::metronome::{ClickOptions, Metronome, HAS_AUDIO};
 use crate::playback::{self, PlayOptions, Player};
 use crate::practice::Ramp;
-use crate::render::PlayedNote;
 use crate::score::Click;
 use crate::score::Score;
 use crate::units::Seconds;
 
-use super::take::{signed_secs, Plan, StopReason, Take};
+use std::rc::Rc;
+
+use super::take::{signed_secs, Plan, Shown, StopReason, Take};
 use super::{Calibration, DrumApp, Listen, ListenKey, Source, TakeSummary, CLEAN_TAKE, RESTART_DELAY};
 
 /// Whether Listen begins with the count-in.
@@ -462,15 +463,8 @@ impl DrumApp {
         self.view.status = format!("Latency calibrated: {:.0} ms ({} hits)", median, offsets.len());
     }
 
-    pub(super) fn played_notes(&self) -> Vec<PlayedNote> {
-        match (self.practice.take.as_ref(), self.practice.score.as_ref()) {
-            (Some(take), Some(score)) => take.played_notes(score),
-            _ => Vec::new(),
-        }
-    }
-
-    pub(super) fn note_grades(&self) -> Vec<Option<Grade>> {
-        let n = self.practice.score.as_ref().map_or(0, |s| s.notes().len());
-        self.practice.take.as_ref().map_or_else(|| vec![None; n], |take| take.grades(n))
+    /// What the take shows on the score: the notes played and the grades, as of the last hit or grading.
+    pub(super) fn take_shown(&self) -> Option<Rc<Shown>> {
+        Some(self.practice.take.as_ref()?.shown(self.practice.score.as_ref()?))
     }
 }
