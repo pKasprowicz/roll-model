@@ -84,3 +84,34 @@ fn a_file_that_cannot_be_read_gives_the_defaults_and_a_message() {
     assert_eq!(config, Config::default());
     assert!(notice.is_some_and(|n| n.contains("could not be read")));
 }
+
+#[test]
+fn every_number_of_the_file_is_kept_in_the_range_the_screen_and_the_controller_use() {
+    use roll_model_core::config::limits;
+    let c = Config::from_text(
+        "perfect_ms=-5\ngood_ms=1e9\nwindow_ms=0\nlatency_ms=-1000\nclick_volume=1e30\nzoom=9\ncount_in_bars=4\nbars_per_row=12\nmetro_bpm=5\n",
+    );
+    assert_eq!(c.tol.perfect_ms, limits::PERFECT_MS.lo);
+    assert_eq!(c.tol.good_ms, limits::GOOD_MS.hi);
+    assert_eq!(c.tol.window_ms, limits::WINDOW_MS.lo);
+    assert_eq!(c.latency_ms, limits::LATENCY_MS.lo);
+    assert_eq!(c.click_volume, limits::CLICK_VOLUME.hi);
+    assert_eq!(c.zoom, limits::ZOOM.hi);
+    assert_eq!(c.count_in_bars, limits::COUNT_IN_BARS.hi);
+    assert_eq!(c.bars_per_row, limits::BARS_PER_ROW.hi);
+    assert_eq!(c.metro_bpm, limits::METRO_BPM.lo);
+}
+
+#[test]
+fn a_span_maps_to_the_unit_and_back_for_integers_and_floats() {
+    use roll_model_core::config::limits;
+    assert_eq!(limits::COUNT_IN_BARS.unit(1), 0.5);
+    assert_eq!(limits::COUNT_IN_BARS.at(0.5), 1);
+    assert_eq!(limits::BARS_PER_ROW.at(1.0), 8);
+    assert_eq!(limits::BARS_PER_ROW.at(2.0), 8, "kept inside");
+    assert_eq!(limits::METRO_BPM.at(0.0), 20.0);
+    assert!((limits::METRO_BPM.unit(160.0) - 0.5).abs() < 1e-6);
+    for v in 0..=8usize {
+        assert_eq!(limits::BARS_PER_ROW.at(limits::BARS_PER_ROW.unit(v)), v);
+    }
+}

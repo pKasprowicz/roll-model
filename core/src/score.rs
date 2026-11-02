@@ -213,9 +213,8 @@ impl Score {
     pub fn click_track(&self, from: usize, to: usize, scale: f64, count_in_beats: u32, beats: bool) -> Vec<(f64, bool)> {
         let Some(m0) = self.measures.get(from) else { return Vec::new() };
         let beat_sec = 60.0 / (self.tempo.bpm_at(m0.start_q) * scale) * m0.beat_q();
-        let mut clicks: Vec<(f64, bool)> = (0..count_in_beats)
-            .map(|k| (-((count_in_beats - k) as f64) * beat_sec, k % m0.beats.max(1) == 0))
-            .collect();
+        let mut clicks: Vec<(f64, bool)> =
+            (0..count_in_beats).map(|k| (-((count_in_beats - k) as f64) * beat_sec, k % m0.beats.max(1) == 0)).collect();
         if beats {
             let t0 = self.tempo.q_to_sec(m0.start_q, scale);
             for m in &self.measures[from..=to.clamp(from, self.measures.len() - 1)] {
@@ -264,11 +263,7 @@ impl Score {
     }
 
     pub fn staff_for_lane(&self, lane: Lane) -> (i32, NoteHead) {
-        self.notes
-            .iter()
-            .find(|n| n.lane == lane && !n.grace)
-            .map(|n| (n.staff_step, n.head))
-            .unwrap_or_else(|| lane.default_staff())
+        self.notes.iter().find(|n| n.lane == lane && !n.grace).map(|n| (n.staff_step, n.head)).unwrap_or_else(|| lane.default_staff())
     }
 }
 
@@ -306,18 +301,8 @@ mod tests {
 
     #[test]
     fn click_track_counts_in_and_follows_beats() {
-        let measure = |i: usize| Measure {
-            number: (i + 1).to_string(),
-            start_q: 4.0 * i as f64,
-            len_q: 4.0,
-            beats: 4,
-            beat_type: 4,
-        };
-        let score = Score {
-            measures: vec![measure(0), measure(1), measure(2)],
-            tempo: TempoMap::constant(120.0),
-            ..Default::default()
-        };
+        let measure = |i: usize| Measure { number: (i + 1).to_string(), start_q: 4.0 * i as f64, len_q: 4.0, beats: 4, beat_type: 4 };
+        let score = Score { measures: vec![measure(0), measure(1), measure(2)], tempo: TempoMap::constant(120.0), ..Default::default() };
         // Practise measures 2..=3 at 120 BPM (0.5 s per beat) with a one-bar count-in.
         let c = score.click_track(1, 2, 1.0, 4, true);
         let times: Vec<f64> = c.iter().map(|(t, _)| *t).collect();

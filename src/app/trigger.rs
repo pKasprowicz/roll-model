@@ -21,8 +21,8 @@ impl DrumApp {
     fn trigger_allowed(&self) -> bool {
         self.cfg.trigger_enabled
             && matches!(self.view.tab, Tab::Score | Tab::Rudiments)
-            && self.score.is_some()
-            && !self.take.as_ref().is_some_and(|t| t.running)
+            && self.practice.score.is_some()
+            && !self.practice.take.as_ref().is_some_and(|t| t.running)
             && self.calibration.is_none()
     }
 
@@ -46,7 +46,7 @@ impl DrumApp {
             return false;
         }
         self.start_take();
-        if self.take.as_ref().is_some_and(|t| t.running) {
+        if self.practice.take.as_ref().is_some_and(|t| t.running) {
             self.view.status = format!("{} — recording started by the trigger", self.view.status);
         }
         true
@@ -130,7 +130,7 @@ mod tests {
     }
 
     fn recording(app: &DrumApp) -> bool {
-        app.take.as_ref().is_some_and(|t| t.running)
+        app.practice.take.as_ref().is_some_and(|t| t.running)
     }
 
     #[test]
@@ -154,7 +154,7 @@ mod tests {
         hit(&mut app, t0, Lane::Tom1, 300);
         assert!(recording(&app));
         assert!(app.view.status.contains("started by the trigger"), "{}", app.view.status);
-        assert!(app.take.as_ref().unwrap().hits.is_empty(), "the trigger hits are not part of the take");
+        assert!(app.practice.take.as_ref().unwrap().hits.is_empty(), "the trigger hits are not part of the take");
     }
 
     #[test]
@@ -184,7 +184,7 @@ mod tests {
         hit(&mut app, t0, Lane::Crash1, 400);
         hit(&mut app, t0, Lane::Tom1, 500);
         assert!(recording(&app));
-        assert_eq!(app.take.as_ref().unwrap().label, "Single stroke roll ×4");
+        assert_eq!(app.practice.take.as_ref().unwrap().label, "Single stroke roll ×4");
     }
 
     #[test]
@@ -205,15 +205,15 @@ mod tests {
         hit(&mut app, t0, Lane::Crash1, 0);
         hit(&mut app, t0, Lane::Tom1, 100);
         assert!(recording(&app));
-        let number = app.take.as_ref().unwrap().number;
+        let number = app.practice.take.as_ref().unwrap().number;
         // A hit that is due in the take: the first note is 0.5 s lead plus the count-in away.
-        let zero = app.take.as_ref().unwrap().zero;
-        let hits_before = app.take.as_ref().unwrap().hits.len();
+        let zero = app.practice.take.as_ref().unwrap().zero;
+        let hits_before = app.practice.take.as_ref().unwrap().hits.len();
         let note = app.cfg.note_map.notes_for(Lane::Crash1)[0];
         app.handle_event(RawEvent { at: zero, note, velocity: 100, channel: 10, hihat: None });
         let note = app.cfg.note_map.notes_for(Lane::Tom1)[0];
         app.handle_event(RawEvent { at: zero + Duration::from_millis(100), note, velocity: 100, channel: 10, hihat: None });
-        let take = app.take.as_ref().unwrap();
+        let take = app.practice.take.as_ref().unwrap();
         assert_eq!(take.number, number, "no second take was started");
         assert_eq!(take.hits.len(), hits_before + 2, "the same two hits are played notes now");
     }

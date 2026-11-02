@@ -138,7 +138,10 @@ fn choose_drums(notes: &[Note], track_names: &[String]) -> Option<(Vec<Onset>, O
         }
     }
     let (_, channel) = best?;
-    Some((pick(&|n| n.channel == channel), Some(format!("No drum channel (10) in the file; using channel {} because it looks like drums", channel + 1))))
+    Some((
+        pick(&|n| n.channel == channel),
+        Some(format!("No drum channel (10) in the file; using channel {} because it looks like drums", channel + 1)),
+    ))
 }
 
 /// One bar laid over the ticks.
@@ -150,7 +153,13 @@ struct Bar {
     beat_type: u32,
 }
 
-fn lay_bars(data: &MidiData, last_tick: u64, limits: &Limits, first_bar_beats: u32, warnings: &mut Vec<String>) -> Result<Vec<Bar>, ImportError> {
+fn lay_bars(
+    data: &MidiData,
+    last_tick: u64,
+    limits: &Limits,
+    first_bar_beats: u32,
+    warnings: &mut Vec<String>,
+) -> Result<Vec<Bar>, ImportError> {
     let mut signatures = data.signatures.clone();
     if signatures.first().is_none_or(|s| s.0 > 0) {
         signatures.insert(0, (0, 4, 4));
@@ -177,7 +186,7 @@ fn lay_bars(data: &MidiData, last_tick: u64, limits: &Limits, first_bar_beats: u
     loop {
         let (_, beats, beat_type) = *signatures.iter().rev().find(|s| s.0 <= start).unwrap_or(&signatures[0]);
         let exact = data.ppq * 4 * u64::from(beats);
-        if exact % u64::from(beat_type) != 0 {
+        if !exact.is_multiple_of(u64::from(beat_type)) {
             inexact = true;
         }
         let len = (exact / u64::from(beat_type)).max(1);
@@ -251,7 +260,8 @@ pub fn build(data: MidiData, opts: &ImportOptions) -> Result<RawScore, ImportErr
     let ppq = data.ppq as f64;
 
     let lanes: Vec<Lane> = data.onsets.iter().map(|o| lane_of(o.key)).collect();
-    let quantiser_bars: Vec<quantise::Bar> = bars.iter().map(|b| quantise::Bar { start: b.start, len: b.len, beat: data.ppq * 4 / u64::from(b.beat_type) }).collect();
+    let quantiser_bars: Vec<quantise::Bar> =
+        bars.iter().map(|b| quantise::Bar { start: b.start, len: b.len, beat: data.ppq * 4 / u64::from(b.beat_type) }).collect();
     let ticks: Vec<(u64, Lane)> = data.onsets.iter().zip(&lanes).map(|(o, l)| (o.tick, *l)).collect();
     let (placed, report) = quantise::quantise(data.ppq, &quantiser_bars, &data.tempos, &ticks, &opts.midi);
     let flags = dynamics(&data.onsets, &lanes, &opts.midi);
@@ -292,7 +302,10 @@ pub fn build(data: MidiData, opts: &ImportOptions) -> Result<RawScore, ImportErr
         unknown_keys.sort_unstable();
         unknown_keys.dedup();
         let keys: Vec<String> = unknown_keys.iter().map(u8::to_string).collect();
-        warnings.push(format!("{count} notes are on keys with no known drum instrument (keys {}); they are drawn on one line", keys.join(", ")));
+        warnings.push(format!(
+            "{count} notes are on keys with no known drum instrument (keys {}); they are drawn on one line",
+            keys.join(", ")
+        ));
     }
     if report.free_time {
         warnings.push("Many notes fall between the points of any grid: the file was probably played without a click, so some notes may sit in the wrong place".into());

@@ -1,8 +1,8 @@
 //! The Score tab: the transport row, the switches and the score itself.
 
-
 use egui::{Color32, RichText};
 
+use crate::config::limits;
 use crate::render::{self, LayoutOpts, ScoreView};
 use crate::widgets;
 
@@ -11,13 +11,13 @@ use super::{DrumApp, Source, TAKE_LINE_HEIGHT};
 
 impl DrumApp {
     pub(super) fn score_tab(&mut self, ui: &mut egui::Ui) {
-        let Some(score) = self.score.as_ref() else {
+        let Some(score) = self.practice.score.as_ref() else {
             self.welcome_panel(ui);
             return;
         };
         let n_measures = score.measures.len();
-        let running = self.take.as_ref().is_some_and(|t| t.running);
-        let base_bpm = score.tempo.bpm_at(score.measures[self.range_from.min(n_measures - 1)].start_q);
+        let running = self.practice.take.as_ref().is_some_and(|t| t.running);
+        let base_bpm = score.tempo.bpm_at(score.measures[self.practice.range_from.min(n_measures - 1)].start_q);
         let title = score.title.clone();
         let part = score.part_name.clone();
         let warnings = score.warnings.clone();
@@ -39,19 +39,22 @@ impl DrumApp {
             self.transport_row(ui, running, n_measures);
             ui.horizontal(|ui| {
                 ui.add_enabled_ui(!running, |ui| {
-                    let mut from = self.range_from + 1;
-                    let mut to = self.range_to + 1;
+                    let mut from = self.practice.range_from + 1;
+                    let mut to = self.practice.range_to + 1;
                     ui.label("Measures");
                     widgets::slider(ui, "from", &mut from, 1..=n_measures, "", 1.0);
                     widgets::slider(ui, "to", &mut to, 1..=n_measures, "", 1.0);
-                    self.range_from = from - 1;
-                    self.range_to = (to - 1).max(self.range_from);
+                    self.practice.range_from = from - 1;
+                    self.practice.range_to = (to - 1).max(self.practice.range_from);
                 });
             });
             ui.horizontal(|ui| {
                 ui.add_enabled_ui(!running, |ui| {
-                    widgets::slider(ui, "tempo", &mut self.tempo_pct, 25.0..=150.0, "%", 1.0);
-                    ui.label(format!("= {:.0} BPM", base_bpm * self.tempo_pct as f64 / 100.0));
+                    let (lo, hi) = self.practice.tempo.range();
+                    let mut value = self.practice.tempo.value();
+                    widgets::slider(ui, "tempo", &mut value, lo..=hi, self.practice.tempo.unit(), 1.0);
+                    self.practice.tempo = self.practice.tempo.with_value(value);
+                    ui.label(format!("= {:.0} BPM", self.practice.tempo.bpm(base_bpm)));
                 });
                 self.playback_switches(ui, running);
             });
@@ -95,14 +98,14 @@ impl DrumApp {
             // With a fixed number of bars per row the bars fill the width, so there is nothing to zoom.
             let auto_rows = self.cfg.bars_per_row == 0;
             ui.add_enabled_ui(auto_rows, |ui| {
-                widgets::slider(ui, "zoom", &mut self.cfg.zoom, 0.5..=3.0, "", 0.05);
+                widgets::slider(ui, "zoom", &mut self.cfg.zoom, limits::ZOOM.range(), "", 0.05);
             })
             .response
             .on_disabled_hover_text("Zoom sets how wide a bar is drawn when the rows are automatic. With a fixed number of bars per row (Layout menu) the bars fill the width instead; set bars per row to auto to use the zoom.");
             ui.checkbox(&mut self.follow, "follow");
             ui.menu_button("Layout", |ui| {
                 ui.set_min_width(320.0);
-                let bars = widgets::slider_with_zero(ui, "bars per row", &mut self.cfg.bars_per_row, 0..=8, "", 1.0, Some("auto"));
+                let bars = widgets::slider_with_zero(ui, "bars per row", &mut self.cfg.bars_per_row, limits::BARS_PER_ROW.range(), "", 1.0, Some("auto"));
                 let align = widgets::slider_with_zero(ui, "start a row at bar", &mut self.cfg.layout_align_bar, 0..=n_measures, "", 1.0, Some("off"));
                 if bars.changed() || align.changed() {
                     self.keep_layout();
@@ -110,6 +113,7 @@ impl DrumApp {
                 ui.checkbox(&mut self.cfg.break_at_pause, "new row after a pause")
                     .on_hover_text("A bar that ends with a rest (and no note in any voice during it) is the last of its row; the score goes on in the next row.");
                 let printed = self
+                    .practice
                     .score
                     .as_ref()
                     .and_then(|s| s.measures.get(self.cfg.layout_align_bar.wrapping_sub(1)))
@@ -135,7 +139,7 @@ impl DrumApp {
                 .on_hover_text("Play the notes of the score in Listen. Switch them off to use Listen as a click track.");
             ui.checkbox(&mut self.playback.looping, "loop")
                 .on_hover_text("Repeat the selected measures in Listen until it is stopped. Switching it off lets the current round finish.");
-            widgets::slider(ui, "count-in bars", &mut self.cfg.count_in_bars, 0..=2, "", 1.0);
+            widgets::slider(ui, "count-in bars", &mut self.cfg.count_in_bars, limits::COUNT_IN_BARS.range(), "", 1.0);
             ui.checkbox(&mut self.cfg.listen_count_in, "in Listen")
                 .on_hover_text("Start Listen with the count-in too. A recording always has one; switch this off to hear the music at once.");
             widgets::slider_with_zero(ui, "ramp +", &mut self.cfg.ramp_percent, 0..=20, " %", 1.0, Some("off"))
@@ -153,7 +157,7 @@ impl DrumApp {
         // than the rest), also with no take, so nothing below it moves when a take starts or ends.
         ui.horizontal(|ui| {
             ui.set_min_height(TAKE_LINE_HEIGHT);
-            if let Some(take) = self.take.as_ref() {
+            if let Some(take) = self.practice.take.as_ref() {
                 let r = &take.report;
                 if take.running {
                     let el = signed_secs(self.shown_now(), take.zero);
@@ -201,7 +205,8 @@ impl DrumApp {
         });
         // On a line of its own: it grows while the trigger waits for the second hit.
         if let Some((text, armed)) = self.trigger_hint() {
-            let (color, text) = if armed { (render::GREEN, format!("{text}: waiting for the second hit")) } else { (ui.visuals().weak_text_color(), text) };
+            let (color, text) =
+                if armed { (render::GREEN, format!("{text}: waiting for the second hit")) } else { (ui.visuals().weak_text_color(), text) };
             ui.label(RichText::new(text.trim_start_matches("· ")).small().color(color));
         }
         ui.separator();
@@ -209,8 +214,8 @@ impl DrumApp {
         let played = self.played_notes();
         let grades = self.note_grades();
         let listen_q = self.listen_playhead();
-        let score = self.score.as_ref().unwrap();
-        let playhead = match (self.take.as_ref().filter(|t| t.running), listen_q) {
+        let score = self.practice.score.as_ref().unwrap();
+        let playhead = match (self.practice.take.as_ref().filter(|t| t.running), listen_q) {
             (Some(t), _) => Some(score_q(score, t, signed_secs(self.shown_now(), t.zero))),
             (None, q) => q,
         };
@@ -219,23 +224,24 @@ impl DrumApp {
             grades: &grades,
             played: &played,
             playhead_q: playhead,
-            range: (self.range_from, self.range_to),
+            range: (self.practice.range_from, self.practice.range_to),
             zoom: self.cfg.zoom,
             follow: self.follow && (running || self.playback.listen.is_some()),
-            layout: LayoutOpts { bars_per_row: self.cfg.bars_per_row, align_bar: self.cfg.layout_align_bar, break_at_pause: self.cfg.break_at_pause },
+            layout: LayoutOpts {
+                bars_per_row: self.cfg.bars_per_row,
+                align_bar: self.cfg.layout_align_bar,
+                break_at_pause: self.cfg.break_at_pause,
+            },
         };
-        let out = egui::ScrollArea::vertical()
-            .auto_shrink([false, false])
-            .show(ui, |ui| render::show(ui, &view))
-            .inner;
+        let out = egui::ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| render::show(ui, &view)).inner;
         self.view.fit_bars = out.fit_bars;
         if let (Some((mi, shift)), false) = (out.clicked_measure, running) {
             if shift {
-                self.range_to = mi.max(self.range_from);
+                self.practice.range_to = mi.max(self.practice.range_from);
             } else {
-                self.range_from = mi;
-                if self.range_to < mi {
-                    self.range_to = n_measures - 1;
+                self.practice.range_from = mi;
+                if self.practice.range_to < mi {
+                    self.practice.range_to = n_measures - 1;
                 }
             }
         }

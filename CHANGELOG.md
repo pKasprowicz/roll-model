@@ -6,6 +6,19 @@ All notable changes are recorded here. The format follows [Keep a Changelog](htt
 
 ## [Unreleased]
 
+## [0.10.3] - 2026-11-02
+
+Housekeeping from the code review of 0.10.1, with a few behaviour fixes. The keys R, L, M, K and Esc now behave exactly like the controller buttons, a file whose import would give an inconsistent score is refused with a message, the CSV of a take quotes its fields, the drum MIDI queue is capped, and numbers in a hand-edited settings file are kept inside the ranges the screen offers. Under the surface, the program's state per source, the tempo with its unit, the grading constants and the ranges each have one definition.
+
+### Changed
+- **The keys R, L, M, K and Esc do what the matching controller buttons do**, through the same code (RV-12): R pressed during a recording stops it, as the Record button does; R and L without a score say "Open a score first."; Esc always stops.
+
+### Fixed
+- **A file whose import would produce an inconsistent score is refused with a message** instead of being opened and failing later (RV-5); the check ran only in test builds before.
+- **The CSV of a take quotes its fields** (RV-9): a printed measure number with a comma or a quote no longer breaks the rows.
+- **The drum MIDI queue is capped** like the controller's (RV-7), and a thread that panicked while holding a MIDI or sound queue no longer silences it or is reported as a full queue (RV-8).
+- **Numbers in the settings file are kept in the range the screen offers** (RV-40): a hand-edited file can no longer give a negative tolerance, a click volume of 1e30 or 12 bars per row.
+
 ## [0.10.2] - 2026-11-01
 
 Four fixes from the code review of 0.10.1. A big file that finishes loading while the Rudiments tab is open now goes to the Score tab instead of replacing the rudiment, settings are saved whole and no longer written on every frame (and a damaged settings file is kept and reported instead of silently replaced by the defaults), and the controller editor no longer reports a failed save as success or writes the preset file on every step of a drag.

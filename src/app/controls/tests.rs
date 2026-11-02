@@ -7,10 +7,10 @@ use crate::controller::{Action, Command};
 use crate::drums::Lane;
 use crate::rudiments::{Lead, MAX_REPEATS};
 
-use super::*;
+use super::super::{DrumApp, Source, Tab};
 use super::apply::{register_tap, shifted_range, worst_measure, TAPS_KEPT};
 use super::page::copy_preset;
-use super::super::{rudiment, DrumApp, Source, Tab};
+use super::*;
 
 fn sample() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("examples").join("basic_rock_beat.musicxml")
@@ -19,7 +19,7 @@ fn sample() -> PathBuf {
 fn app_with_score() -> DrumApp {
     let mut app = DrumApp::with_config(Config::default());
     app.open_file(&sample());
-    assert!(app.score.is_some());
+    assert!(app.practice.score.is_some());
     app
 }
 
@@ -73,7 +73,7 @@ fn the_range_moves_by_its_own_length_and_stops_at_the_ends() {
 #[test]
 fn the_worst_measure_is_where_most_goes_wrong() {
     let app = app_with_score();
-    let score = app.score.as_ref().unwrap();
+    let score = app.practice.score.as_ref().unwrap();
     let last = score.measures.len() - 1;
     let expected = expected_notes(score, 0, last, 1.0);
     let tol = &app.cfg.tol;
@@ -98,15 +98,15 @@ fn the_worst_measure_is_where_most_goes_wrong() {
 fn the_tempo_encoder_and_fader_change_the_practice_tempo() {
     let mut app = app_with_score();
     app.apply_command(Command::Turn(Action::Tempo, 5));
-    assert_eq!(app.tempo_pct, 105.0);
+    assert_eq!(app.practice.tempo.value(), 105.0);
     app.apply_command(Command::Turn(Action::Tempo, -500));
-    assert_eq!(app.tempo_pct, 25.0, "clamped");
+    assert_eq!(app.practice.tempo.value(), 25.0, "clamped");
     app.apply_command(Command::Set(Action::Tempo, 1.0));
-    assert_eq!(app.tempo_pct, 150.0);
+    assert_eq!(app.practice.tempo.value(), 150.0);
     app.apply_command(Command::Press(Action::TempoReset));
-    assert_eq!(app.tempo_pct, 100.0);
+    assert_eq!(app.practice.tempo.value(), 100.0);
     app.apply_command(Command::Press(Action::TempoDown));
-    assert_eq!(app.tempo_pct, 95.0);
+    assert_eq!(app.practice.tempo.value(), 95.0);
     assert_eq!(app.controller_state().tempo, (95.0 - 25.0) / 125.0);
 }
 
@@ -116,7 +116,7 @@ fn on_the_metronome_tab_the_tempo_controls_set_its_bpm() {
     app.view.tab = Tab::Metronome;
     app.apply_command(Command::Turn(Action::Tempo, 10));
     assert_eq!(app.cfg.metro_bpm, 110.0);
-    assert_eq!(app.tempo_pct, 100.0, "the practice tempo is left alone");
+    assert_eq!(app.practice.tempo.value(), 100.0, "the practice tempo is left alone");
     app.apply_command(Command::Set(Action::Tempo, 0.0));
     assert_eq!(app.cfg.metro_bpm, 20.0);
     // Without a score the metronome is the only tempo there is.
@@ -128,24 +128,24 @@ fn on_the_metronome_tab_the_tempo_controls_set_its_bpm() {
 #[test]
 fn range_encoders_keep_the_range_valid() {
     let mut app = app_with_score();
-    let last = app.score.as_ref().unwrap().measures.len() - 1;
-    assert_eq!((app.range_from, app.range_to), (0, last));
+    let last = app.practice.score.as_ref().unwrap().measures.len() - 1;
+    assert_eq!((app.practice.range_from, app.practice.range_to), (0, last));
     app.apply_command(Command::Turn(Action::RangeFrom, 2));
-    assert_eq!(app.range_from, 2.min(last));
+    assert_eq!(app.practice.range_from, 2.min(last));
     app.apply_command(Command::Turn(Action::RangeFrom, 100));
-    assert_eq!(app.range_from, last, "not past the end");
+    assert_eq!(app.practice.range_from, last, "not past the end");
     app.apply_command(Command::Turn(Action::RangeTo, -100));
-    assert_eq!(app.range_to, app.range_from, "the end never goes before the start");
+    assert_eq!(app.practice.range_to, app.practice.range_from, "the end never goes before the start");
     app.apply_command(Command::Set(Action::RangeFrom, 0.0));
-    assert_eq!(app.range_from, 0);
+    assert_eq!(app.practice.range_from, 0);
     app.apply_command(Command::Set(Action::RangeTo, 0.5));
-    assert!(app.range_to >= app.range_from && app.range_to <= last);
-    app.range_from = 0;
-    app.range_to = 1;
+    assert!(app.practice.range_to >= app.practice.range_from && app.practice.range_to <= last);
+    app.practice.range_from = 0;
+    app.practice.range_to = 1;
     app.apply_command(Command::Press(Action::RangeForward));
-    assert_eq!((app.range_from, app.range_to), (2, 3.min(last)));
+    assert_eq!((app.practice.range_from, app.practice.range_to), (2, 3.min(last)));
     app.apply_command(Command::Press(Action::RangeBack));
-    assert_eq!((app.range_from, app.range_to), (0, 1));
+    assert_eq!((app.practice.range_from, app.practice.range_to), (0, 1));
 }
 
 #[test]
@@ -239,13 +239,13 @@ fn with_a_rudiment_the_range_controls_choose_repetitions_lead_and_rudiment() {
     app.apply_command(Command::Press(Action::RangeBack));
     app.apply_command(Command::Press(Action::RangeBack));
     assert_eq!(app.cfg.rudiment, 2);
-    assert_eq!(app.score.as_ref().unwrap().title, "Single stroke four", "the score follows at once");
+    assert_eq!(app.practice.score.as_ref().unwrap().title, "Single stroke four", "the score follows at once");
 
     // First and last measure become the repetitions and the lead; the rings show them.
     let repeats = app.cfg.rudiment_repeats;
     app.apply_command(Command::Turn(Action::RangeFrom, 3));
     assert_eq!(app.cfg.rudiment_repeats, repeats + 3);
-    assert_eq!(app.score.as_ref().unwrap().measures.len(), repeats + 3);
+    assert_eq!(app.practice.score.as_ref().unwrap().measures.len(), repeats + 3);
     app.apply_command(Command::Turn(Action::RangeTo, 1));
     assert_eq!(app.rudiment_lead(), Lead::Left);
     app.apply_command(Command::Turn(Action::RangeTo, -1));
@@ -261,15 +261,15 @@ fn with_a_rudiment_the_range_controls_choose_repetitions_lead_and_rudiment() {
     assert_eq!(app.cfg.rudiment_repeats, MAX_REPEATS);
 
     // The tempo is in BPM, within its own range, and resets to the rudiment's starting tempo.
-    assert_eq!(app.tempo_pct, 60.0);
+    assert_eq!(app.practice.tempo.value(), 60.0);
     app.apply_command(Command::Turn(Action::Tempo, 5));
-    assert_eq!(app.tempo_pct, 65.0);
+    assert_eq!(app.practice.tempo.value(), 65.0);
     app.apply_command(Command::Set(Action::Tempo, 1.0));
-    assert_eq!(app.tempo_pct, rudiment::BPM_RANGE.1);
+    assert_eq!(app.practice.tempo.value(), crate::practice_tempo::BPM_RANGE.1);
     app.apply_command(Command::Set(Action::Tempo, 0.0));
-    assert_eq!(app.tempo_pct, rudiment::BPM_RANGE.0);
+    assert_eq!(app.practice.tempo.value(), crate::practice_tempo::BPM_RANGE.0);
     app.apply_command(Command::Press(Action::TempoReset));
-    assert_eq!(app.tempo_pct, 60.0);
+    assert_eq!(app.practice.tempo.value(), 60.0);
     assert!((app.controller_state().tempo - (60.0 - 30.0) / (240.0 - 30.0)).abs() < 1e-6);
 
     // Back on the Score tab the same controls are about the measures again.
@@ -278,9 +278,9 @@ fn with_a_rudiment_the_range_controls_choose_repetitions_lead_and_rudiment() {
     app.apply_command(Command::Press(Action::NextTab));
     app.apply_command(Command::Press(Action::NextTab));
     assert!(app.view.tab == Tab::Score && app.source == Source::Score);
-    let (from, to) = (app.range_from, app.range_to);
+    let (from, to) = (app.practice.range_from, app.practice.range_to);
     app.apply_command(Command::Turn(Action::RangeTo, -1));
-    assert_eq!((app.range_from, app.range_to), (from, to - 1));
+    assert_eq!((app.practice.range_from, app.practice.range_to), (from, to - 1));
     assert_eq!(app.cfg.rudiment_repeats, MAX_REPEATS, "the rudiment is left alone");
 }
 
@@ -304,6 +304,69 @@ fn the_rudiment_controls_are_locked_while_a_take_records() {
     assert_eq!(app.cfg.rudiment, 2);
 }
 
+/// A key press as the window would deliver it, handled by the keyboard shortcuts.
+fn press_key(app: &mut DrumApp, key: egui::Key) {
+    let ctx = egui::Context::default();
+    let mut input = egui::RawInput::default();
+    input.events.push(egui::Event::Key { key, physical_key: None, pressed: true, repeat: false, modifiers: egui::Modifiers::NONE });
+    let _ = ctx.run(input, |ctx| app.shortcut_keys(ctx));
+}
+
+#[test]
+fn the_keys_and_the_controller_buttons_follow_the_same_rules() {
+    // Without a score both say so.
+    let mut app = DrumApp::with_config(Config::default());
+    press_key(&mut app, egui::Key::R);
+    assert_eq!(app.view.status, "Open a score first.");
+    app.view.status.clear();
+    app.apply_command(Command::Press(Action::Record));
+    assert_eq!(app.view.status, "Open a score first.");
+
+    // With one, R records and a second R stops, as the Record button does.
+    let mut app = app_with_score();
+    app.cfg.click_audio = false;
+    app.cfg.click_midi = false;
+    press_key(&mut app, egui::Key::R);
+    assert!(app.take_running());
+    // The modes cannot be changed while the take records, by key or by button.
+    let looping = app.playback.looping;
+    press_key(&mut app, egui::Key::M);
+    app.apply_command(Command::Press(Action::Loop));
+    assert!(app.metro_run.run.is_none() && app.playback.looping == looping);
+    assert!(app.take_running());
+    press_key(&mut app, egui::Key::R);
+    assert!(!app.take_running(), "R stops the recording like the Record button");
+
+    // Esc stops whatever runs, and K switches the click, as the buttons do.
+    press_key(&mut app, egui::Key::R);
+    assert!(app.take_running());
+    press_key(&mut app, egui::Key::Escape);
+    assert!(!app.take_running());
+    let click = app.cfg.metronome_during_take;
+    press_key(&mut app, egui::Key::K);
+    assert_eq!(app.cfg.metronome_during_take, !click);
+}
+
+#[test]
+fn a_locked_change_says_so_once_and_changes_nothing() {
+    let mut app = app_with_score();
+    app.cfg.click_audio = false;
+    app.cfg.click_midi = false;
+    app.apply_command(Command::Press(Action::Record));
+    assert!(app.take_running());
+    let tempo = app.practice.tempo;
+    app.view.status.clear();
+    app.apply_command(Command::Turn(Action::Tempo, 5));
+    app.apply_command(Command::Set(Action::RangeTo, 0.5));
+    app.apply_command(Command::Press(Action::TempoUp));
+    assert_eq!(app.practice.tempo, tempo);
+    assert_eq!(app.view.status, "Locked while a take is recording.");
+    // What is not a change of tempo, range or score is not locked.
+    let volume = app.cfg.click_volume;
+    app.apply_command(Command::Turn(Action::ClickVolume, -5));
+    assert!(app.cfg.click_volume < volume, "the volume still moves");
+}
+
 #[test]
 fn recent_scores_are_browsed_and_opened() {
     let mut app = DrumApp::with_config(Config::default());
@@ -320,7 +383,7 @@ fn recent_scores_are_browsed_and_opened() {
     assert_eq!(app.controller.cursor, 0);
     app.apply_command(Command::Turn(Action::Score, 1));
     app.apply_command(Command::Press(Action::OpenScore));
-    assert!(app.score.is_some() && app.view.tab == Tab::Score);
+    assert!(app.practice.score.is_some() && app.view.tab == Tab::Score);
 }
 
 #[test]
@@ -333,7 +396,7 @@ fn loop_worst_bar_and_discard_need_a_take() {
     let mut closed = DrumApp::with_config(Config::default());
     closed.apply_command(Command::Press(Action::Record));
     assert_eq!(closed.view.status, "Open a score first.");
-    assert!(closed.take.is_none() && closed.playback.listen.is_none());
+    assert!(closed.practice.take.is_none() && closed.playback.listen.is_none());
 }
 
 #[test]
@@ -343,7 +406,14 @@ fn the_controller_page_draws_with_and_without_a_controller() {
     // The built-in presets come first; the user's own (a folder this test does not control) follow.
     assert_eq!(
         app.controller.presets[..6],
-        ["Behringer X-Touch Mini", "Behringer X-Touch Compact", "Novation Launch Control XL", "Korg nanoKONTROL2", "Akai MPK Mini", "Arturia BeatStep"]
+        [
+            "Behringer X-Touch Mini",
+            "Behringer X-Touch Compact",
+            "Novation Launch Control XL",
+            "Korg nanoKONTROL2",
+            "Akai MPK Mini",
+            "Arturia BeatStep"
+        ]
     );
     assert_eq!(app.controller.kinds["Behringer X-Touch Mini"], controller::PresetKind::Mackie);
     assert_eq!(app.controller.kinds["Korg nanoKONTROL2"], controller::PresetKind::Midi);
@@ -382,7 +452,7 @@ fn copies_of_a_preset_never_overwrite() {
 fn a_run_has_a_count_in_only_when_asked_for() {
     let mut app = app_with_score();
     app.cfg.count_in_bars = 1;
-    let beats = app.score.as_ref().unwrap().measures[0].beats;
+    let beats = app.practice.score.as_ref().unwrap().measures[0].beats;
     assert_eq!(app.plan_run(true).unwrap().count_in_beats, beats);
     assert_eq!(app.plan_run(false).unwrap().count_in_beats, 0, "this is what Listen asks for when its count-in is off");
     assert!(app.cfg.listen_count_in, "Listen has one by default");

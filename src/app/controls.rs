@@ -13,7 +13,6 @@ use std::collections::{BTreeMap, VecDeque};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
-
 use super::DrumApp;
 use crate::controller::{self, Action, Mapper};
 use crate::midi::{self, ControllerHandle, MessageQueue};
@@ -145,7 +144,8 @@ impl DrumApp {
             }
         }
         let dir = self.paths.controllers_dir();
-        self.controller.kinds = names.iter().filter_map(|n| controller::load_preset(n, dir.as_deref()).ok().map(|p| (n.clone(), p.kind))).collect();
+        self.controller.kinds =
+            names.iter().filter_map(|n| controller::load_preset(n, dir.as_deref()).ok().map(|p| (n.clone(), p.kind))).collect();
         self.controller.presets = names;
     }
 
@@ -171,9 +171,7 @@ impl DrumApp {
         c.link = None; // close the old port first (Windows ports are exclusive)
         c.wanted.clear();
         c.monitor.clear();
-        if let Ok(mut q) = c.queue.lock() {
-            q.clear();
-        }
+        crate::sync::locked(&c.queue).clear();
         if self.cfg.controller_preset.is_empty() {
             c.message = "No controller selected.".into();
             return;
@@ -211,10 +209,7 @@ impl DrumApp {
         if self.controller.link.is_none() {
             return;
         }
-        let messages = match self.controller.queue.lock() {
-            Ok(mut q) => std::mem::take(&mut *q),
-            Err(_) => Vec::new(),
-        };
+        let messages = std::mem::take(&mut *crate::sync::locked(&self.controller.queue));
         for bytes in messages {
             let Some(msg) = controller::parse(&bytes) else { continue };
             // A control is being taught to the preset editor: it does nothing else.
@@ -265,5 +260,4 @@ impl DrumApp {
             Watch::Connect => self.connect_controller(),
         }
     }
-
 }

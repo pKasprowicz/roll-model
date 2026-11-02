@@ -26,6 +26,9 @@ const MIN_GAP_SECS: f64 = 0.012;
 /// Two starts further apart than this in the bar do not belong to the same place in it.
 const CLUSTER_GAP_SECS: f64 = 0.012;
 
+/// What the input callback collected: (seconds since the first block, channel 0 of the block).
+type Blocks = Vec<(f64, Vec<f32>)>;
+
 fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
     let result = match args.iter().map(String::as_str).collect::<Vec<_>>().as_slice() {
@@ -50,7 +53,7 @@ fn record(out: &str, seconds: f64) -> Result<(), String> {
     let config: cpal::StreamConfig = supported.into();
 
     // (seconds since the first block, channel 0 of the block); a tool, so a lock in the callback is fine.
-    let blocks: Arc<Mutex<Vec<(f64, Vec<f32>)>>> = Arc::default();
+    let blocks: Arc<Mutex<Blocks>> = Arc::default();
     let sink = blocks.clone();
     let mut first: Option<cpal::StreamInstant> = None;
     let stream = device
@@ -145,7 +148,10 @@ fn analyze(path: &str, bar_ms: f64) -> Result<(), String> {
             println!("{}", f.report());
             Ok(())
         }
-        None => Err(format!("too few sound starts ({}) or they do not repeat every {bar_ms} ms: was the metronome running and audible?", times.len())),
+        None => Err(format!(
+            "too few sound starts ({}) or they do not repeat every {bar_ms} ms: was the metronome running and audible?",
+            times.len()
+        )),
     }
 }
 
@@ -164,7 +170,11 @@ impl Fold {
         for (pos, n, std, spread) in &self.places {
             s += &format!("    at {pos:7.1} ms   {n:4} starts   std {std:5.2} ms   spread {spread:5.2} ms\n");
         }
-        s += &format!("  onset jitter       pooled std {:.2} ms, widest spread {:.2} ms", self.pooled_std_ms, self.places.iter().map(|p| p.3).fold(0.0, f64::max));
+        s += &format!(
+            "  onset jitter       pooled std {:.2} ms, widest spread {:.2} ms",
+            self.pooled_std_ms,
+            self.places.iter().map(|p| p.3).fold(0.0, f64::max)
+        );
         s
     }
 }
@@ -172,24 +182,24 @@ impl Fold {
 /// Groups starts by their place in a bar (each is `(time, place)`); the cut is at the widest empty
 /// stretch so no group is split by the end of the bar.
 fn group(ph: &[(f64, f64)], bar: f64) -> Option<Vec<Vec<(f64, f64)>>> {
-        let mut sorted = ph.to_vec();
-        sorted.sort_by(|a, b| a.1.total_cmp(&b.1));
-        let n = sorted.len();
-        let cut = (0..n).max_by(|&i, &j| {
-            let gap = |k: usize| (sorted[(k + 1) % n].1 - sorted[k].1).rem_euclid(bar);
-            gap(i).total_cmp(&gap(j))
-        })? + 1;
-        sorted.rotate_left(cut % n);
-        let mut groups: Vec<Vec<(f64, f64)>> = Vec::new();
-        let mut prev: Option<f64> = None;
-        for (t, p) in sorted {
-            let unwrapped = prev.map_or(p, |q| q + (p - q).rem_euclid(bar));
-            if prev.is_none() || unwrapped - prev.unwrap() > CLUSTER_GAP_SECS {
-                groups.push(Vec::new());
-            }
-            groups.last_mut().unwrap().push((t, unwrapped));
-            prev = Some(unwrapped);
+    let mut sorted = ph.to_vec();
+    sorted.sort_by(|a, b| a.1.total_cmp(&b.1));
+    let n = sorted.len();
+    let cut = (0..n).max_by(|&i, &j| {
+        let gap = |k: usize| (sorted[(k + 1) % n].1 - sorted[k].1).rem_euclid(bar);
+        gap(i).total_cmp(&gap(j))
+    })? + 1;
+    sorted.rotate_left(cut % n);
+    let mut groups: Vec<Vec<(f64, f64)>> = Vec::new();
+    let mut prev: Option<f64> = None;
+    for (t, p) in sorted {
+        let unwrapped = prev.map_or(p, |q| q + (p - q).rem_euclid(bar));
+        if prev.is_none() || unwrapped - prev.unwrap() > CLUSTER_GAP_SECS {
+            groups.push(Vec::new());
         }
+        groups.last_mut().unwrap().push((t, unwrapped));
+        prev = Some(unwrapped);
+    }
     Some(groups)
 }
 
@@ -211,7 +221,7 @@ fn fold(times: &[f64], bar: f64) -> Option<Fold> {
     let (mx, my) = (xs.iter().sum::<f64>() / n, ys.iter().sum::<f64>() / n);
     let sxx: f64 = xs.iter().map(|x| (x - mx) * (x - mx)).sum();
     let bar = if sxx > 0.0 { xs.iter().zip(&ys).map(|(x, y)| (x - mx) * (y - my)).sum::<f64>() / sxx } else { bar };
-    if !(bar > 0.0) || (bar - bar.max(0.0)).abs() > 1.0 {
+    if bar.is_nan() || bar <= 0.0 || (bar - bar.max(0.0)).abs() > 1.0 {
         return None;
     }
 

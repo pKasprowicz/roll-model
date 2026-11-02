@@ -1,11 +1,11 @@
 //! The Controller page of Settings: the preset and port choice, the status, the monitor and the buttons.
 
-use std::path::Path;
-use egui::RichText;
+use super::super::DrumApp;
 use crate::controller::{self};
 use crate::render;
 use crate::widgets;
-use super::super::DrumApp;
+use egui::RichText;
+use std::path::Path;
 
 /// Writes `text` as "NAME (copy).txt" (or "(copy 2)", …) in `dir`; never overwrites.
 pub(super) fn copy_preset(dir: &Path, name: &str, text: &str) -> std::io::Result<std::path::PathBuf> {
@@ -32,13 +32,19 @@ impl DrumApp {
         let mut preset: Option<String> = None;
         ui.horizontal(|ui| {
             ui.label("Preset");
-            let current = if self.cfg.controller_preset.is_empty() { "— none —".to_string() } else { self.cfg.controller_preset.clone() };
+            let current =
+                if self.cfg.controller_preset.is_empty() { "— none —".to_string() } else { self.cfg.controller_preset.clone() };
             egui::ComboBox::from_id_salt("controller_preset").selected_text(current).width(260.0).show_ui(ui, |ui| {
                 if ui.selectable_label(self.cfg.controller_preset.is_empty(), "— none —").clicked() {
                     preset = Some(String::new());
                 }
                 for kind in [controller::PresetKind::Mackie, controller::PresetKind::Midi] {
-                    let of_kind: Vec<&String> = self.controller.presets.iter().filter(|n| self.controller.kinds.get(*n).copied().unwrap_or_default() == kind).collect();
+                    let of_kind: Vec<&String> = self
+                        .controller
+                        .presets
+                        .iter()
+                        .filter(|n| self.controller.kinds.get(*n).copied().unwrap_or_default() == kind)
+                        .collect();
                     if of_kind.is_empty() {
                         continue;
                     }
@@ -122,7 +128,9 @@ impl DrumApp {
         }
 
         ui.add_space(6.0);
-        ui.label(RichText::new("Monitor (latest first): press and turn the controls to see what they send and what they are bound to").strong());
+        ui.label(
+            RichText::new("Monitor (latest first): press and turn the controls to see what they send and what they are bound to").strong(),
+        );
         for line in &self.controller.monitor {
             ui.label(RichText::new(line).monospace());
         }

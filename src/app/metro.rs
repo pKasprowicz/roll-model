@@ -7,6 +7,7 @@ use std::time::{Duration, Instant};
 use egui::{pos2, vec2, RichText, Sense, Stroke};
 
 use super::{DrumApp, Source};
+use crate::config::limits;
 use crate::metronome::HAS_AUDIO;
 use crate::playback::{self, PlayOptions, Player, Ramp, Subdivision};
 use crate::render;
@@ -84,7 +85,14 @@ impl DrumApp {
         // Half a second of lead: the sound device needs time to open.
         let zero = Instant::now() + Duration::from_millis(500);
         self.metro_run.player = Some(Player::start(zero, cues, bar_len, opts, self.metro_run.control.clone()));
-        self.metro_run.run = Some(Run { zero, beat_sec: 60.0 / bpm, bar_sec: bar_len, ramp: self.metro_ramp(), signature: self.metro_signature(), pending: None });
+        self.metro_run.run = Some(Run {
+            zero,
+            beat_sec: 60.0 / bpm,
+            bar_sec: bar_len,
+            ramp: self.metro_ramp(),
+            signature: self.metro_signature(),
+            pending: None,
+        });
         self.view.status = format!("Metronome: {bpm:.0} BPM, {} beats per bar", self.cfg.metro_beats);
         let ramp = self.metro_ramp();
         if ramp.every > 0 {
@@ -148,7 +156,7 @@ impl DrumApp {
                 }
             }
             ui.add_space(6.0);
-            widgets::slider(ui, "tempo", &mut self.cfg.metro_bpm, 20.0..=300.0, " BPM", 1.0);
+            widgets::slider(ui, "tempo", &mut self.cfg.metro_bpm, limits::METRO_BPM.range(), " BPM", 1.0);
             widgets::slider(ui, "beats per bar", &mut self.cfg.metro_beats, 1..=12, "", 1.0);
             ui.horizontal(|ui| {
                 ui.label("subdivision");
@@ -156,7 +164,7 @@ impl DrumApp {
                     ui.selectable_value(&mut self.cfg.metro_sub, s.index(), s.label());
                 }
             });
-            widgets::slider(ui, "volume", &mut self.cfg.click_volume, 0.0..=1.0, "", 0.02);
+            widgets::slider(ui, "volume", &mut self.cfg.click_volume, limits::CLICK_VOLUME.range(), "", 0.02);
             ui.horizontal(|ui| {
                 widgets::slider_with_zero(ui, "faster by", &mut self.cfg.metro_ramp_bpm, 0..=20, " BPM", 1.0, Some("off"))
                     .on_hover_text("A tempo ramp: the metronome gets faster by this much every few bars, up to three times the starting tempo. Takes effect at the next start.");
@@ -167,9 +175,11 @@ impl DrumApp {
         });
         ui.add_space(8.0);
         ui.label(
-            RichText::new("Changes while it runs take effect after a moment. The first beat of each bar is accented; subdivisions are softer.")
-                .small()
-                .weak(),
+            RichText::new(
+                "Changes while it runs take effect after a moment. The first beat of each bar is accented; subdivisions are softer.",
+            )
+            .small()
+            .weak(),
         );
         ui.add_space(16.0);
         self.beat_lights(ui);
@@ -193,18 +203,19 @@ impl DrumApp {
     fn rolling_preview(&mut self, ui: &mut egui::Ui) {
         ui.add_space(16.0);
         let click_bar = self
+            .practice
             .score
             .is_none()
             .then(|| Score::click_bar(self.cfg.metro_beats, Subdivision::from_index(self.cfg.metro_sub).parts()));
-        let Some(score) = click_bar.as_ref().or(self.score.as_ref()) else { return };
+        let Some(score) = click_bar.as_ref().or(self.practice.score.as_ref()) else { return };
         let last = score.measures.len().saturating_sub(1);
         let (a, b) = match click_bar {
             Some(_) => (0, 0),
-            None => (self.range_from.min(last), self.range_to.clamp(self.range_from.min(last), last)),
+            None => (self.practice.range_from.min(last), self.practice.range_to.clamp(self.practice.range_from.min(last), last)),
         };
         let (start_q, len_q) = (score.measures[a].start_q, score.measures[b].end_q() - score.measures[a].start_q);
-        // A rudiment is written at a fixed tempo; its practice tempo in percent is its BPM.
-        let tempo_factor = if self.source == Source::Rudiments { f64::from(self.tempo_pct) / 100.0 } else { 1.0 };
+        // A rudiment is practised at a tempo in BPM; the free metronome plays at that tempo.
+        let tempo_factor = if self.source == Source::Rudiments { self.practice.tempo.scale(score.tempo.bpm_at(start_q)) } else { 1.0 };
         let (score_bpm, bar_q) = (score.tempo.bpm_at(start_q) * tempo_factor, score.measures[a].len_q);
         let description = match click_bar {
             Some(_) => "no score loaded: the click pattern".to_string(),
@@ -233,7 +244,7 @@ impl DrumApp {
             return;
         }
         let pos_q = self.metro_preview_pos(start_q, len_q);
-        if let Some(score) = click_bar.as_ref().or(self.score.as_ref()) {
+        if let Some(score) = click_bar.as_ref().or(self.practice.score.as_ref()) {
             render::rolling(ui, &render::RollingView { score, range: (a, b), pos_q });
         }
         ui.label(

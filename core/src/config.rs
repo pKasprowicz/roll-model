@@ -209,6 +209,59 @@ trait Setting<T> {
     fn write(&self, value: &T) -> String;
 }
 
+/// The values a setting may take: the one place its range is written. The file reader keeps the
+/// value inside it, the sliders of the screen show it, and a controller's encoder or fader moves
+/// over it (`unit` and `at`).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Span<T> {
+    pub lo: T,
+    pub hi: T,
+}
+
+impl<T: Numeric> Span<T> {
+    pub const fn new(lo: T, hi: T) -> Self {
+        Span { lo, hi }
+    }
+    /// For a slider: `slider(ui, "zoom", &mut z, limits::ZOOM.range(), ..)`.
+    pub fn range(self) -> std::ops::RangeInclusive<T> {
+        self.lo..=self.hi
+    }
+    pub fn clamp(self, value: T) -> T {
+        if value < self.lo {
+            self.lo
+        } else if value > self.hi {
+            self.hi
+        } else {
+            value
+        }
+    }
+    /// Where `value` lies in the span, from 0 to 1.
+    pub fn unit(self, value: T) -> f32 {
+        ((value.to_f64() - self.lo.to_f64()) / (self.hi.to_f64() - self.lo.to_f64())) as f32
+    }
+    /// The value at `x` (0 to 1) of the span, rounded to the nearest one for an integer type.
+    pub fn at(self, x: f32) -> T {
+        self.clamp(T::from_f64(self.lo.to_f64() + f64::from(x.clamp(0.0, 1.0)) * (self.hi.to_f64() - self.lo.to_f64())))
+    }
+}
+
+/// The range of every setting that has one, written once.
+pub mod limits {
+    use super::Span;
+    /// Zoom of the score, as a factor.
+    pub const ZOOM: Span<f32> = Span::new(0.5, 3.0);
+    pub const COUNT_IN_BARS: Span<u32> = Span::new(0, 2);
+    /// Bars in a row of the score; 0 is automatic.
+    pub const BARS_PER_ROW: Span<usize> = Span::new(0, 8);
+    pub const METRO_BPM: Span<f32> = Span::new(20.0, 300.0);
+    pub const CLICK_VOLUME: Span<f32> = Span::new(0.0, 1.0);
+    /// Latency compensation, ms.
+    pub const LATENCY_MS: Span<f64> = Span::new(-50.0, 200.0);
+    pub const PERFECT_MS: Span<f64> = Span::new(5.0, 50.0);
+    pub const GOOD_MS: Span<f64> = Span::new(10.0, 100.0);
+    pub const WINDOW_MS: Span<f64> = Span::new(40.0, 250.0);
+}
+
 struct Text;
 struct Flag;
 /// A number kept between `lo` and `hi` (and finite, for a float).
@@ -220,6 +273,10 @@ struct Number<T> {
 struct LaneName;
 /// A rudiment by its PAS number.
 struct RudimentNumber;
+
+fn within<T>(span: Span<T>) -> Number<T> {
+    Number { lo: span.lo, hi: span.hi }
+}
 
 fn number<T>(lo: T, hi: T) -> Number<T> {
     Number { lo, hi }
@@ -244,20 +301,35 @@ impl Setting<bool> for Flag {
 }
 
 /// What `Number` needs of a number type: it can be parsed, compared and written, and a float can be NaN.
-trait Numeric: Copy + PartialOrd + std::str::FromStr + std::fmt::Display {
+pub trait Numeric: Copy + PartialOrd + std::str::FromStr + std::fmt::Display {
     fn is_usable(self) -> bool;
+    fn to_f64(self) -> f64;
+    /// The nearest value of the type (rounded, for an integer).
+    fn from_f64(x: f64) -> Self;
 }
 
 macro_rules! numeric {
-    ($($t:ty => $usable:expr),*) => {
+    ($($t:ty => $usable:expr, $to:expr, $from:expr),*) => {
         $(impl Numeric for $t {
             fn is_usable(self) -> bool {
                 $usable(self)
             }
+            fn to_f64(self) -> f64 {
+                $to(self)
+            }
+            fn from_f64(x: f64) -> Self {
+                $from(x)
+            }
         })*
     };
 }
-numeric!(u8 => |_| true, u32 => |_| true, usize => |_| true, f32 => f32::is_finite, f64 => f64::is_finite);
+numeric!(
+    u8 => |_| true, f64::from, |x: f64| x.round() as u8,
+    u32 => |_| true, f64::from, |x: f64| x.round() as u32,
+    usize => |_| true, |x| x as f64, |x: f64| x.round() as usize,
+    f32 => f32::is_finite, f64::from, |x: f64| x as f32,
+    f64 => f64::is_finite, |x| x, |x| x
+);
 
 impl<T: Numeric> Setting<T> for Number<T> {
     fn read(&self, slot: &mut T, text: &str) {
@@ -319,20 +391,20 @@ macro_rules! key {
 const KEYS: &[Key] = &[
     key!("midi_in_port", c.midi_in_port, Text),
     key!("midi_out_port", c.midi_out_port, Text),
-    key!("latency_ms", c.latency_ms, number(f64::MIN, f64::MAX)),
+    key!("latency_ms", c.latency_ms, within(limits::LATENCY_MS)),
     key!("latency_engine", c.latency_engine, number(0, 9999)),
     key!("sync_display", c.sync_display, Flag),
-    key!("perfect_ms", c.tol.perfect_ms, number(f64::MIN, f64::MAX)),
-    key!("good_ms", c.tol.good_ms, number(f64::MIN, f64::MAX)),
-    key!("window_ms", c.tol.window_ms, number(f64::MIN, f64::MAX)),
+    key!("perfect_ms", c.tol.perfect_ms, within(limits::PERFECT_MS)),
+    key!("good_ms", c.tol.good_ms, within(limits::GOOD_MS)),
+    key!("window_ms", c.tol.window_ms, within(limits::WINDOW_MS)),
     key!("metronome_during_take", c.metronome_during_take, Flag),
-    key!("count_in_bars", c.count_in_bars, number(0, 4)),
+    key!("count_in_bars", c.count_in_bars, within(limits::COUNT_IN_BARS)),
     key!("listen_count_in", c.listen_count_in, Flag),
     key!("break_at_pause", c.break_at_pause, Flag),
     key!("ramp_percent", c.ramp_percent, number(0, 50)),
     key!("ramp_passes", c.ramp_passes, number(1, 32)),
     key!("click_audio", c.click_audio, Flag),
-    key!("click_volume", c.click_volume, number(f32::MIN, f32::MAX)),
+    key!("click_volume", c.click_volume, within(limits::CLICK_VOLUME)),
     key!("click_midi", c.click_midi, Flag),
     key!("click_note", c.click_note, number(0, 127)),
     key!("click_channel", c.click_channel, number(1, 16)),
@@ -342,12 +414,12 @@ const KEYS: &[Key] = &[
     key!("playback_channel", c.playback_channel, number(1, 16)),
     key!("hihat_cc_max", c.hihat_cc_max, number(1, 127)),
     key!("keyboard_input", c.keyboard_input, Flag),
-    key!("zoom", c.zoom, number(0.3, 4.0)),
+    key!("zoom", c.zoom, within(limits::ZOOM)),
     key!("expand_repeats", c.expand_repeats, Flag),
     key!("audio_output", c.audio_output, Text),
-    key!("bars_per_row", c.bars_per_row, number(0, 16)),
+    key!("bars_per_row", c.bars_per_row, within(limits::BARS_PER_ROW)),
     key!("layout_align_bar", c.layout_align_bar, number(0, 9999)),
-    key!("metro_bpm", c.metro_bpm, number(20.0, 300.0)),
+    key!("metro_bpm", c.metro_bpm, within(limits::METRO_BPM)),
     key!("metro_beats", c.metro_beats, number(1, 12)),
     key!("metro_sub", c.metro_sub, number(0, 3)),
     key!("metro_preview", c.metro_preview, Flag),
@@ -613,8 +685,12 @@ impl Config {
                     let mut parts = v.splitn(3, ' ');
                     if let (Some(bars), Some(align), Some(path)) = (parts.next(), parts.next(), parts.next()) {
                         if let (Ok(bars), Ok(align)) = (bars.parse::<usize>(), align.parse::<usize>()) {
-                            let layout = RowLayout { bars_per_row: bars.min(16), align_bar: align.min(9999) };
-                            if !path.is_empty() && c.layouts.len() < MAX_LAYOUTS && c.layout_of(path).is_none() && layout != RowLayout::default() {
+                            let layout = RowLayout { bars_per_row: bars.min(limits::BARS_PER_ROW.hi), align_bar: align.min(9999) };
+                            if !path.is_empty()
+                                && c.layouts.len() < MAX_LAYOUTS
+                                && c.layout_of(path).is_none()
+                                && layout != RowLayout::default()
+                            {
                                 c.layouts.push((path.to_string(), layout));
                             }
                         }
@@ -641,11 +717,11 @@ impl Config {
                         }
                     } else if let Some(n) = k.strip_prefix("rudiment_bpm.").and_then(|n| n.parse::<u8>().ok()) {
                         if let (Some(_), Some(bpm)) = (rudiments::by_number(n), v.parse::<f32>().ok().filter(|x| x.is_finite())) {
-                            c.rudiment_bpm.insert(n, bpm.clamp(20.0, 300.0));
+                            c.rudiment_bpm.insert(n, bpm.clamp(crate::practice_tempo::BPM_RANGE.0, crate::practice_tempo::BPM_RANGE.1));
                         }
                     } else if let Some(n) = k.strip_prefix("rudiment_best.").and_then(|n| n.parse::<u8>().ok()) {
                         if let (Some(_), Some(bpm)) = (rudiments::by_number(n), v.parse::<f32>().ok().filter(|x| x.is_finite())) {
-                            c.rudiment_best.insert(n, bpm.clamp(20.0, 300.0));
+                            c.rudiment_best.insert(n, bpm.clamp(crate::practice_tempo::BPM_RANGE.0, crate::practice_tempo::BPM_RANGE.1));
                         }
                     }
                 }

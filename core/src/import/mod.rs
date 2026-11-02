@@ -15,9 +15,9 @@ mod ir;
 mod midi;
 mod musicxml;
 mod quantise;
-mod sniff;
 #[doc(hidden)]
 pub mod smf;
+mod sniff;
 
 use std::path::Path;
 
@@ -110,25 +110,42 @@ pub enum ImportError {
     /// Nothing in the file or its name says it is a score the program reads.
     Unrecognised,
     /// A format known by name but not read: export the score as one that is.
-    Recognised { format: &'static str },
+    Recognised {
+        format: &'static str,
+    },
     TooLarge(String),
     /// The archive or the text encoding around the score is damaged.
     Container(String),
-    Parse { format: Format, reason: String },
+    Parse {
+        format: Format,
+        reason: String,
+    },
     NoDrumPart,
     NoMeasures,
+    /// The parser produced a score that breaks a rule of [`check_invariants`]; a defect of the
+    /// importer, not of the file.
+    Invalid(String),
 }
 
 impl std::fmt::Display for ImportError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             ImportError::Read(e) | ImportError::Container(e) => write!(f, "{e}"),
-            ImportError::Unrecognised => write!(f, "not a score file this program reads (it opens {})", EXTENSIONS.iter().map(|e| format!(".{e}")).collect::<Vec<_>>().join(", ")),
-            ImportError::Recognised { format } => write!(f, "{format} files are not read directly; export the score as MusicXML from {format} and open that file"),
+            ImportError::Unrecognised => write!(
+                f,
+                "not a score file this program reads (it opens {})",
+                EXTENSIONS.iter().map(|e| format!(".{e}")).collect::<Vec<_>>().join(", ")
+            ),
+            ImportError::Recognised { format } => {
+                write!(f, "{format} files are not read directly; export the score as MusicXML from {format} and open that file")
+            }
             ImportError::TooLarge(what) => write!(f, "the file is too large: {what}"),
             ImportError::Parse { reason, .. } => write!(f, "{reason}"),
             ImportError::NoDrumPart => write!(f, "the file has no drum part"),
             ImportError::NoMeasures => write!(f, "the drum part has no measures"),
+            ImportError::Invalid(why) => {
+                write!(f, "the score read from the file is not consistent ({why}); this is a defect of the importer")
+            }
         }
     }
 }

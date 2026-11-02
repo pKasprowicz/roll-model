@@ -65,7 +65,6 @@ impl Lead {
             Lead::Alternate => "Alternate",
         }
     }
-
 }
 
 /// One stroke of a cell.
@@ -109,11 +108,22 @@ const S16: f64 = 0.25;
 const S8: f64 = 0.5;
 const T16: f64 = 1.0 / 6.0;
 
-const fn rud(number: u8, name: &'static str, family: Family, nard: bool, unit: f64, pattern: &'static str, about: &'static str) -> Rudiment {
+const fn rud(
+    number: u8,
+    name: &'static str,
+    family: Family,
+    nard: bool,
+    unit: f64,
+    pattern: &'static str,
+    about: &'static str,
+) -> Rudiment {
     Rudiment { number, name, family, nard, unit, pattern, about }
 }
 
 /// The 40 rudiments, in the PAS order.
+// One rudiment to a line: tools/build_manual.py reads the rows with a regular expression, so rustfmt
+// must not wrap them.
+#[rustfmt::skip]
 static CATALOGUE: [Rudiment; 40] = [
     rud(1, "Single stroke roll", Family::Roll, true, S16, "R L R L R L R L", "Alternating single strokes."),
     rud(2, "Single stroke four", Family::Roll, false, T16, "R L R L:3 R L R L:3", "Three quick strokes and one on the second half of the beat, twice."),
@@ -262,7 +272,7 @@ impl Rudiment {
     }
 
     /// The rudiment as a score: `repeats` bars, one per repetition of the cell, written at
-    /// `BASE_BPM`, so the practice tempo in percent is the tempo in BPM.
+    /// `BASE_BPM`; it is practised at a tempo in BPM (`PracticeTempo::Bpm`), and the factor to play it at is worked out from the tempo the score is written at.
     pub fn build(&self, repeats: usize, lead: Lead) -> Score {
         let cell = self.cell();
         let repeats = repeats.clamp(1, MAX_REPEATS);

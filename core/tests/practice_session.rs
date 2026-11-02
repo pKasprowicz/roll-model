@@ -3,7 +3,7 @@
 
 use roll_model_core::analysis::{analyze, expected_notes, Hit, Tolerances};
 use roll_model_core::config::Config;
-use roll_model_core::controller::{self, Action, Mapper, Msg, Command, State};
+use roll_model_core::controller::{self, Action, Command, Mapper, Msg, State};
 use roll_model_core::import::{import_bytes, ImportOptions};
 
 const SAMPLE: &str = include_str!("../../examples/basic_rock_beat.musicxml");
@@ -22,9 +22,7 @@ fn a_perfect_take_of_the_example_score_grades_perfect() {
 
 #[test]
 fn settings_survive_the_text_file() {
-    let mut config = Config::default();
-    config.zoom = 1.5;
-    config.controller_preset = "Korg nanoKONTROL2".to_string();
+    let config = Config { zoom: 1.5, controller_preset: "Korg nanoKONTROL2".to_string(), ..Config::default() };
     assert_eq!(Config::from_text(&config.to_text()), config);
 }
 

@@ -41,7 +41,13 @@ pub(super) fn histogram(ui: &mut egui::Ui, dts: &[f64], window_ms: f64) {
         let h = plot.height() * *c as f32 / max as f32;
         let x0 = plot.left() + i as f32 * col_w;
         let r = egui::Rect::from_min_max(egui::pos2(x0 + 1.0, plot.bottom() - h), egui::pos2(x0 + col_w - 1.0, plot.bottom()));
-        let color = if center.abs() <= 20.0 { render::GREEN } else if center.abs() <= 45.0 { render::LIGHT_GREEN } else { render::AMBER };
+        let color = if center.abs() <= 20.0 {
+            render::GREEN
+        } else if center.abs() <= 45.0 {
+            render::LIGHT_GREEN
+        } else {
+            render::AMBER
+        };
         p.rect_filled(r, 2.0, color);
     }
     let mid = plot.center().x;
@@ -55,7 +61,7 @@ pub(super) fn histogram(ui: &mut egui::Ui, dts: &[f64], window_ms: f64) {
 impl DrumApp {
     pub(super) fn results_tab(&mut self, ui: &mut egui::Ui) {
         egui::ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| {
-            let Some(take) = self.take.as_ref() else {
+            let Some(take) = self.practice.take.as_ref() else {
                 ui.label("Record a take on the Score or Rudiments tab to see the analysis here.");
                 return;
             };
@@ -68,12 +74,7 @@ impl DrumApp {
                 ui.label(RichText::new(r.letter()).size(48.0).strong().color(grade_letter_color(r.overall)));
                 ui.vertical(|ui| {
                     ui.label(RichText::new(format!("{:.1} / 100", r.overall)).size(24.0).strong());
-                    ui.label(format!(
-                        "Take {}{} · {}",
-                        take.number,
-                        if take.running { " (in progress)" } else { "" },
-                        take.label
-                    ));
+                    ui.label(format!("Take {}{} · {}", take.number, if take.running { " (in progress)" } else { "" }, take.label));
                 });
             });
             ui.add_space(6.0);
@@ -92,17 +93,20 @@ impl DrumApp {
                     format!(
                         "{:+.1} ms ({})",
                         r.mean_dt_ms,
-                        if r.mean_dt_ms > 3.0 { "behind the beat" } else if r.mean_dt_ms < -3.0 { "ahead of the beat" } else { "centred" }
+                        if r.mean_dt_ms > 3.0 {
+                            "behind the beat"
+                        } else if r.mean_dt_ms < -3.0 {
+                            "ahead of the beat"
+                        } else {
+                            "centred"
+                        }
                     ),
                 );
                 row("Average |offset|", format!("{:.1} ms", r.mean_abs_dt_ms));
                 row("Consistency (std. dev.)", format!("{:.1} ms", r.std_dt_ms));
                 row("Tempo drift", format!("{:+.0} ms/min", r.drift_ms_per_min));
                 row("Timing score", format!("{:.0}%", r.timing_score * 100.0));
-                row(
-                    "Dynamics (accents/ghosts)",
-                    r.dynamics_score.map(|d| format!("{:.0}%", d * 100.0)).unwrap_or_else(|| "n/a".into()),
-                );
+                row("Dynamics (accents/ghosts)", r.dynamics_score.map(|d| format!("{:.0}%", d * 100.0)).unwrap_or_else(|| "n/a".into()));
             });
 
             ui.add_space(8.0);
@@ -159,7 +163,7 @@ impl DrumApp {
                 self.export_csv();
             }
 
-            if !self.history.is_empty() {
+            if !self.practice.history.is_empty() {
                 ui.add_space(8.0);
                 ui.heading("Session history");
                 egui::Grid::new("history").num_columns(7).striped(true).show(ui, |ui| {
@@ -167,7 +171,7 @@ impl DrumApp {
                         ui.label(RichText::new(h).strong());
                     }
                     ui.end_row();
-                    for t in self.history.iter().rev() {
+                    for t in self.practice.history.iter().rev() {
                         ui.label(t.number.to_string());
                         ui.label(t.range.as_str());
                         ui.label(format!("{:.0}", t.bpm));
@@ -183,44 +187,12 @@ impl DrumApp {
     }
 
     pub(super) fn export_csv(&mut self) {
-        let (Some(take), Some(score)) = (self.take.as_ref(), self.score.as_ref()) else { return };
-        let Some(path) = rfd::FileDialog::new()
-            .add_filter("CSV", &["csv"])
-            .set_file_name(format!("take_{}.csv", take.number))
-            .save_file()
+        let (Some(take), Some(score)) = (self.practice.take.as_ref(), self.practice.score.as_ref()) else { return };
+        let Some(path) = rfd::FileDialog::new().add_filter("CSV", &["csv"]).set_file_name(format!("take_{}.csv", take.number)).save_file()
         else {
             return;
         };
-        let mut s = String::from("measure,beat,instrument,expected_ms,played_ms,offset_ms,midi_note,velocity,grade\n");
-        for (e, r) in take.expected.iter().zip(&take.report.results) {
-            let n = &score.notes[e.note_idx];
-            let m = &score.measures[n.measure];
-            let beat = (n.q - m.start_q) / m.beat_q() + 1.0;
-            let (played, note, vel) = r
-                .hit
-                .map(|h| {
-                    let h = &take.hits[h];
-                    (format!("{:.1}", h.t * 1000.0), h.note.to_string(), h.velocity.to_string())
-                })
-                .unwrap_or_default();
-            s.push_str(&format!(
-                "{},{:.3},{},{:.1},{},{},{},{},{}\n",
-                m.number,
-                beat,
-                e.lane.label(),
-                e.t * 1000.0,
-                played,
-                r.dt_ms.map(|d| format!("{d:.1}")).unwrap_or_default(),
-                note,
-                vel,
-                r.grade.label()
-            ));
-        }
-        for (hi, h) in take.hits.iter().enumerate() {
-            if take.report.hit_match[hi].is_none() {
-                s.push_str(&format!(",,{},,{:.1},,{},{},Extra\n", h.lane.label(), h.t * 1000.0, h.note, h.velocity));
-            }
-        }
+        let s = crate::export::take_csv(score, &take.expected, &take.hits, &take.report);
         match std::fs::write(&path, s) {
             Ok(()) => self.view.status = format!("Saved {}", path.display()),
             Err(e) => self.view.error = Some(format!("Could not save: {e}")),

@@ -161,7 +161,11 @@ impl Tempos<'_> {
 fn median(values: &mut [f64]) -> f64 {
     values.sort_by(f64::total_cmp);
     let n = values.len();
-    if n % 2 == 1 { values[n / 2] } else { (values[n / 2 - 1] + values[n / 2]) / 2.0 }
+    if n % 2 == 1 {
+        values[n / 2]
+    } else {
+        (values[n / 2 - 1] + values[n / 2]) / 2.0
+    }
 }
 
 /// The distance of `tick` from the nearest point of a grid with `cell` ticks between points.
@@ -170,12 +174,22 @@ fn residual(tick: f64, cell: f64) -> f64 {
 }
 
 fn gcd(a: u32, b: u32) -> u32 {
-    if b == 0 { a } else { gcd(b, a % b) }
+    if b == 0 {
+        a
+    } else {
+        gcd(b, a % b)
+    }
 }
 
 /// Place `onsets` (ticks, sorted; the instrument of each) on `bars`. `bars` must reach one bar past
 /// the last onset, so that a note that rounds up to the next bar line has a bar to go to.
-pub fn quantise(ppq: u64, bars: &[Bar], tempo_points: &[(u64, u32)], onsets: &[(u64, Lane)], opts: &MidiOptions) -> (Vec<Placed>, MidiReport) {
+pub fn quantise(
+    ppq: u64,
+    bars: &[Bar],
+    tempo_points: &[(u64, u32)],
+    onsets: &[(u64, Lane)],
+    opts: &MidiOptions,
+) -> (Vec<Placed>, MidiReport) {
     let tempos = Tempos { ppq, points: tempo_points };
     let mut report = MidiReport { notes: onsets.len(), ..Default::default() };
     if onsets.is_empty() || bars.is_empty() {
@@ -214,7 +228,7 @@ pub fn quantise(ppq: u64, bars: &[Bar], tempo_points: &[(u64, u32)], onsets: &[(
         let fits = |n: u32| {
             let cell = b.beat as f64 / f64::from(n);
             let mut tol = (cell * TOLERANCE_CELL).min(TOLERANCE_MS / ms);
-            if n % 3 == 0 {
+            if n.is_multiple_of(3) {
                 tol *= TRIPLET_FACTOR;
             }
             members.iter().all(|&i| residual(shifted(onsets[i].0) - from, cell).abs() <= tol)
@@ -249,7 +263,11 @@ pub fn quantise(ppq: u64, bars: &[Bar], tempo_points: &[(u64, u32)], onsets: &[(
             // k == n is the first point of the next beat (or bar).
             let (bar_at, beat_at, k_at, n_at) = if k >= n {
                 let beats_in_bar = b.len / b.beat.max(1);
-                if beat + 1 < beats_in_bar { (bar, beat + 1, 0, 1) } else { ((bar + 1).min(bars.len() - 1), 0, 0, 1) }
+                if beat + 1 < beats_in_bar {
+                    (bar, beat + 1, 0, 1)
+                } else {
+                    ((bar + 1).min(bars.len() - 1), 0, 0, 1)
+                }
             } else {
                 let g = gcd(k, n);
                 (bar, beat, k / g, n / g)
@@ -371,8 +389,7 @@ mod tests {
         for (i, p) in placed.iter().enumerate() {
             assert!((p.offset_q + (p.bar as f64) * 4.0 - i as f64 / 2.0).abs() < 1e-9);
         }
-        let mut opts = MidiOptions::default();
-        opts.remove_offset = false;
+        let opts = MidiOptions { remove_offset: false, ..MidiOptions::default() };
         let (_, kept) = run(&ticks, &opts);
         assert_eq!(kept.offset_ms, 0.0);
         assert!(kept.max_shift_ms > 24.0);
@@ -381,8 +398,7 @@ mod tests {
     #[test]
     fn the_grid_option_limits_how_fine_the_result_gets() {
         let ticks = [0, 120, 240, 360];
-        let mut opts = MidiOptions::default();
-        opts.grid = Grid::Eighth;
+        let opts = MidiOptions { grid: Grid::Eighth, ..MidiOptions::default() };
         let (placed, _) = run(&ticks, &opts);
         assert_eq!(offsets(&placed).iter().map(|p| p.1).collect::<Vec<_>>(), [0.0, 0.5, 1.0], "an eighth grid merges the sixteenths");
     }
@@ -415,13 +431,14 @@ mod tests {
     #[test]
     fn playing_that_is_not_on_any_grid_is_called_free_time() {
         let mut rng = Lcg(3);
-        let ticks: Vec<u64> = (0..256u64).scan(0u64, |t, _| {
-            *t += 150 + (rng.next() * 300.0) as u64;
-            Some(*t)
-        }).collect();
+        let ticks: Vec<u64> = (0..256u64)
+            .scan(0u64, |t, _| {
+                *t += 150 + (rng.next() * 300.0) as u64;
+                Some(*t)
+            })
+            .collect();
         let onsets: Vec<(u64, Lane)> = ticks.iter().map(|t| (*t, Lane::Snare)).collect();
         let (_, report) = quantise(PPQ, &bars(64), &at_120(), &onsets, &MidiOptions::default());
         assert!(report.free_time);
     }
-
 }

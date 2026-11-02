@@ -22,7 +22,9 @@ pub enum Detected {
     Known(Format),
     /// A format the program knows by name but does not read; the score has to be exported as one
     /// it reads.
-    Recognised { format: &'static str },
+    Recognised {
+        format: &'static str,
+    },
     Unknown,
 }
 
@@ -42,10 +44,7 @@ const RECOGNISED_BY_EXTENSION: &[(&str, &str)] = &[
 ];
 
 pub fn sniff(bytes: &[u8], name: &str) -> Detected {
-    let ext = std::path::Path::new(name)
-        .extension()
-        .map(|e| e.to_string_lossy().to_ascii_lowercase())
-        .unwrap_or_default();
+    let ext = std::path::Path::new(name).extension().map(|e| e.to_string_lossy().to_ascii_lowercase()).unwrap_or_default();
     // Guitar Pro 3 to 5 begin with a length byte and this text; version 6 with "BCFZ" or "BCFS".
     if bytes.get(1..).is_some_and(|b| b.starts_with(b"FICHIER GUITAR PRO")) || bytes.starts_with(b"BCFZ") || bytes.starts_with(b"BCFS") {
         return Detected::Recognised { format: "Guitar Pro" };

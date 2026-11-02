@@ -1,0 +1,4 @@
+# One line is up to 140 characters, as the code has always been written; rustfmt keeps short
+# struct literals and calls on one line instead of spreading them over many.
+max_width = 140
+use_small_heuristics = "Max"

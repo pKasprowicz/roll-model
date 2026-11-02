@@ -3,6 +3,7 @@
 
 use egui::RichText;
 
+use crate::config::limits;
 use crate::drums::{format_note_list, parse_note_list, Lane};
 use crate::metronome::HAS_AUDIO;
 use crate::midi;
@@ -49,16 +50,15 @@ impl DrumApp {
         });
         ui.separator();
         // One scroll position per page, so switching pages starts at the top.
-        egui::ScrollArea::vertical()
-            .id_salt(("settings", self.view.settings_page as u8))
-            .auto_shrink([false, false])
-            .show(ui, |ui| match self.view.settings_page {
+        egui::ScrollArea::vertical().id_salt(("settings", self.view.settings_page as u8)).auto_shrink([false, false]).show(ui, |ui| {
+            match self.view.settings_page {
                 SettingsPage::MidiInput => self.settings_midi_input(ui),
                 SettingsPage::Controller => self.settings_controller(ui),
                 SettingsPage::Timing => self.settings_timing(ui),
                 SettingsPage::Sound => self.settings_sound(ui),
                 SettingsPage::General => self.settings_general(ui),
-            });
+            }
+        });
     }
 
     pub(super) fn settings_midi_input(&mut self, ui: &mut egui::Ui) {
@@ -67,18 +67,15 @@ impl DrumApp {
             ui.label("Input port");
             let current = self.midi.input.as_ref().map(|h| h.port_name.clone()).unwrap_or_else(|| "— none —".into());
             let mut choice: Option<String> = None;
-            egui::ComboBox::from_id_salt("midi_in_port")
-                .selected_text(current)
-                .width(260.0)
-                .show_ui(ui, |ui| {
-                    for p in &self.midi.inputs {
-                        if ui.selectable_label(false, p.as_str()).clicked() {
-                            choice = Some(p.clone());
-                        }
+            egui::ComboBox::from_id_salt("midi_in_port").selected_text(current).width(260.0).show_ui(ui, |ui| {
+                for p in &self.midi.inputs {
+                    if ui.selectable_label(false, p.as_str()).clicked() {
+                        choice = Some(p.clone());
                     }
-                });
+                }
+            });
             if let Some(c) = choice {
-                self.connect_midi(Some(c));
+                self.connect_midi_and_say(Some(c));
             }
             if ui.button("⟳ Refresh ports").clicked() {
                 self.refresh_ports();
@@ -121,11 +118,7 @@ impl DrumApp {
                     continue;
                 }
                 ui.label(lane.label());
-                let text = self
-                    .midi
-                    .lane_text
-                    .entry(lane)
-                    .or_insert_with(|| format_note_list(&self.cfg.note_map.notes_for(lane)));
+                let text = self.midi.lane_text.entry(lane).or_insert_with(|| format_note_list(&self.cfg.note_map.notes_for(lane)));
                 if ui.add(egui::TextEdit::singleline(text).desired_width(140.0)).changed() {
                     let notes = parse_note_list(text);
                     self.cfg.note_map.set_lane_notes(lane, &notes);
@@ -149,7 +142,7 @@ impl DrumApp {
             ui.label("Latency compensation");
             ui.horizontal(|ui| {
                 let before = self.cfg.latency_ms;
-                widgets::slider(ui, "", &mut self.cfg.latency_ms, -50.0..=200.0, " ms", 1.0);
+                widgets::slider(ui, "", &mut self.cfg.latency_ms, limits::LATENCY_MS.range(), " ms", 1.0);
                 if self.cfg.latency_ms != before {
                     self.cfg.latency_engine = crate::audio::ENGINE_GENERATION; // set by hand with this engine
                 }
@@ -160,21 +153,30 @@ impl DrumApp {
             });
             ui.end_row();
             ui.label("Picture and MIDI click");
-            ui.checkbox(&mut self.cfg.sync_display, "Follow the sound: draw it, and send the MIDI click, as late as the sound is heard (the latency)");
+            ui.checkbox(
+                &mut self.cfg.sync_display,
+                "Follow the sound: draw it, and send the MIDI click, as late as the sound is heard (the latency)",
+            );
             ui.end_row();
             ui.label("Perfect within");
-            widgets::slider(ui, "", &mut self.cfg.tol.perfect_ms, 5.0..=50.0, " ms", 1.0);
+            widgets::slider(ui, "", &mut self.cfg.tol.perfect_ms, limits::PERFECT_MS.range(), " ms", 1.0);
             ui.end_row();
             ui.label("Good within");
-            widgets::slider(ui, "", &mut self.cfg.tol.good_ms, 10.0..=100.0, " ms", 1.0);
+            widgets::slider(ui, "", &mut self.cfg.tol.good_ms, limits::GOOD_MS.range(), " ms", 1.0);
             ui.end_row();
             ui.label("Hit window (beyond = extra/missed)");
-            widgets::slider(ui, "", &mut self.cfg.tol.window_ms, 40.0..=250.0, " ms", 5.0);
+            widgets::slider(ui, "", &mut self.cfg.tol.window_ms, limits::WINDOW_MS.range(), " ms", 5.0);
             ui.end_row();
         });
         if self.cfg.latency_is_stale(crate::audio::ENGINE_GENERATION) {
             ui.horizontal(|ui| {
-                ui.label(RichText::new("This latency was set with an earlier audio engine; the click now comes at another time. Calibrate again.").small().color(render::AMBER));
+                ui.label(
+                    RichText::new(
+                        "This latency was set with an earlier audio engine; the click now comes at another time. Calibrate again.",
+                    )
+                    .small()
+                    .color(render::AMBER),
+                );
                 if ui.small_button("Keep this value").clicked() {
                     self.cfg.latency_engine = crate::audio::ENGINE_GENERATION;
                 }
@@ -194,11 +196,19 @@ impl DrumApp {
             widgets::hint(ui, "The output opens when the first sound starts.");
             return;
         };
-        let calibrated = (self.cfg.latency_ms > 0.0 && !self.cfg.latency_is_stale(crate::audio::ENGINE_GENERATION)).then_some(self.cfg.latency_ms);
+        let calibrated =
+            (self.cfg.latency_ms > 0.0 && !self.cfg.latency_is_stale(crate::audio::ENGINE_GENERATION)).then_some(self.cfg.latency_ms);
         let delay = delay_text(info.latency_ms, super::audio_output::SYSTEM_BUFFER_MS, calibrated);
-        widgets::hint(ui, &format!("Open: {} at {} Hz. {delay}", info.device, info.rate));
+        widgets::hint(ui, format!("Open: {} at {} Hz. {delay}", info.device, info.rate));
         if info.late + info.dropped > 0 {
-            ui.label(RichText::new(format!("Sounds that came too late: {} (the worst by {:.1} ms), dropped: {}. The computer may be too busy for the output.", info.late, info.worst_late_ms, info.dropped)).small().color(render::AMBER));
+            ui.label(
+                RichText::new(format!(
+                    "Sounds that came too late: {} (the worst by {:.1} ms), dropped: {}. The computer may be too busy for the output.",
+                    info.late, info.worst_late_ms, info.dropped
+                ))
+                .small()
+                .color(render::AMBER),
+            );
         }
         widgets::hint(ui, "Bluetooth headphones add 100-200 ms or more and cannot be used for timing: use a wired output, or send the click to the V31 (below).");
     }
@@ -224,7 +234,11 @@ impl DrumApp {
                 }
             });
             if !self.cfg.audio_output.is_empty() && !self.audio_devices.contains(&self.cfg.audio_output) {
-                ui.label(RichText::new("This device is not connected right now: the system default is used instead.").small().color(render::AMBER));
+                ui.label(
+                    RichText::new("This device is not connected right now: the system default is used instead.")
+                        .small()
+                        .color(render::AMBER),
+                );
             }
         });
         ui.label(RichText::new(if HAS_AUDIO {
@@ -239,14 +253,11 @@ impl DrumApp {
         ui.heading("MIDI output");
         ui.horizontal(|ui| {
             ui.label("Output port");
-            egui::ComboBox::from_id_salt("midi_out_port")
-                .selected_text(self.cfg.midi_out_port.clone())
-                .width(260.0)
-                .show_ui(ui, |ui| {
-                    for p in &self.midi.outputs {
-                        ui.selectable_value(&mut self.cfg.midi_out_port, p.clone(), p.as_str());
-                    }
-                });
+            egui::ComboBox::from_id_salt("midi_out_port").selected_text(self.cfg.midi_out_port.clone()).width(260.0).show_ui(ui, |ui| {
+                for p in &self.midi.outputs {
+                    ui.selectable_value(&mut self.cfg.midi_out_port, p.clone(), p.as_str());
+                }
+            });
             if ui.button("⟳ Refresh ports").clicked() {
                 self.refresh_ports();
             }
@@ -258,7 +269,7 @@ impl DrumApp {
         ui.add_enabled_ui(HAS_AUDIO, |ui| {
             ui.horizontal(|ui| {
                 ui.checkbox(&mut self.cfg.click_audio, "Click through the computer's sound output");
-                widgets::slider(ui, "volume", &mut self.cfg.click_volume, 0.0..=1.0, "", 0.02);
+                widgets::slider(ui, "volume", &mut self.cfg.click_volume, limits::CLICK_VOLUME.range(), "", 0.02);
             });
         });
         ui.checkbox(&mut self.cfg.click_midi, "Send the click to the MIDI output");
@@ -270,7 +281,10 @@ impl DrumApp {
 
         ui.add_space(10.0);
         ui.heading("Listening");
-        widgets::hint(ui, "The Listen button on the Score tab plays the selected measures at the chosen tempo, with the count-in and click of a take.");
+        widgets::hint(
+            ui,
+            "The Listen button on the Score tab plays the selected measures at the chosen tempo, with the count-in and click of a take.",
+        );
         ui.add_enabled_ui(HAS_AUDIO, |ui| {
             ui.horizontal(|ui| {
                 ui.checkbox(&mut self.cfg.playback_audio, "Play through the computer's sound output (built-in drum sounds)");

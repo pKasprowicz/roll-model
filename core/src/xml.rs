@@ -19,10 +19,7 @@ pub struct Element {
 
 impl Element {
     pub fn attr(&self, key: &str) -> Option<&str> {
-        self.attrs
-            .iter()
-            .find(|(k, _)| k == key)
-            .map(|(_, v)| v.as_str())
+        self.attrs.iter().find(|(k, _)| k == key).map(|(_, v)| v.as_str())
     }
 
     /// Child elements in document order.
@@ -238,10 +235,7 @@ fn parse_start_tag(s: &str, start: usize) -> Result<(Element, bool, usize), XmlE
     if i == name_start {
         return Err(XmlError::InvalidTag(start));
     }
-    let mut el = Element {
-        name: s[name_start..i].to_string(),
-        ..Default::default()
-    };
+    let mut el = Element { name: s[name_start..i].to_string(), ..Default::default() };
     loop {
         while i < b.len() && b[i].is_ascii_whitespace() {
             i += 1;
@@ -280,10 +274,7 @@ fn parse_start_tag(s: &str, start: usize) -> Result<(Element, bool, usize), XmlE
         }
         let q = b[i];
         let v_start = i + 1;
-        let v_end = s[v_start..]
-            .find(q as char)
-            .map(|p| p + v_start)
-            .ok_or(XmlError::UnterminatedAttributeValue)?;
+        let v_end = s[v_start..].find(q as char).map(|p| p + v_start).ok_or(XmlError::UnterminatedAttributeValue)?;
         el.attrs.push((key, decode_entities(&s[v_start..v_end])));
         i = v_end + 1;
     }
@@ -306,9 +297,7 @@ pub fn decode_entities(raw: &str) -> String {
                 "amp" => Some('&'),
                 "quot" => Some('"'),
                 "apos" => Some('\''),
-                _ if ent.starts_with("#x") || ent.starts_with("#X") => {
-                    u32::from_str_radix(&ent[2..], 16).ok().and_then(char::from_u32)
-                }
+                _ if ent.starts_with("#x") || ent.starts_with("#X") => u32::from_str_radix(&ent[2..], 16).ok().and_then(char::from_u32),
                 _ if ent.starts_with('#') => ent[1..].parse::<u32>().ok().and_then(char::from_u32),
                 _ => None,
             };

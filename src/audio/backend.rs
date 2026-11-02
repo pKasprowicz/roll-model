@@ -36,7 +36,8 @@ impl Engine {
                 None => note = Some(format!("Sound output \"{wanted}\" was not found; using the system default.")),
             }
         }
-        let default = host.default_output_device().ok_or("No sound output could be found, so nothing can be played through the computer.")?;
+        let default =
+            host.default_output_device().ok_or("No sound output could be found, so nothing can be played through the computer.")?;
         match open_device(&default) {
             Ok(engine) => Ok((engine, note)),
             Err(e) => Err(format!("No sound output could be opened ({e}), so nothing can be played through the computer.")),

@@ -37,6 +37,9 @@ const SPACING: f64 = 0.4137;
 /// How far ahead of its instant a click is handed to the engine (the program's `AUDIO_LOOKAHEAD`).
 const LOOKAHEAD: f64 = 0.030;
 
+/// What the input callback collected: (the stream's stamp of the block's first frame, channel 0).
+type Blocks = Vec<(StreamInstant, Vec<f32>)>;
+
 fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
     let result = match args.iter().map(String::as_str).collect::<Vec<_>>().as_slice() {
@@ -133,7 +136,7 @@ fn run(output: &str, input: &str, clicks: usize) -> Result<(), String> {
         .map_err(|e| format!("cannot open \"{out_name}\": {e}"))?;
 
     // The input: (the stream's stamp of the block's first frame, channel 0).
-    let blocks: Arc<Mutex<Vec<(StreamInstant, Vec<f32>)>>> = Arc::default();
+    let blocks: Arc<Mutex<Blocks>> = Arc::default();
     let block_sink = blocks.clone();
     let in_stream = in_dev
         .build_input_stream(

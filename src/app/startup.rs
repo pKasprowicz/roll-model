@@ -90,19 +90,25 @@ pub(super) struct Startup {
 
 impl Startup {
     pub(super) fn new(file: Option<PathBuf>, sound: Receiver<SoundScan>) -> Startup {
-        let mut steps = vec![
-            Step::Settings,
-            Step::MidiPorts,
-            Step::DrumInput,
-            Step::ControllerPresets,
-            Step::Controller,
-            Step::SoundOutputs,
-        ];
+        let mut steps =
+            vec![Step::Settings, Step::MidiPorts, Step::DrumInput, Step::ControllerPresets, Step::Controller, Step::SoundOutputs];
         if file.is_some() {
             steps.push(Step::Score);
         }
         let label = label(steps[0], &Config::default(), file.as_deref());
-        Startup { steps, next: 0, drawn: false, label, log: Vec::new(), began: None, sound, file, finished_at: None, frames: 0, position: None }
+        Startup {
+            steps,
+            next: 0,
+            drawn: false,
+            label,
+            log: Vec::new(),
+            began: None,
+            sound,
+            file,
+            finished_at: None,
+            frames: 0,
+            position: None,
+        }
     }
 
     fn current(&self) -> Option<Step> {
@@ -228,15 +234,21 @@ impl DrumApp {
                 self.midi.inputs = midi::list_inputs().unwrap_or_default();
                 self.midi.outputs = midi::list_outputs().unwrap_or_default();
                 Line {
-                    text: format!("Found {} and {}", count(self.midi.inputs.len(), "MIDI input"), count(self.midi.outputs.len(), "MIDI output")),
+                    text: format!(
+                        "Found {} and {}",
+                        count(self.midi.inputs.len(), "MIDI input"),
+                        count(self.midi.outputs.len(), "MIDI output")
+                    ),
                     ok: true,
                 }
             }
             Step::DrumInput => {
                 let chosen = !self.cfg.midi_in_port.trim().is_empty();
-                self.connect_midi(None);
+                let outcome = self.connect_midi(None);
                 if chosen {
-                    Line { text: self.view.status.clone(), ok: self.midi.input.is_some() }
+                    let text = Self::midi_input_text(&outcome);
+                    self.view.status = text.clone();
+                    Line { text, ok: outcome.is_ok() }
                 } else {
                     Line { text: "No drum module chosen yet: choose its port in Settings".into(), ok: false }
                 }
@@ -253,7 +265,9 @@ impl DrumApp {
             Step::SoundOutputs => match st.sound.try_recv() {
                 Ok((devices, default)) => {
                     let line = match (&default, HAS_AUDIO) {
-                        (_, false) => Line { text: "This build has no sound output: the click can still go to the drum module".into(), ok: true },
+                        (_, false) => {
+                            Line { text: "This build has no sound output: the click can still go to the drum module".into(), ok: true }
+                        }
                         (Some(d), true) => Line { text: format!("{}, playing on {d}", count(devices.len(), "sound output")), ok: true },
                         (None, true) => Line { text: "No sound output found: the click and Listen will be silent".into(), ok: false },
                     };
@@ -264,15 +278,17 @@ impl DrumApp {
                 Err(TryRecvError::Empty) => return None,
                 Err(TryRecvError::Disconnected) => Line { text: "The sound system did not answer".into(), ok: false },
             },
-            Step::Score => {
-                if let Some(path) = st.file.clone() {
-                    self.open_file(&path);
+            Step::Score => match st.file.clone().map(|path| self.try_open(&path)) {
+                Some(Ok(text)) => {
+                    self.view.status = text.clone();
+                    Line { text, ok: true }
                 }
-                match &self.view.error {
-                    Some(e) => Line { text: e.clone(), ok: false },
-                    None => Line { text: self.view.status.clone(), ok: true },
+                Some(Err(text)) => {
+                    self.view.error = Some(text.clone());
+                    Line { text, ok: false }
                 }
-            }
+                None => Line { text: self.view.status.clone(), ok: true },
+            },
         })
     }
 }
@@ -295,7 +311,11 @@ fn show(ctx: &egui::Context, st: &Startup) -> bool {
     }
     ctx.show_viewport_immediate(splash_id(), window, |ctx, class| {
         if class == ViewportClass::Embedded {
-            egui::Window::new("Roll Model").collapsible(false).resizable(false).anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0]).show(ctx, |ui| contents(ui, st));
+            egui::Window::new("Roll Model")
+                .collapsible(false)
+                .resizable(false)
+                .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
+                .show(ctx, |ui| contents(ui, st));
         } else {
             let frame = egui::Frame::default().fill(ctx.style().visuals.panel_fill).inner_margin(10.0);
             egui::CentralPanel::default().frame(frame).show(ctx, |ui| contents(ui, st));
@@ -363,7 +383,12 @@ mod tests {
     }
 
     fn click() -> egui::Event {
-        egui::Event::PointerButton { pos: egui::pos2(10.0, 10.0), button: egui::PointerButton::Primary, pressed: true, modifiers: egui::Modifiers::NONE }
+        egui::Event::PointerButton {
+            pos: egui::pos2(10.0, 10.0),
+            button: egui::PointerButton::Primary,
+            pressed: true,
+            modifiers: egui::Modifiers::NONE,
+        }
     }
 
     /// One frame of the application, headless, with these input events.
@@ -420,9 +445,7 @@ mod tests {
 
     #[test]
     fn the_labels_say_what_is_being_connected() {
-        let mut cfg = Config::default();
-        cfg.midi_in_port = "V31".into();
-        cfg.controller_preset = "Behringer X-Touch Mini".into();
+        let mut cfg = Config { midi_in_port: "V31".into(), controller_preset: "Behringer X-Touch Mini".into(), ..Config::default() };
         assert!(label(Step::DrumInput, &cfg, None).contains("V31"));
         assert!(label(Step::Controller, &cfg, None).contains("X-Touch Mini"));
         assert!(label(Step::Score, &cfg, Some(Path::new("D:/scores/rock.musicxml"))).contains("rock.musicxml"));
@@ -434,13 +457,13 @@ mod tests {
     fn the_first_frame_only_shows_the_splash_and_the_splash_stays_after_the_last_step() {
         let ctx = egui::Context::default();
         let mut app = starting(Some(sample()));
-        assert!(app.score.is_none());
+        assert!(app.practice.score.is_none());
         assert_eq!(frame(&mut app, &ctx), Flow::Starting, "the first frame draws the splash");
-        assert!(app.score.is_none(), "and runs nothing");
+        assert!(app.practice.score.is_none(), "and runs nothing");
         let starting = 1 + run_steps(&mut app, &ctx);
         assert_eq!(starting, 7, "one frame to show each of the 7 steps");
         assert!(app.startup.as_ref().is_some_and(|s| s.is_finished()), "the splash is still there to be read");
-        assert!(app.score.is_some(), "the score given on the command line is open");
+        assert!(app.practice.score.is_some(), "the score given on the command line is open");
         assert!(app.view.tab == super::super::Tab::Score);
         assert_eq!(app.audio_devices, ["Speakers"]);
         assert_eq!(app.startup.as_ref().unwrap().log.len(), 7, "every step left a line");

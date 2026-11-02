@@ -66,7 +66,8 @@ impl DrumApp {
                 if dir.as_ref().is_some_and(|d| d.join(&file).is_file()) {
                     ui.label("your WAV file").on_hover_text(format!("{file} in the sounds folder replaces the built-in sound"));
                 } else {
-                    ui.label(RichText::new("built-in").weak()).on_hover_text(format!("Put {file} in the sounds folder to use your own sound"));
+                    ui.label(RichText::new("built-in").weak())
+                        .on_hover_text(format!("Put {file} in the sounds folder to use your own sound"));
                 }
                 ui.end_row();
             }

@@ -8,13 +8,16 @@ mod metronome;
 mod midi;
 mod playback;
 mod render;
+mod sync;
 mod synth;
 mod widgets;
 
 use std::path::PathBuf;
 
 // The pure modules live in the core crate; this keeps their `crate::name` paths working here.
-use roll_model_core::{analysis, config, controller, controller_layout, drums, import, notation, rudiments, score, trigger};
+use roll_model_core::{
+    analysis, config, controller, controller_layout, drums, export, import, notation, practice_tempo, rudiments, score, trigger,
+};
 
 fn main() -> eframe::Result<()> {
     // Optional: a MusicXML file to open on start-up.
@@ -26,9 +29,5 @@ fn main() -> eframe::Result<()> {
             .with_min_inner_size([760.0, 480.0]),
         ..Default::default()
     };
-    eframe::run_native(
-        "Roll Model",
-        options,
-        Box::new(move |cc| Ok(Box::new(app::DrumApp::new(cc, initial)))),
-    )
+    eframe::run_native("Roll Model", options, Box::new(move |cc| Ok(Box::new(app::DrumApp::new(cc, initial)))))
 }
