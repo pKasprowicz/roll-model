@@ -95,7 +95,7 @@ impl DrumApp {
     }
 
     pub(in crate::app) fn take_running(&self) -> bool {
-        self.practice.take.as_ref().is_some_and(|t| t.running)
+        self.practice.take.as_ref().is_some_and(|t| t.is_running())
     }
 
     /// Whether a change of tempo, range or score is allowed now; says why not.
@@ -129,7 +129,7 @@ impl DrumApp {
         }
         let running = self.take_running();
         match action {
-            Action::Record if running => self.stop_take(crate::app::session::StopReason::Aborted),
+            Action::Record if running => self.stop_take(crate::app::take::StopReason::Aborted),
             Action::Record if self.practice.score.is_some() => self.start_take(),
             Action::Listen if !running && self.practice.score.is_some() => {
                 if self.playback.is_listening() {
@@ -179,8 +179,8 @@ impl DrumApp {
             Action::NextRudiment => self.step_rudiment(1),
             Action::DiscardTake => {
                 if let Some(take) = self.practice.take.take() {
-                    self.practice.history.retain(|h| h.number != take.number);
-                    self.view.status = format!("Take {} discarded.", take.number);
+                    self.practice.history.retain(|h| h.number != take.number());
+                    self.view.status = format!("Take {} discarded.", take.number());
                 }
             }
             Action::OpenScore => {
@@ -395,16 +395,7 @@ impl DrumApp {
     /// Loops the measure the last take went worst in.
     pub(super) fn loop_worst_bar(&mut self) {
         let worst = match (self.practice.take.as_ref(), self.practice.score.as_ref()) {
-            (Some(take), Some(score)) => {
-                let extra: Vec<usize> = take
-                    .hits
-                    .iter()
-                    .zip(&take.report.hit_match)
-                    .filter(|(_, matched)| matched.is_none())
-                    .filter_map(|(h, _)| score.measure_at(score.tempo.sec_to_q(h.t + take.t0, take.tempo_scale)))
-                    .collect();
-                Some(worst_measure(score, &take.report, &extra))
-            }
+            (Some(take), Some(score)) => Some(worst_measure(score, take.report(), &take.measures_of_extra_hits(score))),
             _ => None,
         };
         match worst {

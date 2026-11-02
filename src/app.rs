@@ -17,6 +17,7 @@ mod score_tab;
 mod session;
 mod settings;
 mod startup;
+mod take;
 mod trigger;
 
 use std::path::{Path, PathBuf};
@@ -24,7 +25,6 @@ use std::time::{Duration, Instant};
 
 use egui::RichText;
 
-use crate::analysis::{Expected, Hit, Report, Window};
 use crate::config::{Config, Paths, RowLayout};
 use crate::controller::Action;
 use crate::drums::Lane;
@@ -32,16 +32,15 @@ use crate::import::load_score;
 use crate::metronome::Metronome;
 use crate::midi::{self, RawEvent};
 use crate::practice_tempo::PracticeTempo;
-use crate::score::Click;
 use crate::score::Score;
 use crate::theme;
-use crate::units::{Millis, Seconds};
+use crate::units::Millis;
 use crate::widgets;
 use metro_state::MetroState;
 use midi_state::MidiState;
 use playback_state::{Listen, ListenKey, Playback};
-use session::signed_secs;
 use settings::SettingsPage;
+use take::{signed_secs, Take};
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Tab {
@@ -109,50 +108,6 @@ const TAKE_LINE_HEIGHT: f32 = 42.0;
 
 /// A take of a rudiment counts as clean from this overall score on.
 const CLEAN_TAKE: f64 = 85.0;
-
-/// One recorded attempt over a measure range.
-struct Take {
-    number: usize,
-    /// What was played: the score's title, or the rudiment with its repetitions.
-    label: String,
-    /// How far from a note a hit counts for it: adaptive for rudiments, whose notes are close.
-    window: Window,
-    /// Score time zero = start of `from` measure.
-    zero: Instant,
-    from: usize,
-    to: usize,
-    tempo_scale: f64,
-    /// Seconds from score start to the `from` measure (at `tempo_scale`).
-    t0: Seconds,
-    end_sec: Seconds,
-    expected: Vec<Expected>,
-    hits: Vec<Hit>,
-    report: Report,
-    /// How many hits there were, and how far into the take it was, when `report` was worked out.
-    graded_at: Option<(usize, Seconds)>,
-    running: bool,
-    count_in_beat_sec: Seconds,
-}
-
-/// How often, while a take records, it is graded again when no hit came: grading the whole take is
-/// not something to do on every frame.
-const GRADING_INTERVAL: Seconds = Seconds(0.05);
-
-/// What a take or a playback of the selected range needs: where time zero is
-/// and the click track.
-struct Plan {
-    from: usize,
-    to: usize,
-    scale: f64,
-    bpm: f64,
-    beat_sec: Seconds,
-    count_in_beats: u32,
-    zero: Instant,
-    t0: Seconds,
-    end_sec: Seconds,
-    /// Count-in and beat clicks, seconds from the first measure.
-    clicks: Vec<Click>,
-}
 
 struct TakeSummary {
     number: usize,
@@ -379,11 +334,8 @@ impl DrumApp {
     /// A hit of `lane` goes into the take that is running (from a little before its first beat on).
     fn record_take_hit(&mut self, ev: RawEvent, lane: Lane) {
         let latency = Millis(self.cfg.latency_ms).secs();
-        if let Some(take) = self.practice.take.as_mut().filter(|t| t.running) {
-            let t = signed_secs(ev.at, take.zero) - latency;
-            if t > -take.count_in_beat_sec * 0.75 {
-                take.hits.push(Hit { t, note: ev.note, velocity: ev.velocity, lane });
-            }
+        if let Some(take) = self.practice.take.as_mut() {
+            take.record_hit(ev.at, ev.note, ev.velocity, lane, latency);
         }
     }
 
@@ -412,7 +364,7 @@ impl DrumApp {
         if self.source == source {
             return;
         }
-        self.stop_take(session::StopReason::Aborted);
+        self.stop_take(take::StopReason::Aborted);
         self.stop_listen();
         self.playback.cancel_restart();
         std::mem::swap(&mut self.practice, &mut self.parked);
@@ -482,7 +434,7 @@ impl DrumApp {
     /// reason it could not be opened. (A big file is read on another thread; the line then says it is loading.)
     fn try_open(&mut self, path: &Path) -> Result<String, String> {
         self.activate(Source::Score);
-        self.stop_take(session::StopReason::Aborted);
+        self.stop_take(take::StopReason::Aborted);
         self.stop_listen();
         self.practice.midi_options = crate::import::MidiOptions::default();
         if std::fs::metadata(path).is_ok_and(|m| m.len() > self.background_bytes) {
@@ -831,7 +783,7 @@ mod tests {
         app.connect_midi_and_say(Some("no such port".into()));
         assert!(app.view.status.contains("Choose the drum module"), "{}", app.view.status);
 
-        assert!(matches!(app.finish_take(session::StopReason::Aborted), session::TakeOutcome::NoTake));
+        assert!(matches!(app.finish_take(take::StopReason::Aborted), session::TakeOutcome::NoTake));
         assert!(app.view.status.contains("Choose the drum module"), "stopping nothing leaves the status alone");
 
         // The line of a clean take comes back from the function that decides it, not from the status.

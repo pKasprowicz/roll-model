@@ -82,7 +82,7 @@ impl DrumApp {
     /// selected bars, the view and the layout stay.
     pub(super) fn reimport(&mut self) {
         let Some(path) = self.practice.score_path.clone() else { return };
-        self.stop_take(super::session::StopReason::Aborted);
+        self.stop_take(super::take::StopReason::Aborted);
         self.stop_listen();
         match crate::import::load_score(&path, &self.import_options()) {
             Ok(loaded) => {

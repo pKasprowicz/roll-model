@@ -3,24 +3,18 @@
 
 use std::time::{Duration, Instant};
 
-use crate::analysis::{analyze_with, expected_notes, Grade, Window};
+use crate::analysis::{expected_notes, Grade, Window};
 use crate::drums::Lane;
 use crate::metronome::{ClickOptions, Metronome, HAS_AUDIO};
 use crate::playback::{self, PlayOptions, Player};
 use crate::practice::Ramp;
-use crate::render::{HitStatus, PlayedNote};
+use crate::render::PlayedNote;
 use crate::score::Click;
 use crate::score::Score;
 use crate::units::Seconds;
 
-use super::{Calibration, DrumApp, Listen, ListenKey, Plan, Source, Take, TakeSummary, CLEAN_TAKE, GRADING_INTERVAL, RESTART_DELAY};
-
-/// Why a take ends: the player stopped it, or its music came to the end.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(super) enum StopReason {
-    Aborted,
-    Completed,
-}
+use super::take::{signed_secs, Plan, StopReason, Take};
+use super::{Calibration, DrumApp, Listen, ListenKey, Source, TakeSummary, CLEAN_TAKE, RESTART_DELAY};
 
 /// Whether Listen begins with the count-in.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -29,16 +23,8 @@ pub(super) enum CountIn {
     Without,
 }
 
-pub(super) fn signed_secs(t: Instant, zero: Instant) -> Seconds {
-    if t >= zero {
-        Seconds((t - zero).as_secs_f64())
-    } else {
-        Seconds(-(zero - t).as_secs_f64())
-    }
-}
-
 pub(super) fn score_q(score: &Score, take: &Take, elapsed: Seconds) -> f64 {
-    score.tempo.sec_to_q(elapsed + take.t0, take.tempo_scale).0
+    take.q_at(score, elapsed).0
 }
 
 /// What stopping a take came to.
@@ -150,25 +136,10 @@ impl DrumApp {
             score.measures()[plan.to].number,
             plan.bpm
         );
+        let take = Take::start(self.practice.takes_started + 1, label, window, &plan, expected, &self.cfg.tol);
         self.metronome = Some(Metronome::start(plan.zero, plan.clicks, self.click_options(), Some(self.playback.control().clone())));
         self.practice.takes_started += 1;
-        self.practice.take = Some(Take {
-            number: self.practice.takes_started,
-            zero: plan.zero,
-            from: plan.from,
-            to: plan.to,
-            tempo_scale: plan.scale,
-            t0: plan.t0,
-            end_sec: plan.end_sec,
-            report: analyze_with(&expected, &[], &self.cfg.tol, Seconds::NEG_INFINITY, window),
-            graded_at: None,
-            label,
-            window,
-            expected,
-            hits: Vec::new(),
-            running: true,
-            count_in_beat_sec: plan.beat_sec,
-        });
+        self.practice.take = Some(take);
     }
 
     pub(super) fn play_options(&self) -> PlayOptions {
@@ -404,29 +375,24 @@ impl DrumApp {
             m.stop();
         }
         let Some(take) = self.practice.take.as_mut() else { return TakeOutcome::NoTake };
-        if !take.running {
+        if !take.finish(reason, &self.cfg.tol, Instant::now()) {
             return TakeOutcome::NoTake;
         }
-        take.running = false;
-        let elapsed = if reason == StopReason::Completed { Seconds::INFINITY } else { signed_secs(Instant::now(), take.zero) };
-        take.report = analyze_with(&take.expected, &take.hits, &self.cfg.tol, elapsed, take.window);
-        let r = &take.report;
+        let take = &*take;
+        let r = take.report();
         if r.evaluated == 0 {
             return TakeOutcome::NothingDue;
         }
-        let bpm = self.practice.score.as_ref().map(|s| s.tempo.bpm_at(s.measures()[take.from].start_q) * take.tempo_scale).unwrap_or(0.0);
-        let range = if take.window == Window::Adaptive {
-            take.label.clone()
+        let score = self.practice.score.as_ref();
+        let bpm = score.map_or(0.0, |s| take.bpm(s));
+        let range = if take.window() == Window::Adaptive {
+            take.label().to_string()
         } else {
-            self.practice
-                .score
-                .as_ref()
-                .map(|s| format!("{}–{}", s.measures()[take.from].number, s.measures()[take.to].number))
-                .unwrap_or_default()
+            score.map(|s| take.range_text(s)).unwrap_or_default()
         };
-        let clean = reason == StopReason::Completed && take.window == Window::Adaptive && r.overall >= CLEAN_TAKE;
+        let clean = reason == StopReason::Completed && take.window() == Window::Adaptive && r.overall >= CLEAN_TAKE;
         self.practice.history.push(TakeSummary {
-            number: take.number,
+            number: take.number(),
             range,
             bpm,
             overall: r.overall,
@@ -438,7 +404,7 @@ impl DrumApp {
         });
         let summary = format!(
             "Take {}: {:.0} ({}) — accuracy {:.0}%, timing {:+.0} ± {:.0} ms, {} missed, {} extra",
-            take.number,
+            take.number(),
             r.overall,
             r.letter(),
             r.accuracy * 100.0,
@@ -452,17 +418,7 @@ impl DrumApp {
 
     pub(super) fn update_take(&mut self) {
         let Some(take) = self.practice.take.as_mut() else { return };
-        if !take.running {
-            return;
-        }
-        let elapsed = signed_secs(Instant::now(), take.zero);
-        // A new hit is graded at once; otherwise only now and then, for the notes that fall due.
-        let due = take.graded_at.is_none_or(|(hits, at)| hits != take.hits.len() || elapsed - at >= GRADING_INTERVAL);
-        if due {
-            take.report = analyze_with(&take.expected, &take.hits, &self.cfg.tol, elapsed, take.window);
-            take.graded_at = Some((take.hits.len(), elapsed));
-        }
-        if elapsed > take.end_sec + Seconds(1.0) {
+        if take.update(&self.cfg.tol, Instant::now()) {
             self.stop_take(StopReason::Completed);
         }
     }
@@ -507,36 +463,14 @@ impl DrumApp {
     }
 
     pub(super) fn played_notes(&self) -> Vec<PlayedNote> {
-        let (Some(take), Some(score)) = (self.practice.take.as_ref(), self.practice.score.as_ref()) else { return Vec::new() };
-        take.hits
-            .iter()
-            .enumerate()
-            .map(|(hi, h)| {
-                let matched = take.report.hit_match.get(hi).copied().flatten();
-                let (status, dt) = match matched {
-                    Some(ei) => {
-                        let r = take.report.results[ei];
-                        let s = r.outcome.grade().map_or(HitStatus::Neutral, HitStatus::Graded);
-                        (s, r.dt)
-                    }
-                    None if h.t > take.end_sec + Seconds(0.2) || h.t < Seconds(-0.2) => (HitStatus::Neutral, None),
-                    None => (HitStatus::Extra, None),
-                };
-                PlayedNote { q: score.tempo.sec_to_q(h.t + take.t0, take.tempo_scale).0, lane: h.lane, velocity: h.velocity, status, dt }
-            })
-            .collect()
+        match (self.practice.take.as_ref(), self.practice.score.as_ref()) {
+            (Some(take), Some(score)) => take.played_notes(score),
+            _ => Vec::new(),
+        }
     }
 
     pub(super) fn note_grades(&self) -> Vec<Option<Grade>> {
-        let n = self.practice.score.as_ref().map(|s| s.notes().len()).unwrap_or(0);
-        let mut g = vec![None; n];
-        if let Some(take) = self.practice.take.as_ref() {
-            for (e, r) in take.expected.iter().zip(&take.report.results) {
-                if let Some(slot) = g.get_mut(e.note_idx) {
-                    *slot = r.outcome.grade();
-                }
-            }
-        }
-        g
+        let n = self.practice.score.as_ref().map_or(0, |s| s.notes().len());
+        self.practice.take.as_ref().map_or_else(|| vec![None; n], |take| take.grades(n))
     }
 }

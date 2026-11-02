@@ -65,7 +65,7 @@ impl DrumApp {
                 ui.label("Record a take on the Score or Rudiments tab to see the analysis here.");
                 return;
             };
-            let r = &take.report;
+            let r = &take.report();
             if r.evaluated == 0 {
                 ui.label("No notes have been graded yet.");
                 return;
@@ -74,7 +74,7 @@ impl DrumApp {
                 ui.label(RichText::new(r.letter()).size(48.0).strong().color(grade_letter_color(r.overall)));
                 ui.vertical(|ui| {
                     ui.label(RichText::new(format!("{:.1} / 100", r.overall)).size(24.0).strong());
-                    ui.label(format!("Take {}{} · {}", take.number, if take.running { " (in progress)" } else { "" }, take.label));
+                    ui.label(format!("Take {}{} · {}", take.number(), if take.is_running() { " (in progress)" } else { "" }, take.label()));
                 });
             });
             ui.add_space(6.0);
@@ -188,11 +188,12 @@ impl DrumApp {
 
     pub(super) fn export_csv(&mut self) {
         let (Some(take), Some(score)) = (self.practice.take.as_ref(), self.practice.score.as_ref()) else { return };
-        let Some(path) = rfd::FileDialog::new().add_filter("CSV", &["csv"]).set_file_name(format!("take_{}.csv", take.number)).save_file()
+        let Some(path) =
+            rfd::FileDialog::new().add_filter("CSV", &["csv"]).set_file_name(format!("take_{}.csv", take.number())).save_file()
         else {
             return;
         };
-        let s = crate::export::take_csv(score, &take.expected, &take.hits, &take.report);
+        let s = crate::export::take_csv(score, take.expected(), take.hits(), take.report());
         match std::fs::write(&path, s) {
             Ok(()) => self.view.status = format!("Saved {}", path.display()),
             Err(e) => self.view.error = Some(format!("Could not save: {e}")),

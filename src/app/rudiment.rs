@@ -576,17 +576,17 @@ mod tests {
         app.cfg.click_midi = false;
         app.start_take();
         let take = app.practice.take.as_mut().expect("recording");
-        assert!(take.window == crate::analysis::Window::Adaptive && take.label == "Single paradiddle ×4", "{}", take.label);
+        assert!(take.window() == crate::analysis::Window::Adaptive && take.label() == "Single paradiddle ×4", "{}", take.label());
         let hits: Vec<Hit> = take
-            .expected
+            .expected()
             .iter()
             .map(|e| Hit { t: e.t, note: 38, velocity: if e.hand == Some(crate::score::Hand::Left) { 70 } else { 90 }, lane: Lane::Snare })
             .collect();
-        take.hits = hits;
-        app.stop_take(crate::app::session::StopReason::Completed);
+        take.set_hits(hits);
+        app.stop_take(crate::app::take::StopReason::Completed);
         let take = app.practice.take.as_ref().unwrap();
-        assert_eq!(take.report.perfect, 32, "four bars of eight strokes");
-        assert_eq!(take.report.hands.len(), 2);
+        assert_eq!(take.report().perfect, 32, "four bars of eight strokes");
+        assert_eq!(take.report().hands.len(), 2);
         assert!(app.progress.best_bpm.contains_key(&16), "a perfect take is a clean one");
         assert_eq!(app.practice.history.len(), 1);
         assert_eq!(app.practice.history[0].range, "Single paradiddle ×4");
