@@ -7,6 +7,7 @@ use std::time::{Duration, Instant};
 use egui::{pos2, vec2, RichText, Sense, Stroke};
 
 use super::metro_state::{MetroKey, Run};
+use super::session::{nothing_audible, Heard};
 use super::{DrumApp, Source, RESTART_DELAY};
 use crate::config::{limits, Subdivision};
 use crate::controller::Action;
@@ -57,12 +58,8 @@ impl DrumApp {
         self.stop_all_sound();
         self.ensure_audio();
         let opts = self.metro_options();
-        if !opts.click_audio && !opts.click_midi {
-            self.view.error = Some(if HAS_AUDIO {
-                "The click is switched off: enable it under Metronome on the Sound page of Settings.".into()
-            } else {
-                "This build has no sound output: send the click to a MIDI output on the Sound page of Settings.".into()
-            });
+        if let Some(message) = nothing_audible(&opts, Heard::Click) {
+            self.view.error = Some(message);
             return;
         }
         let sub = self.cfg.metro_sub;

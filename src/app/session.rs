@@ -1,6 +1,7 @@
 //! The lifecycles of a take, Listen, an audition and the latency calibration: starting them, following them
 //! every frame, and stopping them.
 
+use std::rc::Rc;
 use std::time::{Duration, Instant};
 
 use crate::analysis::{expected_notes, Window};
@@ -11,8 +12,6 @@ use crate::practice::Ramp;
 use crate::score::Click;
 use crate::score::Score;
 use crate::units::Seconds;
-
-use std::rc::Rc;
 
 use super::take::{signed_secs, Plan, Shown, StopReason, Take};
 use super::{Calibration, DrumApp, Listen, ListenKey, Source, TakeSummary, CLEAN_TAKE, RESTART_DELAY};
@@ -36,6 +35,46 @@ pub(super) enum TakeOutcome {
     NothingDue,
     /// Graded: the line that sums it up, and the tempo of a clean take of a rudiment.
     Graded { summary: String, clean_bpm: Option<f64> },
+}
+
+/// What a start is to make heard.
+#[derive(Clone, Copy)]
+pub(super) enum Heard {
+    /// Listen: the music and its click.
+    Playback,
+    /// The metronome.
+    Click,
+    /// One instrument on its own.
+    Instruments,
+}
+
+/// What to tell the player when nothing is switched on to make `what` audible.
+pub(super) fn nothing_audible(opts: &PlayOptions, what: Heard) -> Option<String> {
+    let clicks = opts.click_audio || opts.click_midi;
+    let instruments = opts.audio || opts.midi_drums;
+    let audible = match what {
+        Heard::Playback => instruments || clicks,
+        Heard::Click => clicks,
+        Heard::Instruments => instruments,
+    };
+    if audible {
+        return None;
+    }
+    let (switched_off, no_output) = match what {
+        Heard::Playback => (
+            "Playback is switched off: enable a sound output on the Sound page of Settings.",
+            "This build has no sound output: send playback to a MIDI output on the Sound page of Settings.",
+        ),
+        Heard::Click => (
+            "The click is switched off: enable it under Metronome on the Sound page of Settings.",
+            "This build has no sound output: send the click to a MIDI output on the Sound page of Settings.",
+        ),
+        Heard::Instruments => (
+            "Switch on a sound output for Listen on the Sound page of Settings to hear the instruments.",
+            "This build has no sound output: send the instruments to a MIDI output on the Sound page of Settings.",
+        ),
+    };
+    Some(if HAS_AUDIO { switched_off } else { no_output }.into())
 }
 
 impl DrumApp {
@@ -184,18 +223,6 @@ impl DrumApp {
         Ramp { every: c.ramp_passes, step: c.ramp_percent as f64 / percent }
     }
 
-    /// The message to show when no output could possibly make a sound.
-    pub(super) fn nothing_audible(opts: &PlayOptions) -> Option<String> {
-        if opts.audio || opts.midi_drums || opts.click_audio || opts.click_midi {
-            return None;
-        }
-        Some(if HAS_AUDIO {
-            "Playback is switched off: enable a sound output on the Sound page of Settings.".into()
-        } else {
-            "This build has no sound output: send playback to a MIDI output on the Sound page of Settings.".into()
-        })
-    }
-
     /// Plays the selected measures at the chosen tempo, with the count-in and
     /// click a take would have, so the drummer can hear them first.
     pub(super) fn start_listen(&mut self) {
@@ -207,7 +234,7 @@ impl DrumApp {
         self.ensure_audio();
         self.playback.cancel_restart();
         let opts = self.play_options();
-        if let Some(message) = Self::nothing_audible(&opts) {
+        if let Some(message) = nothing_audible(&opts, Heard::Playback) {
             self.view.error = Some(message);
             return;
         }
@@ -333,11 +360,8 @@ impl DrumApp {
     pub(super) fn audition(&mut self, lane: Lane) {
         self.ensure_audio();
         let opts = self.play_options();
-        if !opts.audio && !opts.midi_drums {
-            self.view.error =
-                Some(Self::nothing_audible(&PlayOptions { click_audio: false, click_midi: false, ..opts }).unwrap_or_else(|| {
-                    "Switch on a sound output for Listen on the Sound page of Settings to hear the instruments.".into()
-                }));
+        if let Some(message) = nothing_audible(&opts, Heard::Instruments) {
+            self.view.error = Some(message);
             return;
         }
         self.playback.stop_audition();
@@ -466,5 +490,32 @@ impl DrumApp {
     /// What the take shows on the score: the notes played and the grades, as of the last hit or grading.
     pub(super) fn take_shown(&self) -> Option<Rc<Shown>> {
         Some(self.practice.take.as_ref()?.shown(self.practice.score.as_ref()?))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::config::Config;
+
+    fn options(playback_midi: bool, click_midi: bool) -> PlayOptions {
+        let cfg = Config { playback_audio: false, click_audio: false, playback_midi, click_midi, ..Config::default() };
+        DrumApp::with_config(cfg).play_options()
+    }
+
+    #[test]
+    fn what_cannot_be_heard_is_told_in_one_place_for_the_music_the_click_and_the_instruments() {
+        let nothing = options(false, false);
+        for what in [Heard::Playback, Heard::Click, Heard::Instruments] {
+            let message = nothing_audible(&nothing, what).expect("nothing is switched on");
+            assert!(message.contains("Sound page of Settings"), "{message}");
+        }
+        let click_only = options(false, true);
+        assert!(nothing_audible(&click_only, Heard::Playback).is_none(), "the click is heard with the music");
+        assert!(nothing_audible(&click_only, Heard::Click).is_none());
+        assert!(nothing_audible(&click_only, Heard::Instruments).is_some(), "but no instrument sounds");
+        let drums_only = options(true, false);
+        assert!(nothing_audible(&drums_only, Heard::Playback).is_none() && nothing_audible(&drums_only, Heard::Instruments).is_none());
+        assert!(nothing_audible(&drums_only, Heard::Click).is_some());
     }
 }

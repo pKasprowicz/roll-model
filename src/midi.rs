@@ -3,7 +3,9 @@
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
-use midir::{Ignore, MidiInput, MidiInputConnection, MidiOutput, MidiOutputConnection};
+use midir::{Ignore, MidiInput, MidiInputConnection, MidiInputPort, MidiOutput, MidiOutputConnection, MidiOutputPort};
+
+use crate::controller::{self, Msg};
 
 /// A note-on as received from the drum module, time-stamped on arrival.
 #[derive(Clone, Copy, Debug)]
@@ -95,29 +97,50 @@ fn pick<'a>(names: impl Iterator<Item = (usize, &'a str)> + Clone, wanted: &str)
         .map(|(i, _)| i)
 }
 
-pub fn connect_input(wanted: &str, queue: EventQueue) -> Result<InputHandle, MidiError> {
-    let mut mi = MidiInput::new("roll-model").map_err(|e| MidiError::Backend(e.to_string()))?;
-    // Drop SysEx, clock and active-sensing traffic.
+/// A MIDI client that sees the input ports, and the one of them that `wanted` selects. SysEx,
+/// clock and active-sensing traffic is dropped.
+fn find_input(client: &str, wanted: &str) -> Result<(MidiInput, MidiInputPort, String), MidiError> {
+    let mut mi = MidiInput::new(client).map_err(|e| MidiError::Backend(e.to_string()))?;
     mi.ignore(Ignore::All);
     let ports = mi.ports();
     let names: Vec<String> = ports.iter().map(|p| mi.port_name(p).unwrap_or_default()).collect();
-    let idx = pick(names.iter().map(|s| s.as_str()).enumerate(), wanted).ok_or_else(|| MidiError::InputNotFound(wanted.to_string()))?;
-    let port = ports[idx].clone();
-    let port_name = names[idx].clone();
+    let idx = find_port(&names, wanted).ok_or_else(|| MidiError::InputNotFound(wanted.to_string()))?;
+    Ok((mi, ports[idx].clone(), names[idx].clone()))
+}
+
+/// A MIDI client that sees the output ports, and the one of them that `wanted` selects.
+fn find_output(client: &str, wanted: &str) -> Result<(MidiOutput, MidiOutputPort, String), MidiError> {
+    let mo = MidiOutput::new(client).map_err(|e| MidiError::Backend(e.to_string()))?;
+    let ports = mo.ports();
+    let names: Vec<String> = ports.iter().map(|p| mo.port_name(p).unwrap_or_default()).collect();
+    let idx = find_port(&names, wanted).ok_or_else(|| MidiError::OutputNotFound(wanted.to_string()))?;
+    Ok((mo, ports[idx].clone(), names[idx].clone()))
+}
+
+/// What a message from the drum module is: a hit (a note-on with a velocity), which takes the
+/// last position of the hi-hat pedal; or that position itself, which is remembered for the hits
+/// that follow. Note-offs and aftertouch (cymbal chokes) are not needed.
+fn drum_hit(bytes: &[u8], at: Instant, pedal: &mut Option<u8>) -> Option<RawEvent> {
+    match controller::parse(bytes)? {
+        Msg::Cc { cc: HIHAT_CC, val, .. } => {
+            *pedal = Some(val);
+            None
+        }
+        Msg::NoteOn { ch, note, vel } if vel > 0 => Some(RawEvent { at, note, velocity: vel, channel: ch, hihat: *pedal }),
+        _ => None,
+    }
+}
+
+pub fn connect_input(wanted: &str, queue: EventQueue) -> Result<InputHandle, MidiError> {
+    let (mi, port, port_name) = find_input("roll-model", wanted)?;
     let mut pedal: Option<u8> = None;
     let conn = mi
         .connect(
             &port,
             "roll-model-in",
             move |_stamp, msg, _| {
-                let at = Instant::now();
-                // Note-on with velocity > 0 on any channel, and the hi-hat pedal
-                // (CC#4), which is remembered and attached to the hits that follow.
-                // Note-offs and aftertouch (cymbal chokes) are not needed.
-                if msg.len() >= 3 && msg[0] & 0xF0 == 0xB0 && msg[1] == HIHAT_CC {
-                    pedal = Some(msg[2]);
-                } else if msg.len() >= 3 && msg[0] & 0xF0 == 0x90 && msg[2] > 0 {
-                    push_capped(&queue, RawEvent { at, note: msg[1], velocity: msg[2], channel: (msg[0] & 0x0F) + 1, hihat: pedal });
+                if let Some(hit) = drum_hit(msg, Instant::now(), &mut pedal) {
+                    push_capped(&queue, hit);
                 }
             },
             (),
@@ -152,15 +175,10 @@ impl ControllerHandle {
 /// Opens the input port whose name matches `wanted` and, if there is one with
 /// the same name, its output port too (for the lights).
 pub fn connect_controller(wanted: &str, queue: MessageQueue) -> Result<ControllerHandle, MidiError> {
-    let mut mi = MidiInput::new("roll-model-controller").map_err(|e| MidiError::Backend(e.to_string()))?;
-    mi.ignore(Ignore::All);
-    let ports = mi.ports();
-    let names: Vec<String> = ports.iter().map(|p| mi.port_name(p).unwrap_or_default()).collect();
-    let idx = pick(names.iter().map(|s| s.as_str()).enumerate(), wanted).ok_or_else(|| MidiError::InputNotFound(wanted.to_string()))?;
-    let port_name = names[idx].clone();
+    let (mi, port, port_name) = find_input("roll-model-controller", wanted)?;
     let conn = mi
         .connect(
-            &ports[idx],
+            &port,
             "roll-model-controller-in",
             move |_stamp, msg, _| {
                 push_capped(&queue, msg.to_vec());
@@ -168,21 +186,13 @@ pub fn connect_controller(wanted: &str, queue: MessageQueue) -> Result<Controlle
             (),
         )
         .map_err(|e| MidiError::OpenInput { port: port_name.clone(), reason: e.to_string() })?;
-    let out = MidiOutput::new("roll-model-controller").ok().and_then(|mo| {
-        let ports = mo.ports();
-        let names: Vec<String> = ports.iter().map(|p| mo.port_name(p).unwrap_or_default()).collect();
-        let i = pick(names.iter().map(|s| s.as_str()).enumerate(), &port_name)?;
-        mo.connect(&ports[i], "roll-model-controller-out").ok()
-    });
+    let out =
+        find_output("roll-model-controller", &port_name).ok().and_then(|(mo, port, _)| mo.connect(&port, "roll-model-controller-out").ok());
     Ok(ControllerHandle { _conn: conn, out, port_name })
 }
 
 pub fn connect_output(wanted: &str) -> Result<MidiOutputConnection, MidiError> {
-    let mo = MidiOutput::new("roll-model").map_err(|e| MidiError::Backend(e.to_string()))?;
-    let ports = mo.ports();
-    let names: Vec<String> = ports.iter().map(|p| mo.port_name(p).unwrap_or_default()).collect();
-    let idx = pick(names.iter().map(|s| s.as_str()).enumerate(), wanted).ok_or_else(|| MidiError::OutputNotFound(wanted.to_string()))?;
-    let port = ports[idx].clone();
+    let (mo, port, _) = find_output("roll-model", wanted)?;
     mo.connect(&port, "roll-model-out").map_err(|e| MidiError::OpenOutput(e.to_string()))
 }
 
@@ -195,6 +205,27 @@ pub fn note_name(n: u8) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_drum_hit_has_the_pedal_position_that_came_before_it() {
+        let at = Instant::now();
+        let mut pedal = None;
+        let hit = drum_hit(&[0x99, 38, 100], at, &mut pedal).expect("a note-on is a hit");
+        assert_eq!((hit.note, hit.velocity, hit.channel, hit.hihat), (38, 100, 10, None));
+        assert!(drum_hit(&[0xB9, HIHAT_CC, 64], at, &mut pedal).is_none(), "the pedal is not a hit");
+        assert_eq!(drum_hit(&[0x99, 42, 90], at, &mut pedal).unwrap().hihat, Some(64));
+        assert!(drum_hit(&[0xB9, 7, 99], at, &mut pedal).is_none(), "another cc is nothing");
+        assert_eq!(pedal, Some(64));
+    }
+
+    #[test]
+    fn what_is_not_a_hit_is_dropped() {
+        let at = Instant::now();
+        let mut pedal = None;
+        for bytes in [&[0x99, 38, 0][..], &[0x89, 38, 64], &[0xD9, 40], &[0x99, 38], &[], &[0xF8]] {
+            assert!(drum_hit(bytes, at, &mut pedal).is_none(), "{bytes:?}");
+        }
+    }
 
     #[test]
     fn a_queue_nobody_empties_stops_growing_at_the_cap() {
