@@ -244,9 +244,11 @@ impl DrumApp {
             }
             Step::DrumInput => {
                 let chosen = !self.cfg.midi_in_port.trim().is_empty();
-                self.connect_midi(None);
+                let outcome = self.connect_midi(None);
                 if chosen {
-                    Line { text: self.view.status.clone(), ok: self.midi.input.is_some() }
+                    let text = Self::midi_input_text(&outcome);
+                    self.view.status = text.clone();
+                    Line { text, ok: outcome.is_ok() }
                 } else {
                     Line { text: "No drum module chosen yet: choose its port in Settings".into(), ok: false }
                 }
@@ -276,15 +278,17 @@ impl DrumApp {
                 Err(TryRecvError::Empty) => return None,
                 Err(TryRecvError::Disconnected) => Line { text: "The sound system did not answer".into(), ok: false },
             },
-            Step::Score => {
-                if let Some(path) = st.file.clone() {
-                    self.open_file(&path);
+            Step::Score => match st.file.clone().map(|path| self.try_open(&path)) {
+                Some(Ok(text)) => {
+                    self.view.status = text.clone();
+                    Line { text, ok: true }
                 }
-                match &self.view.error {
-                    Some(e) => Line { text: e.clone(), ok: false },
-                    None => Line { text: self.view.status.clone(), ok: true },
+                Some(Err(text)) => {
+                    self.view.error = Some(text.clone());
+                    Line { text, ok: false }
                 }
-            }
+                None => Line { text: self.view.status.clone(), ok: true },
+            },
         })
     }
 }

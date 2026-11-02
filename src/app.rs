@@ -372,19 +372,29 @@ impl DrumApp {
         self.audio_default = crate::audio::default_output_device();
     }
 
-    fn connect_midi(&mut self, name: Option<String>) {
+    /// Connects the drum module's input; `Ok` holds the name of the port. Says nothing.
+    fn connect_midi(&mut self, name: Option<String>) -> Result<String, midi::MidiError> {
         self.midi.input = None; // close the old port first (Windows ports are exclusive)
         let wanted = name.unwrap_or_else(|| self.cfg.midi_in_port.clone());
-        match midi::connect_input(&wanted, self.midi.queue.clone()) {
-            Ok(h) => {
-                self.view.status = format!("MIDI input: {}", h.port_name);
-                self.cfg.midi_in_port = h.port_name.clone();
-                self.midi.input = Some(h);
-            }
-            Err(e) => {
-                self.view.status = format!("{e}. Choose the drum module's port in Settings.");
-            }
+        let handle = midi::connect_input(&wanted, self.midi.queue.clone())?;
+        let port = handle.port_name.clone();
+        self.cfg.midi_in_port = port.clone();
+        self.midi.input = Some(handle);
+        Ok(port)
+    }
+
+    /// The line that tells how connecting the drum module went.
+    fn midi_input_text(outcome: &Result<String, midi::MidiError>) -> String {
+        match outcome {
+            Ok(port) => format!("MIDI input: {port}"),
+            Err(e) => format!("{e}. Choose the drum module's port in Settings."),
         }
+    }
+
+    /// Connects the drum module's input and shows how it went on the status line.
+    fn connect_midi_and_say(&mut self, name: Option<String>) {
+        let outcome = self.connect_midi(name);
+        self.view.status = Self::midi_input_text(&outcome);
     }
 
     fn drain_midi(&mut self) {
@@ -515,19 +525,31 @@ impl DrumApp {
         }
     }
 
+    /// Opens a score file and shows how it went on the status line (or as an error).
     fn open_file(&mut self, path: &Path) {
+        match self.try_open(path) {
+            Ok(status) => {
+                self.view.status = status;
+                self.view.error = None;
+            }
+            Err(error) => self.view.error = Some(error),
+        }
+    }
+
+    /// Opens a score file and says nothing: `Ok` holds the line for the status bar, `Err` the
+    /// reason it could not be opened. (A big file is read on another thread; the line then says it is loading.)
+    fn try_open(&mut self, path: &Path) -> Result<String, String> {
         self.activate(Source::Score);
         self.stop_take(false);
         self.stop_listen();
         self.practice.midi_options = crate::import::MidiOptions::default();
         if std::fs::metadata(path).is_ok_and(|m| m.len() > self.background_bytes) {
-            self.start_loading(path);
-            return;
+            return Ok(self.start_loading(path));
         }
         self.loading = None;
         match load_score(path, &self.import_options()) {
-            Ok(loaded) => self.install(loaded, path, false),
-            Err(e) => self.view.error = Some(format!("Could not load {}: {e}", path.display())),
+            Ok(loaded) => Ok(self.install(loaded, path, false)),
+            Err(e) => Err(format!("Could not load {}: {e}", path.display())),
         }
     }
 
@@ -846,6 +868,34 @@ mod tests {
         let _ = std::fs::remove_file(&bad);
         assert!(app.view.error.as_deref().is_some_and(|e| e.contains("Could not load")), "{:?}", app.view.error);
         assert!(app.practice.score.is_some(), "the loaded score stays");
+    }
+
+    #[test]
+    fn opening_connecting_and_stopping_return_what_happened_and_say_nothing_themselves() {
+        let mut app = DrumApp::with_config(Config::default());
+        app.view.status = "before".into();
+
+        let line = app.try_open(&sample()).unwrap();
+        assert!(line.starts_with("Loaded \"Basic Rock Beat\""), "{line}");
+        let reason = app.try_open(Path::new("no/such/score.musicxml")).unwrap_err();
+        assert!(reason.starts_with("Could not load"), "{reason}");
+        assert_eq!(app.view.status, "before", "the caller shows it");
+        assert!(app.view.error.is_none());
+
+        let outcome = app.connect_midi(Some("no such port".into()));
+        assert!(outcome.is_err());
+        assert!(DrumApp::midi_input_text(&outcome).ends_with("Choose the drum module's port in Settings."));
+        assert_eq!(app.view.status, "before");
+        app.connect_midi_and_say(Some("no such port".into()));
+        assert!(app.view.status.contains("Choose the drum module"), "{}", app.view.status);
+
+        assert!(matches!(app.finish_take(false), session::TakeOutcome::NoTake));
+        assert!(app.view.status.contains("Choose the drum module"), "stopping nothing leaves the status alone");
+
+        // The line of a clean take comes back from the function that decides it, not from the status.
+        app.view.tab = Tab::Rudiments;
+        app.sync_source();
+        assert!(app.note_clean_rudiment(90.0).starts_with("Clean take at 90 BPM"));
     }
 
     #[test]

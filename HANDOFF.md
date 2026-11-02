@@ -143,7 +143,7 @@ The hardware tasks (HW-*) have a step-by-step plan in `docs/hardware-test-plan.m
 | **RV-14** [#73](https://github.com/pKasprowicz/roll-model/issues/73) | Domain logic and data live in the GUI crate (S2, effort M) | code |
 | **RV-15** [#74](https://github.com/pKasprowicz/roll-model/issues/74) | Core is not as pure as `CLAUDE.md` claims (S3, effort S to M) | code |
 | **RV-16** [#75](https://github.com/pKasprowicz/roll-model/issues/75) | Similar names for unrelated concepts (S3, effort M) | code |
-| **RV-17** [#76](https://github.com/pKasprowicz/roll-model/issues/76) | The status line is used as a return channel (S2, effort S) | code |
+| **RV-17** [#76](https://github.com/pKasprowicz/roll-model/issues/76) | The status line is used as a return channel (S2, effort S) — **done 2026-11-02**: `try_open`, `connect_midi`, `finish_take` and `note_clean_rudiment` return what happened (`Result`, `TakeOutcome`, the line) and write no status; `open_file`, `connect_midi_and_say` and `stop_take` show it; start-up uses the returned values | code |
 | **RV-18** [#77](https://github.com/pKasprowicz/roll-model/issues/77) | Drawing functions mutate domain state (S2, effort M) | code |
 | **RV-19** [#78](https://github.com/pKasprowicz/roll-model/issues/78) | Boolean and illegal-state soup in the score model (S2, effort M) | code |
 | **RV-20** [#79](https://github.com/pKasprowicz/roll-model/issues/79) | Units carried in names, not types (S2, effort M to L) | code |

@@ -74,7 +74,7 @@ impl DrumApp {
                 }
             });
             if let Some(c) = choice {
-                self.connect_midi(Some(c));
+                self.connect_midi_and_say(Some(c));
             }
             if ui.button("⟳ Refresh ports").clicked() {
                 self.refresh_ports();

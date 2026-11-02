@@ -31,15 +31,15 @@ impl DrumApp {
 
     /// Starts reading `path` on another thread; `poll_loading` puts the score on screen when it is
     /// done. A file asked for before that one finishes replaces it.
-    pub(super) fn start_loading(&mut self, path: &Path) {
+    pub(super) fn start_loading(&mut self, path: &Path) -> String {
         let (tx, rx) = mpsc::channel();
         let (file, options) = (path.to_path_buf(), self.import_options());
         std::thread::spawn(move || {
             let _ = tx.send(crate::import::load_score(&file, &options));
         });
         let name = path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
-        self.view.status = format!("Loading {name}…");
         self.loading = Some(PendingLoad { path: path.to_path_buf(), rx });
+        format!("Loading {name}…")
     }
 
     /// Picks up the result of a background load once it is there.
@@ -59,7 +59,10 @@ impl DrumApp {
             Err(mpsc::TryRecvError::Disconnected) => Err(ImportError::Read("reading the file stopped unexpectedly".into())),
         };
         match result {
-            Ok(loaded) => self.install(loaded, &pending.path, false),
+            Ok(loaded) => {
+                self.view.status = self.install(loaded, &pending.path, false);
+                self.view.error = None;
+            }
             Err(e) => {
                 self.view.status.clear();
                 self.view.error = Some(format!("Could not load {}: {e}", pending.path.display()));
@@ -74,19 +77,22 @@ impl DrumApp {
         self.stop_take(false);
         self.stop_listen();
         match crate::import::load_score(&path, &self.import_options()) {
-            Ok(loaded) => self.install(loaded, &path, true),
+            Ok(loaded) => {
+                self.view.status = self.install(loaded, &path, true);
+                self.view.error = None;
+            }
             Err(e) => self.view.error = Some(format!("Could not load {}: {e}", path.display())),
         }
     }
 
     /// Puts a loaded score on screen. `again` is a re-import of the open file: the range of bars,
-    /// the tab and the layout are kept.
-    pub(super) fn install(&mut self, loaded: Loaded, path: &Path, again: bool) {
+    /// the tab and the layout are kept. Returns the line for the status bar; showing it is the caller's.
+    pub(super) fn install(&mut self, loaded: Loaded, path: &Path, again: bool) -> String {
         // The practice fields belong to the Rudiments tab while it shows; the score goes to the Score
         // tab's fields whichever tab the user is on when the file arrives.
         self.activate(Source::Score);
         let Loaded { score, report } = loaded;
-        self.view.status = format!(
+        let status = format!(
             "Loaded \"{}\": {} measures, {} notes, {:.0} BPM{}",
             score.title,
             score.measures.len(),
@@ -112,8 +118,8 @@ impl DrumApp {
             self.view.tab = super::Tab::Score;
         }
         self.practice.take = None;
-        self.view.error = None;
         self.score_gen += 1;
+        status
     }
 
     /// The menu beside Layout; a change re-imports the file at once (it takes milliseconds).

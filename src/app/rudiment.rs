@@ -142,8 +142,8 @@ impl DrumApp {
     }
 
     /// Called when a take of the rudiment was clean: remembers the tempo if it is the best so
-    /// far, and with the ladder on, goes on to a faster one.
-    pub(super) fn note_clean_rudiment(&mut self, bpm: f64) {
+    /// far, and with the ladder on, goes on to a faster one. Returns what to tell the user.
+    pub(super) fn note_clean_rudiment(&mut self, bpm: f64) -> String {
         let number = self.cfg.rudiment;
         let bpm = bpm.round() as f32;
         let best = self.cfg.rudiment_best.entry(number).or_insert(0.0);
@@ -159,7 +159,7 @@ impl DrumApp {
             self.practice.tempo = self.practice.tempo.with_value(bpm + LADDER_STEP);
             message.push_str(&format!(" · up to {}", self.practice.tempo.text()));
         }
-        self.view.status = format!("{} · {message}", self.view.status);
+        message
     }
 
     pub(super) fn rudiments_tab(&mut self, ui: &mut egui::Ui) {
@@ -456,9 +456,9 @@ mod tests {
         app.select_rudiment(16);
         app.practice.tempo = PracticeTempo::Bpm(90.0);
         app.view.status.clear();
-        app.note_clean_rudiment(90.0);
+        let message = app.note_clean_rudiment(90.0);
         assert_eq!(app.cfg.rudiment_best.get(&16), Some(&90.0));
-        assert!(app.view.status.contains("new best"), "{}", app.view.status);
+        assert!(message.contains("new best"), "{message}");
         assert_eq!(app.practice.tempo.value(), 90.0, "the ladder is off");
         app.cfg.rudiment_ladder = true;
         app.note_clean_rudiment(85.0);

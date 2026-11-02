@@ -24,6 +24,16 @@ pub(super) fn score_q(score: &Score, take: &Take, elapsed: f64) -> f64 {
     score.tempo.sec_to_q(elapsed + take.t0, take.tempo_scale)
 }
 
+/// What stopping a take came to.
+pub(super) enum TakeOutcome {
+    /// No take was running.
+    NoTake,
+    /// It was stopped before a note was due, so there is nothing to grade.
+    NothingDue,
+    /// Graded: the line that sums it up, and the tempo of a clean take of a rudiment.
+    Graded { summary: String, clean_bpm: Option<f64> },
+}
+
 impl DrumApp {
     pub(super) fn click_options(&self) -> ClickOptions {
         ClickOptions {
@@ -359,21 +369,36 @@ impl DrumApp {
 
     /// `completed`: the whole range was played (otherwise notes after the
     /// stop point are left ungraded).
+    /// Stops the take, and shows how it went on the status line.
     pub(super) fn stop_take(&mut self, completed: bool) {
+        match self.finish_take(completed) {
+            TakeOutcome::NoTake => {}
+            TakeOutcome::NothingDue => self.view.status = "Take stopped before any notes were due — nothing to grade.".into(),
+            TakeOutcome::Graded { summary, clean_bpm } => {
+                self.view.status = match clean_bpm {
+                    Some(bpm) => format!("{summary} · {}", self.note_clean_rudiment(bpm)),
+                    None => summary,
+                };
+            }
+        }
+    }
+
+    /// Stops the metronome and the take that records, grades the take and puts it in the history;
+    /// says nothing, and returns what came of it.
+    pub(super) fn finish_take(&mut self, completed: bool) -> TakeOutcome {
         if let Some(mut m) = self.metronome.take() {
             m.stop();
         }
-        let Some(take) = self.practice.take.as_mut() else { return };
+        let Some(take) = self.practice.take.as_mut() else { return TakeOutcome::NoTake };
         if !take.running {
-            return;
+            return TakeOutcome::NoTake;
         }
         take.running = false;
         let elapsed = if completed { f64::INFINITY } else { signed_secs(Instant::now(), take.zero) };
         take.report = analyze_with(&take.expected, &take.hits, &self.cfg.tol, elapsed, take.adaptive);
         let r = &take.report;
         if r.evaluated == 0 {
-            self.view.status = "Take stopped before any notes were due — nothing to grade.".into();
-            return;
+            return TakeOutcome::NothingDue;
         }
         let bpm = self.practice.score.as_ref().map(|s| s.tempo.bpm_at(s.measures[take.from].start_q) * take.tempo_scale).unwrap_or(0.0);
         let range = if take.adaptive {
@@ -397,7 +422,7 @@ impl DrumApp {
             std_dt: r.std_dt_ms,
             extra: r.extra,
         });
-        self.view.status = format!(
+        let summary = format!(
             "Take {}: {:.0} ({}) — accuracy {:.0}%, timing {:+.0} ± {:.0} ms, {} missed, {} extra",
             take.number,
             r.overall,
@@ -408,9 +433,7 @@ impl DrumApp {
             r.missed,
             r.extra
         );
-        if clean {
-            self.note_clean_rudiment(bpm);
-        }
+        TakeOutcome::Graded { summary, clean_bpm: clean.then_some(bpm) }
     }
 
     pub(super) fn update_take(&mut self) {
