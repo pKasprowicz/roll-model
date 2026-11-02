@@ -2,6 +2,8 @@
 
 use std::path::PathBuf;
 
+use super::LightKind;
+
 /// Why a line of a preset file cannot be used. `Display` is the text the Controller page shows
 /// (with the line number in front).
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -25,7 +27,7 @@ pub enum PresetError {
     FaderChannel(u8),
     CannotBeShown {
         action: String,
-        ring: bool,
+        shows: LightKind,
     },
     BadLightNumber(String),
     RingTakesScale(String),
@@ -53,8 +55,8 @@ impl std::fmt::Display for PresetError {
             PresetError::FaderOnlyValue => write!(f, "a fader can only set a value"),
             PresetError::OnlyTurned(action) => write!(f, "\"{action}\" is only turned: add \"rel\""),
             PresetError::FaderChannel(c) => write!(f, "a fader's channel is in \"bend {c}\", not in \"ch\""),
-            PresetError::CannotBeShown { action, ring } => {
-                write!(f, "\"{action}\" cannot be shown by a {}", if *ring { "ring" } else { "light" })
+            PresetError::CannotBeShown { action, shows } => {
+                write!(f, "\"{action}\" cannot be shown by a {}", shows.word())
             }
             PresetError::BadLightNumber(word) => write!(f, "\"{word}\": expected a number from 0 to 127"),
             PresetError::RingTakesScale(name) => write!(f, "\"{name}=\" is for a light; a ring takes \"scale=\""),

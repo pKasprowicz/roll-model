@@ -2,7 +2,7 @@
 
 use std::collections::BTreeMap;
 
-use super::{Action, Input, Msg, Out, Preset, PresetKind, Reading, Src, State};
+use super::{Action, Input, LightKind, Msg, Out, Preset, PresetKind, Reading, Src, State};
 
 /// A control found by pressing or turning it, ready to be bound to an action.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -71,7 +71,7 @@ impl Pickup {
 }
 
 /// What a light is told apart by: where it is set, whether it is a ring, and the MIDI channel.
-type LightKey = (Out, bool, u8);
+type LightKey = (Out, LightKind, u8);
 
 pub struct Mapper {
     preset: Preset,
@@ -204,7 +204,7 @@ impl Mapper {
                     continue;
                 }
                 let scale = l.scale.or((self.preset.kind == PresetKind::Midi).then_some(127));
-                let value = if l.ring {
+                let value = if l.kind == LightKind::Ring {
                     state.level(l.action).map(|x| match scale {
                         Some(scale) => (x.clamp(0.0, 1.0) * scale as f32).round() as u8,
                         None => ring_value(x),
@@ -215,7 +215,7 @@ impl Mapper {
                     state.lit(l.action).map(|on| if on { l.on } else { l.off })
                 };
                 if let Some(v) = value {
-                    want.insert((l.out, l.ring, l.channel), (v, if l.ring { 0 } else { l.off }));
+                    want.insert((l.out, l.kind, l.channel), (v, if l.kind == LightKind::Ring { 0 } else { l.off }));
                 }
             }
         }

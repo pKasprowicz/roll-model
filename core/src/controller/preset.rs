@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 
 use super::action::ACTIONS;
 use super::mapper::Learned;
-use super::{Action, Encoding, LayerError, LoadPresetError, Out, PresetError, Reading, Src};
+use super::{Action, Encoding, LayerError, LightKind, LoadPresetError, Out, PresetError, Reading, Src};
 
 /// A control of the device: the message it sends, and the MIDI channel it is limited to (none: any).
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -30,8 +30,8 @@ pub struct Light {
     pub layer: Option<String>,
     pub action: Action,
     pub out: Out,
-    /// A ring around an encoder showing a level, rather than a button light.
-    pub ring: bool,
+    /// A ring around an encoder showing a level, or the light of a button.
+    pub kind: LightKind,
     /// The MIDI channel the light is set on (1-based).
     pub channel: u8,
     /// Values sent to light and to darken a button (127 and 0 unless the line says otherwise).
@@ -44,8 +44,8 @@ pub struct Light {
 impl Light {
     /// The usual light or ring for `action` on `layer`: set on the control `out`, channel 1,
     /// 127 to light and 0 to darken, Mackie ring values.
-    pub fn new(layer: Option<&str>, action: Action, out: Out, ring: bool) -> Light {
-        Light { layer: layer.map(str::to_string), action, out, ring, channel: 1, on: 127, off: 0, scale: None }
+    pub fn new(layer: Option<&str>, action: Action, out: Out, kind: LightKind) -> Light {
+        Light { layer: layer.map(str::to_string), action, out, kind, channel: 1, on: 127, off: 0, scale: None }
     }
 }
 
@@ -147,8 +147,8 @@ impl Preset {
             "kind" => self.kind = PresetKind::parse(value).ok_or_else(|| PresetError::UnknownKind(value.to_string()))?,
             "layer" => self.parse_layer(value)?,
             "bind" => self.parse_bind(value)?,
-            "led" => self.parse_light(false, value)?,
-            "ring" => self.parse_light(true, value)?,
+            "led" => self.parse_light(LightKind::Led, value)?,
+            "ring" => self.parse_light(LightKind::Ring, value)?,
             other => return Err(PresetError::UnknownKey(other.to_string())),
         }
         Ok(())
@@ -208,13 +208,17 @@ impl Preset {
     }
 
     /// `led = [LAYER] action -> note|cc N [ch C] [on=V] [off=V]` and `ring = ... [scale=V]`
-    fn parse_light(&mut self, ring: bool, value: &str) -> Result<(), PresetError> {
+    fn parse_light(&mut self, kind: LightKind, value: &str) -> Result<(), PresetError> {
         let (left, right) = value.split_once("->").ok_or(PresetError::ExpectedArrow)?;
         let mut w: Vec<&str> = left.split_whitespace().collect();
         let layer = split_layer(&mut w, &ACTIONS.iter().map(|i| i.name).chain(["mute", "solo", "gain", "audition"]).collect::<Vec<_>>());
         let action = Action::parse(&w.join(" ")).ok_or_else(|| PresetError::UnknownAction(w.join(" ")))?;
-        if ring && !action.is_level() || !ring && !action.has_light() {
-            return Err(PresetError::CannotBeShown { action: action.text(), ring });
+        let can = match kind {
+            LightKind::Ring => action.is_level(),
+            LightKind::Led => action.has_light(),
+        };
+        if !can {
+            return Err(PresetError::CannotBeShown { action: action.text(), shows: kind });
         }
         let mut r: Vec<&str> = right.split_whitespace().collect();
         let channel = take_channel(&mut r)?.unwrap_or(1);
@@ -226,12 +230,12 @@ impl Preset {
                 continue;
             };
             let n: u8 = number.parse().ok().filter(|n| *n <= 127).ok_or_else(|| PresetError::BadLightNumber(word.to_string()))?;
-            match (name.to_ascii_lowercase().as_str(), ring) {
-                ("on", false) => on = n,
-                ("off", false) => off = n,
-                ("scale", true) => scale = Some(n),
-                ("on" | "off", true) => return Err(PresetError::RingTakesScale(name.to_string())),
-                ("scale", false) => return Err(PresetError::LightTakesOnOff),
+            match (name.to_ascii_lowercase().as_str(), kind) {
+                ("on", LightKind::Led) => on = n,
+                ("off", LightKind::Led) => off = n,
+                ("scale", LightKind::Ring) => scale = Some(n),
+                ("on" | "off", LightKind::Ring) => return Err(PresetError::RingTakesScale(name.to_string())),
+                ("scale", LightKind::Led) => return Err(PresetError::LightTakesOnOff),
                 _ => return Err(PresetError::UnknownSetting(word.to_string())),
             }
         }
@@ -240,7 +244,7 @@ impl Preset {
             Src::Cc(n) => Out::Cc(n),
             Src::Bend(_) => return Err(PresetError::LightNeedsNoteOrCc),
         };
-        self.lights.push(Light { layer, action, out, ring, channel, on, off, scale });
+        self.lights.push(Light { layer, action, out, kind, channel, on, off, scale });
         Ok(())
     }
 
@@ -295,7 +299,7 @@ impl Preset {
             s.push_str(&format!("bind = {left} -> {}\n", b.action.text()));
         }
         for l in &self.lights {
-            let key = if l.ring { "ring" } else { "led" };
+            let key = if l.kind == LightKind::Ring { "ring" } else { "led" };
             let layer = l.layer.as_ref().map(|x| format!("{x} ")).unwrap_or_default();
             let out = match l.out {
                 Out::Note(n) => format!("note {n}"),
@@ -308,7 +312,7 @@ impl Preset {
             if let Some(scale) = l.scale {
                 right.push_str(&format!(" scale={scale}"));
             }
-            if !l.ring && (l.on, l.off) != (127, 0) {
+            if l.kind == LightKind::Led && (l.on, l.off) != (127, 0) {
                 right.push_str(&format!(" on={} off={}", l.on, l.off));
             }
             s.push_str(&format!("{key} = {layer}{} -> {right}\n", l.action.text()));
@@ -344,23 +348,23 @@ impl Preset {
         taken_from
     }
 
-    /// The lights (`ring` false) or rings (`ring` true) of `action` on exactly `layer`.
-    pub fn lights_of(&self, layer: Option<&str>, action: Action, ring: bool) -> Option<&Light> {
-        self.lights.iter().find(|l| l.layer.as_deref() == layer && l.action == action && l.ring == ring)
+    /// The lights or rings (`kind`) of `action` on exactly `layer`.
+    pub fn lights_of(&self, layer: Option<&str>, action: Action, kind: LightKind) -> Option<&Light> {
+        self.lights.iter().find(|l| l.layer.as_deref() == layer && l.action == action && l.kind == kind)
     }
 
     /// Gives `action` the light or ring `light` on its layer, in place of the one it had.
     pub fn set_light(&mut self, light: Light) {
-        let at = self.lights.iter().position(|l| l.layer == light.layer && l.action == light.action && l.ring == light.ring);
+        let at = self.lights.iter().position(|l| l.layer == light.layer && l.action == light.action && l.kind == light.kind);
         match at {
             Some(i) => self.lights[i] = light,
             None => self.lights.push(light),
         }
     }
 
-    /// Takes the light (`ring` false) or ring of `action` on `layer` away.
-    pub fn clear_light(&mut self, layer: Option<&str>, action: Action, ring: bool) {
-        self.lights.retain(|l| !(l.layer.as_deref() == layer && l.action == action && l.ring == ring));
+    /// Takes the light or ring (`kind`) of `action` on `layer` away.
+    pub fn clear_light(&mut self, layer: Option<&str>, action: Action, kind: LightKind) {
+        self.lights.retain(|l| !(l.layer.as_deref() == layer && l.action == action && l.kind == kind));
     }
 
     /// Adds a layer called `name` that the control `src` switches to. The name is one word that is

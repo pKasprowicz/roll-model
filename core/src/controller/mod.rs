@@ -33,7 +33,7 @@ mod store;
 #[cfg(test)]
 mod tests;
 
-pub use action::{Action, Out, Src, State};
+pub use action::{Action, LightKind, Out, Src, State};
 pub use error::{LayerError, LoadPresetError, PresetError};
 pub use mapper::{learn, Command, Learned, Mapper};
 pub use message::{parse, Encoding, Msg, Reading};

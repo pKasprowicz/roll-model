@@ -12,8 +12,8 @@ use std::time::SystemTime;
 use egui::{RichText, ViewportBuilder, ViewportClass, ViewportId};
 
 use super::learner::{action_order, Heard, Learner};
-use super::{controller, Action, DrumApp};
-use crate::controller::{Binding, Encoding, Light, Preset, Reading};
+use super::{controller, Action, DrumApp, PortAfter};
+use crate::controller::{Binding, Encoding, Light, LightKind, Preset, Reading};
 use crate::theme;
 use crate::widgets;
 
@@ -140,18 +140,20 @@ enum Op {
     NewPreset,
     CopyToEdit,
     Rename,
-    AskDelete(bool),
+    AskDelete,
+    KeepPreset,
     Delete,
     /// Give the action a light (false) or a ring (true) on the control it is bound to.
-    AddLight(Action, bool),
+    AddLight(Action, LightKind),
     /// Change a light; `true` when the number stopped changing (the drag ended, or the typing).
     SetLight(Light, bool),
-    ClearLight(Action, bool),
+    ClearLight(Action, LightKind),
     Detect(Action),
     AddLayer,
     CloseAddLayer,
     LearnLayer,
-    AskDeleteLayer(bool),
+    AskDeleteLayer,
+    KeepLayer,
     DeleteLayer(String),
 }
 
@@ -493,7 +495,7 @@ impl DrumApp {
                         op = Some(Op::Delete);
                     }
                     if ui.button("Keep").clicked() {
-                        op = Some(Op::AskDelete(false));
+                        op = Some(Op::KeepPreset);
                     }
                 });
             } else {
@@ -517,7 +519,7 @@ impl DrumApp {
                         .on_hover_text("Remove the chosen preset (built-in presets cannot be removed)")
                         .clicked()
                     {
-                        op = Some(Op::AskDelete(true));
+                        op = Some(Op::AskDelete);
                     }
                 });
             }
@@ -604,7 +606,7 @@ impl DrumApp {
         match controller::PresetStore::new(dir).rename(&old, &new) {
             Ok(_) => {
                 self.refresh_controllers();
-                self.choose_preset(new.clone(), true);
+                self.choose_preset(new.clone(), PortAfter::Chosen);
                 self.controller.editor.say(format!("Renamed to {new}."));
             }
             Err(e @ (controller::RenameError::Name(_) | controller::RenameError::Exists)) => self.controller.editor.say(e.to_string()),
@@ -700,10 +702,10 @@ impl DrumApp {
                         op = Some(Op::DeleteLayer(name));
                     }
                     if ui.small_button("Keep").clicked() {
-                        op = Some(Op::AskDeleteLayer(false));
+                        op = Some(Op::KeepLayer);
                     }
                 } else if ui.small_button("Delete layer").clicked() {
-                    op = Some(Op::AskDeleteLayer(true));
+                    op = Some(Op::AskDeleteLayer);
                 }
             }
         });
@@ -767,24 +769,24 @@ impl DrumApp {
                     self.controller.editor.start_detecting(action);
                 }
             }
-            Op::AddLight(action, ring) => {
+            Op::AddLight(action, kind) => {
                 let Some(preset) = self.preset_being_edited() else { return };
                 let layer = self.editor_layer(&preset);
                 let target = preset
                     .bindings_of(layer.as_deref(), action)
                     .into_iter()
-                    .find_map(|b| b.input.src.light_target(ring).map(|out| (b, out)));
+                    .find_map(|b| b.input.src.light_target(kind).map(|out| (b, out)));
                 if let Some((b, out)) = target {
-                    let mut light = Light::new(layer.as_deref(), action, out, ring);
+                    let mut light = Light::new(layer.as_deref(), action, out, kind);
                     light.channel = b.input.channel.unwrap_or(1);
                     let _ = self.edit_preset(|p| p.set_light(light));
                 }
             }
             Op::SetLight(light, settled) => self.set_light(light, settled),
-            Op::ClearLight(action, ring) => {
+            Op::ClearLight(action, kind) => {
                 if let Some(preset) = self.preset_being_edited() {
                     let layer = self.editor_layer(&preset);
-                    let _ = self.edit_preset(|p| p.clear_light(layer.as_deref(), action, ring));
+                    let _ = self.edit_preset(|p| p.clear_light(layer.as_deref(), action, kind));
                 }
             }
             Op::AddLayer => {
@@ -800,7 +802,8 @@ impl DrumApp {
                     self.controller.editor.start_learning_layer(name);
                 }
             }
-            Op::AskDeleteLayer(ask) => self.controller.editor.view.confirm_layer_delete = ask,
+            Op::AskDeleteLayer => self.controller.editor.view.confirm_layer_delete = true,
+            Op::KeepLayer => self.controller.editor.view.confirm_layer_delete = false,
             Op::DeleteLayer(name) => {
                 let deleted = self.edit_preset(|p| p.remove_layer(&name)).is_ok();
                 let editor = &mut self.controller.editor;
@@ -826,7 +829,8 @@ impl DrumApp {
             Op::NewPreset => self.new_learned_preset(),
             Op::CopyToEdit => self.copy_to_edit(),
             Op::Rename => self.rename_preset(),
-            Op::AskDelete(ask) => self.controller.editor.view.confirm_delete = ask,
+            Op::AskDelete => self.controller.editor.view.confirm_delete = true,
+            Op::KeepPreset => self.controller.editor.view.confirm_delete = false,
             Op::Delete => self.delete_preset(),
         }
     }
@@ -902,7 +906,7 @@ fn lights_section(ui: &mut egui::Ui, preset: &Preset, layer: Option<&str>) -> Op
                     continue;
                 }
                 let bound = preset.bindings_of(layer, action);
-                let shown = preset.lights_of(layer, action, false).is_some() || preset.lights_of(layer, action, true).is_some();
+                let shown = preset.lights_of(layer, action, LightKind::Led).is_some() || preset.lights_of(layer, action, LightKind::Ring).is_some();
                 if bound.is_empty() && !shown {
                     continue;
                 }
@@ -924,12 +928,13 @@ fn lights_section(ui: &mut egui::Ui, preset: &Preset, layer: Option<&str>) -> Op
 fn light_cell(ui: &mut egui::Ui, preset: &Preset, layer: Option<&str>, action: Action, bound: &[&Binding]) -> Option<Op> {
     let mut op = None;
     ui.horizontal(|ui| {
-        for ring in [false, true] {
+        for shows in [LightKind::Led, LightKind::Ring] {
+            let ring = shows == LightKind::Ring;
             if (ring && !action.is_level()) || (!ring && !action.has_light()) {
                 continue;
             }
-            let kind = if ring { "ring" } else { "light" };
-            match preset.lights_of(layer, action, ring) {
+            let kind = shows.word();
+            match preset.lights_of(layer, action, shows) {
                 Some(found) => {
                     let mut light = found.clone();
                     let mut changed = false;
@@ -963,18 +968,18 @@ fn light_cell(ui: &mut egui::Ui, preset: &Preset, layer: Option<&str>, action: A
                         op = Some(Op::SetLight(light, settled));
                     }
                     if ui.small_button("×").on_hover_text(format!("Remove the {kind}")).clicked() {
-                        op = Some(Op::ClearLight(action, ring));
+                        op = Some(Op::ClearLight(action, shows));
                     }
                 }
                 None => {
-                    let possible = bound.iter().any(|b| b.input.src.light_target(ring).is_some());
+                    let possible = bound.iter().any(|b| b.input.src.light_target(shows).is_some());
                     let hint = if ring {
                         "Show the value in an LED ring on the same cc as the knob; change the number if the device uses another"
                     } else {
                         "Light the button on the same note or cc it sends; change the number if the device uses another"
                     };
                     if ui.add_enabled(possible, egui::Button::new(format!("Add {kind}")).small()).on_hover_text(hint).clicked() {
-                        op = Some(Op::AddLight(action, ring));
+                        op = Some(Op::AddLight(action, shows));
                     }
                 }
             }
@@ -1039,28 +1044,28 @@ bind = cc 13 abs -> tempo
         app.paths = Paths::in_dir(dir.parent().unwrap().to_path_buf());
         let saved = || controller::Preset::parse(&std::fs::read_to_string(dir.join("Pads.txt")).unwrap());
 
-        app.run_op(Some(Op::AddLight(Action::Record, false)));
-        app.run_op(Some(Op::AddLight(Action::Tempo, true)));
-        let light = saved().lights_of(None, Action::Record, false).cloned().unwrap();
+        app.run_op(Some(Op::AddLight(Action::Record, LightKind::Led)));
+        app.run_op(Some(Op::AddLight(Action::Tempo, LightKind::Ring)));
+        let light = saved().lights_of(None, Action::Record, LightKind::Led).cloned().unwrap();
         assert_eq!(
             (light.out, light.channel, light.on, light.off),
             (controller::Out::Note(36), 3, 127, 0),
             "on the control of the action, on its channel"
         );
-        assert_eq!(saved().lights_of(None, Action::Tempo, true).unwrap().out, controller::Out::Cc(13));
+        assert_eq!(saved().lights_of(None, Action::Tempo, LightKind::Ring).unwrap().out, controller::Out::Cc(13));
         // An action without a control of the right kind gets nothing.
-        app.run_op(Some(Op::AddLight(Action::Stop, false)));
-        app.run_op(Some(Op::AddLight(Action::Record, true)));
+        app.run_op(Some(Op::AddLight(Action::Stop, LightKind::Led)));
+        app.run_op(Some(Op::AddLight(Action::Record, LightKind::Ring)));
         assert_eq!(saved().lights.len(), 2);
         // Editing replaces, clearing removes.
         let mut colour = light.clone();
         colour.on = 60;
         colour.out = controller::Out::Note(40);
         app.run_op(Some(Op::SetLight(colour, true)));
-        let kept = saved().lights_of(None, Action::Record, false).cloned().unwrap();
+        let kept = saved().lights_of(None, Action::Record, LightKind::Led).cloned().unwrap();
         assert_eq!((kept.out, kept.on), (controller::Out::Note(40), 60));
-        app.run_op(Some(Op::ClearLight(Action::Record, false)));
-        assert!(saved().lights_of(None, Action::Record, false).is_none());
+        app.run_op(Some(Op::ClearLight(Action::Record, LightKind::Led)));
+        assert!(saved().lights_of(None, Action::Record, LightKind::Led).is_none());
         assert!(saved().warnings.is_empty(), "{:?}", saved().warnings);
         // The table draws with a light, a ring, and the buttons to add one.
         let ctx = egui::Context::default();
@@ -1131,8 +1136,8 @@ bind = note 36 -> record
         app.paths = Paths::in_dir(dir.parent().unwrap().to_path_buf());
         let file = dir.join("Pads.txt");
         let on_disk = || controller::Preset::parse(&std::fs::read_to_string(&file).unwrap());
-        app.run_op(Some(Op::AddLight(Action::Record, false)));
-        let mut light = on_disk().lights_of(None, Action::Record, false).cloned().unwrap();
+        app.run_op(Some(Op::AddLight(Action::Record, LightKind::Led)));
+        let mut light = on_disk().lights_of(None, Action::Record, LightKind::Led).cloned().unwrap();
         let written = std::fs::read_to_string(&file).unwrap();
 
         for on in 1..=60 {
@@ -1141,23 +1146,23 @@ bind = note 36 -> record
         }
         assert_eq!(std::fs::read_to_string(&file).unwrap(), written, "the file is not touched while the number moves");
         let shown = app.preset_being_edited().unwrap();
-        assert_eq!(shown.lights_of(None, Action::Record, false).unwrap().on, 60, "the table shows the value now");
+        assert_eq!(shown.lights_of(None, Action::Record, LightKind::Led).unwrap().on, 60, "the table shows the value now");
 
         app.run_op(Some(Op::SetLight(light.clone(), true)));
-        assert_eq!(on_disk().lights_of(None, Action::Record, false).unwrap().on, 60, "written when the drag ends");
+        assert_eq!(on_disk().lights_of(None, Action::Record, LightKind::Led).unwrap().on, 60, "written when the drag ends");
         assert!(app.controller.editor.draft.is_none());
 
         // Closing the program in the middle of a drag keeps what was dragged to.
         light.on = 7;
         app.run_op(Some(Op::SetLight(light, false)));
         app.flush_draft();
-        assert_eq!(on_disk().lights_of(None, Action::Record, false).unwrap().on, 7);
+        assert_eq!(on_disk().lights_of(None, Action::Record, LightKind::Led).unwrap().on, 7);
         // Another change while a drag is pending does not lose it.
-        let mut again = on_disk().lights_of(None, Action::Record, false).cloned().unwrap();
+        let mut again = on_disk().lights_of(None, Action::Record, LightKind::Led).cloned().unwrap();
         again.on = 9;
         app.run_op(Some(Op::SetLight(again, false)));
         app.run_op(Some(Op::Clear(Action::Stop)));
-        assert_eq!(on_disk().lights_of(None, Action::Record, false).unwrap().on, 9);
+        assert_eq!(on_disk().lights_of(None, Action::Record, LightKind::Led).unwrap().on, 9);
     }
 
     #[test]

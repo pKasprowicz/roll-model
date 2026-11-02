@@ -9,8 +9,8 @@ use crate::drums::Lane;
 use crate::metronome::{ClickOptions, Metronome, HAS_AUDIO};
 use crate::playback::{self, ClockOptions, PlayOptions, Player};
 use crate::practice::Ramp;
-use crate::score::Click;
 use crate::score::Score;
+use crate::score::{Click, Clicks};
 use crate::units::{Quarters, Seconds};
 
 use super::take::{signed_secs, Plan, Shown, StopReason, Take};
@@ -147,7 +147,7 @@ impl DrumApp {
         let zero = Instant::now() + Duration::from_secs_f64(lead + count_in_beats as f64 * beat_sec.0);
         let t0 = score.tempo.q_to_sec(m0.start_q, scale);
         let end_sec = score.tempo.q_to_sec(score.measures()[to].end_q(), scale) - t0;
-        let clicks = score.click_track(from, to, scale, count_in_beats, true);
+        let clicks = score.click_track(from, to, scale, count_in_beats, Clicks::WithBeats);
         Some(Plan { from, to, scale, bpm, beat_sec, count_in_beats, zero, t0, end_sec, clicks })
     }
 

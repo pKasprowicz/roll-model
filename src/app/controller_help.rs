@@ -5,7 +5,7 @@
 use egui::{Align, Color32, Pos2, Rect, RichText, Sense, Stroke, Vec2};
 
 use super::DrumApp;
-use crate::controller::{self, Preset};
+use crate::controller::{self, LightKind, Preset};
 use crate::controller_layout::{self as layout, Control, ControlKind, Layout, Mapping, Meaning, Printed};
 use crate::theme;
 use crate::widgets;
@@ -312,7 +312,7 @@ impl Paint {
         let label = title_of(&mapping.press);
         let (fill, text) = if label.is_some() { (KEY, DARK_TEXT) } else { (KEY_UNUSED, DIM_TEXT) };
         self.painter.rect(rect, self.px(7.0), fill, outline);
-        let lit = matches!(&mapping.press, Some(Meaning::Action(a)) if layout::is_lit(preset, layer, *a, false));
+        let lit = matches!(&mapping.press, Some(Meaning::Action(a)) if layout::is_lit(preset, layer, *a, LightKind::Led));
         // The light sits in the corner; a button with one keeps its text clear of it. A single long word
         // cannot be broken, so it may use the whole width (the light is small) and is set a little smaller.
         let one_word = label.as_deref().is_some_and(|l| !l.contains(' '));
@@ -336,7 +336,7 @@ impl Paint {
     fn encoder(&self, rect: Rect, preset: &Preset, layer: Option<&str>, mapping: &Mapping, outline: Stroke) {
         let centre = rect.center();
         let radius = rect.width() / 2.0;
-        let ring_lit = matches!(&mapping.turn, Some(Meaning::Action(a)) if layout::is_lit(preset, layer, *a, true));
+        let ring_lit = matches!(&mapping.turn, Some(Meaning::Action(a)) if layout::is_lit(preset, layer, *a, LightKind::Ring));
         // The LED ring: three quarters of a circle, open at the bottom.
         for i in 0..RING_DOTS {
             let angle = (135.0 + 270.0 * i as f32 / (RING_DOTS - 1) as f32).to_radians();

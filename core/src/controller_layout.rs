@@ -7,7 +7,7 @@
 //! their fronts (positions measured on the photo, the height of the Mini stretched to make room
 //! for labels), and one made from any preset (`generated`).
 
-use crate::controller::{Action, Binding, Preset, Src};
+use crate::controller::{Action, Binding, LightKind, Preset, Src};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ControlKind {
@@ -355,9 +355,9 @@ pub fn mapping(preset: &Preset, layer: Option<&str>, control: &Control) -> Mappi
     Mapping { press: control.press.and_then(meaning), turn: control.turn.and_then(meaning) }
 }
 
-/// Whether the controller shows `action` with a light (`ring` false) or an LED ring (`ring` true) on `layer`.
-pub fn is_lit(preset: &Preset, layer: Option<&str>, action: Action, ring: bool) -> bool {
-    preset.lights.iter().any(|l| l.ring == ring && l.action == action && (l.layer.is_none() || l.layer.as_deref() == layer))
+/// Whether the controller shows `action` with a light or an LED ring (`kind`) on `layer`.
+pub fn is_lit(preset: &Preset, layer: Option<&str>, action: Action, kind: LightKind) -> bool {
+    preset.lights.iter().any(|l| l.kind == kind && l.action == action && (l.layer.is_none() || l.layer.as_deref() == layer))
 }
 
 #[cfg(test)]
@@ -536,7 +536,7 @@ mod tests {
             let (preset, layout) = device(name);
             for light in &preset.lights {
                 let layer = light.layer.as_deref();
-                if light.ring {
+                if light.kind == LightKind::Ring {
                     // A ring is addressed by the number of its encoder, cc 48 + n.
                     let Out::Cc(cc) = light.out else { panic!("a ring is set with a cc") };
                     let encoder = &layout.controls[(cc - 48) as usize];
@@ -672,13 +672,13 @@ mod tests {
     #[test]
     fn lights_and_rings_are_found_per_layer() {
         let (preset, _) = mini();
-        assert!(is_lit(&preset, Some("A"), Action::Record, false));
-        assert!(!is_lit(&preset, Some("A"), Action::Mute(0), false));
-        assert!(is_lit(&preset, Some("B"), Action::Mute(0), false));
-        assert!(is_lit(&preset, Some("A"), Action::Tempo, true));
-        assert!(!is_lit(&preset, Some("A"), Action::BrowseScores, true), "no ring shows the recent scores");
+        assert!(is_lit(&preset, Some("A"), Action::Record, LightKind::Led));
+        assert!(!is_lit(&preset, Some("A"), Action::Mute(0), LightKind::Led));
+        assert!(is_lit(&preset, Some("B"), Action::Mute(0), LightKind::Led));
+        assert!(is_lit(&preset, Some("A"), Action::Tempo, LightKind::Ring));
+        assert!(!is_lit(&preset, Some("A"), Action::BrowseScores, LightKind::Ring), "no ring shows the recent scores");
         let (compact, _) = device(COMPACT);
-        assert!(is_lit(&compact, None, Action::Mute(7), false) && is_lit(&compact, None, Action::Tempo, true));
+        assert!(is_lit(&compact, None, Action::Mute(7), LightKind::Led) && is_lit(&compact, None, Action::Tempo, LightKind::Ring));
     }
 
     #[test]

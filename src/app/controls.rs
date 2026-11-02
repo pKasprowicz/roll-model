@@ -110,6 +110,15 @@ impl Controller {
     }
 }
 
+/// Which port the controller is connected on after another preset is chosen.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) enum PortAfter {
+    /// The one the preset names.
+    PresetsOwn,
+    /// The one chosen by hand.
+    Chosen,
+}
+
 /// The controller's entry in the top bar.
 pub(super) struct ControllerLabel {
     pub text: String,
@@ -158,13 +167,13 @@ impl DrumApp {
     /// Chooses a preset (`""`: none) as the one in use and connects its controller. The port
     /// is the preset's own again, and what the editor was doing with the old one is dropped.
     pub(super) fn select_preset(&mut self, name: String) {
-        self.choose_preset(name, false);
+        self.choose_preset(name, PortAfter::PresetsOwn);
     }
 
     /// `select_preset`, optionally keeping a port chosen by hand (a renamed preset keeps it).
-    pub(super) fn choose_preset(&mut self, name: String, keep_port: bool) {
+    pub(super) fn choose_preset(&mut self, name: String, port: PortAfter) {
         self.cfg.controller_preset = name;
-        if !keep_port {
+        if port == PortAfter::PresetsOwn {
             self.cfg.controller_port.clear();
         }
         self.controller.editor.start_over();

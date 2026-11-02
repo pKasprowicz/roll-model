@@ -643,22 +643,22 @@ fn layers_are_added_and_removed_with_what_belongs_to_them() {
 #[test]
 fn lights_and_rings_are_set_replaced_and_cleared_per_layer() {
     let mut p = Preset::parse("name = T\nport = P\nlayer = A note 84\n");
-    p.set_light(Light::new(Some("A"), Action::Record, Out::Note(95), false));
-    p.set_light(Light::new(Some("A"), Action::Tempo, Out::Cc(48), true));
-    p.set_light(Light::new(None, Action::Record, Out::Note(1), false));
+    p.set_light(Light::new(Some("A"), Action::Record, Out::Note(95), LightKind::Led));
+    p.set_light(Light::new(Some("A"), Action::Tempo, Out::Cc(48), LightKind::Ring));
+    p.set_light(Light::new(None, Action::Record, Out::Note(1), LightKind::Led));
     assert_eq!(p.lights.len(), 3);
     // Setting again replaces: the old light of that layer, action and kind goes.
-    let mut louder = Light::new(Some("A"), Action::Record, Out::Note(96), false);
+    let mut louder = Light::new(Some("A"), Action::Record, Out::Note(96), LightKind::Led);
     louder.on = 60;
     louder.off = 5;
     p.set_light(louder);
     assert_eq!(p.lights.len(), 3);
-    let kept = p.lights_of(Some("A"), Action::Record, false).unwrap();
+    let kept = p.lights_of(Some("A"), Action::Record, LightKind::Led).unwrap();
     assert_eq!((kept.out, kept.on, kept.off), (Out::Note(96), 60, 5));
-    assert!(p.lights_of(Some("A"), Action::Record, true).is_none(), "a ring is not a light");
-    p.clear_light(Some("A"), Action::Record, false);
-    assert!(p.lights_of(Some("A"), Action::Record, false).is_none());
-    assert!(p.lights_of(None, Action::Record, false).is_some(), "the light for every layer stays");
+    assert!(p.lights_of(Some("A"), Action::Record, LightKind::Ring).is_none(), "a ring is not a light");
+    p.clear_light(Some("A"), Action::Record, LightKind::Led);
+    assert!(p.lights_of(Some("A"), Action::Record, LightKind::Led).is_none());
+    assert!(p.lights_of(None, Action::Record, LightKind::Led).is_some(), "the light for every layer stays");
     // What was set is in the file, and reads back.
     let back = Preset::parse(&p.to_text());
     assert_eq!(back.lights, p.lights);
@@ -682,11 +682,11 @@ fn an_encoding_is_guessed_from_a_few_clicks_each_way() {
 
 #[test]
 fn a_control_is_lit_on_its_own_number_and_a_pitch_bend_cannot_be_lit() {
-    assert_eq!(Src::Note(36).light_target(false), Some(Out::Note(36)));
-    assert_eq!(Src::Cc(13).light_target(false), Some(Out::Cc(13)));
-    assert_eq!(Src::Cc(13).light_target(true), Some(Out::Cc(13)), "a ring is on a cc");
-    assert_eq!(Src::Note(36).light_target(true), None, "a button has no ring");
+    assert_eq!(Src::Note(36).light_target(LightKind::Led), Some(Out::Note(36)));
+    assert_eq!(Src::Cc(13).light_target(LightKind::Led), Some(Out::Cc(13)));
+    assert_eq!(Src::Cc(13).light_target(LightKind::Ring), Some(Out::Cc(13)), "a ring is on a cc");
+    assert_eq!(Src::Note(36).light_target(LightKind::Ring), None, "a button has no ring");
     // Its number is a channel, which would otherwise be taken for a note.
-    assert_eq!(Src::Bend(3).light_target(false), None);
-    assert_eq!(Src::Bend(3).light_target(true), None);
+    assert_eq!(Src::Bend(3).light_target(LightKind::Led), None);
+    assert_eq!(Src::Bend(3).light_target(LightKind::Ring), None);
 }
