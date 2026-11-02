@@ -7,6 +7,7 @@ mod debounce;
 mod home;
 mod import_menu;
 mod metro;
+mod metro_state;
 mod mixer;
 mod playback_state;
 mod results;
@@ -26,19 +27,18 @@ use egui::RichText;
 
 use crate::analysis::{Expected, Hit, Report, Window};
 use crate::config::{Config, Paths, RowLayout};
-use crate::control::SoundSwitches;
 use crate::controller::Action;
 use crate::drums::Lane;
 use crate::import::load_score;
 use crate::metronome::Metronome;
 use crate::midi::{self, EventQueue, InputHandle, RawEvent};
-use crate::playback::Player;
 use crate::practice_tempo::PracticeTempo;
 use crate::score::Click;
 use crate::score::Score;
 use crate::theme;
 use crate::units::{Millis, Seconds};
 use crate::widgets;
+use metro_state::MetroState;
 use playback_state::{Listen, ListenKey, Playback};
 use session::signed_secs;
 use settings::SettingsPage;
@@ -194,13 +194,6 @@ struct MidiState {
     lane_text: BTreeMap<Lane, String>,
 }
 
-/// The free metronome tab's run, its sound thread and the settings that thread shares.
-struct MetroState {
-    run: Option<metro::Run>,
-    player: Option<Player>,
-    control: Arc<SoundSwitches>,
-}
-
 pub struct DrumApp {
     cfg: Config,
     saved_cfg: Config,
@@ -330,7 +323,7 @@ impl DrumApp {
             audio_devices: Vec::new(),
             audio_default: None,
             audio: audio_output::AudioOutput::default(),
-            metro_run: MetroState { run: None, player: None, control: SoundSwitches::new() },
+            metro_run: MetroState::new(),
             controller: controls::Controller::new(),
             controller_help: None,
             startup: None,
@@ -712,7 +705,7 @@ impl DrumApp {
     /// Keep animating while recording, calibrating, listening or clicking; otherwise poll MIDI
     /// often enough for the monitor and MIDI-learn.
     fn schedule_repaint(&self, ctx: &egui::Context) {
-        if self.take_running() || self.calibration.is_some() || self.playback.is_listening() || self.metro_run.run.is_some() {
+        if self.take_running() || self.calibration.is_some() || self.playback.is_listening() || self.metro_run.is_running() {
             ctx.request_repaint();
         } else {
             ctx.request_repaint_after(Duration::from_millis(50));

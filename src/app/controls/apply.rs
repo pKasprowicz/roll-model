@@ -68,7 +68,7 @@ impl DrumApp {
             click: c.metronome_during_take,
             looping: self.playback.looping(),
             notes: self.playback.notes(),
-            metronome: self.metro_run.run.is_some(),
+            metronome: self.metro_run.is_running(),
             tempo: tempo.clamp(0.0, 1.0),
             range_from: along(self.practice.range_from),
             range_to: along(self.practice.range_to),
@@ -150,7 +150,7 @@ impl DrumApp {
             Action::Loop if !running => self.playback.toggle_looping(),
             Action::Notes if !running => self.playback.toggle_notes(),
             Action::Metronome if !running => {
-                if self.metro_run.run.is_some() {
+                if self.metro_run.is_running() {
                     self.stop_metro();
                 } else {
                     self.start_metro();

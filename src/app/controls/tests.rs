@@ -272,7 +272,7 @@ fn the_keys_and_the_controller_buttons_follow_the_same_rules() {
     let looping = app.playback.looping();
     press_key(&mut app, egui::Key::M);
     app.apply_command(Command::Press(Action::Loop));
-    assert!(app.metro_run.run.is_none() && app.playback.looping() == looping);
+    assert!(!app.metro_run.is_running() && app.playback.looping() == looping);
     assert!(app.take_running());
     press_key(&mut app, egui::Key::R);
     assert!(!app.take_running(), "R stops the recording like the Record button");

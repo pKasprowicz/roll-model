@@ -87,7 +87,7 @@ impl DrumApp {
             c.set_lane_gain(lane, self.cfg.effective_gain(self.playback.solo(), lane));
         }
         // The free metronome always clicks and loops.
-        let m = &self.metro_run.control;
+        let m = self.metro_run.control();
         m.set_click(true);
         m.set_looping(true);
         m.set_click_volume(self.cfg.click_volume);

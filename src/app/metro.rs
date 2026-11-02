@@ -6,7 +6,7 @@ use std::time::{Duration, Instant};
 
 use egui::{pos2, vec2, RichText, Sense, Stroke};
 
-use super::debounce::Debounce;
+use super::metro_state::{MetroKey, Run};
 use super::{DrumApp, Source, RESTART_DELAY};
 use crate::config::{limits, Subdivision};
 use crate::controller::Action;
@@ -19,29 +19,8 @@ use crate::theme;
 use crate::units::Quarters;
 use crate::widgets;
 
-/// A running metronome and what it was started with.
-pub(super) struct Run {
-    zero: Instant,
-    beat_sec: f64,
-    /// Seconds of one bar at the starting tempo, and the tempo ramp it runs with.
-    bar_sec: f64,
-    ramp: Ramp,
-    /// Tenths of a BPM, beats per bar, subdivision: a change restarts it.
-    signature: MetroKey,
-    /// A changed signature, waited for until it has settled.
-    restart: Debounce<MetroKey>,
-}
-
-/// What the running metronome plays; a change of it restarts it once it has settled.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-struct MetroKey {
-    tempo_tenths: i32,
-    beats: u32,
-    subdivision: Subdivision,
-}
-
 impl DrumApp {
-    fn metro_signature(&self) -> MetroKey {
+    fn metro_key(&self) -> MetroKey {
         MetroKey { tempo_tenths: (self.cfg.metro_bpm * 10.0).round() as i32, beats: self.cfg.metro_beats, subdivision: self.cfg.metro_sub }
     }
 
@@ -92,15 +71,8 @@ impl DrumApp {
         self.sync_control();
         // Half a second of lead: the sound device needs time to open.
         let zero = Instant::now() + Duration::from_millis(500);
-        self.metro_run.player = Some(Player::start(zero, cues, bar_len, opts, self.metro_run.control.clone()));
-        self.metro_run.run = Some(Run {
-            zero,
-            beat_sec: 60.0 / bpm,
-            bar_sec: bar_len,
-            ramp: self.metro_ramp(),
-            signature: self.metro_signature(),
-            restart: Debounce::default(),
-        });
+        let player = Player::start(zero, cues, bar_len, opts, self.metro_run.control().clone());
+        self.metro_run.begin(player, Run::new(zero, 60.0 / bpm, bar_len, self.metro_ramp(), self.metro_key()));
         self.view.status = format!("Metronome: {bpm:.0} BPM, {} beats per bar", self.cfg.metro_beats);
         let ramp = self.metro_ramp();
         if ramp.every > 0 {
@@ -109,31 +81,17 @@ impl DrumApp {
     }
 
     pub(super) fn stop_metro(&mut self) {
-        if let Some(mut p) = self.metro_run.player.take() {
-            p.stop();
-        }
-        self.metro_run.run = None;
+        self.metro_run.stop();
     }
 
     /// Restarts a running metronome once a changed tempo, bar length or subdivision has settled.
     pub(super) fn update_metro(&mut self) {
-        let now_signature = self.metro_signature();
-        let restart = self.metro_run.run.as_mut().is_some_and(|run| {
-            let changed = (run.signature != now_signature).then_some(now_signature);
-            run.restart.poll(changed, Instant::now(), RESTART_DELAY)
-        });
-        if restart {
+        let polled = self.metro_run.poll(self.metro_key(), Instant::now(), RESTART_DELAY);
+        if polled.restart {
             self.start_metro();
+            return;
         }
-        if let Some(p) = self.metro_run.player.as_ref() {
-            let errors = p.take_errors();
-            let finished = p.is_finished();
-            self.report_sound_errors(errors);
-            if finished {
-                self.metro_run.player = None;
-                self.metro_run.run = None;
-            }
-        }
+        self.report_sound_errors(polled.errors);
     }
 
     pub(super) fn metronome_tab(&mut self, ui: &mut egui::Ui) {
@@ -147,7 +105,7 @@ impl DrumApp {
         ui.add_space(8.0);
         ui.scope(|ui| {
             widgets::roomy(ui);
-            let running = self.metro_run.run.is_some();
+            let running = self.metro_run.is_running();
             let label = if running { "⏹ Stop (M)" } else { "⏵ Start (M)" };
             if ui.button(RichText::new(label).strong().size(22.0)).clicked() {
                 self.press(Action::Metronome);
@@ -186,13 +144,10 @@ impl DrumApp {
     /// Where the rolling preview is, in quarters from the start of the score: the
     /// practice range repeats, and the metronome's first beat is its first note.
     fn metro_preview_pos(&self, start_q: Quarters, len_q: Quarters) -> f64 {
-        let Some(run) = self.metro_run.run.as_ref() else { return start_q.0 };
-        let now = self.shown_now();
-        let elapsed = match now.checked_duration_since(run.zero) {
-            Some(d) => d.as_secs_f64(),
-            None => -run.zero.duration_since(now).as_secs_f64(),
-        };
-        start_q.0 + (run.ramp.base_seconds(run.bar_sec, elapsed) / run.beat_sec).rem_euclid(len_q.0.max(1e-6))
+        match self.metro_run.beats_at(self.shown_now()) {
+            Some(beats) => start_q.0 + beats.rem_euclid(len_q.0.max(1e-6)),
+            None => start_q.0,
+        }
     }
 
     /// The loaded score, or with none the metronome's own bar, scrolling past a
@@ -260,11 +215,7 @@ impl DrumApp {
         let size = vec2(2.0 * margin + beats as f32 * (2.0 * radius + gap), 2.0 * radius + 8.0);
         let (rect, _) = ui.allocate_exact_size(size, Sense::hover());
         let painter = ui.painter_at(rect);
-        let current = self.metro_run.run.as_ref().and_then(|run| {
-            let elapsed = self.shown_now().checked_duration_since(run.zero)?.as_secs_f64();
-            let beat = run.ramp.base_seconds(run.bar_sec, elapsed) / run.beat_sec;
-            Some((beat.floor() as u64 % beats as u64, 1.0 - beat.fract() as f32))
-        });
+        let current = self.metro_run.beat_at(self.shown_now()).map(|(beat, into)| (beat as u64 % beats as u64, 1.0 - into));
         let outline = ui.visuals().widgets.noninteractive.fg_stroke.color.gamma_multiply(0.5);
         for b in 0..beats {
             let centre = pos2(rect.left() + margin + radius + b as f32 * (2.0 * radius + gap), rect.center().y);
