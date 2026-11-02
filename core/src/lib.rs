@@ -6,6 +6,10 @@
 //!
 //! The application (the `roll-model` crate) adds the window, the MIDI ports and the sound on top
 //! of this crate; nothing here may depend on them, so every part can be tested without a device.
+//!
+//! The crate is free of devices, not of the file system: it reads and writes the settings, the
+//! progress file and the controller presets (`config::Paths` says where, and a test gives it a
+//! temporary folder), and `import::load_score` opens a file. Everything else is a function of its arguments.
 
 pub mod analysis;
 pub mod config;
