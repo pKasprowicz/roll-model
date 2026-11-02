@@ -31,10 +31,17 @@ pub(super) fn register_tap(taps: &mut Vec<Instant>, now: Instant) -> Option<f64>
     (span > 0.0).then(|| 60.0 * (taps.len() - 1) as f64 / span)
 }
 
+/// Which way the selected bars move.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) enum Direction {
+    Back,
+    Forward,
+}
+
 /// The range of the same length before or after `from..=to` in a score of `n` measures.
-pub(super) fn shifted_range(from: usize, to: usize, n: usize, forward: bool) -> Option<(usize, usize)> {
+pub(super) fn shifted_range(from: usize, to: usize, n: usize, direction: Direction) -> Option<(usize, usize)> {
     let len = to.saturating_sub(from) + 1;
-    if forward {
+    if direction == Direction::Forward {
         (to + 1 < n).then(|| (from + len, (to + len).min(n - 1)))
     } else {
         (from > 0).then(|| {
@@ -188,7 +195,7 @@ impl DrumApp {
         }
         let running = self.take_running();
         match action {
-            Action::Record if running => self.stop_take(false),
+            Action::Record if running => self.stop_take(crate::app::session::StopReason::Aborted),
             Action::Record if self.practice.score.is_some() => self.start_take(),
             Action::Listen if !running && self.practice.score.is_some() => {
                 if self.playback.listen.is_some() {
@@ -219,8 +226,8 @@ impl DrumApp {
             Action::Loop | Action::Notes | Action::Metronome => {}
             Action::NextTab => self.next_tab(),
             Action::LoopWorstBar => self.loop_worst_bar(),
-            Action::RangeBack => self.move_range(false),
-            Action::RangeForward => self.move_range(true),
+            Action::RangeBack => self.move_range(Direction::Back),
+            Action::RangeForward => self.move_range(Direction::Forward),
             Action::TapTempo => self.tap_tempo(),
             Action::TempoDown => self.turn(Action::Tempo, -5),
             Action::TempoUp => self.turn(Action::Tempo, 5),
@@ -442,9 +449,9 @@ impl DrumApp {
         }
     }
 
-    pub(super) fn move_range(&mut self, forward: bool) {
+    pub(super) fn move_range(&mut self, direction: Direction) {
         let Some(n) = self.practice.score.as_ref().map(|s| s.measures.len()) else { return };
-        if let Some((from, to)) = shifted_range(self.practice.range_from, self.practice.range_to, n, forward) {
+        if let Some((from, to)) = shifted_range(self.practice.range_from, self.practice.range_to, n, direction) {
             self.practice.range_from = from;
             self.practice.range_to = to;
             self.status_range();

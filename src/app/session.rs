@@ -3,7 +3,7 @@
 
 use std::time::{Duration, Instant};
 
-use crate::analysis::{analyze_with, expected_notes, Grade};
+use crate::analysis::{analyze_with, expected_notes, Grade, Window};
 use crate::drums::Lane;
 use crate::metronome::{ClickOptions, Metronome, HAS_AUDIO};
 use crate::playback::{self, PlayOptions, Player, Ramp};
@@ -13,6 +13,20 @@ use crate::score::Score;
 use crate::units::Seconds;
 
 use super::{Calibration, DrumApp, Listen, ListenKey, Plan, Source, Take, TakeSummary, CLEAN_TAKE, RESTART_DELAY};
+
+/// Why a take ends: the player stopped it, or its music came to the end.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) enum StopReason {
+    Aborted,
+    Completed,
+}
+
+/// Whether Listen begins with the count-in.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) enum CountIn {
+    With,
+    Without,
+}
 
 pub(super) fn signed_secs(t: Instant, zero: Instant) -> Seconds {
     if t >= zero {
@@ -111,7 +125,7 @@ impl DrumApp {
 
     /// Stops everything that makes sound by itself: a take, Listen and the metronome.
     pub(super) fn stop_all_sound(&mut self) {
-        self.stop_take(false);
+        self.stop_take(StopReason::Aborted);
         self.stop_listen();
         self.stop_metro();
     }
@@ -125,7 +139,7 @@ impl DrumApp {
             return;
         }
         let label = self.practice_label();
-        let adaptive = self.source == Source::Rudiments;
+        let window = if self.source == Source::Rudiments { Window::Adaptive } else { Window::Fixed };
         let Some(plan) = self.plan_run(true) else { return };
         let Some(score) = self.practice.score.as_ref() else { return };
         let expected = expected_notes(score, plan.from, plan.to, plan.scale);
@@ -141,9 +155,9 @@ impl DrumApp {
             tempo_scale: plan.scale,
             t0: plan.t0,
             end_sec: plan.end_sec,
-            report: analyze_with(&expected, &[], &self.cfg.tol, Seconds::NEG_INFINITY, adaptive),
+            report: analyze_with(&expected, &[], &self.cfg.tol, Seconds::NEG_INFINITY, window),
             label,
-            adaptive,
+            window,
             expected,
             hits: Vec::new(),
             running: true,
@@ -207,10 +221,10 @@ impl DrumApp {
     /// Plays the selected measures at the chosen tempo, with the count-in and
     /// click a take would have, so the drummer can hear them first.
     pub(super) fn start_listen(&mut self) {
-        self.begin_listen(self.cfg.listen_count_in);
+        self.begin_listen(if self.cfg.listen_count_in { CountIn::With } else { CountIn::Without });
     }
 
-    pub(super) fn begin_listen(&mut self, count_in: bool) {
+    pub(super) fn begin_listen(&mut self, count_in: CountIn) {
         self.stop_all_sound();
         self.ensure_audio();
         self.playback.restart.cancel();
@@ -221,7 +235,7 @@ impl DrumApp {
         }
         let ramp = opts.ramp;
         self.sync_control();
-        let Some(plan) = self.plan_run(count_in) else { return };
+        let Some(plan) = self.plan_run(count_in == CountIn::With) else { return };
         let Some(score) = self.practice.score.as_ref() else { return };
         let expected = expected_notes(score, plan.from, plan.to, plan.scale);
         self.view.status = if expected.is_empty() {
@@ -277,7 +291,7 @@ impl DrumApp {
             _ => None,
         };
         if self.playback.restart.poll(wanted, Instant::now(), RESTART_DELAY) {
-            self.begin_listen(false);
+            self.begin_listen(CountIn::Without);
         }
         let Some(player) = self.playback.player.as_ref() else { return };
         let errors = player.take_errors();
@@ -381,8 +395,8 @@ impl DrumApp {
     /// `completed`: the whole range was played (otherwise notes after the
     /// stop point are left ungraded).
     /// Stops the take, and shows how it went on the status line.
-    pub(super) fn stop_take(&mut self, completed: bool) {
-        match self.finish_take(completed) {
+    pub(super) fn stop_take(&mut self, reason: StopReason) {
+        match self.finish_take(reason) {
             TakeOutcome::NoTake => {}
             TakeOutcome::NothingDue => self.view.status = "Take stopped before any notes were due — nothing to grade.".into(),
             TakeOutcome::Graded { summary, clean_bpm } => {
@@ -396,7 +410,7 @@ impl DrumApp {
 
     /// Stops the metronome and the take that records, grades the take and puts it in the history;
     /// says nothing, and returns what came of it.
-    pub(super) fn finish_take(&mut self, completed: bool) -> TakeOutcome {
+    pub(super) fn finish_take(&mut self, reason: StopReason) -> TakeOutcome {
         if let Some(mut m) = self.metronome.take() {
             m.stop();
         }
@@ -405,14 +419,14 @@ impl DrumApp {
             return TakeOutcome::NoTake;
         }
         take.running = false;
-        let elapsed = if completed { Seconds::INFINITY } else { signed_secs(Instant::now(), take.zero) };
-        take.report = analyze_with(&take.expected, &take.hits, &self.cfg.tol, elapsed, take.adaptive);
+        let elapsed = if reason == StopReason::Completed { Seconds::INFINITY } else { signed_secs(Instant::now(), take.zero) };
+        take.report = analyze_with(&take.expected, &take.hits, &self.cfg.tol, elapsed, take.window);
         let r = &take.report;
         if r.evaluated == 0 {
             return TakeOutcome::NothingDue;
         }
         let bpm = self.practice.score.as_ref().map(|s| s.tempo.bpm_at(s.measures[take.from].start_q) * take.tempo_scale).unwrap_or(0.0);
-        let range = if take.adaptive {
+        let range = if take.window == Window::Adaptive {
             take.label.clone()
         } else {
             self.practice
@@ -421,7 +435,7 @@ impl DrumApp {
                 .map(|s| format!("{}–{}", s.measures[take.from].number, s.measures[take.to].number))
                 .unwrap_or_default()
         };
-        let clean = completed && take.adaptive && r.overall >= CLEAN_TAKE;
+        let clean = reason == StopReason::Completed && take.window == Window::Adaptive && r.overall >= CLEAN_TAKE;
         self.practice.history.push(TakeSummary {
             number: take.number,
             range,
@@ -453,9 +467,9 @@ impl DrumApp {
             return;
         }
         let elapsed = signed_secs(Instant::now(), take.zero);
-        take.report = analyze_with(&take.expected, &take.hits, &self.cfg.tol, elapsed, take.adaptive);
+        take.report = analyze_with(&take.expected, &take.hits, &self.cfg.tol, elapsed, take.window);
         if elapsed > take.end_sec + Seconds(1.0) {
-            self.stop_take(true);
+            self.stop_take(StopReason::Completed);
         }
     }
 

@@ -9,7 +9,7 @@ use crate::rudiments::{Lead, MAX_REPEATS};
 use crate::units::Seconds;
 
 use super::super::{DrumApp, Source, Tab};
-use super::apply::{register_tap, shifted_range, worst_measure, TAPS_KEPT};
+use super::apply::{register_tap, shifted_range, worst_measure, Direction, TAPS_KEPT};
 use super::page::copy_preset;
 use super::*;
 
@@ -62,13 +62,13 @@ fn tapping_gives_the_tempo_and_a_pause_starts_over() {
 
 #[test]
 fn the_range_moves_by_its_own_length_and_stops_at_the_ends() {
-    assert_eq!(shifted_range(0, 3, 16, true), Some((4, 7)));
-    assert_eq!(shifted_range(4, 7, 16, false), Some((0, 3)));
-    assert_eq!(shifted_range(0, 3, 16, false), None);
-    assert_eq!(shifted_range(12, 15, 16, true), None);
-    assert_eq!(shifted_range(10, 13, 16, true), Some((14, 15)), "the last chunk may be shorter");
-    assert_eq!(shifted_range(2, 5, 16, false), Some((0, 3)), "not below the first measure");
-    assert_eq!(shifted_range(3, 3, 8, true), Some((4, 4)));
+    assert_eq!(shifted_range(0, 3, 16, Direction::Forward), Some((4, 7)));
+    assert_eq!(shifted_range(4, 7, 16, Direction::Back), Some((0, 3)));
+    assert_eq!(shifted_range(0, 3, 16, Direction::Back), None);
+    assert_eq!(shifted_range(12, 15, 16, Direction::Forward), None);
+    assert_eq!(shifted_range(10, 13, 16, Direction::Forward), Some((14, 15)), "the last chunk may be shorter");
+    assert_eq!(shifted_range(2, 5, 16, Direction::Back), Some((0, 3)), "not below the first measure");
+    assert_eq!(shifted_range(3, 3, 8, Direction::Forward), Some((4, 4)));
 }
 
 #[test]

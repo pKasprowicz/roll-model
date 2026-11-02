@@ -63,20 +63,20 @@ fn the_adaptive_window_follows_the_spacing_of_the_notes() {
     // 16ths at 150 BPM, 100 ms apart: the usual window (100 ms) reaches the neighbours.
     let e: Vec<_> = (0..8).map(|i| exp(i as f64 * 0.1, Lane::Snare)).collect();
     let tol = Tolerances::default();
-    let w = windows(&e, &tol, &ScoringModel::default(), true);
+    let w = windows(&e, &tol, &ScoringModel::default(), Window::Adaptive);
     assert!(w.iter().all(|x| (x.0 - 0.045).abs() < 1e-9), "{w:?}");
-    assert!(windows(&e, &tol, &ScoringModel::default(), false).iter().all(|x| (x.0 - 0.1).abs() < 1e-9));
+    assert!(windows(&e, &tol, &ScoringModel::default(), Window::Fixed).iter().all(|x| (x.0 - 0.1).abs() < 1e-9));
     // Slow notes keep the whole window; very fast ones never go below "perfect".
     let slow: Vec<_> = (0..4).map(|i| exp(i as f64, Lane::Snare)).collect();
-    assert!(windows(&slow, &tol, &ScoringModel::default(), true).iter().all(|x| (x.0 - 0.1).abs() < 1e-9));
+    assert!(windows(&slow, &tol, &ScoringModel::default(), Window::Adaptive).iter().all(|x| (x.0 - 0.1).abs() < 1e-9));
     let fast: Vec<_> = (0..4).map(|i| exp(i as f64 * 0.03, Lane::Snare)).collect();
-    assert!(windows(&fast, &tol, &ScoringModel::default(), true).iter().all(|x| (x.0 - 0.02).abs() < 1e-9));
+    assert!(windows(&fast, &tol, &ScoringModel::default(), Window::Adaptive).iter().all(|x| (x.0 - 0.02).abs() < 1e-9));
     // Notes played together on two lanes are not neighbours of each other.
     let together = vec![exp(0.0, Lane::Snare), exp(0.0, Lane::Kick), exp(1.0, Lane::Snare)];
-    assert!((windows(&together, &tol, &ScoringModel::default(), true)[0].0 - 0.1).abs() < 1e-9);
+    assert!((windows(&together, &tol, &ScoringModel::default(), Window::Adaptive)[0].0 - 0.1).abs() < 1e-9);
     // A grace note is only looked for close to its time.
     let flam = Expected { grace: true, ..exp(-0.035, Lane::Snare) };
-    assert!((windows(&[flam], &tol, &ScoringModel::default(), true)[0] - ScoringModel::default().grace_window).0.abs() < 1e-9);
+    assert!((windows(&[flam], &tol, &ScoringModel::default(), Window::Adaptive)[0] - ScoringModel::default().grace_window).0.abs() < 1e-9);
 }
 
 #[test]
@@ -87,7 +87,7 @@ fn with_the_adaptive_window_a_hit_far_from_its_stroke_is_not_matched_to_it() {
     let mut h: Vec<_> = e.iter().map(|x| hit(x.t.0, x.lane)).collect();
     h[2].t += Seconds(0.06);
     let fixed = analyze(&e, &h, &Tolerances::default(), Seconds::INFINITY);
-    let adaptive = analyze_with(&e, &h, &Tolerances::default(), Seconds::INFINITY, true);
+    let adaptive = analyze_with(&e, &h, &Tolerances::default(), Seconds::INFINITY, Window::Adaptive);
     assert_eq!(fixed.missed, 0);
     assert_eq!(adaptive.missed, 1);
     assert_eq!(adaptive.extra, 1);
@@ -173,13 +173,13 @@ fn the_shipped_model_gives_the_score_worked_out_by_hand() {
 fn another_model_changes_the_score_and_the_letters() {
     let (e, h) = the_golden_take();
     let tol = Tolerances::default();
-    let shipped = analyze_with_model(&e, &h, &tol, &ScoringModel::default(), Seconds::INFINITY, false);
+    let shipped = analyze_with_model(&e, &h, &tol, &ScoringModel::default(), Seconds::INFINITY, Window::Fixed);
     let only_accuracy = ScoringModel {
         weights_without_dynamics: Weights { accuracy: 1.0, timing: 0.0, extra: 0.0, dynamics: 0.0 },
         letters: [99.0, 95.0, 90.0, 80.0, 70.0],
         ..ScoringModel::default()
     };
-    let r = analyze_with_model(&e, &h, &tol, &only_accuracy, Seconds::INFINITY, false);
+    let r = analyze_with_model(&e, &h, &tol, &only_accuracy, Seconds::INFINITY, Window::Fixed);
     assert!((r.overall - 68.0).abs() < 1e-6, "accuracy only: {}", r.overall);
     assert!(r.overall != shipped.overall);
     assert_eq!(r.letter_in(&only_accuracy), "E");

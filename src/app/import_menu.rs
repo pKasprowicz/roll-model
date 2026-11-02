@@ -12,6 +12,13 @@ use crate::widgets;
 use super::{DrumApp, Source};
 
 /// A file being read on another thread; the result arrives on `rx`.
+/// How a score gets on screen: opened as a new file, or read again from the file that is open.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) enum Opened {
+    Fresh,
+    Again,
+}
+
 pub(super) struct PendingLoad {
     path: PathBuf,
     rx: mpsc::Receiver<Result<Loaded, ImportError>>,
@@ -61,7 +68,7 @@ impl DrumApp {
         };
         match result {
             Ok(loaded) => {
-                self.view.status = self.install(loaded, &pending.path, false);
+                self.view.status = self.install(loaded, &pending.path, Opened::Fresh);
                 self.view.error = None;
             }
             Err(e) => {
@@ -75,20 +82,20 @@ impl DrumApp {
     /// selected bars, the view and the layout stay.
     pub(super) fn reimport(&mut self) {
         let Some(path) = self.practice.score_path.clone() else { return };
-        self.stop_take(false);
+        self.stop_take(super::session::StopReason::Aborted);
         self.stop_listen();
         match crate::import::load_score(&path, &self.import_options()) {
             Ok(loaded) => {
-                self.view.status = self.install(loaded, &path, true);
+                self.view.status = self.install(loaded, &path, Opened::Again);
                 self.view.error = None;
             }
             Err(e) => self.view.error = Some(format!("Could not load {}: {e}", path.display())),
         }
     }
 
-    /// Puts a loaded score on screen. `again` is a re-import of the open file: the range of bars,
+    /// Puts a loaded score on screen. `Opened::Again` is a re-import of the open file: the range of bars,
     /// the tab and the layout are kept. Returns the line for the status bar; showing it is the caller's.
-    pub(super) fn install(&mut self, loaded: Loaded, path: &Path, again: bool) -> String {
+    pub(super) fn install(&mut self, loaded: Loaded, path: &Path, opened: Opened) -> String {
         // The practice fields belong to the Rudiments tab while it shows; the score goes to the Score
         // tab's fields whichever tab the user is on when the file arrives.
         self.activate(Source::Score);
@@ -102,7 +109,7 @@ impl DrumApp {
             report.midi.as_ref().map(|m| format!(" ({})", m.summary())).unwrap_or_default(),
         );
         let last = score.measures.len().saturating_sub(1);
-        if again {
+        if opened == Opened::Again {
             self.practice.range_from = self.practice.range_from.min(last);
             self.practice.range_to = self.practice.range_to.min(last);
         } else {
@@ -112,7 +119,7 @@ impl DrumApp {
         self.practice.score = Some(score);
         self.practice.score_report = Some(report);
         self.practice.score_path = Some(path.to_path_buf());
-        if !again {
+        if opened == Opened::Fresh {
             let absolute = std::path::absolute(path).unwrap_or_else(|_| path.to_path_buf());
             self.cfg.remember_recent(&absolute.to_string_lossy());
             self.restore_layout();

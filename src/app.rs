@@ -23,7 +23,7 @@ use std::time::{Duration, Instant};
 
 use egui::RichText;
 
-use crate::analysis::{Expected, Hit, Report};
+use crate::analysis::{Expected, Hit, Report, Window};
 use crate::config::{Config, Paths, RowLayout};
 use crate::control::Control;
 use crate::controller::Action;
@@ -113,8 +113,8 @@ struct Take {
     number: usize,
     /// What was played: the score's title, or the rudiment with its repetitions.
     label: String,
-    /// Match hits to notes with a window that follows the spacing of the notes (rudiments).
-    adaptive: bool,
+    /// How far from a note a hit counts for it: adaptive for rudiments, whose notes are close.
+    window: Window,
     /// Score time zero = start of `from` measure.
     zero: Instant,
     from: usize,
@@ -489,7 +489,7 @@ impl DrumApp {
         if self.source == source {
             return;
         }
-        self.stop_take(false);
+        self.stop_take(session::StopReason::Aborted);
         self.stop_listen();
         self.playback.restart.cancel();
         std::mem::swap(&mut self.practice, &mut self.parked);
@@ -559,7 +559,7 @@ impl DrumApp {
     /// reason it could not be opened. (A big file is read on another thread; the line then says it is loading.)
     fn try_open(&mut self, path: &Path) -> Result<String, String> {
         self.activate(Source::Score);
-        self.stop_take(false);
+        self.stop_take(session::StopReason::Aborted);
         self.stop_listen();
         self.practice.midi_options = crate::import::MidiOptions::default();
         if std::fs::metadata(path).is_ok_and(|m| m.len() > self.background_bytes) {
@@ -567,7 +567,7 @@ impl DrumApp {
         }
         self.loading = None;
         match load_score(path, &self.import_options()) {
-            Ok(loaded) => Ok(self.install(loaded, path, false)),
+            Ok(loaded) => Ok(self.install(loaded, path, import_menu::Opened::Fresh)),
             Err(e) => Err(format!("Could not load {}: {e}", path.display())),
         }
     }
@@ -908,7 +908,7 @@ mod tests {
         app.connect_midi_and_say(Some("no such port".into()));
         assert!(app.view.status.contains("Choose the drum module"), "{}", app.view.status);
 
-        assert!(matches!(app.finish_take(false), session::TakeOutcome::NoTake));
+        assert!(matches!(app.finish_take(session::StopReason::Aborted), session::TakeOutcome::NoTake));
         assert!(app.view.status.contains("Choose the drum module"), "stopping nothing leaves the status alone");
 
         // The line of a clean take comes back from the function that decides it, not from the status.

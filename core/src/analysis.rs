@@ -302,12 +302,12 @@ pub fn expected_notes(score: &Score, from_measure: usize, to_measure: usize, tem
 }
 
 /// How far from its time a hit may be to count for each expected note: the hit window,
-/// or, if `adaptive`, no more than 45 % of the gap to the neighbouring notes (but not
+/// or, if `Window::Adaptive`, no more than 45 % of the gap to the neighbouring notes (but not
 /// less than the "perfect" tolerance), so that a hit is never within reach of two
 /// strokes at once at a fast tempo. A grace note is only looked for shortly around its time.
-fn windows(expected: &[Expected], tol: &Tolerances, model: &ScoringModel, adaptive: bool) -> Vec<Seconds> {
+fn windows(expected: &[Expected], tol: &Tolerances, model: &ScoringModel, window: Window) -> Vec<Seconds> {
     let win = tol.window().secs();
-    if !adaptive {
+    if window == Window::Fixed {
         return vec![win; expected.len()];
     }
     let floor = tol.perfect().secs().min(win);
@@ -332,17 +332,26 @@ fn windows(expected: &[Expected], tol: &Tolerances, model: &ScoringModel, adapti
         .collect()
 }
 
+/// How far from its time a hit may be to count for a note.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Window {
+    /// The tolerance's window, the same for every note.
+    Fixed,
+    /// No more than a share of the gap to the neighbouring notes: for fast exercises.
+    Adaptive,
+}
+
 /// `analyze_with` with the fixed hit window: what a score is graded with.
 pub fn analyze(expected: &[Expected], hits: &[Hit], tol: &Tolerances, elapsed: Seconds) -> Report {
-    analyze_with(expected, hits, tol, elapsed, false)
+    analyze_with(expected, hits, tol, elapsed, Window::Fixed)
 }
 
 /// `elapsed` is how far into the take we are (seconds); notes later than that are `Outcome::Pending`.
-/// Pass `Seconds::INFINITY` for a finished take. With `adaptive` the hit window is shrunk to the
+/// Pass `Seconds::INFINITY` for a finished take. With `Window::Adaptive` the hit window is shrunk to the
 /// spacing of the notes (for fast exercises such as rudiments, where the usual window spans
 /// several strokes).
-pub fn analyze_with(expected: &[Expected], hits: &[Hit], tol: &Tolerances, elapsed: Seconds, adaptive: bool) -> Report {
-    analyze_with_model(expected, hits, tol, &ScoringModel::default(), elapsed, adaptive)
+pub fn analyze_with(expected: &[Expected], hits: &[Hit], tol: &Tolerances, elapsed: Seconds, window: Window) -> Report {
+    analyze_with_model(expected, hits, tol, &ScoringModel::default(), elapsed, window)
 }
 
 /// `analyze_with` under another scoring model.
@@ -352,9 +361,9 @@ pub fn analyze_with_model(
     tol: &Tolerances,
     model: &ScoringModel,
     elapsed: Seconds,
-    adaptive: bool,
+    window: Window,
 ) -> Report {
-    let wins = windows(expected, tol, model, adaptive);
+    let wins = windows(expected, tol, model, window);
     let mut order: Vec<usize> = (0..hits.len()).collect();
     order.sort_by(|a, b| hits[*a].t.total_cmp(&hits[*b].t));
     let sorted_t: Vec<Seconds> = order.iter().map(|&i| hits[i].t).collect();
