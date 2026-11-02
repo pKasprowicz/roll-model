@@ -6,6 +6,11 @@ All notable changes are recorded here. The format follows [Keep a Changelog](htt
 
 ## [Unreleased]
 
+## [0.10.4] - 2026-11-02
+
+More of the code review of 0.10.1. Your best clean tempos now live in their own file, `progress.txt`, and the sound threads' problems are written to `roll-model.log`. The on-screen buttons follow the same rules as the keys and the controller, settings numbers stay inside the ranges the screen offers, the metronome subdivision is saved by name, and an imported drag keeps both of its grace notes. Under the surface: quarter notes, seconds and milliseconds are types, one scoring model holds every grading number, and the score view no longer recomputes its notation on every frame.
+
+
 ### Changed
 - The best clean tempo of each rudiment is kept in its own file, `progress.txt`, beside the settings and no longer in them (RV-71); the ones in an older settings file are moved at the first start.
 - The metronome subdivision is saved by name (`metro_sub = triplets`) and not by its position in a list (RV-41); a settings file from an earlier version, with the number, is still read.
