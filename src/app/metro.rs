@@ -6,16 +6,13 @@ use std::time::{Duration, Instant};
 
 use egui::{pos2, vec2, RichText, Sense, Stroke};
 
-use super::{DrumApp, Source};
+use super::{DrumApp, Source, RESTART_DELAY};
 use crate::config::limits;
 use crate::metronome::HAS_AUDIO;
 use crate::playback::{self, PlayOptions, Player, Ramp, Subdivision};
 use crate::render;
 use crate::score::Score;
 use crate::widgets;
-
-/// How long a changed setting must stay put before a running metronome restarts with it.
-const RESTART_DELAY: Duration = Duration::from_millis(300);
 
 /// A running metronome and what it was started with.
 pub(super) struct Run {
@@ -166,10 +163,10 @@ impl DrumApp {
             });
             widgets::slider(ui, "volume", &mut self.cfg.click_volume, limits::CLICK_VOLUME.range(), "", 0.02);
             ui.horizontal(|ui| {
-                widgets::slider_with_zero(ui, "faster by", &mut self.cfg.metro_ramp_bpm, 0..=20, " BPM", 1.0, Some("off"))
+                widgets::slider_with_zero(ui, "faster by", &mut self.cfg.metro_ramp_bpm, limits::METRO_RAMP_BPM.range(), " BPM", 1.0, Some("off"))
                     .on_hover_text("A tempo ramp: the metronome gets faster by this much every few bars, up to three times the starting tempo. Takes effect at the next start.");
                 if self.cfg.metro_ramp_bpm > 0 {
-                    widgets::slider(ui, "every", &mut self.cfg.metro_ramp_bars, 1..=32, " bars", 1.0);
+                    widgets::slider(ui, "every", &mut self.cfg.metro_ramp_bars, limits::METRO_RAMP_BARS.range(), " bars", 1.0);
                 }
             });
         });

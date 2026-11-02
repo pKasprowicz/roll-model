@@ -5,7 +5,7 @@
 
 use egui::RichText;
 
-use super::{DrumApp, Source, Tab};
+use super::{DrumApp, Source, Tab, CLEAN_TAKE};
 use crate::practice_tempo::PracticeTempo;
 use crate::render;
 use crate::rudiments::{self, Family, Lead, Rudiment, MAX_REPEATS};
@@ -205,9 +205,9 @@ impl DrumApp {
                 if ui.small_button("Starting tempo").on_hover_text("Go back to the tempo this rudiment starts at").clicked() {
                     self.reset_rudiment_tempo();
                 }
-                ui.checkbox(&mut self.cfg.rudiment_ladder, "ladder").on_hover_text(
-                    "After a clean take (85 or better, the whole thing played) the tempo goes up by 5 BPM, so you climb as long as you play it cleanly",
-                );
+                ui.checkbox(&mut self.cfg.rudiment_ladder, "ladder").on_hover_text(format!(
+                    "After a clean take ({CLEAN_TAKE:.0} or better, the whole thing played) the tempo goes up by {LADDER_STEP:.0} BPM, so you climb as long as you play it cleanly"
+                ));
             });
         });
         ui.scope(|ui| {

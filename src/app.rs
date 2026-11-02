@@ -48,8 +48,10 @@ enum Tab {
     Settings,
 }
 
-/// How long a changed range or tempo must stay put before Listen restarts with it.
-const LISTEN_RESTART_DELAY: Duration = Duration::from_millis(300);
+/// How long a changed range, tempo or metronome setting must stay put before what is playing restarts with it.
+const RESTART_DELAY: Duration = Duration::from_millis(300);
+/// Lines kept of the monitor of the drum module and of the controller.
+const MONITOR_LINES: usize = 14;
 
 /// Which practice source the practice fields of `DrumApp` (score, range, tempo, take, history)
 /// belong to: the Score tab's file or the Rudiments tab's rudiment.
@@ -408,7 +410,7 @@ impl DrumApp {
         self.learn_note(ev);
         let lane = self.cfg.note_map.lane(ev.note).map(|l| l.by_hihat_pedal(ev.hihat, self.cfg.hihat_cc_max));
         self.midi.monitor.push_front((ev, lane));
-        self.midi.monitor.truncate(14);
+        self.midi.monitor.truncate(MONITOR_LINES);
         self.record_calibration_hit(ev);
         if let Some(lane) = lane {
             // A hit that belongs to the start trigger is no note of the take it starts.

@@ -6,6 +6,9 @@ All notable changes are recorded here. The format follows [Keep a Changelog](htt
 
 ## [Unreleased]
 
+### Changed
+- The ramp settings in the settings file are kept in the ranges of their sliders (RV-40); the ladder tooltip takes its numbers from the code.
+
 ## [0.10.3] - 2026-11-02
 
 Housekeeping from the code review of 0.10.1, with a few behaviour fixes. The keys R, L, M, K and Esc now behave exactly like the controller buttons, a file whose import would give an inconsistent score is refused with a message, the CSV of a take quotes its fields, the drum MIDI queue is capped, and numbers in a hand-edited settings file are kept inside the ranges the screen offers. Under the surface, the program's state per source, the tempo with its unit, the grading constants and the ranges each have one definition.

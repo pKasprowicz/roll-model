@@ -142,10 +142,10 @@ impl DrumApp {
             widgets::slider(ui, "count-in bars", &mut self.cfg.count_in_bars, limits::COUNT_IN_BARS.range(), "", 1.0);
             ui.checkbox(&mut self.cfg.listen_count_in, "in Listen")
                 .on_hover_text("Start Listen with the count-in too. A recording always has one; switch this off to hear the music at once.");
-            widgets::slider_with_zero(ui, "ramp +", &mut self.cfg.ramp_percent, 0..=20, " %", 1.0, Some("off"))
+            widgets::slider_with_zero(ui, "ramp +", &mut self.cfg.ramp_percent, limits::RAMP_PERCENT.range(), " %", 1.0, Some("off"))
                 .on_hover_text("With loop on, Listen gets faster by this many per cent of the written tempo every few passes (up to three times the starting tempo). Takes effect at the next start.");
             if self.cfg.ramp_percent > 0 {
-                widgets::slider(ui, "every", &mut self.cfg.ramp_passes, 1..=16, " passes", 1.0);
+                widgets::slider(ui, "every", &mut self.cfg.ramp_passes, limits::RAMP_PASSES.range(), " passes", 1.0);
             }
         });
     }

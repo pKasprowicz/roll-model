@@ -10,7 +10,7 @@ use crate::playback::{self, PlayOptions, Player, Ramp};
 use crate::render::{HitStatus, PlayedNote};
 use crate::score::Score;
 
-use super::{Calibration, DrumApp, Listen, Plan, Source, Take, TakeSummary, CLEAN_TAKE, LISTEN_RESTART_DELAY};
+use super::{Calibration, DrumApp, Listen, Plan, Source, Take, TakeSummary, CLEAN_TAKE, RESTART_DELAY};
 
 pub(super) fn signed_secs(t: Instant, zero: Instant) -> f64 {
     if t >= zero {
@@ -272,7 +272,7 @@ impl DrumApp {
         match (wanted, self.playback.pending) {
             (None, _) => self.playback.pending = None,
             (Some(sig), Some((pending, since))) if pending == sig => {
-                if since.elapsed() >= LISTEN_RESTART_DELAY {
+                if since.elapsed() >= RESTART_DELAY {
                     self.begin_listen(false);
                 }
             }

@@ -260,6 +260,12 @@ pub mod limits {
     pub const PERFECT_MS: Span<f64> = Span::new(5.0, 50.0);
     pub const GOOD_MS: Span<f64> = Span::new(10.0, 100.0);
     pub const WINDOW_MS: Span<f64> = Span::new(40.0, 250.0);
+    /// Listen's tempo ramp: points of the written tempo, and passes between steps.
+    pub const RAMP_PERCENT: Span<u32> = Span::new(0, 20);
+    pub const RAMP_PASSES: Span<usize> = Span::new(1, 16);
+    /// The metronome's tempo ramp: BPM, and bars between steps.
+    pub const METRO_RAMP_BPM: Span<u32> = Span::new(0, 20);
+    pub const METRO_RAMP_BARS: Span<usize> = Span::new(1, 32);
 }
 
 struct Text;
@@ -401,8 +407,8 @@ const KEYS: &[Key] = &[
     key!("count_in_bars", c.count_in_bars, within(limits::COUNT_IN_BARS)),
     key!("listen_count_in", c.listen_count_in, Flag),
     key!("break_at_pause", c.break_at_pause, Flag),
-    key!("ramp_percent", c.ramp_percent, number(0, 50)),
-    key!("ramp_passes", c.ramp_passes, number(1, 32)),
+    key!("ramp_percent", c.ramp_percent, within(limits::RAMP_PERCENT)),
+    key!("ramp_passes", c.ramp_passes, within(limits::RAMP_PASSES)),
     key!("click_audio", c.click_audio, Flag),
     key!("click_volume", c.click_volume, within(limits::CLICK_VOLUME)),
     key!("click_midi", c.click_midi, Flag),
@@ -423,8 +429,8 @@ const KEYS: &[Key] = &[
     key!("metro_beats", c.metro_beats, number(1, 12)),
     key!("metro_sub", c.metro_sub, number(0, 3)),
     key!("metro_preview", c.metro_preview, Flag),
-    key!("metro_ramp_bpm", c.metro_ramp_bpm, number(0, 60)),
-    key!("metro_ramp_bars", c.metro_ramp_bars, number(1, 64)),
+    key!("metro_ramp_bpm", c.metro_ramp_bpm, within(limits::METRO_RAMP_BPM)),
+    key!("metro_ramp_bars", c.metro_ramp_bars, within(limits::METRO_RAMP_BARS)),
     key!("controller_preset", c.controller_preset, Text),
     key!("controller_port", c.controller_port, Text),
     key!("trigger_enabled", c.trigger_enabled, Flag),
