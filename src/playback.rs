@@ -33,6 +33,9 @@ use crate::score::Click;
 use crate::score::Dynamic;
 use crate::synth::{velocity_gain, Kit, SAMPLE_RATE};
 
+mod clock;
+pub use clock::{clock_cues, metronome_clock, with_clock, ClockMsg, ClockOptions};
+
 /// A cue whose turn comes later than this (the thread stalled, or the sound
 /// device took long to open) is dropped instead of being played as a burst.
 const MAX_LATE: Duration = Duration::from_millis(250);
@@ -42,8 +45,15 @@ const TAIL: Duration = Duration::from_millis(2200);
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Sound {
-    Click { level: ClickLevel },
-    Drum { lane: Lane, velocity: u8 },
+    Click {
+        level: ClickLevel,
+    },
+    Drum {
+        lane: Lane,
+        velocity: u8,
+    },
+    /// A message of the MIDI clock (see `clock.rs`).
+    Clock(ClockMsg),
 }
 
 /// Something to play `t` seconds after the player's zero (negative = count-in).
@@ -80,6 +90,8 @@ pub struct PlayOptions {
     pub drum_notes: BTreeMap<Lane, u8>,
     /// Raises the tempo as the passes go by (only with looping on).
     pub ramp: Ramp,
+    /// Send the clock the cues carry to the MIDI output; `None` when it is not wanted.
+    pub clock: Option<ClockOptions>,
 }
 
 /// MIDI velocity for a score note.
@@ -134,6 +146,10 @@ pub trait Sink {
     /// `gain` includes the master volume, the instrument gain and the velocity.
     fn audio_drum(&mut self, lane: Lane, gain: f32, when: Instant);
     fn midi_drum(&mut self, note: u8, velocity: u8, when: Instant);
+    fn midi_clock(&mut self, msg: ClockMsg, when: Instant);
+
+    /// The music is over, or was stopped: the clock, if it ran, is stopped too.
+    fn music_ended(&mut self) {}
 
     /// How long before its time a cue is handed to the sink: the audio engine places a sound at an
     /// exact frame only if it is told ahead. Zero when nothing needs that.
@@ -178,6 +194,11 @@ fn dispatch(cue: &Cue, when: Instant, opts: &PlayOptions, control: &SoundSwitche
             }
             if opts.audio {
                 sink.audio_drum(lane, control.volume() * gain * velocity_gain(velocity), when);
+            }
+        }
+        Sound::Clock(msg) => {
+            if opts.clock.is_some() {
+                sink.midi_clock(msg, when);
             }
         }
     }
@@ -283,6 +304,7 @@ fn run_with(run: &Run, sink: &mut dyn Sink, clock: &dyn Clock) {
         pass += 1;
     }
     control.set_music_done(true);
+    sink.music_ended();
 
     // Let the last notes ring out before the stream is dropped.
     let end = clock.now() + tail;
@@ -354,12 +376,30 @@ fn choke_groups(lane: Lane) -> (u8, u32) {
     (group, chokes)
 }
 
-/// A note held back until its time, so MIDI keeps its exact timing while audio is handed over early.
-struct HeldNote {
+/// What a held message is.
+enum Held {
+    Note { channel: u8, note: u8, velocity: u8 },
+    Clock(ClockMsg),
+}
+
+/// A message held back until its time, so MIDI keeps its exact timing while audio is handed over early.
+struct HeldMessage {
     when: Instant,
-    channel: u8,
-    note: u8,
-    velocity: u8,
+    what: Held,
+}
+
+fn send_clock(conn: &mut MidiOutputConnection, errors: &ErrorLog, msg: ClockMsg) {
+    let (bytes, len) = msg.bytes();
+    if let Err(e) = conn.send(&bytes[..len]) {
+        errors.midi_failed(e);
+    }
+}
+
+fn send_held(conn: &mut MidiOutputConnection, errors: &ErrorLog, what: &Held) {
+    match *what {
+        Held::Note { channel, note, velocity } => note_on_off(conn, errors, channel, note, velocity),
+        Held::Clock(msg) => send_clock(conn, errors, msg),
+    }
 }
 
 /// The real output: the audio engine and the MIDI port.
@@ -370,7 +410,9 @@ struct DeviceSink {
     kit: BTreeMap<Lane, Arc<[f32]>>,
     clicks: Option<ClickBank>,
     midi: Option<MidiOutputConnection>,
-    held: Vec<HeldNote>,
+    held: Vec<HeldMessage>,
+    /// A Start or Continue was sent and no Stop yet.
+    clock_running: bool,
     click_note: u8,
     click_channel: u8,
     drum_channel: u8,
@@ -388,18 +430,24 @@ fn midi_delays(opts: &PlayOptions, has_clicks: bool) -> (Duration, Duration) {
 }
 
 impl DeviceSink {
-    fn midi_note(&mut self, when: Instant, delay: Duration, channel: u8, note: u8, velocity: u8) {
+    /// Sends `what` at `when` (after `delay`): at once if its time has come or nothing is handed over
+    /// early, otherwise when its time comes.
+    fn midi_message(&mut self, when: Instant, delay: Duration, what: Held) {
         if self.midi.is_none() {
             return;
         }
         let when = when + delay;
         if self.lookahead().is_zero() || when <= Instant::now() {
             if let Some(conn) = self.midi.as_mut() {
-                note_on_off(conn, &self.errors, channel, note, velocity);
+                send_held(conn, &self.errors, &what);
             }
         } else {
-            self.held.push(HeldNote { when, channel, note, velocity });
+            self.held.push(HeldMessage { when, what });
         }
+    }
+
+    fn midi_note(&mut self, when: Instant, delay: Duration, channel: u8, note: u8, velocity: u8) {
+        self.midi_message(when, delay, Held::Note { channel, note, velocity });
     }
 }
 
@@ -430,6 +478,25 @@ impl Sink for DeviceSink {
         self.midi_note(when, self.drum_delay, self.drum_channel, note, velocity);
     }
 
+    /// The clock follows the click: it is delayed as the click is, so that the device's beat is heard
+    /// with the computer's.
+    fn midi_clock(&mut self, msg: ClockMsg, when: Instant) {
+        self.clock_running |= msg.starts();
+        self.midi_message(when, self.click_delay, Held::Clock(msg));
+    }
+
+    fn music_ended(&mut self) {
+        if !std::mem::take(&mut self.clock_running) {
+            return;
+        }
+        self.held.retain(|h| !matches!(h.what, Held::Clock(_)));
+        if let Some(conn) = self.midi.as_mut() {
+            if let Err(e) = conn.send(&[clock::STOP]) {
+                self.errors.midi_failed(e);
+            }
+        }
+    }
+
     fn lookahead(&self) -> Duration {
         if self.engine.is_some() {
             AUDIO_LOOKAHEAD
@@ -449,7 +516,7 @@ impl Sink for DeviceSink {
             if h.when > now {
                 return true;
             }
-            note_on_off(conn, errors, h.channel, h.note, h.velocity);
+            send_held(conn, errors, &h.what);
             false
         });
     }
@@ -514,6 +581,7 @@ fn run(
         clicks,
         midi,
         held: Vec::new(),
+        clock_running: false,
         click_note: opts.click_note,
         click_channel: opts.click_channel.clamp(1, 16) - 1,
         drum_channel: opts.drum_channel.clamp(1, 16) - 1,

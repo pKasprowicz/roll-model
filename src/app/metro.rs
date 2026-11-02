@@ -42,7 +42,7 @@ impl DrumApp {
             engine: self.audio.handle(),
             sounds_dir: None,
             click_audio: c.click_audio && HAS_AUDIO,
-            midi_port: c.click_midi.then(|| c.midi_out_port.clone()),
+            midi_port: (c.click_midi || c.midi_clock).then(|| c.midi_out_port.clone()),
             midi_drums: false,
             drum_channel: c.playback_channel,
             click_midi: c.click_midi,
@@ -51,6 +51,7 @@ impl DrumApp {
             midi_delay: self.output_delay(),
             drum_notes: BTreeMap::new(),
             ramp: self.metro_ramp(),
+            clock: self.clock_options(),
         }
     }
 
@@ -64,7 +65,10 @@ impl DrumApp {
         }
         let sub = self.cfg.metro_sub;
         let bpm = self.cfg.metro_bpm as f64;
-        let (cues, bar_len) = playback::metronome_cues(bpm, self.cfg.metro_beats, sub);
+        let (mut cues, bar_len) = playback::metronome_cues(bpm, self.cfg.metro_beats, sub);
+        if opts.clock.is_some() {
+            cues = playback::with_clock(cues, playback::metronome_clock(bpm, self.cfg.metro_beats));
+        }
         self.sync_control();
         // Half a second of lead: the sound device needs time to open.
         let zero = Instant::now() + Duration::from_millis(500);

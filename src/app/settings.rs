@@ -3,7 +3,7 @@
 
 use egui::RichText;
 
-use crate::config::limits;
+use crate::config::{limits, ClockStart};
 use crate::drums::{format_note_list, parse_note_list, Lane};
 use crate::metronome::HAS_AUDIO;
 use crate::midi;
@@ -38,6 +38,30 @@ impl SettingsPage {
 }
 
 impl DrumApp {
+    /// The MIDI clock: whether it is sent, where its Start goes, and the position for a range.
+    fn midi_clock_controls(&mut self, ui: &mut egui::Ui) {
+        ui.checkbox(&mut self.cfg.midi_clock, "Send MIDI clock to the MIDI output (Listen and the Metronome tab)");
+        if !self.cfg.midi_clock {
+            return;
+        }
+        ui.horizontal(|ui| {
+            ui.label("Start");
+            egui::ComboBox::from_id_salt("midi_clock_start").selected_text(self.cfg.midi_clock_start.label()).show_ui(ui, |ui| {
+                for start in ClockStart::ALL {
+                    ui.selectable_value(&mut self.cfg.midi_clock_start, start, start.label());
+                }
+            });
+        });
+        ui.checkbox(
+            &mut self.cfg.midi_clock_position,
+            "When Listen starts from a later bar, send its position and Continue instead of Start",
+        );
+        widgets::hint(
+            ui,
+            "A device that follows an external clock (the V31's metronome and patterns, a looper, a DAW) runs at the tempo played: 24 clocks to a quarter note, Start when the count-in or the music begins, Stop when it ends. Takes do not send it yet. It goes to the MIDI output chosen under MIDI output.",
+        );
+    }
+
     /// Settings are split into pages so each one fits on a screen.
     pub(super) fn settings_tab(&mut self, ui: &mut egui::Ui) {
         ui.scope(|ui| {
@@ -278,6 +302,7 @@ impl DrumApp {
             widgets::Slider::new("channel", &mut self.cfg.click_channel, 1..=16).show(ui);
         });
         widgets::hint(ui, "Sending the click to the V31 (channel 10, an unmapped note such as 76 = wood block) puts it in your headphones with no extra audio latency.");
+        self.midi_clock_controls(ui);
 
         ui.add_space(10.0);
         ui.heading("Listening");

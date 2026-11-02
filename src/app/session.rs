@@ -7,11 +7,11 @@ use std::time::{Duration, Instant};
 use crate::analysis::{expected_notes, Window};
 use crate::drums::Lane;
 use crate::metronome::{ClickOptions, Metronome, HAS_AUDIO};
-use crate::playback::{self, PlayOptions, Player};
+use crate::playback::{self, ClockOptions, PlayOptions, Player};
 use crate::practice::Ramp;
 use crate::score::Click;
 use crate::score::Score;
-use crate::units::Seconds;
+use crate::units::{Quarters, Seconds};
 
 use super::take::{signed_secs, Plan, Shown, StopReason, Take};
 use super::{Calibration, DrumApp, Listen, ListenKey, Source, TakeSummary, CLEAN_TAKE, RESTART_DELAY};
@@ -50,7 +50,8 @@ pub(super) enum Heard {
 
 /// What to tell the player when nothing is switched on to make `what` audible.
 pub(super) fn nothing_audible(opts: &PlayOptions, what: Heard) -> Option<String> {
-    let clicks = opts.click_audio || opts.click_midi;
+    // A device that follows the clock is reason enough to start the click or the music.
+    let clicks = opts.click_audio || opts.click_midi || opts.clock.is_some();
     let instruments = opts.audio || opts.midi_drums;
     let audible = match what {
         Heard::Playback => instruments || clicks,
@@ -189,7 +190,7 @@ impl DrumApp {
             engine: self.audio.handle(),
             sounds_dir: self.paths.sounds_dir(),
             click_audio: c.click_audio && HAS_AUDIO,
-            midi_port: (c.playback_midi || c.click_midi).then(|| c.midi_out_port.clone()),
+            midi_port: (c.playback_midi || c.click_midi || c.midi_clock).then(|| c.midi_out_port.clone()),
             midi_drums: c.playback_midi,
             drum_channel: c.playback_channel,
             click_midi: c.click_midi,
@@ -198,7 +199,14 @@ impl DrumApp {
             midi_delay: self.output_delay(),
             drum_notes: Lane::ALL.iter().filter_map(|l| c.note_map.playback_note(*l).map(|n| (*l, n))).collect(),
             ramp: self.listen_ramp(),
+            clock: self.clock_options(),
         }
+    }
+
+    /// The MIDI clock, when the settings ask for it.
+    pub(super) fn clock_options(&self) -> Option<ClockOptions> {
+        let c = &self.cfg;
+        c.midi_clock.then_some(ClockOptions { start: c.midi_clock_start, position: c.midi_clock_position })
     }
 
     /// The tempo of the practice as a factor of the written tempo at the start of the selected bars.
@@ -253,7 +261,13 @@ impl DrumApp {
                 plan.bpm
             )
         };
-        let cues = playback::cues(&expected, &plan.clicks);
+        let mut cues = playback::cues(&expected, &plan.clicks);
+        if let Some(clock) = opts.clock.as_ref() {
+            let first = &score.measures()[plan.from];
+            let count_in = Quarters(first.beat_q().0 * plan.count_in_beats as f64);
+            let clock = playback::clock_cues(&score.tempo, first.start_q, score.measures()[plan.to].end_q(), plan.scale, count_in, clock);
+            cues = playback::with_clock(cues, clock);
+        }
         let player = Player::start(plan.zero, cues, plan.end_sec.0, opts, self.playback.control().clone());
         let listen = Listen {
             zero: plan.zero,
@@ -517,5 +531,29 @@ mod tests {
         let drums_only = options(true, false);
         assert!(nothing_audible(&drums_only, Heard::Playback).is_none() && nothing_audible(&drums_only, Heard::Instruments).is_none());
         assert!(nothing_audible(&drums_only, Heard::Click).is_some());
+    }
+
+    #[test]
+    fn the_midi_clock_follows_the_settings_and_opens_the_midi_output_by_itself() {
+        use crate::config::ClockStart;
+        let off = DrumApp::with_config(Config { playback_midi: false, click_midi: false, ..Config::default() });
+        assert!(off.play_options().clock.is_none() && off.play_options().midi_port.is_none());
+        let cfg = Config {
+            midi_clock: true,
+            midi_clock_start: ClockStart::Downbeat,
+            midi_clock_position: true,
+            playback_audio: false,
+            click_audio: false,
+            playback_midi: false,
+            click_midi: false,
+            midi_out_port: "V31".into(),
+            ..Config::default()
+        };
+        let app = DrumApp::with_config(cfg);
+        let opts = app.play_options();
+        assert_eq!(opts.clock, Some(ClockOptions { start: ClockStart::Downbeat, position: true }));
+        assert_eq!(opts.midi_port.as_deref(), Some("V31"), "the output is opened for the clock alone");
+        assert!(nothing_audible(&opts, Heard::Playback).is_none() && nothing_audible(&opts, Heard::Click).is_none());
+        assert!(nothing_audible(&opts, Heard::Instruments).is_some(), "an instrument is not made heard by a clock");
     }
 }

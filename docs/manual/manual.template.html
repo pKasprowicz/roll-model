@@ -610,6 +610,16 @@ ring  = tempo -&gt; cc 20 scale=127      # a plain value 0 to 127 instead of Mac
 <li><strong>Computer sound output</strong> (default): a small built-in drum kit, synthesised on the fly. No sample files and no hardware are needed. It is meant for hearing rhythm and instrument, not for sounding like a studio kit.</li>
 <li><strong>MIDI output:</strong> each instrument is sent as its standard General MIDI / Roland note (or the note you mapped to it) on the chosen channel, to the chosen port. This works with the V31 or Windows' built-in synth. Both outputs can be on at the same time.</li>
 </ul>
+<h3>MIDI clock</h3>
+<p>A device that can follow an external clock (the V31's own metronome and patterns, a looper, a DAW) can run at the tempo of the score. Switch on <em>Settings &rarr; Sound &rarr; Send MIDI clock to the MIDI output</em> and the program sends, to the chosen MIDI output, 24 timing clocks to every quarter note, a <strong>Start</strong> before the first of them and a <strong>Stop</strong> when the music ends or you stop it. It follows the tempo as it is played: the tempo changes of the score, the practice tempo, the ramp and the tempo of the metronome. Nothing is sent while nothing plays.</p>
+<ul>
+<li><strong>Start</strong> goes out <em>with the count-in</em> (the device runs through it) or <em>at the first beat of the music</em>; the count-in is clocked in both cases.</li>
+<li><strong>Position</strong> (off by default): when Listen starts from a later bar, send its position (Song Position Pointer) and <em>Continue</em> instead of <em>Start</em>, for a device that has a pattern or a song to jump into.</li>
+<li>When Listen loops, the clock goes on ticking and Start is not sent again at each pass.</li>
+<li>The clock and the click are separate switches; either, or both, may be on. The clock is delayed like the click is, by the latency compensation, so that the device's beat is heard with the computer's.</li>
+<li>Takes do not send the clock yet (they have a scheduler of their own); Listen and the Metronome tab do.</li>
+</ul>
+<div class="callout warn"><strong class="label">Not tried on a device yet</strong>The messages and their timing are tested with a fake output; trying it with the V31 is still to be done, so the choices above may change.</div>
 <h3>Instrument mixer</h3>
 <p>On <em>Settings &rarr; Sound</em>, every instrument has a <strong>volume</strong>, a <strong>mute</strong> and a <strong>solo</strong> (solo is not saved), live while Listen plays, and a play button that sounds it on its own. An open hi-hat is cut off when the hi-hat is closed.</p>
 <h3>Your own sounds</h3>
@@ -671,6 +681,7 @@ ring  = tempo -&gt; cc 20 scale=127      # a plain value 0 to 127 instead of Mac
 <tr><td><code>latency_ms</code>, <code>latency_engine</code>, <code>perfect_ms</code>, <code>good_ms</code>, <code>window_ms</code></td><td>Timing</td></tr>
 <tr><td><code>metronome_during_take</code>, <code>count_in_bars</code>, <code>listen_count_in</code></td><td>Click switch, count-in, and whether Listen has the count-in</td></tr>
 <tr><td><code>click_audio</code>, <code>click_volume</code>, <code>click_midi</code>, <code>click_note</code>, <code>click_channel</code></td><td>Metronome click</td></tr>
+<tr><td><code>midi_clock</code>, <code>midi_clock_start</code> (<code>count_in</code> or <code>downbeat</code>), <code>midi_clock_position</code></td><td>MIDI clock</td></tr>
 <tr><td><code>playback_audio</code>, <code>playback_volume</code>, <code>playback_midi</code>, <code>playback_channel</code></td><td>Listen</td></tr>
 <tr><td><code>audio_output</code></td><td>Sound device name (empty: system default)</td></tr>
 <tr><td><code>hihat_cc_max</code></td><td>Hi-hat pedal value when closed</td></tr>
