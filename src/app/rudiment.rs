@@ -92,7 +92,7 @@ impl DrumApp {
         }
         let score = r.build(params.repeats, params.lead);
         self.practice.range_from = 0;
-        self.practice.range_to = score.measures.len() - 1;
+        self.practice.range_to = score.measures().len() - 1;
         self.practice.score = Some(score);
         self.practice.score_path = None;
         self.practice.take = None; // it was played on the old score
@@ -202,7 +202,7 @@ impl DrumApp {
             .inner;
         self.apply_picked(picked);
         let Some(score) = self.practice.score.as_ref() else { return };
-        let n_measures = score.measures.len();
+        let n_measures = score.measures().len();
         let part = score.part_name.clone();
         let r = self.rudiment();
 
@@ -356,7 +356,7 @@ mod tests {
         app.sync_source();
         let score = app.practice.score.as_ref().expect("the rudiment is the score");
         assert_eq!(score.title, "Single paradiddle");
-        assert_eq!(score.measures.len(), app.cfg.rudiment_repeats);
+        assert_eq!(score.measures().len(), app.cfg.rudiment_repeats);
         assert_eq!((app.practice.range_from, app.practice.range_to), (0, app.cfg.rudiment_repeats - 1), "the whole thing is practised");
         assert_eq!(app.practice.tempo.value(), 90.0, "the tempo is in BPM, starting where the rudiment suggests");
         let plan = app.plan_run(false).unwrap();
@@ -369,10 +369,10 @@ mod tests {
         let mut app = on_rudiments();
         app.select_rudiment(7); // five stroke roll: alternate leads by default
         assert_eq!(app.rudiment_lead(), Lead::Alternate);
-        let notes = |app: &DrumApp| app.practice.score.as_ref().unwrap().notes.len();
+        let notes = |app: &DrumApp| app.practice.score.as_ref().unwrap().notes().len();
         assert_eq!(notes(&app), 5 * app.cfg.rudiment_repeats);
         app.step_repeats(2);
-        assert_eq!(app.practice.score.as_ref().unwrap().measures.len(), app.cfg.rudiment_repeats);
+        assert_eq!(app.practice.score.as_ref().unwrap().measures().len(), app.cfg.rudiment_repeats);
         assert_eq!(app.practice.range_to, app.cfg.rudiment_repeats - 1);
         let gen = app.score_gen;
         app.step_lead(1); // alternate -> right
@@ -475,7 +475,7 @@ mod tests {
     #[test]
     fn the_picker_only_asks_and_apply_picked_changes_and_rebuilds_once() {
         let mut app = on_rudiments();
-        let before = (app.cfg.rudiment_repeats, app.cfg.rudiment, app.practice.score.as_ref().map(|s| s.measures.len()));
+        let before = (app.cfg.rudiment_repeats, app.cfg.rudiment, app.practice.score.as_ref().map(|s| s.measures().len()));
         // Drawing the tab with no input changes nothing.
         let ctx = egui::Context::default();
         for _ in 0..2 {
@@ -483,13 +483,13 @@ mod tests {
                 egui::CentralPanel::default().show(ctx, |ui| app.rudiments_tab(ui));
             });
         }
-        assert_eq!(before, (app.cfg.rudiment_repeats, app.cfg.rudiment, app.practice.score.as_ref().map(|s| s.measures.len())));
+        assert_eq!(before, (app.cfg.rudiment_repeats, app.cfg.rudiment, app.practice.score.as_ref().map(|s| s.measures().len())));
 
         // What the picker asked for is applied in one place, and the score is built for it.
         let lead = app.rudiment_lead();
         app.apply_picked(Picked { chosen: Some(16), steps: 0, repeats: 3, lead });
         assert_eq!((app.cfg.rudiment, app.cfg.rudiment_repeats), (16, 3));
-        assert_eq!(app.practice.score.as_ref().map(|s| s.measures.len()), Some(3), "one bar for each repetition");
+        assert_eq!(app.practice.score.as_ref().map(|s| s.measures().len()), Some(3), "one bar for each repetition");
     }
 
     #[test]

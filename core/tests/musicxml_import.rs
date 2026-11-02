@@ -50,10 +50,10 @@ fn dump(s: &Score) -> String {
     writeln!(out, "title: {}", s.title).unwrap();
     writeln!(out, "part: {}", s.part_name).unwrap();
     writeln!(out, "tempo: {:?}", s.tempo).unwrap();
-    for (i, m) in s.measures.iter().enumerate() {
+    for (i, m) in s.measures().iter().enumerate() {
         writeln!(out, "measure {i}: #{} start={:.6} len={:.6} {}/{}", m.number, m.start_q, m.len_q, m.beats, m.beat_type).unwrap();
     }
-    for n in &s.notes {
+    for n in s.notes() {
         writeln!(
             out,
             "note q={:.6} m={} {:?} step={} head={:?} accent={} ghost={} grace={}/{} stem={:?}",
@@ -70,7 +70,7 @@ fn dump(s: &Score) -> String {
         )
         .unwrap();
     }
-    for r in &s.rests {
+    for r in s.rests() {
         writeln!(out, "rest q={:.6} m={} dur={:.6} up={} whole_bar={}", r.q, r.measure, r.dur_q, r.stem.is_up(), r.whole_bar).unwrap();
     }
     for w in &s.warnings {
@@ -357,7 +357,7 @@ fn files_of_every_container_and_encoding() {
     for (name, bytes) in &cases {
         let file = TempFile::new(name, bytes);
         match load(&file.0) {
-            Ok(s) => writeln!(out, "{name}: ok title={:?} measures={} notes={}", s.title, s.measures.len(), s.notes.len()).unwrap(),
+            Ok(s) => writeln!(out, "{name}: ok title={:?} measures={} notes={}", s.title, s.measures().len(), s.notes().len()).unwrap(),
             Err(e) => writeln!(out, "{name}: error {e}").unwrap(),
         }
     }
@@ -407,7 +407,7 @@ fn measure_repeats_copy_the_music_of_the_measures_before() {
         .concat(),
     );
     let s = parse(&text, true).unwrap();
-    let lanes: Vec<(usize, String)> = s.notes.iter().map(|n| (n.measure, format!("{:?}", n.lane))).collect();
+    let lanes: Vec<(usize, String)> = s.notes().iter().map(|n| (n.measure, format!("{:?}", n.lane))).collect();
     let expected: Vec<(usize, String)> =
         [(0, "Kick"), (1, "Kick"), (2, "Kick"), (3, "Snare"), (4, "HiHatClosed"), (5, "Crash1"), (6, "HiHatClosed"), (7, "Crash1")]
             .iter()
@@ -442,7 +442,7 @@ fn a_drum_set_written_as_one_instrument_is_read_from_the_staff_positions() {
         )
     );
     let s = parse(&text, true).unwrap();
-    let lanes: Vec<String> = s.notes.iter().map(|n| format!("{:?}", n.lane)).collect();
+    let lanes: Vec<String> = s.notes().iter().map(|n| format!("{:?}", n.lane)).collect();
     assert_eq!(lanes[..4], ["HiHatClosed", "Kick", "HiHatClosed", "Snare"], "{lanes:?}");
     assert!(s.warnings.iter().any(|w| w.contains("guessed from staff position")), "{:?}", s.warnings);
     check("one_instrument_by_staff", &dump(&s));
@@ -453,7 +453,7 @@ fn the_two_grace_notes_of_a_drag_keep_their_places_before_the_note() {
     let grace = "<note><grace/><unpitched><display-step>C</display-step><display-octave>5</display-octave></unpitched><instrument id=\"S\"/><voice>1</voice></note>";
     let body = format!("{FOUR_FOUR}{grace}{grace}{}{grace}{}", note("S", 2, ""), note("K", 6, ""));
     let s = parse(&score(&measure("1", &body)), true).unwrap();
-    let orders: Vec<(bool, u8)> = s.notes.iter().map(|n| (n.is_grace(), n.grace_order())).collect();
+    let orders: Vec<(bool, u8)> = s.notes().iter().map(|n| (n.is_grace(), n.grace_order())).collect();
     // The drag (two graces) and the flam (one) are told apart, and neither loses a grace to the de-duplication.
     assert_eq!(orders.iter().filter(|(g, _)| *g).count(), 3, "{orders:?}");
     assert!(orders.contains(&(true, 2)) && orders.iter().filter(|o| **o == (true, 1)).count() == 2, "{orders:?}");

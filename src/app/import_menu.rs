@@ -103,12 +103,12 @@ impl DrumApp {
         let status = format!(
             "Loaded \"{}\": {} measures, {} notes, {:.0} BPM{}",
             score.title,
-            score.measures.len(),
-            score.notes.len(),
+            score.measures().len(),
+            score.notes().len(),
             score.tempo.bpm_at(Quarters::ZERO),
             report.midi.as_ref().map(|m| format!(" ({})", m.summary())).unwrap_or_default(),
         );
-        let last = score.measures.len().saturating_sub(1);
+        let last = score.measures().len().saturating_sub(1);
         if opened == Opened::Again {
             self.practice.range_from = self.practice.range_from.min(last);
             self.practice.range_to = self.practice.range_to.min(last);

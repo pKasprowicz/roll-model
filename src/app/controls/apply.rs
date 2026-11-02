@@ -59,7 +59,7 @@ impl DrumApp {
 
     pub(super) fn controller_state(&self) -> State {
         let c = &self.cfg;
-        let measures = self.practice.score.as_ref().map_or(0, |s| s.measures.len());
+        let measures = self.practice.score.as_ref().map_or(0, |s| s.measures().len());
         let along = |i: usize| if measures > 1 { i as f32 / (measures - 1) as f32 } else { 0.0 };
         let tempo = if self.tempo_is_metronome() { limits::METRO_BPM.unit(c.metro_bpm) } else { self.practice.tempo.position() };
         let mut s = State {
@@ -215,7 +215,7 @@ impl DrumApp {
             return;
         }
         let tempo_here = self.tempo_is_metronome();
-        let measures = self.practice.score.as_ref().map_or(0, |s| s.measures.len());
+        let measures = self.practice.score.as_ref().map_or(0, |s| s.measures().len());
         let one = steps.signum();
         match action {
             Action::Tempo => {
@@ -288,7 +288,7 @@ impl DrumApp {
             return;
         }
         let x = x.clamp(0.0, 1.0);
-        let measures = self.practice.score.as_ref().map_or(0, |s| s.measures.len());
+        let measures = self.practice.score.as_ref().map_or(0, |s| s.measures().len());
         let bar = |x: f32| (x * measures.saturating_sub(1) as f32).round() as usize;
         match action {
             Action::Tempo => {
@@ -346,7 +346,7 @@ impl DrumApp {
 
     pub(super) fn status_range(&mut self) {
         if let Some(score) = self.practice.score.as_ref() {
-            let number = |i: usize| score.measures.get(i).map(|m| m.number.clone()).unwrap_or_default();
+            let number = |i: usize| score.measures().get(i).map(|m| m.number.clone()).unwrap_or_default();
             self.view.status = format!("Measures {}–{}", number(self.practice.range_from), number(self.practice.range_to));
         }
     }
@@ -373,7 +373,7 @@ impl DrumApp {
             self.cfg.metro_bpm = limits::METRO_BPM.clamp(bpm as f32);
             self.view.status = format!("Metronome {:.0} BPM (tapped)", self.cfg.metro_bpm);
         } else if let Some(score) = self.practice.score.as_ref() {
-            let written = score.tempo.bpm_at(score.measures[self.practice.range_from.min(score.measures.len() - 1)].start_q);
+            let written = score.tempo.bpm_at(score.measures()[self.practice.range_from.min(score.measures().len() - 1)].start_q);
             self.practice.tempo = self.practice.tempo.from_bpm(bpm, written);
             let text = self.practice.tempo.text();
             self.view.status = match self.source {
@@ -384,7 +384,7 @@ impl DrumApp {
     }
 
     pub(super) fn move_range(&mut self, direction: Direction) {
-        let Some(n) = self.practice.score.as_ref().map(|s| s.measures.len()) else { return };
+        let Some(n) = self.practice.score.as_ref().map(|s| s.measures().len()) else { return };
         if let Some((from, to)) = shifted_range(self.practice.range_from, self.practice.range_to, n, direction) {
             self.practice.range_from = from;
             self.practice.range_to = to;

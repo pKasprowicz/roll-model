@@ -105,12 +105,12 @@ impl DrumApp {
     /// beat clicks of the music; the click switch decides whether they sound.
     pub(super) fn plan_run(&self, count_in: bool) -> Option<Plan> {
         let score = self.practice.score.as_ref()?;
-        if score.measures.is_empty() {
+        if score.measures().is_empty() {
             return None;
         }
-        let from = self.practice.range_from.min(score.measures.len() - 1);
-        let to = self.practice.range_to.clamp(from, score.measures.len() - 1);
-        let m0 = &score.measures[from];
+        let from = self.practice.range_from.min(score.measures().len() - 1);
+        let to = self.practice.range_to.clamp(from, score.measures().len() - 1);
+        let m0 = &score.measures()[from];
         let written = score.tempo.bpm_at(m0.start_q);
         let scale = self.practice.tempo.scale(written);
         let bpm = written * scale;
@@ -119,7 +119,7 @@ impl DrumApp {
         let lead = 0.5;
         let zero = Instant::now() + Duration::from_secs_f64(lead + count_in_beats as f64 * beat_sec.0);
         let t0 = score.tempo.q_to_sec(m0.start_q, scale);
-        let end_sec = score.tempo.q_to_sec(score.measures[to].end_q(), scale) - t0;
+        let end_sec = score.tempo.q_to_sec(score.measures()[to].end_q(), scale) - t0;
         let clicks = score.click_track(from, to, scale, count_in_beats, true);
         Some(Plan { from, to, scale, bpm, beat_sec, count_in_beats, zero, t0, end_sec, clicks })
     }
@@ -144,8 +144,12 @@ impl DrumApp {
         let Some(plan) = self.plan_run(true) else { return };
         let Some(score) = self.practice.score.as_ref() else { return };
         let expected = expected_notes(score, plan.from, plan.to, plan.scale);
-        self.view.status =
-            format!("Recording measures {}–{} at {:.0} BPM", score.measures[plan.from].number, score.measures[plan.to].number, plan.bpm);
+        self.view.status = format!(
+            "Recording measures {}–{} at {:.0} BPM",
+            score.measures()[plan.from].number,
+            score.measures()[plan.to].number,
+            plan.bpm
+        );
         self.metronome = Some(Metronome::start(plan.zero, plan.clicks, self.click_options(), Some(self.playback.control().clone())));
         self.practice.takes_started += 1;
         self.practice.take = Some(Take {
@@ -192,8 +196,8 @@ impl DrumApp {
             .practice
             .score
             .as_ref()
-            .filter(|s| !s.measures.is_empty())
-            .map_or(100.0, |s| s.tempo.bpm_at(s.measures[self.practice.range_from.min(s.measures.len() - 1)].start_q));
+            .filter(|s| !s.measures().is_empty())
+            .map_or(100.0, |s| s.tempo.bpm_at(s.measures()[self.practice.range_from.min(s.measures().len() - 1)].start_q));
         self.practice.tempo.scale(written)
     }
 
@@ -243,7 +247,12 @@ impl DrumApp {
         self.view.status = if expected.is_empty() {
             "There are no notes in the selected measures; only the click plays.".into()
         } else {
-            format!("Listening to measures {}–{} at {:.0} BPM", score.measures[plan.from].number, score.measures[plan.to].number, plan.bpm)
+            format!(
+                "Listening to measures {}–{} at {:.0} BPM",
+                score.measures()[plan.from].number,
+                score.measures()[plan.to].number,
+                plan.bpm
+            )
         };
         let cues = playback::cues(&expected, &plan.clicks);
         let player = Player::start(plan.zero, cues, plan.end_sec.0, opts, self.playback.control().clone());
@@ -267,7 +276,7 @@ impl DrumApp {
 
     /// The range and tempo Listen would start with now.
     pub(super) fn listen_signature(&self) -> Option<ListenKey> {
-        let n = self.practice.score.as_ref()?.measures.len();
+        let n = self.practice.score.as_ref()?.measures().len();
         if n == 0 {
             return None;
         }
@@ -322,7 +331,7 @@ impl DrumApp {
         }
         let (pass, e) = l.ramp.locate(l.end_sec.0, elapsed.0);
         let q = score.tempo.sec_to_q(Seconds(e) + l.t0, l.tempo_scale);
-        let m = &score.measures[score.measure_at(q)?];
+        let m = &score.measures()[score.measure_at(q)?];
         let beat = (((q - m.start_q) / m.beat_q()).floor() as u32 + 1).min(m.beats);
         let mut text = format!("bar {} · beat {}", m.number, beat);
         if l.ramp.every > 0 {
@@ -405,14 +414,14 @@ impl DrumApp {
         if r.evaluated == 0 {
             return TakeOutcome::NothingDue;
         }
-        let bpm = self.practice.score.as_ref().map(|s| s.tempo.bpm_at(s.measures[take.from].start_q) * take.tempo_scale).unwrap_or(0.0);
+        let bpm = self.practice.score.as_ref().map(|s| s.tempo.bpm_at(s.measures()[take.from].start_q) * take.tempo_scale).unwrap_or(0.0);
         let range = if take.window == Window::Adaptive {
             take.label.clone()
         } else {
             self.practice
                 .score
                 .as_ref()
-                .map(|s| format!("{}–{}", s.measures[take.from].number, s.measures[take.to].number))
+                .map(|s| format!("{}–{}", s.measures()[take.from].number, s.measures()[take.to].number))
                 .unwrap_or_default()
         };
         let clean = reason == StopReason::Completed && take.window == Window::Adaptive && r.overall >= CLEAN_TAKE;
@@ -519,7 +528,7 @@ impl DrumApp {
     }
 
     pub(super) fn note_grades(&self) -> Vec<Option<Grade>> {
-        let n = self.practice.score.as_ref().map(|s| s.notes.len()).unwrap_or(0);
+        let n = self.practice.score.as_ref().map(|s| s.notes().len()).unwrap_or(0);
         let mut g = vec![None; n];
         if let Some(take) = self.practice.take.as_ref() {
             for (e, r) in take.expected.iter().zip(&take.report.results) {

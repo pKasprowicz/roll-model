@@ -751,7 +751,7 @@ impl Config {
     pub fn from_text(text: &str) -> Config {
         let mut c = Config::default();
         let mut map_seen = false;
-        let mut map = NoteMap { map: Default::default() };
+        let mut map = NoteMap::empty();
         for line in text.lines() {
             let line = line.trim();
             if line.is_empty() || line.starts_with('#') {

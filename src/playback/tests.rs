@@ -339,8 +339,8 @@ fn sample_score_renders_a_note_at_every_onset() {
         import_bytes(include_bytes!("../../examples/basic_rock_beat.musicxml"), "basic_rock_beat.musicxml", &ImportOptions::default())
             .unwrap()
             .score;
-    let expected = expected_notes(&score, 0, score.measures.len() - 1, 1.0);
-    let clicks = score.click_track(0, score.measures.len() - 1, 1.0, 4, true);
+    let expected = expected_notes(&score, 0, score.measures().len() - 1, 1.0);
+    let clicks = score.click_track(0, score.measures().len() - 1, 1.0, 4, true);
     let all = cues(&expected, &clicks);
     let lead = 2.4; // one count-in bar at 100 BPM
     let out = mix(&all, lead, 1.0);

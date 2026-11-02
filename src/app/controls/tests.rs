@@ -68,7 +68,7 @@ fn on_the_metronome_tab_the_tempo_controls_set_its_bpm() {
 #[test]
 fn range_encoders_keep_the_range_valid() {
     let mut app = app_with_score();
-    let last = app.practice.score.as_ref().unwrap().measures.len() - 1;
+    let last = app.practice.score.as_ref().unwrap().measures().len() - 1;
     assert_eq!((app.practice.range_from, app.practice.range_to), (0, last));
     app.apply_command(Command::Turn(Action::RangeFrom, 2));
     assert_eq!(app.practice.range_from, 2.min(last));
@@ -185,7 +185,7 @@ fn with_a_rudiment_the_range_controls_choose_repetitions_lead_and_rudiment() {
     let repeats = app.cfg.rudiment_repeats;
     app.apply_command(Command::Turn(Action::RangeFrom, 3));
     assert_eq!(app.cfg.rudiment_repeats, repeats + 3);
-    assert_eq!(app.practice.score.as_ref().unwrap().measures.len(), repeats + 3);
+    assert_eq!(app.practice.score.as_ref().unwrap().measures().len(), repeats + 3);
     app.apply_command(Command::Turn(Action::RangeTo, 1));
     assert_eq!(app.rudiment_lead(), Lead::Left);
     app.apply_command(Command::Turn(Action::RangeTo, -1));
@@ -379,7 +379,7 @@ fn the_controller_page_draws_with_and_without_a_controller() {
 fn a_run_has_a_count_in_only_when_asked_for() {
     let mut app = app_with_score();
     app.cfg.count_in_bars = 1;
-    let beats = app.practice.score.as_ref().unwrap().measures[0].beats;
+    let beats = app.practice.score.as_ref().unwrap().measures()[0].beats;
     assert_eq!(app.plan_run(true).unwrap().count_in_beats, beats);
     assert_eq!(app.plan_run(false).unwrap().count_in_beats, 0, "this is what Listen asks for when its count-in is off");
     assert!(app.cfg.listen_count_in, "Listen has one by default");

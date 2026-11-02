@@ -495,7 +495,7 @@ impl DrumApp {
         let Some(score) = self.practice.score.as_ref() else { return String::new() };
         match self.source {
             Source::Score => score.title.clone(),
-            Source::Rudiments => format!("{} ×{}", score.title, score.measures.len()),
+            Source::Rudiments => format!("{} ×{}", score.title, score.measures().len()),
         }
     }
 
@@ -777,7 +777,7 @@ mod tests {
         let midi = Path::new(env!("CARGO_MANIFEST_DIR")).join("examples").join("basic_rock_beat.mid");
         app.open_file(&midi);
         assert!(app.is_midi_score(), "{:?}", app.view.error);
-        assert_eq!(app.practice.score.as_ref().unwrap().measures.len(), 4);
+        assert_eq!(app.practice.score.as_ref().unwrap().measures().len(), 4);
         assert!(app.view.status.contains("sixteenths") || app.view.status.contains("eighths"), "{}", app.view.status);
         // The Score tab, with its MIDI menu, draws.
         let ctx = egui::Context::default();
@@ -794,7 +794,7 @@ mod tests {
         app.practice.midi_options.first_bar_beats = 1;
         app.reimport();
         let score = app.practice.score.as_ref().unwrap();
-        assert_eq!(score.measures[0].len_q, crate::units::Quarters(1.0), "a short first bar");
+        assert_eq!(score.measures()[0].len_q, crate::units::Quarters(1.0), "a short first bar");
         assert_eq!((app.practice.range_from, app.practice.range_to), (1, 2), "the selected bars stay");
         assert!(app.view.tab == Tab::Results, "the tab stays");
         assert!(app.score_gen > gen);
@@ -802,7 +802,7 @@ mod tests {
         // Opening a file again starts from the default settings.
         app.open_file(&midi);
         assert_eq!(app.practice.midi_options, crate::import::MidiOptions::default());
-        assert_eq!(app.practice.score.as_ref().unwrap().measures[0].len_q, crate::units::Quarters(4.0));
+        assert_eq!(app.practice.score.as_ref().unwrap().measures()[0].len_q, crate::units::Quarters(4.0));
 
         // A MusicXML score has no such menu.
         app.open_file(&sample());

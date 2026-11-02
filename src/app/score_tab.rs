@@ -19,9 +19,9 @@ impl DrumApp {
             self.welcome_panel(ui);
             return;
         };
-        let n_measures = score.measures.len();
+        let n_measures = score.measures().len();
         let running = self.take_running();
-        let base_bpm = score.tempo.bpm_at(score.measures[self.practice.range_from.min(n_measures - 1)].start_q);
+        let base_bpm = score.tempo.bpm_at(score.measures()[self.practice.range_from.min(n_measures - 1)].start_q);
         let title = score.title.clone();
         let part = score.part_name.clone();
         let warnings = score.warnings.clone();
@@ -120,7 +120,7 @@ impl DrumApp {
                     .practice
                     .score
                     .as_ref()
-                    .and_then(|s| s.measures.get(self.cfg.layout_align_bar.wrapping_sub(1)))
+                    .and_then(|s| s.measures().get(self.cfg.layout_align_bar.wrapping_sub(1)))
                     .map(|m| m.number.clone());
                 if let Some(number) = printed {
                     widgets::hint(ui, format!("Bar {} of the score as shown, printed as bar {number} in the file.", self.cfg.layout_align_bar));

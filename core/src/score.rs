@@ -267,16 +267,61 @@ impl TempoMap {
 pub struct Score {
     pub title: String,
     pub part_name: String,
-    pub measures: Vec<Measure>,
+    pub(crate) measures: Vec<Measure>,
     /// Sorted by `q`.
-    pub notes: Vec<ScoreNote>,
+    pub(crate) notes: Vec<ScoreNote>,
     /// The rests the file prints (none for a score made by the program).
-    pub rests: Vec<Rest>,
+    pub(crate) rests: Vec<Rest>,
     pub tempo: TempoMap,
     pub warnings: Vec<String>,
 }
 
 impl Score {
+    /// The bars, one after the other without a gap.
+    pub fn measures(&self) -> &[Measure] {
+        &self.measures
+    }
+
+    /// The notes in time order, each inside its measure.
+    pub fn notes(&self) -> &[ScoreNote] {
+        &self.notes
+    }
+
+    /// The rests the file prints (none for a score made by the program).
+    pub fn rests(&self) -> &[Rest] {
+        &self.rests
+    }
+
+    /// The parts of a score, for a test to put together by hand without the rules of
+    /// `import::check_invariants`.
+    #[doc(hidden)]
+    pub fn measures_mut(&mut self) -> &mut Vec<Measure> {
+        &mut self.measures
+    }
+
+    #[doc(hidden)]
+    pub fn notes_mut(&mut self) -> &mut Vec<ScoreNote> {
+        &mut self.notes
+    }
+
+    #[doc(hidden)]
+    pub fn rests_mut(&mut self) -> &mut Vec<Rest> {
+        &mut self.rests
+    }
+
+    /// A score from its parts, or the rule they break (see `import::check_invariants`).
+    pub fn from_parts(
+        title: String,
+        measures: Vec<Measure>,
+        notes: Vec<ScoreNote>,
+        rests: Vec<Rest>,
+        tempo: TempoMap,
+    ) -> Result<Score, String> {
+        let score = Score { title, part_name: String::new(), measures, notes, rests, tempo, warnings: Vec::new() };
+        crate::import::check_invariants(&score)?;
+        Ok(score)
+    }
+
     pub fn measure_at(&self, q: Quarters) -> Option<usize> {
         if self.measures.is_empty() || q < Quarters::ZERO {
             return None;
@@ -407,5 +452,16 @@ mod tests {
         assert!((score.click_track(0, 0, 0.5, 4, false)[0].t.0 + 4.0).abs() < 1e-9);
         assert!(score.click_track(0, 2, 1.0, 0, false).is_empty());
         assert!(Score::default().click_track(0, 0, 1.0, 4, true).is_empty());
+    }
+
+    #[test]
+    fn a_score_made_from_parts_must_keep_the_rules_of_a_score() {
+        let good = Score::click_bar(4, 1);
+        let (measures, notes) = (good.measures().to_vec(), good.notes().to_vec());
+        assert!(Score::from_parts("x".into(), measures.clone(), notes.clone(), vec![], TempoMap::default()).is_ok());
+        let mut stray = notes;
+        stray[1].q = Quarters(99.0);
+        let err = Score::from_parts("x".into(), measures, stray, vec![], TempoMap::default()).unwrap_err();
+        assert!(err.contains("outside its measure"), "{err}");
     }
 }
