@@ -572,14 +572,19 @@ impl DrumApp {
                 }
             }
             ui.separator();
-            ui.selectable_value(&mut self.view.tab, Tab::Home, "🏠 Home");
+            // The tab is chosen here and changed after the buttons: `show_tab` also puts its practice in place.
+            let mut tab = self.view.tab;
+            ui.selectable_value(&mut tab, Tab::Home, "🏠 Home");
             ui.add_enabled_ui(self.has_main_score(), |ui| {
-                ui.selectable_value(&mut self.view.tab, Tab::Score, "🎼 Score");
+                ui.selectable_value(&mut tab, Tab::Score, "🎼 Score");
             });
-            ui.selectable_value(&mut self.view.tab, Tab::Rudiments, "🔁 Rudiments");
-            ui.selectable_value(&mut self.view.tab, Tab::Metronome, "⏱ Metronome");
-            ui.selectable_value(&mut self.view.tab, Tab::Results, "📊 Results");
-            ui.selectable_value(&mut self.view.tab, Tab::Settings, "⚙ Settings");
+            ui.selectable_value(&mut tab, Tab::Rudiments, "🔁 Rudiments");
+            ui.selectable_value(&mut tab, Tab::Metronome, "⏱ Metronome");
+            ui.selectable_value(&mut tab, Tab::Results, "📊 Results");
+            ui.selectable_value(&mut tab, Tab::Settings, "⚙ Settings");
+            if tab != self.view.tab {
+                self.show_tab(tab);
+            }
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 match &self.midi.input {
                     Some(h) => ui.label(RichText::new(format!("⏺ {}", h.port_name)).color(render::GREEN)),
@@ -683,8 +688,6 @@ impl DrumApp {
     /// The top bar, the status line, the tab that is shown and the windows of the controller.
     fn draw(&mut self, ctx: &egui::Context) {
         egui::TopBottomPanel::top("top").show(ctx, |ui| self.top_bar(ui));
-        // A tab clicked just now needs its practice source before it is drawn.
-        self.sync_source();
         egui::TopBottomPanel::bottom("status").show(ctx, |ui| {
             ui.horizontal(|ui| {
                 if let Some(e) = self.view.error.clone() {
@@ -899,6 +902,25 @@ mod tests {
         app.view.tab = Tab::Rudiments;
         app.sync_source();
         assert!(app.note_clean_rudiment(90.0).starts_with("Clean take at 90 BPM"));
+    }
+
+    #[test]
+    fn showing_a_tab_puts_its_practice_in_place_at_once_and_the_buttons_use_the_command_path() {
+        let mut app = DrumApp::with_config(Config::default());
+        app.show_tab(Tab::Rudiments);
+        assert!(app.source == Source::Rudiments, "no frame has to pass");
+        assert!(app.practice.score.is_some(), "the rudiment is built");
+        app.show_tab(Tab::Metronome);
+        assert!(app.source == Source::Rudiments, "the other tabs keep the source");
+        // The buttons of the screen ask for the same actions as the keys: the same refusal.
+        app.show_tab(Tab::Home);
+        app.parked.score = None;
+        app.practice.score = None;
+        app.press(Action::Listen);
+        assert_eq!(app.view.status, "Open a score first.");
+        app.view.status.clear();
+        app.press(Action::Click);
+        assert!(app.cfg.metronome_during_take != Config::default().metronome_during_take);
     }
 
     #[test]

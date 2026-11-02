@@ -8,6 +8,7 @@ use egui::{pos2, vec2, RichText, Sense, Stroke};
 
 use super::{DrumApp, Source, RESTART_DELAY};
 use crate::config::limits;
+use crate::controller::Action;
 use crate::metronome::HAS_AUDIO;
 use crate::playback::{self, PlayOptions, Player, Ramp, Subdivision};
 use crate::render;
@@ -146,11 +147,7 @@ impl DrumApp {
             let running = self.metro_run.run.is_some();
             let label = if running { "⏹ Stop (M)" } else { "⏵ Start (M)" };
             if ui.button(RichText::new(label).strong().size(22.0)).clicked() {
-                if running {
-                    self.stop_metro();
-                } else {
-                    self.start_metro();
-                }
+                self.press(Action::Metronome);
             }
             ui.add_space(6.0);
             widgets::slider(ui, "tempo", &mut self.cfg.metro_bpm, limits::METRO_BPM.range(), " BPM", 1.0);

@@ -115,7 +115,7 @@ impl DrumApp {
             let absolute = std::path::absolute(path).unwrap_or_else(|_| path.to_path_buf());
             self.cfg.remember_recent(&absolute.to_string_lossy());
             self.restore_layout();
-            self.view.tab = super::Tab::Score;
+            self.show_tab(super::Tab::Score);
         }
         self.practice.take = None;
         self.score_gen += 1;

@@ -47,8 +47,14 @@ impl DrumApp {
         self.rud.lead.unwrap_or_else(|| self.rudiment().default_lead())
     }
 
+    /// Shows `tab`, with the practice source it belongs to in place.
+    pub(super) fn show_tab(&mut self, tab: Tab) {
+        self.view.tab = tab;
+        self.sync_source();
+    }
+
     /// Puts the right practice source in place for the tab that is showing, and keeps the
-    /// rudiment's score and tempo up to date.
+    /// rudiment's score up to date.
     pub(super) fn sync_source(&mut self) {
         match self.view.tab {
             Tab::Score => self.activate(Source::Score),

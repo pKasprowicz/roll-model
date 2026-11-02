@@ -3,6 +3,7 @@
 use egui::{Color32, RichText};
 
 use crate::config::limits;
+use crate::controller::Action;
 use crate::render::{self, LayoutOpts, ScoreView};
 use crate::widgets;
 
@@ -67,7 +68,7 @@ impl DrumApp {
         ui.horizontal(|ui| {
             if running {
                 if ui.button(RichText::new("⏹ Stop (Esc)").strong()).clicked() {
-                    self.stop_take(false);
+                    self.press(Action::Stop);
                 }
             } else {
                 let gradable = self.source == Source::Score || self.rudiment().gradable();
@@ -77,19 +78,19 @@ impl DrumApp {
                     .on_disabled_hover_text("A closed roll cannot be graded stroke by stroke: use Listen")
                     .clicked()
                 {
-                    self.start_take();
+                    self.press(Action::Record);
                 }
             }
             if self.playback.listen.is_some() {
                 if ui.button(RichText::new("⏹ Stop listening (L)").strong()).clicked() {
-                    self.stop_listen();
+                    self.press(Action::Listen);
                 }
             } else if ui
                 .add_enabled(!running, egui::Button::new(RichText::new("⏵ Listen (L)").strong()))
                 .on_hover_text("Hear the selected measures at the chosen tempo, with the count-in and click, before you play them")
                 .clicked()
             {
-                self.start_listen();
+                self.press(Action::Listen);
             }
             // Where Listen is in the music; a fixed width, so the controls after it stay put.
             let position = self.listen_position().unwrap_or_default();
@@ -132,13 +133,33 @@ impl DrumApp {
     /// The switches that work while the music plays, and the count-in.
     pub(super) fn playback_switches(&mut self, ui: &mut egui::Ui, running: bool) {
         // The click can be switched on and off while the music plays, in Listen and in a take.
-        ui.checkbox(&mut self.cfg.metronome_during_take, "click (K)")
-            .on_hover_text("Switch the metronome on or off at any time, also while playing or recording. The count-in always sounds.");
+        // The switches are the same commands as the keys and the controller's buttons: a click only
+        // asks for the change, `press` makes it.
+        let mut click = self.cfg.metronome_during_take;
+        if ui
+            .checkbox(&mut click, "click (K)")
+            .on_hover_text("Switch the metronome on or off at any time, also while playing or recording. The count-in always sounds.")
+            .changed()
+        {
+            self.press(Action::Click);
+        }
         ui.add_enabled_ui(!running, |ui| {
-            ui.checkbox(&mut self.playback.notes, "notes")
-                .on_hover_text("Play the notes of the score in Listen. Switch them off to use Listen as a click track.");
-            ui.checkbox(&mut self.playback.looping, "loop")
-                .on_hover_text("Repeat the selected measures in Listen until it is stopped. Switching it off lets the current round finish.");
+            let mut notes = self.playback.notes;
+            if ui
+                .checkbox(&mut notes, "notes")
+                .on_hover_text("Play the notes of the score in Listen. Switch them off to use Listen as a click track.")
+                .changed()
+            {
+                self.press(Action::Notes);
+            }
+            let mut looping = self.playback.looping;
+            if ui
+                .checkbox(&mut looping, "loop")
+                .on_hover_text("Repeat the selected measures in Listen until it is stopped. Switching it off lets the current round finish.")
+                .changed()
+            {
+                self.press(Action::Loop);
+            }
             widgets::slider(ui, "count-in bars", &mut self.cfg.count_in_bars, limits::COUNT_IN_BARS.range(), "", 1.0);
             ui.checkbox(&mut self.cfg.listen_count_in, "in Listen")
                 .on_hover_text("Start Listen with the count-in too. A recording always has one; switch this off to hear the music at once.");

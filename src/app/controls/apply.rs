@@ -420,11 +420,11 @@ impl DrumApp {
             tabs.push(Tab::Score);
         }
         tabs.extend([Tab::Rudiments, Tab::Metronome, Tab::Results, Tab::Settings]);
-        self.view.tab = match tabs.iter().position(|t| *t == self.view.tab) {
+        let next = match tabs.iter().position(|t| *t == self.view.tab) {
             Some(i) => tabs[(i + 1) % tabs.len()],
             None => tabs[0],
         };
-        self.sync_source();
+        self.show_tab(next);
     }
 
     pub(super) fn tap_tempo(&mut self) {
