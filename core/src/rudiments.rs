@@ -16,7 +16,8 @@
 //! whole quarter notes and it is repeated; the left lead is the mirror image.
 
 use crate::drums::Lane;
-use crate::score::{Hand, Measure, Score, ScoreNote, TempoMap};
+use crate::score::{Dynamic, Hand, Kind, Measure, Score, ScoreNote, Stem, TempoMap};
+use crate::units::Quarters;
 
 /// The tempo the rudiment scores are written at; the practice tempo (percent) is then the BPM.
 pub const BASE_BPM: f64 = 100.0;
@@ -121,8 +122,8 @@ const fn rud(
 }
 
 /// The 40 rudiments, in the PAS order.
-// One rudiment to a line: tools/build_manual.py reads the rows with a regular expression, so rustfmt
-// must not wrap them.
+// One rudiment to a line, to read the table as a table. The manual does not parse this text: it reads
+// docs/manual/rudiments.json, which `catalogue_json` writes and a test keeps up to date.
 #[rustfmt::skip]
 static CATALOGUE: [Rudiment; 40] = [
     rud(1, "Single stroke roll", Family::Roll, true, S16, "R L R L R L R L", "Alternating single strokes."),
@@ -169,6 +170,28 @@ static CATALOGUE: [Rudiment; 40] = [
 
 pub fn all() -> &'static [Rudiment] {
     &CATALOGUE
+}
+
+/// The catalogue as JSON, one rudiment to a line: what the manual's reference tables are built from
+/// (`docs/manual/rudiments.json`; `cargo run -p roll-model-core --example dump_rudiments` writes it).
+pub fn catalogue_json() -> String {
+    let text = |s: &str| format!("\"{}\"", s.replace('\\', "\\\\").replace('"', "\\\""));
+    let rows: Vec<String> = all()
+        .iter()
+        .map(|r| {
+            format!(
+                "  {{\"number\": {}, \"name\": {}, \"family\": {}, \"nard\": {}, \"pattern\": {}, \"beats\": {}, \"about\": {}}}",
+                r.number,
+                text(r.name),
+                text(&format!("{:?}", r.family)),
+                r.nard,
+                text(r.pattern),
+                r.cell().beats,
+                text(r.about)
+            )
+        })
+        .collect();
+    format!("[\n{}\n]\n", rows.join(",\n"))
 }
 
 pub fn by_number(number: u8) -> Option<&'static Rudiment> {
@@ -285,8 +308,8 @@ impl Rudiment {
             ..Score::default()
         };
         for i in 0..repeats {
-            let start_q = i as f64 * beats;
-            score.measures.push(Measure { number: (i + 1).to_string(), start_q, len_q: beats, beats: cell.beats, beat_type: 4 });
+            let start_q = Quarters(i as f64 * beats);
+            score.measures.push(Measure { number: (i + 1).to_string(), start_q, len_q: Quarters(beats), beats: cell.beats, beat_type: 4 });
             let mirrored = match lead {
                 Lead::Right => false,
                 Lead::Left => true,
@@ -295,17 +318,15 @@ impl Rudiment {
             for stroke in &cell.strokes {
                 let hand = if mirrored { stroke.hand.other() } else { stroke.hand };
                 let note = |grace_order: u8, hand: Option<Hand>, accent: bool| ScoreNote {
-                    q: start_q + stroke.at,
+                    q: start_q + Quarters(stroke.at),
                     measure: i,
                     lane: Lane::Snare,
                     staff_step: step,
                     head,
-                    accent,
-                    ghost: false,
-                    grace: grace_order > 0,
-                    grace_order,
+                    dynamic: if accent { Dynamic::Accent } else { Dynamic::Normal },
+                    kind: if grace_order > 0 { Kind::grace(grace_order) } else { Kind::Main },
                     hand,
-                    stem_up: Some(true),
+                    stem: Some(Stem::Up),
                 };
                 // The earliest grace note first, so the notes stay in the order they sound.
                 for order in (1..=stroke.graces).rev() {
@@ -321,6 +342,16 @@ impl Rudiment {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_json_of_the_manual_is_the_catalogue() {
+        let file = include_str!("../../docs/manual/rudiments.json").replace("\r\n", "\n");
+        assert_eq!(
+            file,
+            catalogue_json(),
+            "docs/manual/rudiments.json is out of date: run `cargo run -p roll-model-core --example dump_rudiments > docs/manual/rudiments.json`"
+        );
+    }
 
     fn rudiment(number: u8) -> &'static Rudiment {
         by_number(number).unwrap()
@@ -443,23 +474,23 @@ mod tests {
         let r = rudiment(24); // flam paradiddle
         let score = r.build(3, Lead::Right);
         assert_eq!(score.measures.len(), 3);
-        assert!(score.measures.iter().all(|m| m.len_q == 2.0 && m.beats == 2 && m.beat_type == 4));
-        assert_eq!(score.measures[1].start_q, 2.0);
+        assert!(score.measures.iter().all(|m| m.len_q == Quarters(2.0) && m.beats == 2 && m.beat_type == 4));
+        assert_eq!(score.measures[1].start_q, Quarters(2.0));
         assert_eq!(score.notes.len(), 3 * (8 + 2), "eight strokes and two grace notes per bar");
         assert!(score.notes.windows(2).all(|w| w[0].q <= w[1].q), "in time order");
         assert!(score.notes.iter().all(|n| n.lane == Lane::Snare));
-        assert!((score.tempo.bpm_at(0.0) - BASE_BPM).abs() < 1e-9);
+        assert!((score.tempo.bpm_at(Quarters::ZERO) - BASE_BPM).abs() < 1e-9);
         // A grace note comes right before its main note, with the other hand, and is not accented.
         let (g, m) = (&score.notes[0], &score.notes[1]);
-        assert!(g.grace && g.grace_order == 1 && !g.accent && g.hand == Some(Hand::Left));
-        assert!(!m.grace && m.accent && m.hand == Some(Hand::Right) && g.q == m.q);
+        assert!(g.is_grace() && g.grace_order() == 1 && !g.is_accent() && g.hand == Some(Hand::Left));
+        assert!(!m.is_grace() && m.is_accent() && m.hand == Some(Hand::Right) && g.q == m.q);
         // Every note is in the bar its time says.
         for n in &score.notes {
             assert_eq!(score.measure_at(n.q), Some(n.measure));
         }
         // A drag has two, the earlier one first.
         let drag = rudiment(31).build(1, Lead::Right);
-        assert_eq!(drag.notes.iter().map(|n| n.grace_order).collect::<Vec<_>>(), [2, 1, 0, 2, 1, 0]);
+        assert_eq!(drag.notes.iter().map(|n| n.grace_order()).collect::<Vec<_>>(), [2, 1, 0, 2, 1, 0]);
         // The repetitions are limited.
         assert_eq!(r.build(0, Lead::Right).measures.len(), 1);
         assert_eq!(r.build(1000, Lead::Right).measures.len(), MAX_REPEATS);
@@ -467,7 +498,7 @@ mod tests {
 
     #[test]
     fn the_left_lead_is_the_mirror_image_and_alternate_alternates() {
-        let hands = |s: &Score| s.notes.iter().filter(|n| !n.grace).filter_map(|n| n.hand).map(|h| h.letter()).collect::<String>();
+        let hands = |s: &Score| s.notes.iter().filter(|n| !n.is_grace()).filter_map(|n| n.hand).map(|h| h.letter()).collect::<String>();
         let r = rudiment(16);
         assert_eq!(hands(&r.build(1, Lead::Right)), "RLRRLRLL");
         assert_eq!(hands(&r.build(1, Lead::Left)), "LRLLRLRR");
@@ -478,7 +509,7 @@ mod tests {
         assert_eq!(flam.notes[1].hand, Some(Hand::Left));
         // Only the hands change, not the timing.
         let (a, b) = (r.build(2, Lead::Right), r.build(2, Lead::Left));
-        assert!(a.notes.iter().zip(&b.notes).all(|(x, y)| x.q == y.q && x.accent == y.accent));
+        assert!(a.notes.iter().zip(&b.notes).all(|(x, y)| x.q == y.q && x.dynamic == y.dynamic));
     }
 
     #[test]
@@ -488,7 +519,7 @@ mod tests {
         assert!(all().iter().filter(|r| r.gradable()).count() == 39);
         let score = r.build(2, Lead::Right);
         assert_eq!(score.notes.len(), 2);
-        assert!(score.notes.iter().all(|n| n.hand.is_none() && !n.grace));
+        assert!(score.notes.iter().all(|n| n.hand.is_none() && !n.is_grace()));
     }
 
     #[test]
@@ -501,7 +532,7 @@ mod tests {
         assert_eq!(rudiment(4).default_lead(), Lead::Right);
         for r in all().iter().filter(|r| r.gradable()) {
             let score = r.build(4, r.default_lead());
-            let main: Vec<Hand> = score.notes.iter().filter(|n| !n.grace).filter_map(|n| n.hand).collect();
+            let main: Vec<Hand> = score.notes.iter().filter(|n| !n.is_grace()).filter_map(|n| n.hand).collect();
             let per_cell = r.cell().strokes.len();
             assert_eq!(main.len(), 4 * per_cell);
             for join in 1..4 {

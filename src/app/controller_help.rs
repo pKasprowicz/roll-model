@@ -7,7 +7,7 @@ use egui::{Align, Color32, Pos2, Rect, RichText, Sense, Stroke, Vec2};
 use super::DrumApp;
 use crate::controller::{self, Preset};
 use crate::controller_layout::{self as layout, Control, ControlKind, Layout, Mapping, Meaning, Printed};
-use crate::render;
+use crate::theme;
 use crate::widgets;
 
 const BODY: Color32 = Color32::from_rgb(0x2a, 0x2c, 0x31);
@@ -147,7 +147,7 @@ fn notes(ui: &mut egui::Ui, preset: &Preset, layout: &Layout, layer: Option<&str
         ui.label(
             RichText::new(format!("The preset also binds {}, but the picture does not show where those are.", lost.join(", ")))
                 .small()
-                .color(render::AMBER),
+                .color(theme::AMBER),
         );
     }
     small(ui, "On the Rudiments tab the two measure encoders set the repetitions and the lead hand, and the range buttons step through the rudiments.".into());
@@ -196,14 +196,14 @@ fn draw(ui: &mut egui::Ui, preset: &Preset, layout: &Layout, layer: Option<&str>
         let mapping = layout::mapping(preset, layer, control);
         let sense = if control.kind == ControlKind::Layer { Sense::click() } else { Sense::hover() };
         let response = ui.interact(rect, ui.id().with(("controller_control", i)), sense);
-        let outline = if response.hovered() { Stroke::new(2.0 * scale.max(0.7), render::ACCENT) } else { Stroke::NONE };
+        let outline = if response.hovered() { Stroke::new(2.0 * scale.max(0.7), theme::ACCENT) } else { Stroke::NONE };
         match control.kind {
             ControlKind::Button => paint.button(rect, preset, layer, &mapping, outline),
             ControlKind::Layer => {
                 let this = preset.layers.iter().position(|(_, src)| Some(*src) == control.press);
                 let selected = this == Some(shown);
                 let (fill, text) =
-                    if selected { (render::ACCENT, Color32::WHITE) } else { (Color32::from_rgb(0x5a, 0x5d, 0x66), LIGHT_TEXT) };
+                    if selected { (theme::ACCENT, Color32::WHITE) } else { (Color32::from_rgb(0x5a, 0x5d, 0x66), LIGHT_TEXT) };
                 paint.painter.rect(rect, paint.px(6.0), fill, outline);
                 let letter = control.name.rsplit(' ').next().unwrap_or("");
                 paint.text(rect, letter, 17.0, text, Align::Center);
@@ -329,7 +329,7 @@ impl Paint {
         let size = if label.as_deref().is_some_and(|l| !l.contains(' ') && l.chars().count() > 7) { 10.0 } else { 12.0 };
         self.text(inner, label.as_deref().unwrap_or("—"), size, text, Align::Center);
         if lit {
-            self.painter.circle_filled(rect.right_top() + self.vec(-7.0, 7.0), self.px(3.5), render::GREEN);
+            self.painter.circle_filled(rect.right_top() + self.vec(-7.0, 7.0), self.px(3.5), theme::GREEN);
         }
     }
 
@@ -341,7 +341,7 @@ impl Paint {
         for i in 0..RING_DOTS {
             let angle = (135.0 + 270.0 * i as f32 / (RING_DOTS - 1) as f32).to_radians();
             let at = centre + Vec2::new(angle.cos(), angle.sin()) * (radius + self.px(9.0));
-            self.painter.circle_filled(at, self.px(3.0), if ring_lit { render::AMBER } else { RING_OFF });
+            self.painter.circle_filled(at, self.px(3.0), if ring_lit { theme::AMBER } else { RING_OFF });
         }
         self.painter.circle(centre, radius * 0.86, Color32::from_rgb(0x1b, 0x1c, 0x20), outline);
         self.painter.circle_filled(centre, radius * 0.7, Color32::from_rgb(0xd2, 0xd3, 0xd8));

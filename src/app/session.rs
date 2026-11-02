@@ -3,25 +3,42 @@
 
 use std::time::{Duration, Instant};
 
-use crate::analysis::{analyze_with, expected_notes, Grade};
+use crate::analysis::{analyze_with, expected_notes, Grade, Window};
 use crate::drums::Lane;
 use crate::metronome::{ClickOptions, Metronome, HAS_AUDIO};
-use crate::playback::{self, PlayOptions, Player, Ramp};
+use crate::playback::{self, PlayOptions, Player};
+use crate::practice::Ramp;
 use crate::render::{HitStatus, PlayedNote};
+use crate::score::Click;
 use crate::score::Score;
+use crate::units::Seconds;
 
-use super::{Calibration, DrumApp, Listen, Plan, Source, Take, TakeSummary, CLEAN_TAKE, LISTEN_RESTART_DELAY};
+use super::{Calibration, DrumApp, Listen, ListenKey, Plan, Source, Take, TakeSummary, CLEAN_TAKE, GRADING_INTERVAL, RESTART_DELAY};
 
-pub(super) fn signed_secs(t: Instant, zero: Instant) -> f64 {
+/// Why a take ends: the player stopped it, or its music came to the end.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) enum StopReason {
+    Aborted,
+    Completed,
+}
+
+/// Whether Listen begins with the count-in.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) enum CountIn {
+    With,
+    Without,
+}
+
+pub(super) fn signed_secs(t: Instant, zero: Instant) -> Seconds {
     if t >= zero {
-        (t - zero).as_secs_f64()
+        Seconds((t - zero).as_secs_f64())
     } else {
-        -(zero - t).as_secs_f64()
+        Seconds(-(zero - t).as_secs_f64())
     }
 }
 
-pub(super) fn score_q(score: &Score, take: &Take, elapsed: f64) -> f64 {
-    score.tempo.sec_to_q(elapsed + take.t0, take.tempo_scale)
+pub(super) fn score_q(score: &Score, take: &Take, elapsed: Seconds) -> f64 {
+    score.tempo.sec_to_q(elapsed + take.t0, take.tempo_scale).0
 }
 
 /// What stopping a take came to.
@@ -97,20 +114,25 @@ impl DrumApp {
         let written = score.tempo.bpm_at(m0.start_q);
         let scale = self.practice.tempo.scale(written);
         let bpm = written * scale;
-        let beat_sec = 60.0 / bpm * m0.beat_q();
+        let beat_sec = Seconds(60.0 / bpm * m0.beat_q().0);
         let count_in_beats = if count_in { self.cfg.count_in_bars * m0.beats } else { 0 };
         let lead = 0.5;
-        let zero = Instant::now() + Duration::from_secs_f64(lead + count_in_beats as f64 * beat_sec);
+        let zero = Instant::now() + Duration::from_secs_f64(lead + count_in_beats as f64 * beat_sec.0);
         let t0 = score.tempo.q_to_sec(m0.start_q, scale);
         let end_sec = score.tempo.q_to_sec(score.measures[to].end_q(), scale) - t0;
         let clicks = score.click_track(from, to, scale, count_in_beats, true);
         Some(Plan { from, to, scale, bpm, beat_sec, count_in_beats, zero, t0, end_sec, clicks })
     }
 
-    pub(super) fn start_take(&mut self) {
-        self.stop_take(false);
+    /// Stops everything that makes sound by itself: a take, Listen and the metronome.
+    pub(super) fn stop_all_sound(&mut self) {
+        self.stop_take(StopReason::Aborted);
         self.stop_listen();
         self.stop_metro();
+    }
+
+    pub(super) fn start_take(&mut self) {
+        self.stop_all_sound();
         self.ensure_audio();
         self.sync_control();
         if self.source == Source::Rudiments && !self.rudiment().gradable() {
@@ -118,7 +140,7 @@ impl DrumApp {
             return;
         }
         let label = self.practice_label();
-        let adaptive = self.source == Source::Rudiments;
+        let window = if self.source == Source::Rudiments { Window::Adaptive } else { Window::Fixed };
         let Some(plan) = self.plan_run(true) else { return };
         let Some(score) = self.practice.score.as_ref() else { return };
         let expected = expected_notes(score, plan.from, plan.to, plan.scale);
@@ -134,9 +156,10 @@ impl DrumApp {
             tempo_scale: plan.scale,
             t0: plan.t0,
             end_sec: plan.end_sec,
-            report: analyze_with(&expected, &[], &self.cfg.tol, f64::NEG_INFINITY, adaptive),
+            report: analyze_with(&expected, &[], &self.cfg.tol, Seconds::NEG_INFINITY, window),
+            graded_at: None,
             label,
-            adaptive,
+            window,
             expected,
             hits: Vec::new(),
             running: true,
@@ -200,15 +223,13 @@ impl DrumApp {
     /// Plays the selected measures at the chosen tempo, with the count-in and
     /// click a take would have, so the drummer can hear them first.
     pub(super) fn start_listen(&mut self) {
-        self.begin_listen(self.cfg.listen_count_in);
+        self.begin_listen(if self.cfg.listen_count_in { CountIn::With } else { CountIn::Without });
     }
 
-    pub(super) fn begin_listen(&mut self, count_in: bool) {
-        self.stop_take(false);
-        self.stop_listen();
-        self.stop_metro();
+    pub(super) fn begin_listen(&mut self, count_in: CountIn) {
+        self.stop_all_sound();
         self.ensure_audio();
-        self.playback.pending = None;
+        self.playback.restart.cancel();
         let opts = self.play_options();
         if let Some(message) = Self::nothing_audible(&opts) {
             self.view.error = Some(message);
@@ -216,7 +237,7 @@ impl DrumApp {
         }
         let ramp = opts.ramp;
         self.sync_control();
-        let Some(plan) = self.plan_run(count_in) else { return };
+        let Some(plan) = self.plan_run(count_in == CountIn::With) else { return };
         let Some(score) = self.practice.score.as_ref() else { return };
         let expected = expected_notes(score, plan.from, plan.to, plan.scale);
         self.view.status = if expected.is_empty() {
@@ -225,7 +246,7 @@ impl DrumApp {
             format!("Listening to measures {}–{} at {:.0} BPM", score.measures[plan.from].number, score.measures[plan.to].number, plan.bpm)
         };
         let cues = playback::cues(&expected, &plan.clicks);
-        self.playback.player = Some(Player::start(plan.zero, cues, plan.end_sec, opts, self.playback.control.clone()));
+        self.playback.player = Some(Player::start(plan.zero, cues, plan.end_sec.0, opts, self.playback.control.clone()));
         self.playback.listen = Some(Listen {
             zero: plan.zero,
             tempo_scale: plan.scale,
@@ -234,10 +255,7 @@ impl DrumApp {
             beat_sec: plan.beat_sec,
             count_in_beats: plan.count_in_beats,
             ramp,
-            from: plan.from,
-            to: plan.to,
-            tempo_key: self.practice.tempo.value().round() as i32,
-            gen: self.score_gen,
+            key: ListenKey { from: plan.from, to: plan.to, tempo: self.practice.tempo.value().round() as i32, score_gen: self.score_gen },
         });
     }
 
@@ -250,13 +268,18 @@ impl DrumApp {
     }
 
     /// The range and tempo Listen would start with now.
-    pub(super) fn listen_signature(&self) -> Option<(usize, usize, i32, u32)> {
+    pub(super) fn listen_signature(&self) -> Option<ListenKey> {
         let n = self.practice.score.as_ref()?.measures.len();
         if n == 0 {
             return None;
         }
         let from = self.practice.range_from.min(n - 1);
-        Some((from, self.practice.range_to.clamp(from, n - 1), self.practice.tempo.value().round() as i32, self.score_gen))
+        Some(ListenKey {
+            from,
+            to: self.practice.range_to.clamp(from, n - 1),
+            tempo: self.practice.tempo.value().round() as i32,
+            score_gen: self.score_gen,
+        })
     }
 
     pub(super) fn update_listen(&mut self) {
@@ -266,38 +289,42 @@ impl DrumApp {
         // Changing the range or the tempo while listening restarts it, without the count-in, once the
         // change has settled (a slider being dragged changes it on every frame).
         let wanted = match (self.playback.listen.as_ref(), self.listen_signature()) {
-            (Some(l), Some(sig)) if (l.from, l.to, l.tempo_key, l.gen) != sig => Some(sig),
+            (Some(l), Some(sig)) if l.key != sig => Some(sig),
             _ => None,
         };
-        match (wanted, self.playback.pending) {
-            (None, _) => self.playback.pending = None,
-            (Some(sig), Some((pending, since))) if pending == sig => {
-                if since.elapsed() >= LISTEN_RESTART_DELAY {
-                    self.begin_listen(false);
-                }
-            }
-            (Some(sig), _) => self.playback.pending = Some((sig, Instant::now())),
+        if self.playback.restart.poll(wanted, Instant::now(), RESTART_DELAY) {
+            self.begin_listen(CountIn::Without);
         }
         let Some(player) = self.playback.player.as_ref() else { return };
-        if let Some(e) = player.take_errors().into_iter().next() {
-            self.view.error = Some(e);
-        }
-        if player.is_finished() {
+        let errors = player.take_errors();
+        let finished = player.is_finished();
+        self.report_sound_errors(errors);
+        if finished {
             self.playback.listen = None;
             self.playback.player = None;
         }
     }
 
-    /// Shows the first problem the metronome thread of a take or a calibration ran into.
+    /// Shows the problems the sound threads ran into: all of them go to the log, and the first one
+    /// is on the screen, with how many more there are.
+    pub(super) fn report_sound_errors(&mut self, errors: Vec<String>) {
+        for e in &errors {
+            self.log.line(e);
+        }
+        let mut errors = errors.into_iter();
+        if let Some(first) = errors.next() {
+            let more = errors.count();
+            self.view.error = Some(if more == 0 { first } else { format!("{first} (and {more} more problems, see the log)") });
+        }
+    }
+
+    /// Shows the problems the engine and the metronome thread of a take or a calibration ran into.
     pub(super) fn show_sound_errors(&mut self) {
-        if let Some(e) = self.audio.take_errors().into_iter().next() {
-            self.view.error = Some(e);
-        }
+        let mut errors = self.audio.take_errors();
         if let Some(m) = self.metronome.as_ref() {
-            if let Some(e) = m.take_errors().into_iter().next() {
-                self.view.error = Some(e);
-            }
+            errors.extend(m.take_errors());
         }
+        self.report_sound_errors(errors);
     }
 
     /// "bar 3 · beat 2", or the count-in, for the label next to the Listen button.
@@ -305,12 +332,12 @@ impl DrumApp {
         let l = self.playback.listen.as_ref()?;
         let score = self.practice.score.as_ref()?;
         let elapsed = signed_secs(self.shown_now(), l.zero);
-        if elapsed < 0.0 {
+        if elapsed < Seconds::ZERO {
             let left = (-elapsed / l.beat_sec).ceil() as u32;
             return Some(if left > l.count_in_beats { "starting…".into() } else { format!("count-in {left}") });
         }
-        let (pass, e) = l.ramp.locate(l.end_sec, elapsed);
-        let q = score.tempo.sec_to_q(e + l.t0, l.tempo_scale);
+        let (pass, e) = l.ramp.locate(l.end_sec.0, elapsed.0);
+        let q = score.tempo.sec_to_q(Seconds(e) + l.t0, l.tempo_scale);
         let m = &score.measures[score.measure_at(q)?];
         let beat = (((q - m.start_q) / m.beat_q()).floor() as u32 + 1).min(m.beats);
         let mut text = format!("bar {} · beat {}", m.number, beat);
@@ -333,8 +360,8 @@ impl DrumApp {
         let l = self.playback.listen.as_ref()?;
         let score = self.practice.score.as_ref()?;
         let elapsed = signed_secs(self.shown_now(), l.zero);
-        let (_, e) = l.ramp.locate(l.end_sec, elapsed);
-        Some(score.tempo.sec_to_q(e + l.t0, l.tempo_scale))
+        let (_, e) = l.ramp.locate(l.end_sec.0, elapsed.0);
+        Some(score.tempo.sec_to_q(Seconds(e) + l.t0, l.tempo_scale).0)
     }
 
     /// Plays one instrument on its own so it can be heard (and tuned) without a score.
@@ -359,10 +386,10 @@ impl DrumApp {
 
     pub(super) fn update_audition(&mut self) {
         let Some(p) = self.playback.audition.as_ref() else { return };
-        if let Some(e) = p.take_errors().into_iter().next() {
-            self.view.error = Some(e);
-        }
-        if p.is_finished() {
+        let errors = p.take_errors();
+        let finished = p.is_finished();
+        self.report_sound_errors(errors);
+        if finished {
             self.playback.audition = None;
         }
     }
@@ -370,8 +397,8 @@ impl DrumApp {
     /// `completed`: the whole range was played (otherwise notes after the
     /// stop point are left ungraded).
     /// Stops the take, and shows how it went on the status line.
-    pub(super) fn stop_take(&mut self, completed: bool) {
-        match self.finish_take(completed) {
+    pub(super) fn stop_take(&mut self, reason: StopReason) {
+        match self.finish_take(reason) {
             TakeOutcome::NoTake => {}
             TakeOutcome::NothingDue => self.view.status = "Take stopped before any notes were due — nothing to grade.".into(),
             TakeOutcome::Graded { summary, clean_bpm } => {
@@ -385,7 +412,7 @@ impl DrumApp {
 
     /// Stops the metronome and the take that records, grades the take and puts it in the history;
     /// says nothing, and returns what came of it.
-    pub(super) fn finish_take(&mut self, completed: bool) -> TakeOutcome {
+    pub(super) fn finish_take(&mut self, reason: StopReason) -> TakeOutcome {
         if let Some(mut m) = self.metronome.take() {
             m.stop();
         }
@@ -394,14 +421,14 @@ impl DrumApp {
             return TakeOutcome::NoTake;
         }
         take.running = false;
-        let elapsed = if completed { f64::INFINITY } else { signed_secs(Instant::now(), take.zero) };
-        take.report = analyze_with(&take.expected, &take.hits, &self.cfg.tol, elapsed, take.adaptive);
+        let elapsed = if reason == StopReason::Completed { Seconds::INFINITY } else { signed_secs(Instant::now(), take.zero) };
+        take.report = analyze_with(&take.expected, &take.hits, &self.cfg.tol, elapsed, take.window);
         let r = &take.report;
         if r.evaluated == 0 {
             return TakeOutcome::NothingDue;
         }
         let bpm = self.practice.score.as_ref().map(|s| s.tempo.bpm_at(s.measures[take.from].start_q) * take.tempo_scale).unwrap_or(0.0);
-        let range = if take.adaptive {
+        let range = if take.window == Window::Adaptive {
             take.label.clone()
         } else {
             self.practice
@@ -410,7 +437,7 @@ impl DrumApp {
                 .map(|s| format!("{}–{}", s.measures[take.from].number, s.measures[take.to].number))
                 .unwrap_or_default()
         };
-        let clean = completed && take.adaptive && r.overall >= CLEAN_TAKE;
+        let clean = reason == StopReason::Completed && take.window == Window::Adaptive && r.overall >= CLEAN_TAKE;
         self.practice.history.push(TakeSummary {
             number: take.number,
             range,
@@ -442,21 +469,24 @@ impl DrumApp {
             return;
         }
         let elapsed = signed_secs(Instant::now(), take.zero);
-        take.report = analyze_with(&take.expected, &take.hits, &self.cfg.tol, elapsed, take.adaptive);
-        if elapsed > take.end_sec + 1.0 {
-            self.stop_take(true);
+        // A new hit is graded at once; otherwise only now and then, for the notes that fall due.
+        let due = take.graded_at.is_none_or(|(hits, at)| hits != take.hits.len() || elapsed - at >= GRADING_INTERVAL);
+        if due {
+            take.report = analyze_with(&take.expected, &take.hits, &self.cfg.tol, elapsed, take.window);
+            take.graded_at = Some((take.hits.len(), elapsed));
+        }
+        if elapsed > take.end_sec + Seconds(1.0) {
+            self.stop_take(StopReason::Completed);
         }
     }
 
     pub(super) fn start_calibration(&mut self) {
-        self.stop_take(false);
-        self.stop_listen();
-        self.stop_metro();
+        self.stop_all_sound();
         self.ensure_audio();
         let beat = 0.6; // 100 BPM
         let zero = Instant::now() + Duration::from_secs_f64(1.0);
         let beats: Vec<f64> = (0..16).map(|i| i as f64 * beat).collect();
-        let clicks = beats.iter().map(|t| (*t, false)).collect();
+        let clicks = beats.iter().map(|t| Click { t: Seconds(*t), accent: false }).collect();
         // No control: the calibration clicks must sound whatever the click switch says.
         // The calibration measures the whole delay, so its MIDI click is not moved.
         let opts = ClickOptions { midi_delay: Duration::ZERO, ..self.click_options() };
@@ -467,7 +497,7 @@ impl DrumApp {
 
     pub(super) fn update_calibration(&mut self) {
         let Some(cal) = self.calibration.as_ref() else { return };
-        let now = signed_secs(Instant::now(), cal.zero);
+        let now = signed_secs(Instant::now(), cal.zero).0;
         if now < cal.beats.last().copied().unwrap_or(0.0) + 0.6 {
             return;
         }
@@ -499,25 +529,13 @@ impl DrumApp {
                 let (status, dt) = match matched {
                     Some(ei) => {
                         let r = take.report.results[ei];
-                        let s = match r.grade {
-                            Grade::Perfect => HitStatus::Perfect,
-                            Grade::Good => HitStatus::Good,
-                            Grade::Ok => HitStatus::Ok,
-                            Grade::WrongPad => HitStatus::WrongPad,
-                            _ => HitStatus::Neutral,
-                        };
-                        (s, r.dt_ms)
+                        let s = r.outcome.grade().map_or(HitStatus::Neutral, HitStatus::Graded);
+                        (s, r.dt)
                     }
-                    None if h.t > take.end_sec + 0.2 || h.t < -0.2 => (HitStatus::Neutral, None),
+                    None if h.t > take.end_sec + Seconds(0.2) || h.t < Seconds(-0.2) => (HitStatus::Neutral, None),
                     None => (HitStatus::Extra, None),
                 };
-                PlayedNote {
-                    q: score.tempo.sec_to_q(h.t + take.t0, take.tempo_scale),
-                    lane: h.lane,
-                    velocity: h.velocity,
-                    status,
-                    dt_ms: dt,
-                }
+                PlayedNote { q: score.tempo.sec_to_q(h.t + take.t0, take.tempo_scale).0, lane: h.lane, velocity: h.velocity, status, dt }
             })
             .collect()
     }
@@ -528,7 +546,7 @@ impl DrumApp {
         if let Some(take) = self.practice.take.as_ref() {
             for (e, r) in take.expected.iter().zip(&take.report.results) {
                 if let Some(slot) = g.get_mut(e.note_idx) {
-                    *slot = Some(r.grade);
+                    *slot = r.outcome.grade();
                 }
             }
         }

@@ -11,14 +11,16 @@ use std::time::{Duration, Instant};
 use crate::audio::click::ClickBank;
 use crate::audio::mixer::NO_GROUP;
 use crate::audio::EngineHandle;
-use crate::control::{ClickLevel, Control, ErrorLog};
+use crate::control::{ErrorLog, SoundSwitches};
+use crate::practice::ClickLevel;
+use crate::score::Click;
 
 #[derive(Clone, Debug)]
 pub struct ClickOptions {
     pub audio: bool,
     /// The open sound output; `None` when there is none to play through.
     pub engine: Option<EngineHandle>,
-    /// Used when no `Control` is given.
+    /// Used when no `SoundSwitches` is given.
     pub volume: f32,
     pub midi_port: Option<String>,
     pub midi_note: u8,
@@ -36,15 +38,18 @@ pub struct Metronome {
 }
 
 impl Metronome {
-    /// `clicks`: (seconds relative to `zero`, accented) in ascending order.
+    /// `clicks`: in ascending order, seconds relative to `zero`.
     /// With a `control`, clicks at or after `zero` follow its click switch and
     /// volume while they play; the count-in before `zero` always sounds.
-    pub fn start(zero: Instant, clicks: Vec<(f64, bool)>, opts: ClickOptions, control: Option<Arc<Control>>) -> Metronome {
+    pub fn start(zero: Instant, clicks: Vec<Click>, opts: ClickOptions, control: Option<Arc<SoundSwitches>>) -> Metronome {
         let stop = Arc::new(AtomicBool::new(false));
         let errors = ErrorLog::default();
         let (stop2, errors2) = (stop.clone(), errors.clone());
-        let handle =
-            std::thread::Builder::new().name("metronome".into()).spawn(move || run(zero, clicks, opts, control, stop2, errors2)).ok();
+        let handle = std::thread::Builder::new()
+            .name("metronome".into())
+            .spawn(move || run(zero, clicks, opts, control, stop2, errors2))
+            .map_err(|e| errors.push(format!("Could not start the metronome thread: {e}")))
+            .ok();
         Metronome { stop, errors, handle }
     }
 
@@ -112,9 +117,9 @@ pub(crate) const AUDIO_LOOKAHEAD: Duration = Duration::from_millis(30);
 
 fn run(
     zero: Instant,
-    clicks: Vec<(f64, bool)>,
+    clicks: Vec<Click>,
     opts: ClickOptions,
-    control: Option<Arc<Control>>,
+    control: Option<Arc<SoundSwitches>>,
     stop: Arc<AtomicBool>,
     errors: ErrorLog,
 ) {
@@ -136,8 +141,9 @@ fn run(
     }
     let ch = opts.midi_channel.clamp(1, 16) - 1;
 
-    let times: Vec<f64> = clicks.iter().map(|c| c.0).collect();
-    for (i, (t, accent)) in clicks.into_iter().enumerate() {
+    let times: Vec<f64> = clicks.iter().map(|c| c.t.0).collect();
+    for (i, Click { t, accent }) in clicks.into_iter().enumerate() {
+        let t = t.0;
         let Some(target) = at(zero, t) else { continue };
         // The engine needs the click ahead of its time; MIDI goes out at the time itself.
         let wake = if engine.is_some() { target.checked_sub(AUDIO_LOOKAHEAD).unwrap_or(target) } else { target };
@@ -151,7 +157,9 @@ fn run(
         if let (Some(engine), Some(bank), Some(run)) = (engine.as_ref(), bank.as_ref(), run_id) {
             let volume = control.as_ref().map_or(opts.volume, |c| c.click_volume());
             let (sound, gain) = bank.get(level, volume);
-            let _ = engine.play(run, target, sound, gain, NO_GROUP, 0);
+            if let Err(e) = engine.play(run, target, sound, gain, NO_GROUP, 0) {
+                errors.play_failed(e);
+            }
         }
         if let Some(conn) = midi.as_mut() {
             let delay =
@@ -159,8 +167,11 @@ fn run(
             if !wait_until(target + delay, &stop) {
                 break;
             }
-            let _ = conn.send(&[0x90 | ch, opts.midi_note, level.velocity()]);
-            let _ = conn.send(&[0x80 | ch, opts.midi_note, 0]);
+            for message in [[0x90 | ch, opts.midi_note, level.velocity()], [0x80 | ch, opts.midi_note, 0]] {
+                if let Err(e) = conn.send(&message) {
+                    errors.midi_failed(e);
+                }
+            }
         }
     }
     // Let the last click ring out; a stop cuts it off.

@@ -5,10 +5,10 @@
 
 use egui::RichText;
 
-use super::{DrumApp, Source, Tab};
+use super::{DrumApp, Source, Tab, CLEAN_TAKE};
 use crate::practice_tempo::PracticeTempo;
-use crate::render;
 use crate::rudiments::{self, Family, Lead, Rudiment, MAX_REPEATS};
+use crate::theme;
 use crate::widgets;
 
 /// The practice tempo of a rudiment, in BPM. (The rudiment scores are written at 100 BPM, so
@@ -18,14 +18,22 @@ const LADDER_STEP: f32 = 5.0;
 
 /// What the Rudiments tab remembers while the program runs (the chosen rudiment and its
 /// repetitions are settings, kept in `Config`).
+/// What a rudiment's score was built from: the rudiment, the repetitions and the lead.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct BuiltRudiment {
+    number: u8,
+    repeats: usize,
+    lead: Lead,
+}
+
 #[derive(Default)]
-pub(super) struct State {
+pub(super) struct TabState {
     /// A lead other than the rudiment's own.
     pub lead: Option<Lead>,
     /// What is typed into the search box of the list.
     filter: String,
-    /// What the score was built from: rudiment, repetitions, lead.
-    built: Option<(u8, usize, Lead)>,
+    /// What the score was built from.
+    built: Option<BuiltRudiment>,
 }
 
 /// What the rudiment picker was asked for in one frame.
@@ -47,8 +55,14 @@ impl DrumApp {
         self.rud.lead.unwrap_or_else(|| self.rudiment().default_lead())
     }
 
+    /// Shows `tab`, with the practice source it belongs to in place.
+    pub(super) fn show_tab(&mut self, tab: Tab) {
+        self.view.tab = tab;
+        self.sync_source();
+    }
+
     /// Puts the right practice source in place for the tab that is showing, and keeps the
-    /// rudiment's score and tempo up to date.
+    /// rudiment's score up to date.
     pub(super) fn sync_source(&mut self) {
         match self.view.tab {
             Tab::Score => self.activate(Source::Score),
@@ -63,20 +77,20 @@ impl DrumApp {
     /// Builds the score of the chosen rudiment unless that is what is there already. A take
     /// that is recording keeps the score it began with.
     pub(super) fn ensure_rudiment(&mut self) {
-        if self.source != Source::Rudiments || self.practice.take.as_ref().is_some_and(|t| t.running) {
+        if self.source != Source::Rudiments || self.take_running() {
             return;
         }
         let r = self.rudiment();
-        let params = (r.number, self.cfg.rudiment_repeats, self.rudiment_lead());
+        let params = BuiltRudiment { number: r.number, repeats: self.cfg.rudiment_repeats, lead: self.rudiment_lead() };
         if self.rud.built == Some(params) && self.practice.score.is_some() {
             return;
         }
-        let another = self.rud.built.is_none_or(|b| b.0 != params.0);
+        let another = self.rud.built.is_none_or(|b| b.number != params.number);
         if another {
             // The tempo of the rudiment that goes is kept before the next one's takes its place.
             self.remember_tempo();
         }
-        let score = r.build(params.1, params.2);
+        let score = r.build(params.repeats, params.lead);
         self.practice.range_from = 0;
         self.practice.range_to = score.measures.len() - 1;
         self.practice.score = Some(score);
@@ -93,7 +107,7 @@ impl DrumApp {
     /// Keeps the tempo of the rudiment in the settings, so it comes back next time; nothing is
     /// stored for a rudiment that is still at its starting tempo.
     pub(super) fn remember_tempo(&mut self) {
-        let (Source::Rudiments, Some((number, ..))) = (self.source, self.rud.built) else { return };
+        let (Source::Rudiments, Some(BuiltRudiment { number, .. })) = (self.source, self.rud.built) else { return };
         let Some(r) = rudiments::by_number(number) else { return };
         let bpm = self.practice.tempo.value().round();
         match self.cfg.rudiment_bpm.get(&number) {
@@ -159,10 +173,13 @@ impl DrumApp {
     pub(super) fn note_clean_rudiment(&mut self, bpm: f64) -> String {
         let number = self.cfg.rudiment;
         let bpm = bpm.round() as f32;
-        let best = self.cfg.rudiment_best.entry(number).or_insert(0.0);
+        let best = self.progress.best_bpm.entry(number).or_insert(0.0);
         let new_best = bpm > *best;
         if new_best {
             *best = bpm;
+            if let Err(e) = self.progress.save(&self.paths) {
+                self.view.error = Some(format!("Your best tempo could not be saved: {e}"));
+            }
         }
         let mut message = format!("Clean take at {bpm:.0} BPM");
         if new_best {
@@ -176,7 +193,7 @@ impl DrumApp {
     }
 
     pub(super) fn rudiments_tab(&mut self, ui: &mut egui::Ui) {
-        let running = self.practice.take.as_ref().is_some_and(|t| t.running);
+        let running = self.take_running();
         let picked = ui
             .scope(|ui| {
                 widgets::roomy(ui);
@@ -198,16 +215,16 @@ impl DrumApp {
             widgets::hint(ui, "Sticking");
             ui.label(RichText::new(r.sticking()).monospace().strong());
             widgets::hint(ui, "(right lead; flams and drags: the small letter is the grace note)");
-            if let Some(best) = self.cfg.rudiment_best.get(&r.number) {
-                ui.label(RichText::new(format!("· best clean tempo {best:.0} BPM")).color(render::GREEN));
+            if let Some(best) = self.progress.best_bpm.get(&r.number) {
+                ui.label(RichText::new(format!("· best clean tempo {best:.0} BPM")).color(theme::GREEN));
             }
             ui.add_enabled_ui(!running, |ui| {
                 if ui.small_button("Starting tempo").on_hover_text("Go back to the tempo this rudiment starts at").clicked() {
                     self.reset_rudiment_tempo();
                 }
-                ui.checkbox(&mut self.cfg.rudiment_ladder, "ladder").on_hover_text(
-                    "After a clean take (85 or better, the whole thing played) the tempo goes up by 5 BPM, so you climb as long as you play it cleanly",
-                );
+                ui.checkbox(&mut self.cfg.rudiment_ladder, "ladder").on_hover_text(format!(
+                    "After a clean take ({CLEAN_TAKE:.0} or better, the whole thing played) the tempo goes up by {LADDER_STEP:.0} BPM, so you climb as long as you play it cleanly"
+                ));
             });
         });
         ui.scope(|ui| {
@@ -217,7 +234,7 @@ impl DrumApp {
                 ui.add_enabled_ui(!running, |ui| {
                     let (lo, hi) = self.practice.tempo.range();
                     let mut bpm = self.practice.tempo.value();
-                    widgets::slider(ui, "tempo", &mut bpm, lo..=hi, " BPM", 1.0);
+                    widgets::Slider::new("tempo", &mut bpm, lo..=hi).suffix(" BPM").show(ui);
                     self.practice.tempo = self.practice.tempo.with_value(bpm);
                 });
                 self.playback_switches(ui, running);
@@ -247,7 +264,7 @@ impl DrumApp {
                 if ui.button("Next").on_hover_text("The next rudiment").clicked() {
                     steps = 1;
                 }
-                widgets::slider(ui, "repeats", &mut repeats, 1..=MAX_REPEATS, "", 1.0);
+                widgets::Slider::new("repeats", &mut repeats, 1..=MAX_REPEATS).show(ui);
                 ui.label("lead");
                 for l in Lead::ALL {
                     ui.selectable_value(&mut lead, l, l.label());
@@ -294,7 +311,7 @@ impl DrumApp {
                 ui.label(RichText::new(family.label()).strong());
                 for r in items {
                     let mut label = format!("{:>2}  {}{}", r.number, r.name, if r.nard { " *" } else { "" });
-                    if let Some(best) = self.cfg.rudiment_best.get(&r.number) {
+                    if let Some(best) = self.progress.best_bpm.get(&r.number) {
                         label.push_str(&format!("   ·  best {best:.0} BPM"));
                     }
                     if ui.selectable_label(r.number == current, label).on_hover_text(r.about).clicked() {
@@ -501,12 +518,12 @@ mod tests {
         app.practice.tempo = PracticeTempo::Bpm(90.0);
         app.view.status.clear();
         let message = app.note_clean_rudiment(90.0);
-        assert_eq!(app.cfg.rudiment_best.get(&16), Some(&90.0));
+        assert_eq!(app.progress.best_bpm.get(&16), Some(&90.0));
         assert!(message.contains("new best"), "{message}");
         assert_eq!(app.practice.tempo.value(), 90.0, "the ladder is off");
         app.cfg.rudiment_ladder = true;
         app.note_clean_rudiment(85.0);
-        assert_eq!(app.cfg.rudiment_best.get(&16), Some(&90.0), "a slower clean take is not a best");
+        assert_eq!(app.progress.best_bpm.get(&16), Some(&90.0), "a slower clean take is not a best");
         assert_eq!(app.practice.tempo.value(), 90.0, "and the ladder does not step down or sideways from a slower tempo");
         app.note_clean_rudiment(90.0);
         assert_eq!(app.practice.tempo.value(), 95.0, "the ladder goes up by 5 BPM");
@@ -559,18 +576,18 @@ mod tests {
         app.cfg.click_midi = false;
         app.start_take();
         let take = app.practice.take.as_mut().expect("recording");
-        assert!(take.adaptive && take.label == "Single paradiddle ×4", "{}", take.label);
+        assert!(take.window == crate::analysis::Window::Adaptive && take.label == "Single paradiddle ×4", "{}", take.label);
         let hits: Vec<Hit> = take
             .expected
             .iter()
             .map(|e| Hit { t: e.t, note: 38, velocity: if e.hand == Some(crate::score::Hand::Left) { 70 } else { 90 }, lane: Lane::Snare })
             .collect();
         take.hits = hits;
-        app.stop_take(true);
+        app.stop_take(crate::app::session::StopReason::Completed);
         let take = app.practice.take.as_ref().unwrap();
         assert_eq!(take.report.perfect, 32, "four bars of eight strokes");
         assert_eq!(take.report.hands.len(), 2);
-        assert!(app.cfg.rudiment_best.contains_key(&16), "a perfect take is a clean one");
+        assert!(app.progress.best_bpm.contains_key(&16), "a perfect take is a clean one");
         assert_eq!(app.practice.history.len(), 1);
         assert_eq!(app.practice.history[0].range, "Single paradiddle ×4");
     }

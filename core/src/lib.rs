@@ -1,11 +1,15 @@
 //! The core of Roll Model: everything that needs no window, no MIDI port and no sound card.
 //! Scores (`import`, `xml`, `score`, `drums`), grading (`analysis`), rudiments, the
-//! start trigger, the CSV of a take (`export`), the practice tempo and its unit (`practice_tempo`), the hardware controller (`controller`, `controller_layout`) and the settings
+//! start trigger, the CSV of a take (`export`), the practice tempo and its unit (`practice_tempo`), tap tempo, the tempo ramp and the worst bar of a take (`practice`), the hardware controller (`controller`, `controller_layout`) and the settings
 //! file (`config`). Positions in a score are quarter notes (`q`); seconds come only from
 //! `score::TempoMap`.
 //!
 //! The application (the `roll-model` crate) adds the window, the MIDI ports and the sound on top
 //! of this crate; nothing here may depend on them, so every part can be tested without a device.
+//!
+//! The crate is free of devices, not of the file system: it reads and writes the settings, the
+//! progress file and the controller presets (`config::Paths` says where, and a test gives it a
+//! temporary folder), and `import::load_score` opens a file. Everything else is a function of its arguments.
 
 pub mod analysis;
 pub mod config;
@@ -15,8 +19,14 @@ pub mod drums;
 pub mod export;
 pub mod import;
 pub mod notation;
+pub mod practice;
 pub mod practice_tempo;
+pub mod progress;
 pub mod rudiments;
 pub mod score;
+pub mod stats;
+#[doc(hidden)]
+pub mod testing;
 pub mod trigger;
+pub mod units;
 pub mod xml;

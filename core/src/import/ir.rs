@@ -3,6 +3,7 @@
 
 use super::MidiReport;
 use crate::drums::{Lane, NoteHead};
+use crate::score::{Dynamic, Stem};
 
 /// An onset, as a parser found it: its place inside its measure, in quarter notes.
 #[derive(Clone, Debug)]
@@ -11,10 +12,9 @@ pub struct RawNote {
     pub lane: Lane,
     pub staff_step: i32,
     pub head: NoteHead,
-    pub accent: bool,
-    pub ghost: bool,
+    pub dynamic: Dynamic,
     pub grace: bool,
-    pub stem_up: Option<bool>,
+    pub stem: Option<Stem>,
 }
 
 /// A rest the file prints.
@@ -22,10 +22,10 @@ pub struct RawNote {
 pub struct RawRest {
     pub offset_q: f64,
     pub dur_q: f64,
-    /// The voice it was written in; `up` is decided from the voices once all measures are read.
+    /// The voice it was written in; `stem` is decided from the voices once all measures are read.
     pub voice: String,
     pub whole_bar: bool,
-    pub up: bool,
+    pub stem: Stem,
 }
 
 /// One measure as written, before repeats are unrolled.
@@ -55,7 +55,8 @@ pub struct PartInfo {
 
 #[derive(Clone, Debug, Default)]
 pub struct RawScore {
-    pub title: String,
+    /// The title the file gives, if it gives one.
+    pub title: Option<String>,
     pub part_name: String,
     pub parts: Vec<PartInfo>,
     /// Index into `parts` of the part that was read.

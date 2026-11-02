@@ -62,7 +62,7 @@ fn the_rudiment_actions_can_be_bound_in_a_custom_preset() {
     let s = State { repeats: 0.25, lead: 0.5, ..State::default() };
     assert!(m.handle(note(84), &s).is_empty(), "the layer switch");
     assert_eq!(m.handle(cc(16, 2), &s), [Command::Turn(Action::Repeats, 2)]);
-    assert_eq!(m.handle(cc(18, 65), &s), [Command::Turn(Action::Rudiment, -1)]);
+    assert_eq!(m.handle(cc(18, 65), &s), [Command::Turn(Action::BrowseRudiments, -1)]);
     assert_eq!(m.handle(note(70), &s), [Command::Press(Action::NextRudiment)]);
     assert_eq!(s.level(Action::Repeats), Some(0.25));
     assert_eq!(s.level(Action::Lead), Some(0.5));
@@ -147,7 +147,7 @@ fn shift_makes_encoder_turns_larger_while_held() {
     assert!(m.shift());
     assert_eq!(m.handle(cc(16, 1), &s), [Command::Turn(Action::Tempo, 5)]);
     assert_eq!(m.handle(cc(16, 65), &s), [Command::Turn(Action::Tempo, -5)]);
-    assert_eq!(m.handle(cc(23, 1), &s), [Command::Turn(Action::Score, 1)], "browsing the scores is not sped up");
+    assert_eq!(m.handle(cc(23, 1), &s), [Command::Turn(Action::BrowseScores, 1)], "browsing the scores is not sped up");
     m.handle(release(89), &s);
     assert!(!m.shift());
     assert_eq!(m.handle(cc(16, 1), &s), [Command::Turn(Action::Tempo, 1)]);
@@ -378,8 +378,8 @@ fn a_pressed_control_is_learned_the_way_its_action_needs() {
         Some((Src::Bend(3), None))
     );
     // The lists are only turned, so they are always relative.
-    assert!(learn(cc(15, 1), Action::Score, Reading::Absolute, false).unwrap().reading.is_relative());
-    assert_eq!(learn(Msg::Bend { ch: 1, value: 5 }, Action::Score, Reading::Absolute, false), None);
+    assert!(learn(cc(15, 1), Action::BrowseScores, Reading::Absolute, false).unwrap().reading.is_relative());
+    assert_eq!(learn(Msg::Bend { ch: 1, value: 5 }, Action::BrowseScores, Reading::Absolute, false), None);
     // The channel is remembered only when asked for.
     assert_eq!(learn(on(10, 36, 100), Action::Record, Reading::Absolute, true).and_then(|l| l.input.channel), Some(10));
     assert_eq!(learn(on(10, 36, 100), Action::Record, Reading::Absolute, false).and_then(|l| l.input.channel), None);
@@ -586,8 +586,8 @@ fn the_groups_cover_every_instrument_once() {
 
 #[test]
 fn custom_presets_are_read_from_a_folder() {
-    let dir = std::env::temp_dir().join(format!("roll-model-presets-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&dir);
+    let guard = crate::testing::TempDir::new("presets");
+    let dir = guard.path().to_path_buf();
     std::fs::create_dir_all(&dir).unwrap();
     std::fs::write(dir.join("My pads.txt"), "port = PADS\nbind = note 36 -> record\n").unwrap();
     std::fs::write(dir.join("readme.md"), "not a preset").unwrap();
@@ -603,7 +603,6 @@ fn custom_presets_are_read_from_a_folder() {
     assert!(load_preset("Nope", Some(&dir)).is_err());
     assert!(load_preset("Nope", None).is_err());
     assert!(custom_presets(&dir.join("missing")).is_empty());
-    let _ = std::fs::remove_dir_all(&dir);
 }
 
 #[test]

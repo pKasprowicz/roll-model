@@ -4,12 +4,12 @@
     python3 tools/build_manual.py [--label LABEL] [--out FILE]
 
 It fills docs/manual/manual.template.html with the version from Cargo.toml and
-generates the rudiment reference from the patterns in core/src/rudiments.rs, so the
+generates the rudiment reference from docs/manual/rudiments.json (the core crate writes it and tests it), so the
 manual cannot drift from what the program offers. Standard library only.
 """
 import argparse
 import html
-import math
+import json
 import re
 import sys
 from datetime import date
@@ -17,11 +17,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 TEMPLATE = ROOT / "docs" / "manual" / "manual.template.html"
-UNITS = {"S16": 0.25, "S8": 0.5, "T16": 1.0 / 6.0}
 FAMILIES = {"Roll": "Roll rudiments", "Diddle": "Diddle rudiments", "Flam": "Flam rudiments", "Drag": "Drag rudiments"}
-RUD = re.compile(
-    r'rud\((\d+),\s*"([^"]+)",\s*Family::(\w+),\s*(true|false),\s*(\w+),\s*"([^"]*)",\s*"([^"]*)"\)'
-)
 
 
 def style() -> str:
@@ -49,30 +45,24 @@ def sticking_html(pattern: str) -> str:
     return " ".join(out)
 
 
-def beats(unit: float, pattern: str) -> int:
-    end = 0.0
-    for token in pattern.split():
-        n = float(token.split(":")[1]) if ":" in token else 1.0
-        end += n * unit
-    return max(1, math.ceil(end - 1e-9))
-
-
 def rudiment_tables() -> str:
-    source = (ROOT / "core" / "src" / "rudiments.rs").read_text(encoding="utf-8")
-    found = RUD.findall(source)
+    # Written by `cargo run -p roll-model-core --example dump_rudiments`; a test of the core crate fails
+    # when the file is not the catalogue, so this does not read Rust source.
+    found = json.loads((ROOT / "docs" / "manual" / "rudiments.json").read_text(encoding="utf-8"))
     if len(found) != 40:
-        sys.exit(f"expected 40 rudiments in core/src/rudiments.rs, found {len(found)}")
+        sys.exit(f"expected 40 rudiments in docs/manual/rudiments.json, found {len(found)}")
     parts = []
     for family, title in FAMILIES.items():
         rows = []
-        for number, name, fam, nard, unit, pattern, about in found:
-            if fam != family:
+        for r in found:
+            number, name, pattern, about = r["number"], r["name"], r["pattern"], r["about"]
+            if r["family"] != family:
                 continue
-            star = ' <span class="nard" title="One of the original NARD Standard 26">*</span>' if nard == "true" else ""
+            star = ' <span class="nard" title="One of the original NARD Standard 26">*</span>' if r["nard"] else ""
             rows.append(
                 f'<tr data-name="{html.escape(name.lower())}"><td>{number}</td><td>{html.escape(name)}{star}</td>'
                 f'<td class="sticking">{sticking_html(pattern)}</td>'
-                f"<td>{beats(UNITS[unit], pattern)}</td><td>{html.escape(about)}</td></tr>"
+                f"<td>{r['beats']}</td><td>{html.escape(about)}</td></tr>"
             )
         parts.append(
             f'<h3 id="rudiments-{family.lower()}">{title}</h3>\n<table class="rudiments">'

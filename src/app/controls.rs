@@ -13,12 +13,10 @@ use std::collections::{BTreeMap, VecDeque};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
-use super::DrumApp;
+use super::{DrumApp, MONITOR_LINES};
 use crate::controller::{self, Action, Mapper};
 use crate::midi::{self, ControllerHandle, MessageQueue};
-use crate::render;
 
-const MONITOR_LINES: usize = 14;
 /// How often the list of MIDI ports is looked at to notice a controller being plugged in or pulled out.
 const WATCH_EVERY: Duration = Duration::from_secs(2);
 
@@ -97,18 +95,24 @@ impl Controller {
 
     /// For the top bar, like the MIDI input indicator: the port and the layer
     /// in use, and whether the controller is connected. `None` if none is chosen.
-    pub(super) fn label(&self, chosen: bool) -> Option<(String, bool)> {
+    pub(super) fn label(&self, chosen: bool) -> Option<ControllerLabel> {
         match self.link.as_ref() {
-            Some(link) => Some((
-                match link.mapper.layer_name() {
+            Some(link) => Some(ControllerLabel {
+                text: match link.mapper.layer_name() {
                     Some(layer) => format!("⏺ {} · layer {layer}", link.handle.port_name),
                     None => format!("⏺ {}", link.handle.port_name),
                 },
-                true,
-            )),
-            None => chosen.then(|| ("⏺ no controller".to_string(), false)),
+                connected: true,
+            }),
+            None => chosen.then(|| ControllerLabel { text: "⏺ no controller".to_string(), connected: false }),
         }
     }
+}
+
+/// The controller's entry in the top bar.
+pub(super) struct ControllerLabel {
+    pub text: String,
+    pub connected: bool,
 }
 
 #[derive(Debug, PartialEq)]

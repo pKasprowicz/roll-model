@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 
 use egui::RichText;
 
-use crate::render;
+use crate::theme;
 use crate::widgets;
 
 use super::{DrumApp, Tab};
@@ -19,9 +19,15 @@ pub(super) fn shorten_start(s: &str, max: usize) -> String {
     }
 }
 
+/// What was clicked in a row of the recent-scores list.
+pub(super) struct RowClicks {
+    pub row: bool,
+    pub remove: bool,
+}
+
 /// One entry of the recent-scores list: the file name over its folder, a
-/// remove button on the right. Returns (row clicked, remove clicked).
-pub(super) fn recent_row(ui: &mut egui::Ui, path: &str, width: f32) -> (bool, bool) {
+/// remove button on the right.
+pub(super) fn recent_row(ui: &mut egui::Ui, path: &str, width: f32) -> RowClicks {
     let file = Path::new(path);
     let name = file.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_else(|| path.to_string());
     let folder = shorten_start(&file.parent().map(|d| d.display().to_string()).unwrap_or_default(), 78);
@@ -43,7 +49,7 @@ pub(super) fn recent_row(ui: &mut egui::Ui, path: &str, width: f32) -> (bool, bo
     let (title_color, sub_color) = if exists {
         (ui.visuals().strong_text_color(), ui.visuals().weak_text_color())
     } else {
-        (ui.visuals().weak_text_color(), render::RED)
+        (ui.visuals().weak_text_color(), theme::RED)
     };
     painter.text(rect.left_top() + egui::vec2(14.0, 8.0), egui::Align2::LEFT_TOP, &name, egui::FontId::proportional(17.0), title_color);
     let sub = if exists { folder } else { format!("{folder}  — file not found") };
@@ -53,7 +59,7 @@ pub(super) fn recent_row(ui: &mut egui::Ui, path: &str, width: f32) -> (bool, bo
     let button = egui::Rect::from_center_size(egui::pos2(rect.right() - 26.0, rect.center().y), egui::vec2(30.0, 30.0));
     let remove = ui.put(button, egui::Button::new("×")).on_hover_text("Remove from the list").clicked();
     let clicked = response.on_hover_text(path).clicked();
-    (clicked, remove)
+    RowClicks { row: clicked, remove }
 }
 
 impl DrumApp {
@@ -75,7 +81,7 @@ impl DrumApp {
             ui.add_space(14.0);
             let rudiments = egui::Button::new(RichText::new("Practise the 40 rudiments").size(16.0)).min_size(egui::vec2(260.0, 38.0));
             if ui.add(rudiments).on_hover_text("Singles, rolls, paradiddles, flams and drags: pick one, repeat it and play it along with the click").clicked() {
-                self.view.tab = Tab::Rudiments;
+                self.show_tab(Tab::Rudiments);
             }
         });
         ui.add_space(28.0);
@@ -100,7 +106,7 @@ impl DrumApp {
                     ui.label(RichText::new("Scores you open are listed here so you can come back to them.").weak());
                 }
                 for (i, path) in self.cfg.recent_files.iter().enumerate() {
-                    let (clicked, remove) = recent_row(ui, path, width);
+                    let RowClicks { row: clicked, remove } = recent_row(ui, path, width);
                     ui.add_space(6.0);
                     if remove {
                         forget = Some(i);

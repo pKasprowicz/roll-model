@@ -8,7 +8,7 @@ use std::io::{Cursor, Write as _};
 use std::path::{Path, PathBuf};
 
 use roll_model_core::import::{check_invariants, import_bytes, load_score, ImportError, ImportOptions, Limits};
-use roll_model_core::score::Score;
+use roll_model_core::score::{Score, Stem};
 
 const SAMPLE: &str = include_str!("../../examples/basic_rock_beat.musicxml");
 
@@ -57,12 +57,21 @@ fn dump(s: &Score) -> String {
         writeln!(
             out,
             "note q={:.6} m={} {:?} step={} head={:?} accent={} ghost={} grace={}/{} stem={:?}",
-            n.q, n.measure, n.lane, n.staff_step, n.head, n.accent, n.ghost, n.grace, n.grace_order, n.stem_up
+            n.q,
+            n.measure,
+            n.lane,
+            n.staff_step,
+            n.head,
+            n.is_accent(),
+            n.is_ghost(),
+            n.is_grace(),
+            n.grace_order(),
+            n.stem.map(Stem::is_up)
         )
         .unwrap();
     }
     for r in &s.rests {
-        writeln!(out, "rest q={:.6} m={} dur={:.6} up={} whole_bar={}", r.q, r.measure, r.dur_q, r.up, r.whole_bar).unwrap();
+        writeln!(out, "rest q={:.6} m={} dur={:.6} up={} whole_bar={}", r.q, r.measure, r.dur_q, r.stem.is_up(), r.whole_bar).unwrap();
     }
     for w in &s.warnings {
         writeln!(out, "warning: {w}").unwrap();
@@ -437,4 +446,15 @@ fn a_drum_set_written_as_one_instrument_is_read_from_the_staff_positions() {
     assert_eq!(lanes[..4], ["HiHatClosed", "Kick", "HiHatClosed", "Snare"], "{lanes:?}");
     assert!(s.warnings.iter().any(|w| w.contains("guessed from staff position")), "{:?}", s.warnings);
     check("one_instrument_by_staff", &dump(&s));
+}
+
+#[test]
+fn the_two_grace_notes_of_a_drag_keep_their_places_before_the_note() {
+    let grace = "<note><grace/><unpitched><display-step>C</display-step><display-octave>5</display-octave></unpitched><instrument id=\"S\"/><voice>1</voice></note>";
+    let body = format!("{FOUR_FOUR}{grace}{grace}{}{grace}{}", note("S", 2, ""), note("K", 6, ""));
+    let s = parse(&score(&measure("1", &body)), true).unwrap();
+    let orders: Vec<(bool, u8)> = s.notes.iter().map(|n| (n.is_grace(), n.grace_order())).collect();
+    // The drag (two graces) and the flam (one) are told apart, and neither loses a grace to the de-duplication.
+    assert_eq!(orders.iter().filter(|(g, _)| *g).count(), 3, "{orders:?}");
+    assert!(orders.contains(&(true, 2)) && orders.iter().filter(|o| **o == (true, 1)).count() == 2, "{orders:?}");
 }

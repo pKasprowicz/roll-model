@@ -61,8 +61,8 @@ pub fn analyse(score: &Score) -> Notation {
     let mut groups: Vec<((usize, i64, bool), Vec<usize>)> = Vec::new();
     let mut index: HashMap<(usize, i64, bool), usize> = HashMap::new();
     for (i, n) in score.notes.iter().enumerate() {
-        let Some(m) = score.measures.get(n.measure).filter(|_| !n.grace) else { continue };
-        let beat = ((n.q - m.start_q + EPS) / group_len(m.beats, m.beat_type)).floor() as i64;
+        let Some(m) = score.measures.get(n.measure).filter(|_| !n.is_grace()) else { continue };
+        let beat = ((n.q.0 - m.start_q.0 + EPS) / group_len(m.beats, m.beat_type)).floor() as i64;
         let key = (n.measure, beat, n.stem_is_up());
         match index.get(&key) {
             Some(&g) => groups[g].1.push(i),
@@ -75,10 +75,10 @@ pub fn analyse(score: &Score) -> Notation {
     for ((measure, beat, up), notes) in groups {
         let m = &score.measures[measure];
         let len = group_len(m.beats, m.beat_type);
-        let end = (m.start_q + (beat + 1) as f64 * len).min(m.end_q());
+        let end = (m.start_q.0 + (beat + 1) as f64 * len).min(m.end_q().0);
         let mut onsets: Vec<Onset> = Vec::new();
         for i in notes {
-            let q = score.notes[i].q;
+            let q = score.notes[i].q.0;
             match onsets.last_mut().filter(|o| (o.q - q).abs() < EPS) {
                 Some(o) => o.notes.push(i),
                 None => onsets.push(Onset { q, notes: vec![i], level: 0 }),
@@ -88,7 +88,7 @@ pub fn analyse(score: &Score) -> Notation {
             let next = onsets.get(k + 1).map_or(end, |o| o.q);
             onsets[k].level = level_of(next - onsets[k].q);
         }
-        if let Some(number) = tuplet_of(&onsets, m.start_q + beat as f64 * len) {
+        if let Some(number) = tuplet_of(&onsets, m.start_q.0 + beat as f64 * len) {
             out.tuplets.push(Tuplet {
                 measure,
                 up,
@@ -182,16 +182,16 @@ fn tuplet_of(onsets: &[Onset], start: f64) -> Option<u8> {
 /// is not a pause. A run of empty bars counts once, at its last bar.
 pub fn pause_bars(score: &Score) -> Vec<bool> {
     let mut last_onset: Vec<Option<f64>> = vec![None; score.measures.len()];
-    for n in score.notes.iter().filter(|n| !n.grace) {
+    for n in score.notes.iter().filter(|n| !n.is_grace()) {
         if let Some(slot) = last_onset.get_mut(n.measure) {
-            *slot = Some(slot.map_or(n.q, |q| q.max(n.q)));
+            *slot = Some(slot.map_or(n.q.0, |q| q.max(n.q.0)));
         }
     }
     let mut pauses = vec![false; score.measures.len()];
     for r in &score.rests {
         let Some(m) = score.measures.get(r.measure) else { continue };
-        let reaches_end = r.whole_bar || r.q + r.dur_q >= m.end_q() - EPS;
-        if reaches_end && last_onset[r.measure].is_none_or(|q| q < r.q - EPS) {
+        let reaches_end = r.whole_bar || r.q.0 + r.dur_q.0 >= m.end_q().0 - EPS;
+        if reaches_end && last_onset[r.measure].is_none_or(|q| q < r.q.0 - EPS) {
             pauses[r.measure] = true;
         }
     }
@@ -236,18 +236,18 @@ pub fn rest_glyphs(rest: &crate::score::Rest) -> Vec<RestGlyph> {
         (0.125, RestKind::Flagged(3)),
     ];
     if rest.whole_bar {
-        return vec![RestGlyph { q: rest.q, kind: RestKind::Whole, dotted: false, bar: true }];
+        return vec![RestGlyph { q: rest.q.0, kind: RestKind::Whole, dotted: false, bar: true }];
     }
     let near = |a: f64, b: f64| (a - b).abs() < 1e-3;
     // One sign: its own length, with a dot, or in a tuplet (two thirds of it).
     for (len, kind) in VALUES {
         for (factor, dotted) in [(1.0, false), (1.5, true), (2.0 / 3.0, false)] {
-            if near(rest.dur_q, len * factor) {
-                return vec![RestGlyph { q: rest.q, kind, dotted, bar: false }];
+            if near(rest.dur_q.0, len * factor) {
+                return vec![RestGlyph { q: rest.q.0, kind, dotted, bar: false }];
             }
         }
     }
-    let (mut q, mut left) = (rest.q, rest.dur_q);
+    let (mut q, mut left) = (rest.q.0, rest.dur_q.0);
     let mut out = Vec::new();
     for (len, kind) in VALUES {
         while left >= len - 1e-3 {
@@ -264,30 +264,30 @@ mod tests {
     use super::*;
     use crate::drums::{Lane, NoteHead};
     use crate::score::{Measure, ScoreNote};
+    use crate::units::Quarters;
 
     fn note(q: f64, lane: Lane) -> ScoreNote {
         ScoreNote {
-            q,
+            q: Quarters(q),
             measure: (q / 4.0) as usize,
             lane,
             staff_step: 4,
             head: NoteHead::Normal,
-            accent: false,
-            ghost: false,
-            grace: false,
-            grace_order: 0,
+            dynamic: Default::default(),
+            kind: Default::default(),
             hand: None,
-            stem_up: None,
+            stem: None,
         }
     }
 
     fn score_of(beats: u32, beat_type: u32, bars: usize, notes: Vec<ScoreNote>) -> Score {
         let len = f64::from(beats) * 4.0 / f64::from(beat_type);
-        let measures =
-            (0..bars).map(|i| Measure { number: (i + 1).to_string(), start_q: i as f64 * len, len_q: len, beats, beat_type }).collect();
+        let measures = (0..bars)
+            .map(|i| Measure { number: (i + 1).to_string(), start_q: Quarters(i as f64 * len), len_q: Quarters(len), beats, beat_type })
+            .collect();
         let mut notes = notes;
         for n in &mut notes {
-            n.measure = (n.q / len + EPS).floor() as usize;
+            n.measure = (n.q.0 / len + EPS).floor() as usize;
         }
         Score { measures, notes, ..Score::default() }
     }
@@ -327,7 +327,7 @@ mod tests {
     #[test]
     fn hands_and_feet_are_beamed_apart() {
         let mut notes = vec![note(0.0, Lane::HiHatClosed), note(0.0, Lane::Kick), note(0.5, Lane::HiHatClosed), note(0.5, Lane::Snare)];
-        notes[1].stem_up = Some(false);
+        notes[1].stem = Some(crate::score::Stem::Down);
         let s = score_of(4, 4, 1, notes);
         let n = analyse(&s);
         // Hi-hat and snare both have their stems up and beam together (the snare at 0.5 is in
@@ -361,7 +361,7 @@ mod tests {
     fn compound_meters_beam_in_dotted_quarters_and_grace_notes_are_left_out() {
         let mut notes = hands(&[0.0, 0.5, 1.0, 1.5, 2.0, 2.5]);
         let mut grace = note(0.0, Lane::Snare);
-        grace.grace = true;
+        grace.kind = crate::score::Kind::grace(1);
         notes.insert(0, grace);
         let s = score_of(6, 8, 1, notes);
         let n = analyse(&s);
@@ -382,7 +382,13 @@ mod tests {
     #[test]
     fn a_rest_is_written_with_one_sign_when_it_can_be() {
         use crate::score::Rest;
-        let rest = |dur_q: f64, whole_bar: bool| Rest { measure: 0, q: 1.0, dur_q, up: true, whole_bar };
+        let rest = |dur_q: f64, whole_bar: bool| Rest {
+            measure: 0,
+            q: Quarters(1.0),
+            dur_q: Quarters(dur_q),
+            stem: crate::score::Stem::Up,
+            whole_bar,
+        };
         let kinds = |r: &Rest| rest_glyphs(r).iter().map(|g| (g.kind, g.dotted)).collect::<Vec<_>>();
         assert_eq!(kinds(&rest(1.0, false)), vec![(RestKind::Quarter, false)]);
         assert_eq!(kinds(&rest(1.5, false)), vec![(RestKind::Quarter, true)]);

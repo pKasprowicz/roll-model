@@ -3,9 +3,9 @@ use crate::practice_tempo::BPM_RANGE;
 
 #[test]
 fn settings_of_the_old_name_are_copied_to_the_new_folder_once() {
-    let base = std::env::temp_dir().join(format!("roll-model-migrate-{}", std::process::id()));
+    let guard = crate::testing::TempDir::new("migrate");
+    let base = guard.path().to_path_buf();
     let (old, new) = (base.join("DrumTutor"), base.join("RollModel"));
-    let _ = std::fs::remove_dir_all(&base);
     std::fs::create_dir_all(old.join("sounds")).unwrap();
     std::fs::write(old.join("config.txt"), "latency_ms = 7\nrecent = a.musicxml\n").unwrap();
     std::fs::write(old.join("sounds").join("Kick.wav"), b"wav").unwrap();
@@ -24,7 +24,6 @@ fn settings_of_the_old_name_are_copied_to_the_new_folder_once() {
     // Nothing to migrate is not an error.
     Config::migrate(&base.join("missing"), &base.join("other")).unwrap();
     assert!(!base.join("other").exists());
-    let _ = std::fs::remove_dir_all(&base);
 }
 
 #[test]
@@ -65,7 +64,7 @@ fn roundtrip() {
         layout_align_bar: 5,
         metro_bpm: 133.5,
         metro_beats: 7,
-        metro_sub: 2,
+        metro_sub: Subdivision::Triplets,
         metro_preview: false,
         hihat_cc_max: 90,
         controller_preset: "Behringer X-Touch Mini".into(),
@@ -84,7 +83,6 @@ fn roundtrip() {
     c.rudiment_nard_only = true;
     c.rudiment_ladder = true;
     c.rudiment_bpm.insert(24, 72.5);
-    c.rudiment_best.insert(16, 96.0);
     let back = Config::from_text(&c.to_text());
     assert_eq!(back, c);
 }
@@ -111,12 +109,12 @@ fn rudiment_settings_are_clamped_and_default_when_missing() {
     assert_eq!(c.rudiment_repeats, MAX_REPEATS);
     assert_eq!(c.rudiment_bpm.get(&16), Some(&BPM_RANGE.1));
     assert_eq!(c.rudiment_bpm.len(), 1, "unknown rudiments are dropped");
-    assert_eq!(c.rudiment_best.len(), 1);
-    assert_eq!(c.rudiment_best.get(&21), Some(&88.0));
+    assert_eq!(c.legacy_best.len(), 1);
+    assert_eq!(c.legacy_best.get(&21), Some(&88.0));
     assert!(!c.rudiment_ladder);
     let old = Config::from_text("latency_ms = 5\n");
     assert_eq!((old.rudiment, old.rudiment_repeats), (1, DEFAULT_REPEATS));
-    assert!(old.rudiment_bpm.is_empty() && old.rudiment_best.is_empty());
+    assert!(old.rudiment_bpm.is_empty() && old.legacy_best.is_empty());
     assert!(!Config::default().to_text().contains("rudiment_bpm."), "nothing is written for a rudiment never practised");
 }
 
@@ -144,7 +142,7 @@ fn mixer_layout_and_metronome_settings_are_clamped_and_default_when_missing() {
          gain.Ride = 9\ngain.Snare = abc\ngain.Nope = 1\nmute.Kick = true\nmute.Snare = maybe\naudio_output =\n",
     );
     assert_eq!((c.bars_per_row, c.layout_align_bar), (limits::BARS_PER_ROW.hi, 9999));
-    assert_eq!((c.metro_bpm, c.metro_beats, c.metro_sub), (20.0, 1, 3));
+    assert_eq!((c.metro_bpm, c.metro_beats, c.metro_sub), (20.0, 1, Subdivision::None), "an unknown subdivision keeps the default");
     assert_eq!(c.gain_of(Lane::Ride), MAX_LANE_GAIN);
     assert_eq!(c.gain_of(Lane::Snare), 1.0, "an unreadable gain keeps the default");
     assert!(c.lane_mute.contains(&Lane::Kick) && !c.lane_mute.contains(&Lane::Snare));
@@ -255,4 +253,30 @@ fn the_display_follows_the_latency_only_when_it_is_meant_for_this_engine() {
     assert_eq!(Config { sync_display: false, ..c.clone() }.display_delay(2), 0.0);
     assert_eq!(Config { latency_ms: -20.0, latency_engine: 2, ..Default::default() }.display_delay(2), 0.0, "early is not drawn");
     assert_eq!(Config { latency_ms: 200.0, latency_engine: 2, ..Default::default() }.display_delay(2), 0.15);
+}
+
+#[test]
+fn the_subdivision_is_stored_by_name_and_the_old_numbers_still_read() {
+    let mut c = Config { metro_sub: Subdivision::Triplets, ..Config::default() };
+    let text = c.to_text();
+    assert!(text.contains("metro_sub = triplets"), "{text}");
+    assert_eq!(Config::from_text(&text).metro_sub, Subdivision::Triplets);
+    // Files up to 0.10.3 stored the position in the list: 0 none, 1 eighths, 2 triplets, 3 sixteenths.
+    for (old, now) in [("0", Subdivision::None), ("1", Subdivision::Eighths), ("2", Subdivision::Triplets), ("3", Subdivision::Sixteenths)]
+    {
+        assert_eq!(Config::from_text(&format!("metro_sub = {old}\n")).metro_sub, now);
+    }
+    c.metro_sub = Subdivision::Sixteenths;
+    assert_eq!(Config::from_text("metro_sub = sixteenths\n").metro_sub, c.metro_sub);
+}
+
+#[test]
+fn the_default_volume_of_an_instrument_is_not_stored() {
+    let mut c = Config::default();
+    c.set_gain(Lane::Ride, 0.5);
+    assert_eq!(c.gain_of(Lane::Ride), 0.5);
+    c.set_gain(Lane::Ride, 1.004);
+    assert!(c.lane_gain.is_empty(), "back to the default leaves nothing");
+    c.set_gain(Lane::Snare, 99.0);
+    assert_eq!(c.gain_of(Lane::Snare), MAX_LANE_GAIN, "kept in range");
 }

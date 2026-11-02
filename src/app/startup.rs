@@ -16,7 +16,7 @@ use super::DrumApp;
 use crate::config::Config;
 use crate::metronome::HAS_AUDIO;
 use crate::midi;
-use crate::render;
+use crate::theme;
 use crate::widgets;
 
 const COPYRIGHT: &str = "Copyright © 2026 Piotr Kasprowicz";
@@ -219,6 +219,13 @@ impl DrumApp {
         Some(match step {
             Step::Settings => {
                 let (cfg, notice) = Config::load_with_notice(&self.paths);
+                self.progress = crate::progress::Progress::load(&self.paths, &cfg.legacy_best);
+                // The settings no longer hold the best tempos: a first run with the new file hands them over now.
+                if !self.progress.best_bpm.is_empty() && self.paths.progress_file().is_some_and(|f| !f.exists()) {
+                    if let Err(e) = self.progress.save(&self.paths) {
+                        self.view.error = Some(format!("Your best tempos could not be moved to their own file: {e}"));
+                    }
+                }
                 self.saved_cfg = cfg.clone();
                 self.cfg = cfg;
                 if let Some(text) = notice {
@@ -321,7 +328,7 @@ fn show(ctx: &egui::Context, st: &Startup) -> bool {
             egui::CentralPanel::default().frame(frame).show(ctx, |ui| contents(ui, st));
             // The window has no frame of its own and would blend with the main window behind it.
             let layer = egui::LayerId::new(egui::Order::Foreground, egui::Id::new("splash_border"));
-            ctx.layer_painter(layer).rect_stroke(ctx.screen_rect().shrink(BORDER / 2.0), 0.0, egui::Stroke::new(BORDER, render::ACCENT));
+            ctx.layer_painter(layer).rect_stroke(ctx.screen_rect().shrink(BORDER / 2.0), 0.0, egui::Stroke::new(BORDER, theme::ACCENT));
         }
         let (key, click) = pressed(ctx);
         key || click || ctx.input(|i| i.viewport().close_requested())
@@ -354,7 +361,7 @@ fn contents(ui: &mut egui::Ui, st: &Startup) {
         ui.add_space(14.0);
         for line in &st.log {
             let text = RichText::new(&line.text).small();
-            ui.label(if line.ok { text.weak() } else { text.color(render::AMBER) });
+            ui.label(if line.ok { text.weak() } else { text.color(theme::AMBER) });
         }
         ui.add_space((ui.available_height() - 48.0).max(8.0));
         ui.label(RichText::new(COPYRIGHT).weak());

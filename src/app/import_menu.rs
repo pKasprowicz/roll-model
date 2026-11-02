@@ -6,11 +6,19 @@ use std::path::{Path, PathBuf};
 use std::sync::mpsc;
 
 use crate::import::{Format, Grid, ImportError, ImportOptions, Loaded, MidiOptions};
+use crate::units::Quarters;
 use crate::widgets;
 
 use super::{DrumApp, Source};
 
 /// A file being read on another thread; the result arrives on `rx`.
+/// How a score gets on screen: opened as a new file, or read again from the file that is open.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) enum Opened {
+    Fresh,
+    Again,
+}
+
 pub(super) struct PendingLoad {
     path: PathBuf,
     rx: mpsc::Receiver<Result<Loaded, ImportError>>,
@@ -46,7 +54,7 @@ impl DrumApp {
     pub(super) fn poll_loading(&mut self) {
         let Some(pending) = self.loading.take() else { return };
         // A file that arrives while something is recording or playing waits; it must not stop that.
-        if self.practice.take.as_ref().is_some_and(|t| t.running) || self.playback.listen.is_some() {
+        if self.take_running() || self.playback.listen.is_some() {
             self.loading = Some(pending);
             return;
         }
@@ -60,7 +68,7 @@ impl DrumApp {
         };
         match result {
             Ok(loaded) => {
-                self.view.status = self.install(loaded, &pending.path, false);
+                self.view.status = self.install(loaded, &pending.path, Opened::Fresh);
                 self.view.error = None;
             }
             Err(e) => {
@@ -74,20 +82,20 @@ impl DrumApp {
     /// selected bars, the view and the layout stay.
     pub(super) fn reimport(&mut self) {
         let Some(path) = self.practice.score_path.clone() else { return };
-        self.stop_take(false);
+        self.stop_take(super::session::StopReason::Aborted);
         self.stop_listen();
         match crate::import::load_score(&path, &self.import_options()) {
             Ok(loaded) => {
-                self.view.status = self.install(loaded, &path, true);
+                self.view.status = self.install(loaded, &path, Opened::Again);
                 self.view.error = None;
             }
             Err(e) => self.view.error = Some(format!("Could not load {}: {e}", path.display())),
         }
     }
 
-    /// Puts a loaded score on screen. `again` is a re-import of the open file: the range of bars,
+    /// Puts a loaded score on screen. `Opened::Again` is a re-import of the open file: the range of bars,
     /// the tab and the layout are kept. Returns the line for the status bar; showing it is the caller's.
-    pub(super) fn install(&mut self, loaded: Loaded, path: &Path, again: bool) -> String {
+    pub(super) fn install(&mut self, loaded: Loaded, path: &Path, opened: Opened) -> String {
         // The practice fields belong to the Rudiments tab while it shows; the score goes to the Score
         // tab's fields whichever tab the user is on when the file arrives.
         self.activate(Source::Score);
@@ -97,11 +105,11 @@ impl DrumApp {
             score.title,
             score.measures.len(),
             score.notes.len(),
-            score.tempo.bpm_at(0.0),
+            score.tempo.bpm_at(Quarters::ZERO),
             report.midi.as_ref().map(|m| format!(" ({})", m.summary())).unwrap_or_default(),
         );
         let last = score.measures.len().saturating_sub(1);
-        if again {
+        if opened == Opened::Again {
             self.practice.range_from = self.practice.range_from.min(last);
             self.practice.range_to = self.practice.range_to.min(last);
         } else {
@@ -111,11 +119,11 @@ impl DrumApp {
         self.practice.score = Some(score);
         self.practice.score_report = Some(report);
         self.practice.score_path = Some(path.to_path_buf());
-        if !again {
+        if opened == Opened::Fresh {
             let absolute = std::path::absolute(path).unwrap_or_else(|_| path.to_path_buf());
             self.cfg.remember_recent(&absolute.to_string_lossy());
             self.restore_layout();
-            self.view.tab = super::Tab::Score;
+            self.show_tab(super::Tab::Score);
         }
         self.practice.take = None;
         self.score_gen += 1;
@@ -145,12 +153,12 @@ impl DrumApp {
             ui.separator();
             ui.checkbox(&mut self.practice.midi_options.remove_offset, "remove a constant offset")
                 .on_hover_text("A recording made with a fixed delay is moved as a whole before its notes are put on the grid.");
-            widgets::slider_with_zero(ui, "first bar starts at beat", &mut self.practice.midi_options.first_bar_beats, 0..=7, "", 1.0, Some("1 (as in the file)"))
+            widgets::Slider::new("first bar starts at beat", &mut self.practice.midi_options.first_bar_beats, 0..=7).zero_text("1 (as in the file)").show(ui)
                 .on_hover_text("Moves the bar lines, not the notes: the music before the first bar becomes a short bar (a pickup or a count-in). Not possible when the time signature changes later in the file.");
             ui.separator();
-            widgets::slider(ui, "accent from", &mut self.practice.midi_options.accent_ratio, 1.1..=2.0, "× median", 0.05)
+            widgets::Slider::new("accent from", &mut self.practice.midi_options.accent_ratio, 1.1..=2.0).suffix("× median").step(0.05).show(ui)
                 .on_hover_text("A note this much louder than the median of its instrument is an accent.");
-            widgets::slider(ui, "ghost up to", &mut self.practice.midi_options.ghost_ratio, 0.2..=0.9, "× median", 0.05)
+            widgets::Slider::new("ghost up to", &mut self.practice.midi_options.ghost_ratio, 0.2..=0.9).suffix("× median").step(0.05).show(ui)
                 .on_hover_text("A note this much quieter than the median of its instrument is a ghost note.");
             if ui.button("Defaults").clicked() {
                 self.practice.midi_options = MidiOptions::default();

@@ -3,13 +3,15 @@
 use std::collections::BTreeMap;
 
 use crate::drums::Lane;
-use crate::score::{Hand, Score};
+use crate::score::{Dynamic, Hand, Score};
+use crate::stats::median;
+use crate::units::{Millis, Seconds};
 
 /// A captured hit, already mapped to a lane and expressed in score time
 /// (seconds since the start of the practice range, latency-compensated).
 #[derive(Clone, Copy, Debug)]
 pub struct Hit {
-    pub t: f64,
+    pub t: Seconds,
     pub note: u8,
     pub velocity: u8,
     pub lane: Lane,
@@ -23,6 +25,18 @@ pub struct Tolerances {
     pub window_ms: f64,
 }
 
+impl Tolerances {
+    pub fn perfect(&self) -> Millis {
+        Millis(self.perfect_ms)
+    }
+    pub fn good(&self) -> Millis {
+        Millis(self.good_ms)
+    }
+    pub fn window(&self) -> Millis {
+        Millis(self.window_ms)
+    }
+}
+
 impl Default for Tolerances {
     fn default() -> Self {
         Tolerances { perfect_ms: 20.0, good_ms: 45.0, window_ms: 100.0 }
@@ -34,11 +48,11 @@ impl Default for Tolerances {
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct ScoringModel {
     /// Seconds added to the distance of a hit on a related pad, so that a right pad always wins.
-    pub related_pad_penalty_s: f64,
+    pub related_pad_penalty: Seconds,
     /// Adaptive window: this share of the gap to the neighbouring notes.
     pub gap_share: f64,
     /// A grace note is matched with a hit at most this far from its time, seconds.
-    pub grace_window_s: f64,
+    pub grace_window: Seconds,
     /// Timing score: `exp(-mean|dt| / this) * exp(-spread / that)`, both in ms.
     pub timing_decay_mean_ms: f64,
     pub timing_decay_spread_ms: f64,
@@ -91,9 +105,9 @@ pub struct Advice {
 impl Default for ScoringModel {
     fn default() -> Self {
         ScoringModel {
-            related_pad_penalty_s: 0.040,
+            related_pad_penalty: Seconds(0.040),
             gap_share: 0.45,
-            grace_window_s: 0.050,
+            grace_window: Seconds(0.050),
             timing_decay_mean_ms: 45.0,
             timing_decay_spread_ms: 120.0,
             weights_with_dynamics: Weights { accuracy: 0.55, timing: 0.25, extra: 0.10, dynamics: 0.10 },
@@ -129,8 +143,6 @@ pub enum Grade {
     /// Right time, related pad (e.g. open instead of closed hi-hat).
     WrongPad,
     Missed,
-    /// Not yet reached (recording still running or stopped early).
-    Pending,
 }
 
 impl Grade {
@@ -140,7 +152,7 @@ impl Grade {
             Grade::Good => 0.85,
             Grade::Ok => 0.6,
             Grade::WrongPad => 0.3,
-            Grade::Missed | Grade::Pending => 0.0,
+            Grade::Missed => 0.0,
         }
     }
     pub fn label(self) -> &'static str {
@@ -150,8 +162,27 @@ impl Grade {
             Grade::Ok => "OK",
             Grade::WrongPad => "Wrong pad",
             Grade::Missed => "Missed",
-            Grade::Pending => "-",
         }
+    }
+}
+
+/// What became of an expected note: not reached yet (the recording still runs or stopped early),
+/// or graded.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Outcome {
+    Pending,
+    Graded(Grade),
+}
+
+impl Outcome {
+    pub fn grade(self) -> Option<Grade> {
+        match self {
+            Outcome::Pending => None,
+            Outcome::Graded(g) => Some(g),
+        }
+    }
+    pub fn label(self) -> &'static str {
+        self.grade().map_or("-", Grade::label)
     }
 }
 
@@ -160,20 +191,19 @@ impl Grade {
 pub struct Expected {
     /// Index into `Score::notes`.
     pub note_idx: usize,
-    pub t: f64,
+    pub t: Seconds,
     pub lane: Lane,
-    pub accent: bool,
-    pub ghost: bool,
+    pub dynamic: Dynamic,
     pub grace: bool,
     pub hand: Option<Hand>,
 }
 
 #[derive(Clone, Copy, Debug)]
 pub struct NoteResult {
-    pub grade: Grade,
+    pub outcome: Outcome,
     pub hit: Option<usize>,
     /// Hit time minus expected time, ms (positive = late).
-    pub dt_ms: Option<f64>,
+    pub dt: Option<Millis>,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -248,7 +278,7 @@ impl Report {
 }
 
 /// How long before its main note a grace note is played, in seconds.
-const GRACE_SPACING: f64 = 0.035;
+const GRACE_SPACING: Seconds = Seconds(0.035);
 
 /// Expected notes whose measures lie in `[from_measure, to_measure]`, timed
 /// relative to the start of `from_measure`.
@@ -262,57 +292,66 @@ pub fn expected_notes(score: &Score, from_measure: usize, to_measure: usize, tem
         .filter(|(_, n)| n.measure >= from_measure && n.measure <= to_measure)
         .map(|(i, n)| {
             let mut t = score.tempo.q_to_sec(n.q, tempo_scale) - t0;
-            if n.grace {
+            if n.is_grace() {
                 // Grace notes / flams land just before the beat, the earlier ones of a drag earlier still.
-                t -= GRACE_SPACING * f64::from(n.grace_order.max(1));
+                t -= GRACE_SPACING * f64::from(n.grace_order());
             }
-            Expected { note_idx: i, t, lane: n.lane, accent: n.accent, ghost: n.ghost, grace: n.grace, hand: n.hand }
+            Expected { note_idx: i, t, lane: n.lane, dynamic: n.dynamic, grace: n.is_grace(), hand: n.hand }
         })
         .collect()
 }
 
 /// How far from its time a hit may be to count for each expected note: the hit window,
-/// or, if `adaptive`, no more than 45 % of the gap to the neighbouring notes (but not
+/// or, if `Window::Adaptive`, no more than 45 % of the gap to the neighbouring notes (but not
 /// less than the "perfect" tolerance), so that a hit is never within reach of two
 /// strokes at once at a fast tempo. A grace note is only looked for shortly around its time.
-fn windows(expected: &[Expected], tol: &Tolerances, model: &ScoringModel, adaptive: bool) -> Vec<f64> {
-    let win = tol.window_ms / 1000.0;
-    if !adaptive {
+fn windows(expected: &[Expected], tol: &Tolerances, model: &ScoringModel, window: Window) -> Vec<Seconds> {
+    let win = tol.window().secs();
+    if window == Window::Fixed {
         return vec![win; expected.len()];
     }
-    let floor = (tol.perfect_ms / 1000.0).min(win);
-    let mut times: Vec<f64> = expected.iter().filter(|e| !e.grace).map(|e| e.t).collect();
-    times.sort_by(f64::total_cmp);
+    let floor = tol.perfect().secs().min(win);
+    let mut times: Vec<Seconds> = expected.iter().filter(|e| !e.grace).map(|e| e.t).collect();
+    times.sort_by(Seconds::total_cmp);
     expected
         .iter()
         .map(|e| {
             if e.grace {
-                return win.min(model.grace_window_s);
+                return win.min(model.grace_window);
             }
             // Notes played together (other lanes) are not neighbours.
-            let before = times.partition_point(|t| *t < e.t - 1e-6);
-            let after = times.partition_point(|t| *t <= e.t + 1e-6);
+            let before = times.partition_point(|t| *t < e.t - Seconds(1e-6));
+            let after = times.partition_point(|t| *t <= e.t + Seconds(1e-6));
             let prev = before.checked_sub(1).map(|i| e.t - times[i]);
-            let next = times.get(after).map(|t| t - e.t);
-            match prev.into_iter().chain(next).reduce(f64::min) {
-                Some(gap) => (model.gap_share * gap).clamp(floor, win),
+            let next = times.get(after).map(|t| *t - e.t);
+            match prev.into_iter().chain(next).reduce(Seconds::min) {
+                Some(gap) => (gap * model.gap_share).clamp(floor, win),
                 None => win,
             }
         })
         .collect()
 }
 
-/// `analyze_with` with the fixed hit window: what a score is graded with.
-pub fn analyze(expected: &[Expected], hits: &[Hit], tol: &Tolerances, elapsed: f64) -> Report {
-    analyze_with(expected, hits, tol, elapsed, false)
+/// How far from its time a hit may be to count for a note.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Window {
+    /// The tolerance's window, the same for every note.
+    Fixed,
+    /// No more than a share of the gap to the neighbouring notes: for fast exercises.
+    Adaptive,
 }
 
-/// `elapsed` is how far into the take we are (seconds); notes later than that are `Pending`.
-/// Pass `f64::INFINITY` for a finished take. With `adaptive` the hit window is shrunk to the
+/// `analyze_with` with the fixed hit window: what a score is graded with.
+pub fn analyze(expected: &[Expected], hits: &[Hit], tol: &Tolerances, elapsed: Seconds) -> Report {
+    analyze_with(expected, hits, tol, elapsed, Window::Fixed)
+}
+
+/// `elapsed` is how far into the take we are (seconds); notes later than that are `Outcome::Pending`.
+/// Pass `Seconds::INFINITY` for a finished take. With `Window::Adaptive` the hit window is shrunk to the
 /// spacing of the notes (for fast exercises such as rudiments, where the usual window spans
 /// several strokes).
-pub fn analyze_with(expected: &[Expected], hits: &[Hit], tol: &Tolerances, elapsed: f64, adaptive: bool) -> Report {
-    analyze_with_model(expected, hits, tol, &ScoringModel::default(), elapsed, adaptive)
+pub fn analyze_with(expected: &[Expected], hits: &[Hit], tol: &Tolerances, elapsed: Seconds, window: Window) -> Report {
+    analyze_with_model(expected, hits, tol, &ScoringModel::default(), elapsed, window)
 }
 
 /// `analyze_with` under another scoring model.
@@ -321,16 +360,16 @@ pub fn analyze_with_model(
     hits: &[Hit],
     tol: &Tolerances,
     model: &ScoringModel,
-    elapsed: f64,
-    adaptive: bool,
+    elapsed: Seconds,
+    window: Window,
 ) -> Report {
-    let wins = windows(expected, tol, model, adaptive);
+    let wins = windows(expected, tol, model, window);
     let mut order: Vec<usize> = (0..hits.len()).collect();
     order.sort_by(|a, b| hits[*a].t.total_cmp(&hits[*b].t));
-    let sorted_t: Vec<f64> = order.iter().map(|&i| hits[i].t).collect();
+    let sorted_t: Vec<Seconds> = order.iter().map(|&i| hits[i].t).collect();
 
     // Candidate pairs: (cost, expected idx, hit idx, wrong_pad)
-    let mut cands: Vec<(f64, usize, usize, bool)> = Vec::new();
+    let mut cands: Vec<(Seconds, usize, usize, bool)> = Vec::new();
     for (ei, e) in expected.iter().enumerate() {
         let win = wins[ei];
         let lo = sorted_t.partition_point(|t| *t < e.t - win);
@@ -343,13 +382,13 @@ pub fn analyze_with_model(
             if h.lane == e.lane {
                 cands.push((dt, ei, hi, false));
             } else if h.lane.related(e.lane) {
-                cands.push((dt + model.related_pad_penalty_s, ei, hi, true));
+                cands.push((dt + model.related_pad_penalty, ei, hi, true));
             }
         }
     }
     cands.sort_by(|a, b| a.0.total_cmp(&b.0));
 
-    let mut results = vec![NoteResult { grade: Grade::Missed, hit: None, dt_ms: None }; expected.len()];
+    let mut results = vec![NoteResult { outcome: Outcome::Graded(Grade::Missed), hit: None, dt: None }; expected.len()];
     let mut hit_match: Vec<Option<usize>> = vec![None; hits.len()];
     let mut e_taken = vec![false; expected.len()];
     for (_, ei, hi, wrong) in cands {
@@ -358,22 +397,22 @@ pub fn analyze_with_model(
         }
         e_taken[ei] = true;
         hit_match[hi] = Some(ei);
-        let dt_ms = (hits[hi].t - expected[ei].t) * 1000.0;
-        let a = dt_ms.abs();
+        let dt = (hits[hi].t - expected[ei].t).millis();
+        let a = dt.abs();
         let grade = if wrong {
             Grade::WrongPad
-        } else if a <= tol.perfect_ms {
+        } else if a <= tol.perfect() {
             Grade::Perfect
-        } else if a <= tol.good_ms {
+        } else if a <= tol.good() {
             Grade::Good
         } else {
             Grade::Ok
         };
-        results[ei] = NoteResult { grade, hit: Some(hi), dt_ms: Some(dt_ms) };
+        results[ei] = NoteResult { outcome: Outcome::Graded(grade), hit: Some(hi), dt: Some(dt) };
     }
     for (ei, e) in expected.iter().enumerate() {
         if results[ei].hit.is_none() && e.t + wins[ei] > elapsed {
-            results[ei].grade = Grade::Pending;
+            results[ei].outcome = Outcome::Pending;
         }
     }
 
@@ -402,9 +441,7 @@ fn summarize(r: &mut Report, hits: &[Hit], model: &ScoringModel) {
     let mut hand_vel: [Vec<f64>; 2] = Default::default();
 
     for (e, res) in r.expected.iter().zip(&r.results) {
-        if res.grade == Grade::Pending {
-            continue;
-        }
+        let Outcome::Graded(grade) = res.outcome else { continue };
         // Grace notes are optional: never counted as missed.
         if e.grace && res.hit.is_none() {
             continue;
@@ -412,8 +449,8 @@ fn summarize(r: &mut Report, hits: &[Hit], model: &ScoringModel) {
         r.evaluated += 1;
         let ls = r.lanes.entry(e.lane).or_default();
         ls.expected += 1;
-        credit += res.grade.credit();
-        match res.grade {
+        credit += grade.credit();
+        match grade {
             Grade::Perfect => r.perfect += 1,
             Grade::Good => r.good += 1,
             Grade::Ok => r.ok += 1,
@@ -425,18 +462,17 @@ fn summarize(r: &mut Report, hits: &[Hit], model: &ScoringModel) {
                 r.missed += 1;
                 ls.missed += 1;
             }
-            Grade::Pending => {}
         }
-        if let (Some(dt), Some(hi)) = (res.dt_ms, res.hit) {
+        if let (Some(dt), Some(hi)) = (res.dt.map(|d| d.0), res.hit) {
             ls.hit += 1;
             dts.push(dt);
-            dt_points.push((e.t, dt));
+            dt_points.push((e.t.0, dt));
             lane_dts.entry(e.lane).or_default().push(dt);
             lane_vel.entry(e.lane).or_default().push(hits[hi].velocity as f64);
             if let (Some(hand), false) = (e.hand, e.grace) {
                 let side = usize::from(hand == Hand::Left);
                 hand_dts[side].push(dt);
-                if !e.accent && !e.ghost {
+                if e.dynamic == Dynamic::Normal {
                     hand_vel[side].push(hits[hi].velocity as f64);
                 }
             }
@@ -460,11 +496,11 @@ fn summarize(r: &mut Report, hits: &[Hit], model: &ScoringModel) {
         .expected
         .iter()
         .zip(&r.results)
-        .filter(|(_, res)| res.grade != Grade::Pending)
+        .filter(|(_, res)| res.outcome != Outcome::Pending)
         .map(|(e, _)| e.t)
-        .fold(f64::NEG_INFINITY, f64::max);
+        .fold(Seconds::NEG_INFINITY, Seconds::max);
     for (hi, m) in r.hit_match.iter().enumerate() {
-        if m.is_none() && hits[hi].t <= last_eval_t + 0.2 {
+        if m.is_none() && hits[hi].t <= last_eval_t + Seconds(0.2) {
             r.extra += 1;
             r.lanes.entry(hits[hi].lane).or_default().extra += 1;
         }
@@ -531,27 +567,24 @@ fn dynamics_score(r: &Report, hits: &[Hit], model: &ScoringModel) -> Option<f64>
     let mut plain: BTreeMap<Lane, Vec<f64>> = BTreeMap::new();
     for (e, res) in r.expected.iter().zip(&r.results) {
         if let Some(hi) = res.hit {
-            if !e.accent && !e.ghost && !e.grace {
+            if e.dynamic == Dynamic::Normal && !e.grace {
                 plain.entry(e.lane).or_default().push(hits[hi].velocity as f64);
             }
         }
     }
-    let median = |v: &Vec<f64>| {
-        let mut s = v.clone();
-        s.sort_by(|a, b| a.total_cmp(b));
-        s[s.len() / 2]
-    };
     let mut checks = 0usize;
     let mut good = 0usize;
     for (e, res) in r.expected.iter().zip(&r.results) {
         let Some(hi) = res.hit else { continue };
-        if !(e.accent || e.ghost) {
+        if e.dynamic == Dynamic::Normal {
             continue;
         }
         let v = hits[hi].velocity as f64;
-        let reference = plain.get(&e.lane).filter(|p| !p.is_empty()).map(median).unwrap_or(model.fallback_velocity);
+        let reference = plain.get(&e.lane).filter(|p| !p.is_empty()).map(|v| median(&mut v.clone())).unwrap_or(model.fallback_velocity);
         checks += 1;
-        if (e.accent && v >= reference + model.accent_margin) || (e.ghost && v <= reference - model.ghost_margin) {
+        if (e.dynamic == Dynamic::Accent && v >= reference + model.accent_margin)
+            || (e.dynamic == Dynamic::Ghost && v <= reference - model.ghost_margin)
+        {
             good += 1;
         }
     }

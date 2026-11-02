@@ -46,6 +46,15 @@ impl NoteHead {
     }
 }
 
+/// Pads that are nearly right when confused with each other (the right pad, the wrong articulation).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum PadFamily {
+    Snare,
+    HiHat,
+    Ride,
+    Crash,
+}
+
 impl Lane {
     pub const ALL: [Lane; 18] = [
         Lane::Kick,
@@ -120,18 +129,18 @@ impl Lane {
 
     /// Instruments that are "nearly right" when confused with each other
     /// (correct pad, wrong articulation). They earn partial credit.
-    pub fn family(self) -> u8 {
+    fn pad_family(self) -> Option<PadFamily> {
         match self {
-            Lane::Snare | Lane::CrossStick => 1,
-            Lane::HiHatClosed | Lane::HiHatOpen => 2,
-            Lane::Ride | Lane::RideBell => 3,
-            Lane::Crash1 | Lane::Crash2 | Lane::China | Lane::Splash => 4,
-            _ => 100 + self as u8,
+            Lane::Snare | Lane::CrossStick => Some(PadFamily::Snare),
+            Lane::HiHatClosed | Lane::HiHatOpen => Some(PadFamily::HiHat),
+            Lane::Ride | Lane::RideBell => Some(PadFamily::Ride),
+            Lane::Crash1 | Lane::Crash2 | Lane::China | Lane::Splash => Some(PadFamily::Crash),
+            _ => None,
         }
     }
 
     pub fn related(self, other: Lane) -> bool {
-        self != other && self.family() == other.family()
+        self != other && self.pad_family().is_some() && self.pad_family() == other.pad_family()
     }
 
     pub fn is_foot(self) -> bool {

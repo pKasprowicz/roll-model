@@ -1,6 +1,5 @@
 use std::path::{Path, PathBuf};
 
-use crate::analysis::{analyze, expected_notes, Hit};
 use crate::config::Config;
 use crate::config::MAX_LANE_GAIN;
 use crate::controller::{Action, Command};
@@ -8,8 +7,6 @@ use crate::drums::Lane;
 use crate::rudiments::{Lead, MAX_REPEATS};
 
 use super::super::{DrumApp, Source, Tab};
-use super::apply::{register_tap, shifted_range, worst_measure, TAPS_KEPT};
-use super::page::copy_preset;
 use super::*;
 
 fn sample() -> PathBuf {
@@ -35,63 +32,6 @@ fn a_controller_is_noticed_when_plugged_in_or_pulled_out() {
     // The drum input is never mistaken for the controller.
     assert_eq!(watch_step(None, &only_drums, "Roland", Some("Roland V31")), Watch::Keep);
     assert_eq!(watch_step(None, &only_drums, "Roland", None), Watch::Connect);
-}
-
-#[test]
-fn tapping_gives_the_tempo_and_a_pause_starts_over() {
-    let t0 = Instant::now();
-    let at = |ms: u64| t0 + Duration::from_millis(ms);
-    let mut taps = Vec::new();
-    assert_eq!(register_tap(&mut taps, at(0)), None);
-    let bpm = register_tap(&mut taps, at(500)).unwrap();
-    assert!((bpm - 120.0).abs() < 1e-6);
-    assert!((register_tap(&mut taps, at(1000)).unwrap() - 120.0).abs() < 1e-6);
-    // Slowing down: the average follows.
-    let slower = register_tap(&mut taps, at(1700)).unwrap();
-    assert!(slower < 120.0 && slower > 90.0, "{slower}");
-    // A long pause starts a new tap tempo.
-    assert_eq!(register_tap(&mut taps, at(10_000)), None);
-    assert_eq!(taps.len(), 1);
-    // Only the last few taps count.
-    for i in 1..20 {
-        register_tap(&mut taps, at(10_000 + i * 400));
-    }
-    assert_eq!(taps.len(), TAPS_KEPT);
-}
-
-#[test]
-fn the_range_moves_by_its_own_length_and_stops_at_the_ends() {
-    assert_eq!(shifted_range(0, 3, 16, true), Some((4, 7)));
-    assert_eq!(shifted_range(4, 7, 16, false), Some((0, 3)));
-    assert_eq!(shifted_range(0, 3, 16, false), None);
-    assert_eq!(shifted_range(12, 15, 16, true), None);
-    assert_eq!(shifted_range(10, 13, 16, true), Some((14, 15)), "the last chunk may be shorter");
-    assert_eq!(shifted_range(2, 5, 16, false), Some((0, 3)), "not below the first measure");
-    assert_eq!(shifted_range(3, 3, 8, true), Some((4, 4)));
-}
-
-#[test]
-fn the_worst_measure_is_where_most_goes_wrong() {
-    let app = app_with_score();
-    let score = app.practice.score.as_ref().unwrap();
-    let last = score.measures.len() - 1;
-    let expected = expected_notes(score, 0, last, 1.0);
-    let tol = &app.cfg.tol;
-    // Everything played perfectly, except that measure 2 (index 1) is left out.
-    let hits: Vec<Hit> = expected
-        .iter()
-        .filter(|e| score.notes[e.note_idx].measure != 1)
-        .map(|e| Hit { t: e.t, note: 36, velocity: 100, lane: e.lane })
-        .collect();
-    let report = analyze(&expected, &hits, tol, f64::INFINITY);
-    assert_eq!(worst_measure(score, &report, &[]), Some(1));
-    // Enough stray hits in measure 4 make it the worst one.
-    let strays = vec![last; expected.len()];
-    assert_eq!(worst_measure(score, &report, &strays), Some(last));
-    // Nothing wrong, nothing to practise.
-    let all: Vec<Hit> = expected.iter().map(|e| Hit { t: e.t, note: 36, velocity: 100, lane: e.lane }).collect();
-    let perfect = analyze(&expected, &all, tol, f64::INFINITY);
-    assert_eq!(worst_measure(score, &perfect, &[]), None);
 }
 
 #[test]
@@ -230,9 +170,9 @@ fn with_a_rudiment_the_range_controls_choose_repetitions_lead_and_rudiment() {
     assert_eq!(app.cfg.rudiment, 1);
 
     // The encoder that browses the recent scores browses the rudiments, one at a time.
-    app.apply_command(Command::Turn(Action::Score, 1));
+    app.apply_command(Command::Turn(Action::BrowseScores, 1));
     assert_eq!(app.cfg.rudiment, 2);
-    app.apply_command(Command::Turn(Action::Score, 50));
+    app.apply_command(Command::Turn(Action::BrowseScores, 50));
     assert_eq!(app.cfg.rudiment, 3);
     app.apply_command(Command::Press(Action::RangeForward));
     assert_eq!(app.cfg.rudiment, 4);
@@ -370,18 +310,18 @@ fn a_locked_change_says_so_once_and_changes_nothing() {
 #[test]
 fn recent_scores_are_browsed_and_opened() {
     let mut app = DrumApp::with_config(Config::default());
-    app.apply_command(Command::Turn(Action::Score, 1));
+    app.apply_command(Command::Turn(Action::BrowseScores, 1));
     assert!(app.view.status.contains("no recent"));
     let sample = sample().to_string_lossy().into_owned();
     app.cfg.recent_files = vec!["missing-1.musicxml".into(), sample, "missing-2.musicxml".into()];
-    app.apply_command(Command::Turn(Action::Score, 1));
+    app.apply_command(Command::Turn(Action::BrowseScores, 1));
     assert_eq!(app.controller.cursor, 1);
     assert!(app.view.status.contains("basic_rock_beat") && app.view.status.contains("2/3"), "{}", app.view.status);
-    app.apply_command(Command::Turn(Action::Score, 50));
+    app.apply_command(Command::Turn(Action::BrowseScores, 50));
     assert_eq!(app.controller.cursor, 2);
-    app.apply_command(Command::Turn(Action::Score, -50));
+    app.apply_command(Command::Turn(Action::BrowseScores, -50));
     assert_eq!(app.controller.cursor, 0);
-    app.apply_command(Command::Turn(Action::Score, 1));
+    app.apply_command(Command::Turn(Action::BrowseScores, 1));
     app.apply_command(Command::Press(Action::OpenScore));
     assert!(app.practice.score.is_some() && app.view.tab == Tab::Score);
 }
@@ -433,19 +373,6 @@ fn the_controller_page_draws_with_and_without_a_controller() {
     app.cfg.controller_preset = "No such preset".into();
     app.connect_controller();
     assert!(app.controller.message.contains("not found"));
-}
-
-#[test]
-fn copies_of_a_preset_never_overwrite() {
-    let dir = std::env::temp_dir().join(format!("roll-model-copy-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&dir);
-    let a = copy_preset(&dir, "Pads", "one").unwrap();
-    let b = copy_preset(&dir, "Pads", "two").unwrap();
-    assert_ne!(a, b);
-    assert_eq!(std::fs::read_to_string(&a).unwrap(), "one");
-    assert_eq!(std::fs::read_to_string(&b).unwrap(), "two");
-    assert_eq!(controller::custom_presets(&dir).len(), 2);
-    let _ = std::fs::remove_dir_all(&dir);
 }
 
 #[test]

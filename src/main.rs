@@ -4,19 +4,22 @@
 mod app;
 mod audio;
 mod control;
+mod log;
 mod metronome;
 mod midi;
 mod playback;
 mod render;
 mod sync;
 mod synth;
+mod theme;
 mod widgets;
 
 use std::path::PathBuf;
 
 // The pure modules live in the core crate; this keeps their `crate::name` paths working here.
 use roll_model_core::{
-    analysis, config, controller, controller_layout, drums, export, import, notation, practice_tempo, rudiments, score, trigger,
+    analysis, config, controller, controller_layout, drums, export, import, notation, practice, practice_tempo, progress, rudiments, score,
+    trigger, units,
 };
 
 fn main() -> eframe::Result<()> {

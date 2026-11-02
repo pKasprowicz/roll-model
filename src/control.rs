@@ -7,35 +7,6 @@ use std::sync::{Arc, Mutex};
 
 use crate::drums::Lane;
 
-/// How strong a metronome click is.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum ClickLevel {
-    /// First beat of a bar.
-    Accent,
-    Beat,
-    /// A subdivision between beats (eighths, sixteenths, triplets).
-    Sub,
-}
-
-impl ClickLevel {
-    pub fn from_accent(accent: bool) -> ClickLevel {
-        if accent {
-            ClickLevel::Accent
-        } else {
-            ClickLevel::Beat
-        }
-    }
-
-    /// MIDI velocity of the click note.
-    pub fn velocity(self) -> u8 {
-        match self {
-            ClickLevel::Accent => 127,
-            ClickLevel::Beat => 90,
-            ClickLevel::Sub => 55,
-        }
-    }
-}
-
 fn load(a: &AtomicU32) -> f32 {
     f32::from_bits(a.load(Relaxed))
 }
@@ -44,7 +15,7 @@ fn store(a: &AtomicU32, v: f32) {
     a.store(v.to_bits(), Relaxed);
 }
 
-pub struct Control {
+pub struct SoundSwitches {
     notes: AtomicBool,
     click: AtomicBool,
     looping: AtomicBool,
@@ -55,9 +26,9 @@ pub struct Control {
     lanes: [AtomicU32; Lane::ALL.len()],
 }
 
-impl Control {
-    pub fn new() -> Arc<Control> {
-        Arc::new(Control {
+impl SoundSwitches {
+    pub fn new() -> Arc<SoundSwitches> {
+        Arc::new(SoundSwitches {
             notes: AtomicBool::new(true),
             click: AtomicBool::new(true),
             looping: AtomicBool::new(false),
@@ -129,15 +100,44 @@ impl Control {
 /// Problems a sound thread ran into (no sound device, MIDI port missing),
 /// collected for the UI to show.
 #[derive(Clone, Default)]
-pub struct ErrorLog(Arc<Mutex<Vec<String>>>);
+pub struct ErrorLog {
+    messages: Arc<Mutex<Vec<String>>>,
+    /// Sounds the thread could not hand to the audio engine, or MIDI messages the port refused.
+    failed: Arc<AtomicU32>,
+}
 
 impl ErrorLog {
     pub fn push(&self, message: String) {
-        crate::sync::locked(&self.0).push(message);
+        crate::sync::locked(&self.messages).push(message);
     }
 
     pub fn take(&self) -> Vec<String> {
-        std::mem::take(&mut *crate::sync::locked(&self.0))
+        std::mem::take(&mut *crate::sync::locked(&self.messages))
+    }
+
+    /// A sound that was not played: counted, and said once (the thread would otherwise say it for
+    /// every note).
+    pub fn play_failed(&self, why: crate::audio::PlayError) {
+        if self.failed.fetch_add(1, Relaxed) == 0 {
+            let why = match why {
+                crate::audio::PlayError::NotReady => "the sound output has not started",
+                crate::audio::PlayError::QueueFull => "the sound output is not keeping up",
+            };
+            self.push(format!("A sound was not played because {why}; more may follow."));
+        }
+    }
+
+    /// A MIDI message the port refused: counted, and said once.
+    pub fn midi_failed(&self, why: impl std::fmt::Display) {
+        if self.failed.fetch_add(1, Relaxed) == 0 {
+            self.push(format!("A MIDI message was not sent: {why}; more may follow."));
+        }
+    }
+
+    /// How many sounds and MIDI messages were lost so far.
+    #[cfg(test)]
+    pub fn failed(&self) -> u32 {
+        self.failed.load(Relaxed)
     }
 }
 
@@ -147,7 +147,7 @@ mod tests {
 
     #[test]
     fn defaults_and_round_trips() {
-        let c = Control::new();
+        let c = SoundSwitches::new();
         assert!(c.notes() && c.click() && !c.looping() && !c.music_done());
         for lane in Lane::ALL {
             assert_eq!(c.lane_gain(lane), 1.0);
@@ -165,21 +165,13 @@ mod tests {
 
     #[test]
     fn every_lane_has_its_own_slot() {
-        let c = Control::new();
+        let c = SoundSwitches::new();
         for (i, lane) in Lane::ALL.iter().enumerate() {
             c.set_lane_gain(*lane, i as f32 / 10.0);
         }
         for (i, lane) in Lane::ALL.iter().enumerate() {
             assert_eq!(c.lane_gain(*lane), i as f32 / 10.0, "{lane:?}");
         }
-    }
-
-    #[test]
-    fn click_levels() {
-        assert_eq!(ClickLevel::from_accent(true), ClickLevel::Accent);
-        assert_eq!(ClickLevel::from_accent(false), ClickLevel::Beat);
-        assert!(ClickLevel::Accent.velocity() > ClickLevel::Beat.velocity());
-        assert!(ClickLevel::Beat.velocity() > ClickLevel::Sub.velocity());
     }
 
     #[test]
@@ -190,5 +182,18 @@ mod tests {
         other.push("b".into());
         assert_eq!(log.take(), ["a", "b"]);
         assert!(other.take().is_empty());
+    }
+
+    #[test]
+    fn a_lost_sound_is_counted_every_time_and_said_once() {
+        use crate::audio::PlayError;
+        let log = ErrorLog::default();
+        log.play_failed(PlayError::QueueFull);
+        log.play_failed(PlayError::NotReady);
+        log.midi_failed("port closed");
+        assert_eq!(log.failed(), 3);
+        let said = log.take();
+        assert_eq!(said.len(), 1, "{said:?}");
+        assert!(said[0].contains("not keeping up"), "{said:?}");
     }
 }

@@ -2,8 +2,12 @@
 
 use egui::{Color32, RichText};
 
+use super::trigger::TriggerHint;
 use crate::config::limits;
+use crate::controller::Action;
 use crate::render::{self, LayoutOpts, ScoreView};
+use crate::theme;
+use crate::units::Seconds;
 use crate::widgets;
 
 use super::session::{score_q, signed_secs};
@@ -16,7 +20,7 @@ impl DrumApp {
             return;
         };
         let n_measures = score.measures.len();
-        let running = self.practice.take.as_ref().is_some_and(|t| t.running);
+        let running = self.take_running();
         let base_bpm = score.tempo.bpm_at(score.measures[self.practice.range_from.min(n_measures - 1)].start_q);
         let title = score.title.clone();
         let part = score.part_name.clone();
@@ -29,7 +33,7 @@ impl DrumApp {
             }
         });
         for w in &warnings {
-            ui.label(RichText::new(format!("⚠ {w}")).small().color(render::AMBER));
+            ui.label(RichText::new(format!("⚠ {w}")).small().color(theme::AMBER));
         }
         // Three plain rows (sliders don't wrap inside `horizontal_wrapped`), drawn larger than the
         // rest of the UI because they are used with the mouse from a drum stool. Slider captions
@@ -42,8 +46,8 @@ impl DrumApp {
                     let mut from = self.practice.range_from + 1;
                     let mut to = self.practice.range_to + 1;
                     ui.label("Measures");
-                    widgets::slider(ui, "from", &mut from, 1..=n_measures, "", 1.0);
-                    widgets::slider(ui, "to", &mut to, 1..=n_measures, "", 1.0);
+                    widgets::Slider::new("from", &mut from, 1..=n_measures).show(ui);
+                    widgets::Slider::new("to", &mut to, 1..=n_measures).show(ui);
                     self.practice.range_from = from - 1;
                     self.practice.range_to = (to - 1).max(self.practice.range_from);
                 });
@@ -52,7 +56,7 @@ impl DrumApp {
                 ui.add_enabled_ui(!running, |ui| {
                     let (lo, hi) = self.practice.tempo.range();
                     let mut value = self.practice.tempo.value();
-                    widgets::slider(ui, "tempo", &mut value, lo..=hi, self.practice.tempo.unit(), 1.0);
+                    widgets::Slider::new("tempo", &mut value, lo..=hi).suffix(self.practice.tempo.unit()).show(ui);
                     self.practice.tempo = self.practice.tempo.with_value(value);
                     ui.label(format!("= {:.0} BPM", self.practice.tempo.bpm(base_bpm)));
                 });
@@ -67,29 +71,29 @@ impl DrumApp {
         ui.horizontal(|ui| {
             if running {
                 if ui.button(RichText::new("⏹ Stop (Esc)").strong()).clicked() {
-                    self.stop_take(false);
+                    self.press(Action::Stop);
                 }
             } else {
                 let gradable = self.source == Source::Score || self.rudiment().gradable();
-                let record = egui::Button::new(RichText::new("⏺ Record (R)").strong().color(render::RED));
+                let record = egui::Button::new(RichText::new("⏺ Record (R)").strong().color(theme::RED));
                 if ui
                     .add_enabled(gradable, record)
                     .on_disabled_hover_text("A closed roll cannot be graded stroke by stroke: use Listen")
                     .clicked()
                 {
-                    self.start_take();
+                    self.press(Action::Record);
                 }
             }
             if self.playback.listen.is_some() {
                 if ui.button(RichText::new("⏹ Stop listening (L)").strong()).clicked() {
-                    self.stop_listen();
+                    self.press(Action::Listen);
                 }
             } else if ui
                 .add_enabled(!running, egui::Button::new(RichText::new("⏵ Listen (L)").strong()))
                 .on_hover_text("Hear the selected measures at the chosen tempo, with the count-in and click, before you play them")
                 .clicked()
             {
-                self.start_listen();
+                self.press(Action::Listen);
             }
             // Where Listen is in the music; a fixed width, so the controls after it stay put.
             let position = self.listen_position().unwrap_or_default();
@@ -98,15 +102,15 @@ impl DrumApp {
             // With a fixed number of bars per row the bars fill the width, so there is nothing to zoom.
             let auto_rows = self.cfg.bars_per_row == 0;
             ui.add_enabled_ui(auto_rows, |ui| {
-                widgets::slider(ui, "zoom", &mut self.cfg.zoom, limits::ZOOM.range(), "", 0.05);
+                widgets::Slider::new("zoom", &mut self.cfg.zoom, limits::ZOOM.range()).step(0.05).show(ui);
             })
             .response
             .on_disabled_hover_text("Zoom sets how wide a bar is drawn when the rows are automatic. With a fixed number of bars per row (Layout menu) the bars fill the width instead; set bars per row to auto to use the zoom.");
             ui.checkbox(&mut self.follow, "follow");
             ui.menu_button("Layout", |ui| {
                 ui.set_min_width(320.0);
-                let bars = widgets::slider_with_zero(ui, "bars per row", &mut self.cfg.bars_per_row, limits::BARS_PER_ROW.range(), "", 1.0, Some("auto"));
-                let align = widgets::slider_with_zero(ui, "start a row at bar", &mut self.cfg.layout_align_bar, 0..=n_measures, "", 1.0, Some("off"));
+                let bars = widgets::Slider::new("bars per row", &mut self.cfg.bars_per_row, limits::BARS_PER_ROW.range()).zero_text("auto").show(ui);
+                let align = widgets::Slider::new("start a row at bar", &mut self.cfg.layout_align_bar, 0..=n_measures).zero_text("off").show(ui);
                 if bars.changed() || align.changed() {
                     self.keep_layout();
                 }
@@ -132,20 +136,40 @@ impl DrumApp {
     /// The switches that work while the music plays, and the count-in.
     pub(super) fn playback_switches(&mut self, ui: &mut egui::Ui, running: bool) {
         // The click can be switched on and off while the music plays, in Listen and in a take.
-        ui.checkbox(&mut self.cfg.metronome_during_take, "click (K)")
-            .on_hover_text("Switch the metronome on or off at any time, also while playing or recording. The count-in always sounds.");
+        // The switches are the same commands as the keys and the controller's buttons: a click only
+        // asks for the change, `press` makes it.
+        let mut click = self.cfg.metronome_during_take;
+        if ui
+            .checkbox(&mut click, "click (K)")
+            .on_hover_text("Switch the metronome on or off at any time, also while playing or recording. The count-in always sounds.")
+            .changed()
+        {
+            self.press(Action::Click);
+        }
         ui.add_enabled_ui(!running, |ui| {
-            ui.checkbox(&mut self.playback.notes, "notes")
-                .on_hover_text("Play the notes of the score in Listen. Switch them off to use Listen as a click track.");
-            ui.checkbox(&mut self.playback.looping, "loop")
-                .on_hover_text("Repeat the selected measures in Listen until it is stopped. Switching it off lets the current round finish.");
-            widgets::slider(ui, "count-in bars", &mut self.cfg.count_in_bars, limits::COUNT_IN_BARS.range(), "", 1.0);
+            let mut notes = self.playback.notes;
+            if ui
+                .checkbox(&mut notes, "notes")
+                .on_hover_text("Play the notes of the score in Listen. Switch them off to use Listen as a click track.")
+                .changed()
+            {
+                self.press(Action::Notes);
+            }
+            let mut looping = self.playback.looping;
+            if ui
+                .checkbox(&mut looping, "loop")
+                .on_hover_text("Repeat the selected measures in Listen until it is stopped. Switching it off lets the current round finish.")
+                .changed()
+            {
+                self.press(Action::Loop);
+            }
+            widgets::Slider::new("count-in bars", &mut self.cfg.count_in_bars, limits::COUNT_IN_BARS.range()).show(ui);
             ui.checkbox(&mut self.cfg.listen_count_in, "in Listen")
                 .on_hover_text("Start Listen with the count-in too. A recording always has one; switch this off to hear the music at once.");
-            widgets::slider_with_zero(ui, "ramp +", &mut self.cfg.ramp_percent, 0..=20, " %", 1.0, Some("off"))
+            widgets::Slider::new("ramp +", &mut self.cfg.ramp_percent, limits::RAMP_PERCENT.range()).suffix(" %").zero_text("off").show(ui)
                 .on_hover_text("With loop on, Listen gets faster by this many per cent of the written tempo every few passes (up to three times the starting tempo). Takes effect at the next start.");
             if self.cfg.ramp_percent > 0 {
-                widgets::slider(ui, "every", &mut self.cfg.ramp_passes, 1..=16, " passes", 1.0);
+                widgets::Slider::new("every", &mut self.cfg.ramp_passes, limits::RAMP_PASSES.range()).suffix(" passes").show(ui);
             }
         });
     }
@@ -161,11 +185,11 @@ impl DrumApp {
                 let r = &take.report;
                 if take.running {
                     let el = signed_secs(self.shown_now(), take.zero);
-                    if el < 0.0 {
+                    if el < Seconds::ZERO {
                         let beats_left = (-el / take.count_in_beat_sec).ceil() as i64;
-                        ui.label(RichText::new(format!("Count-in… {beats_left}")).size(22.0).strong().color(render::ACCENT));
+                        ui.label(RichText::new(format!("Count-in… {beats_left}")).size(22.0).strong().color(theme::ACCENT));
                     } else {
-                        ui.label(RichText::new("⏺ REC").strong().color(render::RED));
+                        ui.label(RichText::new("⏺ REC").strong().color(theme::RED));
                     }
                 } else {
                     ui.label(RichText::new(format!("Take {}", take.number)).strong());
@@ -192,21 +216,21 @@ impl DrumApp {
                 ui.label(RichText::new("■").color(c));
                 ui.label(RichText::new(t).small());
             };
-            legend(ui, render::GREEN, "perfect");
-            legend(ui, render::LIGHT_GREEN, "good");
-            legend(ui, render::AMBER, "ok");
-            legend(ui, render::ORANGE, "wrong pad");
-            legend(ui, render::RED, "missed / extra");
+            legend(ui, theme::GREEN, "perfect");
+            legend(ui, theme::LIGHT_GREEN, "good");
+            legend(ui, theme::AMBER, "ok");
+            legend(ui, theme::ORANGE, "wrong pad");
+            legend(ui, theme::RED, "missed / extra");
             widgets::hint(ui, "· click a measure to start there, shift+click to set the end · mouse wheel over a slider fine-tunes it");
             if let Some(fit) = self.view.fit_bars {
                 let msg = format!("· {} bars per row do not fit at this width: showing {fit}", self.cfg.bars_per_row);
-                ui.label(RichText::new(msg).small().color(render::AMBER));
+                ui.label(RichText::new(msg).small().color(theme::AMBER));
             }
         });
         // On a line of its own: it grows while the trigger waits for the second hit.
-        if let Some((text, armed)) = self.trigger_hint() {
+        if let Some(TriggerHint { text, armed }) = self.trigger_hint() {
             let (color, text) =
-                if armed { (render::GREEN, format!("{text}: waiting for the second hit")) } else { (ui.visuals().weak_text_color(), text) };
+                if armed { (theme::GREEN, format!("{text}: waiting for the second hit")) } else { (ui.visuals().weak_text_color(), text) };
             ui.label(RichText::new(text.trim_start_matches("· ")).small().color(color));
         }
         ui.separator();
@@ -221,6 +245,7 @@ impl DrumApp {
         };
         let view = ScoreView {
             score,
+            score_gen: self.score_gen,
             grades: &grades,
             played: &played,
             playhead_q: playhead,
@@ -233,7 +258,8 @@ impl DrumApp {
                 break_at_pause: self.cfg.break_at_pause,
             },
         };
-        let out = egui::ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| render::show(ui, &view)).inner;
+        let out =
+            egui::ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| render::show(ui, &view, &mut self.score_cache)).inner;
         self.view.fit_bars = out.fit_bars;
         if let (Some((mi, shift)), false) = (out.clicked_measure, running) {
             if shift {

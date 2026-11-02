@@ -2,19 +2,19 @@
 
 use egui::{Color32, RichText};
 
-use crate::render;
+use crate::theme;
 
 use super::DrumApp;
 
 pub(super) fn grade_letter_color(overall: f64) -> Color32 {
     if overall >= 90.0 {
-        render::GREEN
+        theme::GREEN
     } else if overall >= 75.0 {
-        render::LIGHT_GREEN
+        theme::LIGHT_GREEN
     } else if overall >= 60.0 {
-        render::AMBER
+        theme::AMBER
     } else {
-        render::RED
+        theme::RED
     }
 }
 
@@ -42,11 +42,11 @@ pub(super) fn histogram(ui: &mut egui::Ui, dts: &[f64], window_ms: f64) {
         let x0 = plot.left() + i as f32 * col_w;
         let r = egui::Rect::from_min_max(egui::pos2(x0 + 1.0, plot.bottom() - h), egui::pos2(x0 + col_w - 1.0, plot.bottom()));
         let color = if center.abs() <= 20.0 {
-            render::GREEN
+            theme::GREEN
         } else if center.abs() <= 45.0 {
-            render::LIGHT_GREEN
+            theme::LIGHT_GREEN
         } else {
-            render::AMBER
+            theme::AMBER
         };
         p.rect_filled(r, 2.0, color);
     }
@@ -117,7 +117,7 @@ impl DrumApp {
 
             ui.add_space(8.0);
             ui.heading("Timing distribution");
-            let dts: Vec<f64> = r.results.iter().filter_map(|x| x.dt_ms).collect();
+            let dts: Vec<f64> = r.results.iter().filter_map(|x| x.dt.map(|d| d.0)).collect();
             histogram(ui, &dts, self.cfg.tol.window_ms);
 
             ui.add_space(8.0);

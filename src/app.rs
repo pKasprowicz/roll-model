@@ -1,8 +1,9 @@
-//! Application state and UI (Score / Metronome / Results / Settings tabs).
+//! Application state and UI: the Home, Score, Rudiments, Metronome, Results and Settings tabs, and the windows of the controller.
 
 mod audio_output;
 mod controller_help;
 mod controls;
+mod debounce;
 mod home;
 mod import_menu;
 mod metro;
@@ -22,18 +23,21 @@ use std::time::{Duration, Instant};
 
 use egui::RichText;
 
-use crate::analysis::{Expected, Hit, Report};
+use crate::analysis::{Expected, Hit, Report, Window};
 use crate::config::{Config, Paths, RowLayout};
-use crate::control::Control;
+use crate::control::SoundSwitches;
 use crate::controller::Action;
 use crate::drums::Lane;
 use crate::import::load_score;
 use crate::metronome::Metronome;
 use crate::midi::{self, EventQueue, InputHandle, RawEvent};
-use crate::playback::{Player, Ramp};
+use crate::playback::Player;
+use crate::practice::Ramp;
 use crate::practice_tempo::PracticeTempo;
-use crate::render::{self};
+use crate::score::Click;
 use crate::score::Score;
+use crate::theme;
+use crate::units::{Millis, Seconds};
 use crate::widgets;
 use session::signed_secs;
 use settings::SettingsPage;
@@ -48,8 +52,10 @@ enum Tab {
     Settings,
 }
 
-/// How long a changed range or tempo must stay put before Listen restarts with it.
-const LISTEN_RESTART_DELAY: Duration = Duration::from_millis(300);
+/// How long a changed range, tempo or metronome setting must stay put before what is playing restarts with it.
+const RESTART_DELAY: Duration = Duration::from_millis(300);
+/// Lines kept of the monitor of the drum module and of the controller.
+const MONITOR_LINES: usize = 14;
 
 /// Which practice source the practice fields of `DrumApp` (score, range, tempo, take, history)
 /// belong to: the Score tab's file or the Rudiments tab's rudiment.
@@ -67,7 +73,7 @@ struct Practice {
     score: Option<Score>,
     score_path: Option<PathBuf>,
     /// What the import found out about the score, when it was read from a file.
-    score_report: Option<crate::import::Report>,
+    score_report: Option<crate::import::ImportReport>,
     /// How a MIDI file is laid out; the Score tab's "MIDI import" menu changes it.
     midi_options: crate::import::MidiOptions,
     range_from: usize,
@@ -108,22 +114,28 @@ struct Take {
     number: usize,
     /// What was played: the score's title, or the rudiment with its repetitions.
     label: String,
-    /// Match hits to notes with a window that follows the spacing of the notes (rudiments).
-    adaptive: bool,
+    /// How far from a note a hit counts for it: adaptive for rudiments, whose notes are close.
+    window: Window,
     /// Score time zero = start of `from` measure.
     zero: Instant,
     from: usize,
     to: usize,
     tempo_scale: f64,
     /// Seconds from score start to the `from` measure (at `tempo_scale`).
-    t0: f64,
-    end_sec: f64,
+    t0: Seconds,
+    end_sec: Seconds,
     expected: Vec<Expected>,
     hits: Vec<Hit>,
     report: Report,
+    /// How many hits there were, and how far into the take it was, when `report` was worked out.
+    graded_at: Option<(usize, Seconds)>,
     running: bool,
-    count_in_beat_sec: f64,
+    count_in_beat_sec: Seconds,
 }
+
+/// How often, while a take records, it is graded again when no hit came: grading the whole take is
+/// not something to do on every frame.
+const GRADING_INTERVAL: Seconds = Seconds(0.05);
 
 /// The score being played back to the user ("Listen"), for the playhead.
 struct Listen {
@@ -131,18 +143,25 @@ struct Listen {
     zero: Instant,
     tempo_scale: f64,
     /// Seconds from score start to the first measure of the range.
-    t0: f64,
-    end_sec: f64,
+    t0: Seconds,
+    end_sec: Seconds,
     /// Seconds per beat of the first measure, and the beats of the count-in.
-    beat_sec: f64,
+    beat_sec: Seconds,
     count_in_beats: u32,
     /// The tempo ramp it plays with (none: `every` is 0).
     ramp: Ramp,
-    /// What it was started with; a change of range or tempo (or of the score) restarts it.
+    /// What it was started with; a change of it restarts Listen.
+    key: ListenKey,
+}
+
+/// What Listen plays: the bars, the tempo (rounded, in the unit of the practice tempo) and which
+/// score (`score_gen`). A change of any restarts a running Listen once it has settled.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct ListenKey {
     from: usize,
     to: usize,
-    tempo_key: i32,
-    gen: u32,
+    tempo: i32,
+    score_gen: u32,
 }
 
 /// What a take or a playback of the selected range needs: where time zero is
@@ -152,13 +171,13 @@ struct Plan {
     to: usize,
     scale: f64,
     bpm: f64,
-    beat_sec: f64,
+    beat_sec: Seconds,
     count_in_beats: u32,
     zero: Instant,
-    t0: f64,
-    end_sec: f64,
+    t0: Seconds,
+    end_sec: Seconds,
     /// Count-in and beat clicks, seconds from the first measure.
-    clicks: Vec<(f64, bool)>,
+    clicks: Vec<Click>,
 }
 
 struct TakeSummary {
@@ -210,21 +229,21 @@ struct Playback {
     notes: bool,
     looping: bool,
     /// Range and tempo changed while listening, and since when: restarts once it settles.
-    pending: Option<((usize, usize, i32, u32), Instant)>,
+    restart: debounce::Debounce<ListenKey>,
     /// Shared with the sound threads of Listen and of takes.
-    control: Arc<Control>,
+    control: Arc<SoundSwitches>,
     /// Instruments soloed in the mixer (not saved).
     solo: BTreeSet<Lane>,
     /// One instrument played from the mixer; it has its own control so it never disturbs Listen.
     audition: Option<Player>,
-    audition_control: Arc<Control>,
+    audition_control: Arc<SoundSwitches>,
 }
 
 /// The free metronome tab's run, its sound thread and the settings that thread shares.
 struct MetroState {
     run: Option<metro::Run>,
     player: Option<Player>,
-    control: Arc<Control>,
+    control: Arc<SoundSwitches>,
 }
 
 pub struct DrumApp {
@@ -232,6 +251,12 @@ pub struct DrumApp {
     saved_cfg: Config,
     /// Where the settings, sounds and controller presets are kept.
     paths: Paths,
+    /// What the sound threads reported, kept beside the settings.
+    log: crate::log::Log,
+    /// What the score view works out from the score alone, kept while `score_gen` stays.
+    score_cache: crate::render::ScoreCache,
+    /// The best clean tempo of each rudiment, in a file of its own.
+    progress: crate::progress::Progress,
     view: ViewState,
     /// Whose practice is the one in `practice`; the other's is in `parked`.
     source: Source,
@@ -240,7 +265,7 @@ pub struct DrumApp {
     /// Counts the scores put in place, so that Listen notices a new one.
     score_gen: u32,
     /// The Rudiments tab's own state (the chosen rudiment itself is in `cfg`).
-    rud: rudiment::State,
+    rud: rudiment::TabState,
     /// The start trigger: two hits in a row start a recording; `trigger_learn` waits for the
     /// hit that chooses one of its two instruments.
     trigger: crate::trigger::Detector,
@@ -269,7 +294,7 @@ pub struct DrumApp {
     /// The free metronome tab.
     metro_run: MetroState,
 
-    /// The Mackie Control surface (X-Touch).
+    /// The Mackie SoundSwitches surface (X-Touch).
     controller: controls::Controller,
 
     /// The help screen of the controller, opened from its indicator in the top bar.
@@ -309,6 +334,7 @@ impl DrumApp {
         // Everything slow is a step of the splash (`startup.rs`), so that the first frame is not late.
         let mut app = DrumApp::with_config(Config::default());
         app.paths = Paths::system();
+        app.log = crate::log::Log::at(app.paths.log_file());
         app.startup = Some(startup::Startup::new(initial_file, startup::scan_sound_outputs()));
         app
     }
@@ -318,13 +344,16 @@ impl DrumApp {
         DrumApp {
             saved_cfg: cfg.clone(),
             paths: Paths::none(),
+            log: Default::default(),
+            score_cache: Default::default(),
+            progress: Default::default(),
             cfg,
             view: ViewState { tab: Tab::Home, settings_page: SettingsPage::MidiInput, status: String::new(), error: None, fit_bars: None },
             source: Source::Score,
             practice: Practice::new(),
             parked: Practice::new(),
             score_gen: 0,
-            rud: rudiment::State::default(),
+            rud: rudiment::TabState::default(),
             trigger: crate::trigger::Detector::default(),
             trigger_learn: None,
             loading: None,
@@ -347,16 +376,16 @@ impl DrumApp {
                 player: None,
                 notes: true,
                 looping: false,
-                pending: None,
-                control: Control::new(),
+                restart: Default::default(),
+                control: SoundSwitches::new(),
                 solo: BTreeSet::new(),
                 audition: None,
-                audition_control: Control::new(),
+                audition_control: SoundSwitches::new(),
             },
             audio_devices: Vec::new(),
             audio_default: None,
             audio: audio_output::AudioOutput::default(),
-            metro_run: MetroState { run: None, player: None, control: Control::new() },
+            metro_run: MetroState { run: None, player: None, control: SoundSwitches::new() },
             controller: controls::Controller::new(),
             controller_help: None,
             startup: None,
@@ -408,7 +437,7 @@ impl DrumApp {
         self.learn_note(ev);
         let lane = self.cfg.note_map.lane(ev.note).map(|l| l.by_hihat_pedal(ev.hihat, self.cfg.hihat_cc_max));
         self.midi.monitor.push_front((ev, lane));
-        self.midi.monitor.truncate(14);
+        self.midi.monitor.truncate(MONITOR_LINES);
         self.record_calibration_hit(ev);
         if let Some(lane) = lane {
             // A hit that belongs to the start trigger is no note of the take it starts.
@@ -430,13 +459,13 @@ impl DrumApp {
 
     fn record_calibration_hit(&mut self, ev: RawEvent) {
         if let Some(cal) = self.calibration.as_mut() {
-            cal.hits.push(signed_secs(ev.at, cal.zero));
+            cal.hits.push(signed_secs(ev.at, cal.zero).0);
         }
     }
 
     /// A hit of `lane` goes into the take that is running (from a little before its first beat on).
     fn record_take_hit(&mut self, ev: RawEvent, lane: Lane) {
-        let latency = self.cfg.latency_ms / 1000.0;
+        let latency = Millis(self.cfg.latency_ms).secs();
         if let Some(take) = self.practice.take.as_mut().filter(|t| t.running) {
             let t = signed_secs(ev.at, take.zero) - latency;
             if t > -take.count_in_beat_sec * 0.75 {
@@ -470,9 +499,9 @@ impl DrumApp {
         if self.source == source {
             return;
         }
-        self.stop_take(false);
+        self.stop_take(session::StopReason::Aborted);
         self.stop_listen();
-        self.playback.pending = None;
+        self.playback.restart.cancel();
         std::mem::swap(&mut self.practice, &mut self.parked);
         self.source = source;
         self.score_gen += 1;
@@ -540,7 +569,7 @@ impl DrumApp {
     /// reason it could not be opened. (A big file is read on another thread; the line then says it is loading.)
     fn try_open(&mut self, path: &Path) -> Result<String, String> {
         self.activate(Source::Score);
-        self.stop_take(false);
+        self.stop_take(session::StopReason::Aborted);
         self.stop_listen();
         self.practice.midi_options = crate::import::MidiOptions::default();
         if std::fs::metadata(path).is_ok_and(|m| m.len() > self.background_bytes) {
@@ -548,7 +577,7 @@ impl DrumApp {
         }
         self.loading = None;
         match load_score(path, &self.import_options()) {
-            Ok(loaded) => Ok(self.install(loaded, path, false)),
+            Ok(loaded) => Ok(self.install(loaded, path, import_menu::Opened::Fresh)),
             Err(e) => Err(format!("Could not load {}: {e}", path.display())),
         }
     }
@@ -570,21 +599,26 @@ impl DrumApp {
                 }
             }
             ui.separator();
-            ui.selectable_value(&mut self.view.tab, Tab::Home, "🏠 Home");
+            // The tab is chosen here and changed after the buttons: `show_tab` also puts its practice in place.
+            let mut tab = self.view.tab;
+            ui.selectable_value(&mut tab, Tab::Home, "🏠 Home");
             ui.add_enabled_ui(self.has_main_score(), |ui| {
-                ui.selectable_value(&mut self.view.tab, Tab::Score, "🎼 Score");
+                ui.selectable_value(&mut tab, Tab::Score, "🎼 Score");
             });
-            ui.selectable_value(&mut self.view.tab, Tab::Rudiments, "🔁 Rudiments");
-            ui.selectable_value(&mut self.view.tab, Tab::Metronome, "⏱ Metronome");
-            ui.selectable_value(&mut self.view.tab, Tab::Results, "📊 Results");
-            ui.selectable_value(&mut self.view.tab, Tab::Settings, "⚙ Settings");
+            ui.selectable_value(&mut tab, Tab::Rudiments, "🔁 Rudiments");
+            ui.selectable_value(&mut tab, Tab::Metronome, "⏱ Metronome");
+            ui.selectable_value(&mut tab, Tab::Results, "📊 Results");
+            ui.selectable_value(&mut tab, Tab::Settings, "⚙ Settings");
+            if tab != self.view.tab {
+                self.show_tab(tab);
+            }
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 match &self.midi.input {
-                    Some(h) => ui.label(RichText::new(format!("⏺ {}", h.port_name)).color(render::GREEN)),
-                    None => ui.label(RichText::new("⏺ no MIDI input").color(render::RED)),
+                    Some(h) => ui.label(RichText::new(format!("⏺ {}", h.port_name)).color(theme::GREEN)),
+                    None => ui.label(RichText::new("⏺ no MIDI input").color(theme::RED)),
                 };
-                if let Some((text, connected)) = self.controller.label(!self.cfg.controller_preset.is_empty()) {
-                    let indicator = egui::Label::new(RichText::new(text).color(if connected { render::GREEN } else { render::RED }))
+                if let Some(controls::ControllerLabel { text, connected }) = self.controller.label(!self.cfg.controller_preset.is_empty()) {
+                    let indicator = egui::Label::new(RichText::new(text).color(if connected { theme::GREEN } else { theme::RED }))
                         .sense(egui::Sense::click());
                     let response = ui
                         .add(indicator)
@@ -681,12 +715,10 @@ impl DrumApp {
     /// The top bar, the status line, the tab that is shown and the windows of the controller.
     fn draw(&mut self, ctx: &egui::Context) {
         egui::TopBottomPanel::top("top").show(ctx, |ui| self.top_bar(ui));
-        // A tab clicked just now needs its practice source before it is drawn.
-        self.sync_source();
         egui::TopBottomPanel::bottom("status").show(ctx, |ui| {
             ui.horizontal(|ui| {
                 if let Some(e) = self.view.error.clone() {
-                    ui.label(RichText::new(e).color(render::RED));
+                    ui.label(RichText::new(e).color(theme::RED));
                     if ui.small_button("Dismiss").clicked() {
                         self.view.error = None;
                     }
@@ -735,11 +767,7 @@ impl DrumApp {
     /// Keep animating while recording, calibrating, listening or clicking; otherwise poll MIDI
     /// often enough for the monitor and MIDI-learn.
     fn schedule_repaint(&self, ctx: &egui::Context) {
-        if self.practice.take.as_ref().is_some_and(|t| t.running)
-            || self.calibration.is_some()
-            || self.playback.listen.is_some()
-            || self.metro_run.run.is_some()
-        {
+        if self.take_running() || self.calibration.is_some() || self.playback.listen.is_some() || self.metro_run.run.is_some() {
             ctx.request_repaint();
         } else {
             ctx.request_repaint_after(Duration::from_millis(50));
@@ -821,7 +849,7 @@ mod tests {
         app.practice.midi_options.first_bar_beats = 1;
         app.reimport();
         let score = app.practice.score.as_ref().unwrap();
-        assert_eq!(score.measures[0].len_q, 1.0, "a short first bar");
+        assert_eq!(score.measures[0].len_q, crate::units::Quarters(1.0), "a short first bar");
         assert_eq!((app.practice.range_from, app.practice.range_to), (1, 2), "the selected bars stay");
         assert!(app.view.tab == Tab::Results, "the tab stays");
         assert!(app.score_gen > gen);
@@ -829,7 +857,7 @@ mod tests {
         // Opening a file again starts from the default settings.
         app.open_file(&midi);
         assert_eq!(app.practice.midi_options, crate::import::MidiOptions::default());
-        assert_eq!(app.practice.score.as_ref().unwrap().measures[0].len_q, 4.0);
+        assert_eq!(app.practice.score.as_ref().unwrap().measures[0].len_q, crate::units::Quarters(4.0));
 
         // A MusicXML score has no such menu.
         app.open_file(&sample());
@@ -890,13 +918,49 @@ mod tests {
         app.connect_midi_and_say(Some("no such port".into()));
         assert!(app.view.status.contains("Choose the drum module"), "{}", app.view.status);
 
-        assert!(matches!(app.finish_take(false), session::TakeOutcome::NoTake));
+        assert!(matches!(app.finish_take(session::StopReason::Aborted), session::TakeOutcome::NoTake));
         assert!(app.view.status.contains("Choose the drum module"), "stopping nothing leaves the status alone");
 
         // The line of a clean take comes back from the function that decides it, not from the status.
         app.view.tab = Tab::Rudiments;
         app.sync_source();
         assert!(app.note_clean_rudiment(90.0).starts_with("Clean take at 90 BPM"));
+    }
+
+    #[test]
+    fn every_sound_problem_goes_to_the_log_and_the_first_is_shown_with_the_count_of_the_rest() {
+        let guard = roll_model_core::testing::TempDir::new("sound-errors");
+        let dir = guard.path().to_path_buf();
+        let mut app = DrumApp::with_config(Config::default());
+        app.log = crate::log::Log::at(Some(dir.join("roll-model.log")));
+        app.report_sound_errors(vec![]);
+        assert!(app.view.error.is_none(), "nothing to say");
+        app.report_sound_errors(vec!["one".into()]);
+        assert_eq!(app.view.error.as_deref(), Some("one"));
+        app.report_sound_errors(vec!["first".into(), "second".into(), "third".into()]);
+        assert_eq!(app.view.error.as_deref(), Some("first (and 2 more problems, see the log)"));
+        let log = std::fs::read_to_string(dir.join("roll-model.log")).unwrap();
+        assert_eq!(log.lines().count(), 4);
+        assert!(log.contains(" second") && log.contains(" third"), "{log}");
+    }
+
+    #[test]
+    fn showing_a_tab_puts_its_practice_in_place_at_once_and_the_buttons_use_the_command_path() {
+        let mut app = DrumApp::with_config(Config::default());
+        app.show_tab(Tab::Rudiments);
+        assert!(app.source == Source::Rudiments, "no frame has to pass");
+        assert!(app.practice.score.is_some(), "the rudiment is built");
+        app.show_tab(Tab::Metronome);
+        assert!(app.source == Source::Rudiments, "the other tabs keep the source");
+        // The buttons of the screen ask for the same actions as the keys: the same refusal.
+        app.show_tab(Tab::Home);
+        app.parked.score = None;
+        app.practice.score = None;
+        app.press(Action::Listen);
+        assert_eq!(app.view.status, "Open a score first.");
+        app.view.status.clear();
+        app.press(Action::Click);
+        assert!(app.cfg.metronome_during_take != Config::default().metronome_during_take);
     }
 
     #[test]
@@ -954,8 +1018,8 @@ mod tests {
 
     #[test]
     fn changed_settings_are_written_after_a_short_wait_and_on_exit_not_every_frame() {
-        let dir = std::env::temp_dir().join(format!("roll-model-app-settings-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&dir);
+        let guard = roll_model_core::testing::TempDir::new("app-settings");
+        let dir = guard.path().to_path_buf();
         let mut app = DrumApp::with_config(Config::default());
         app.paths = crate::config::Paths::in_dir(dir.clone());
         let file = dir.join("config.txt");
@@ -977,7 +1041,6 @@ mod tests {
         app.save_settings_if_changed();
         app.save_settings_now();
         assert!(std::fs::read_to_string(&file).unwrap().contains("zoom = 2.5"));
-        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

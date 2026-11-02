@@ -65,7 +65,8 @@
 <table class="compact">
 <tbody>
 <tr><td><code>README.md</code></td><td>What the program does, how to build it</td></tr>
-<tr><td><code>HANDOFF.md</code></td><td>Current status, the todo list for the next session, invariants, known gaps. Read it before changing code.</td></tr>
+<tr><td><code>STATUS.md</code></td><td>What is true now: the architecture, the invariants, the known gaps, how to work. Read it before changing code.</td></tr>
+<tr><td><code>HANDOFF.md</code></td><td>The task list (each open task is also a GitHub issue). The older notes are in <code>docs/history/</code>.</td></tr>
 <tr><td><code>CHANGELOG.md</code></td><td>User-visible changes per release (Keep a Changelog)</td></tr>
 <tr><td><code>CLAUDE.md</code></td><td>Short instructions for AI coding assistants working on the repository</td></tr>
 <tr><td><code>docs/rudiments.md</code></td><td>The rudiment catalogue and where it comes from</td></tr>
@@ -102,7 +103,7 @@ python3 tools/build_notices.py      # target/notices/THIRD_PARTY_NOTICES.txt</co
 <li><strong>Branches.</strong> <code>main</code> holds releases, <code>develop</code> the work in progress, <code>feature/&lt;name&gt;</code> branches are merged into <code>develop</code> with a merge commit. Moving the tag <code>preview</code> onto a commit of <code>develop</code> and pushing it builds a pre-release.</li>
 <li><strong>Versioning</strong> is SemVer. The version lives in <code>Cargo.toml</code> and <code>core/Cargo.toml</code> (bump <code>Cargo.lock</code> with them), release tags are <code>vX.Y.Z</code>. Every user-visible change goes under <code>[Unreleased]</code> in <code>CHANGELOG.md</code>.</li>
 <li><strong>Commit messages</strong> are <code>feat:</code>, <code>fix:</code>, <code>docs:</code>, <code>chore:</code>, <code>test:</code>, <code>ci:</code> followed by a sentence.</li>
-<li><strong>Keep the core crate pure.</strong> The crate <code>core/</code> (<code>roll-model-core</code>) holds <code>analysis.rs</code>, <code>notation.rs</code>, <code>score.rs</code>, <code>drums.rs</code>, <code>xml.rs</code>, <code>rudiments.rs</code>, <code>trigger.rs</code>, <code>controller/</code> and <code>controller_layout.rs</code>, <code>import/</code> (opening score files) and <code>config.rs</code>. It cannot depend on the app crate, and its manifest lists no GUI, MIDI or audio crate, so the compiler enforces what used to be a convention. That is what makes it testable without devices (<code>cargo test -p roll-model-core</code>, with integration tests in <code>core/tests/</code>).</li>
+<li><strong>Keep the core crate free of devices.</strong> The crate <code>core/</code> (<code>roll-model-core</code>) holds <code>analysis.rs</code>, <code>notation.rs</code>, <code>score.rs</code>, <code>drums.rs</code>, <code>xml.rs</code>, <code>rudiments.rs</code>, <code>trigger.rs</code>, <code>controller/</code> and <code>controller_layout.rs</code>, <code>import/</code> (opening score files) and <code>config.rs</code>. Free of devices is not free of the file system: the crate reads and writes the settings, the progress file and the controller presets, and opens score files. What it never touches is a window, a MIDI port or a sound card. It cannot depend on the app crate, and its manifest lists no GUI, MIDI or audio crate, so the compiler enforces what used to be a convention. That is what makes it testable without devices (<code>cargo test -p roll-model-core</code>, with integration tests in <code>core/tests/</code>).</li>
 <li><strong>Time is quarter notes.</strong> Score positions are quarter notes (<code>q</code>); convert to seconds only through <code>TempoMap</code>.</li>
 <li><strong>Style.</strong> Write code that reads like the code around it: same comment density, naming, idiom. Doc comments say <em>why</em> and what the caller can rely on; a test name is a sentence describing behaviour.</li>
 <li><strong>Update the docs with the code.</strong> <code>HANDOFF.md</code> (status, architecture list, conventions), the README, the manual template and, if behaviour is user visible, the changelog. This guide's code excerpts update themselves; its prose does not.</li>
@@ -150,7 +151,7 @@ python3 tools/build_notices.py      # target/notices/THIRD_PARTY_NOTICES.txt</co
   <rect x="444" y="204" width="130" height="30" rx="5" fill="none" stroke="currentColor"/><text x="454" y="224">control.rs</text>
   <rect x="584" y="204" width="156" height="30" rx="5" fill="none" stroke="currentColor"/><text x="594" y="224">synth.rs, import/</text>
   <rect x="10" y="280" width="740" height="120" rx="8" fill="currentColor" opacity=".22"/>
-  <text x="24" y="302" font-weight="700">Pure core &mdash; no GUI, no MIDI, no audio; fully unit-tested</text>
+  <text x="24" y="302" font-weight="700">Core &mdash; no GUI, no MIDI, no audio; fully unit-tested</text>
   <rect x="24" y="314" width="110" height="30" rx="5" fill="none" stroke="currentColor"/><text x="34" y="334">score.rs</text>
   <rect x="144" y="314" width="110" height="30" rx="5" fill="none" stroke="currentColor"/><text x="154" y="334">drums.rs</text>
   <rect x="264" y="314" width="110" height="30" rx="5" fill="none" stroke="currentColor"/><text x="274" y="334">analysis.rs</text>
@@ -202,7 +203,7 @@ python3 tools/build_notices.py      # target/notices/THIRD_PARTY_NOTICES.txt</co
   <text x="607" y="42" font-weight="700">Audio engine</text><text x="607" y="62" opacity=".7">queue, then the cpal</text><text x="607" y="80" opacity=".7">callback thread:</text><text x="607" y="98" opacity=".7">clock estimate, mixer,</text><text x="607" y="116" opacity=".7">fixed voice pool</text>
   <text x="607" y="214">Sound card</text><text x="607" y="276">MIDI output</text><text x="607" y="294" opacity=".7">click and drums</text>
   <text x="22" y="86" opacity=".8">RawEvent queue</text><text x="22" y="186" opacity=".8">bytes queue</text>
-  <text x="238" y="88" opacity=".8" font-size="11">starts, stops, Control</text>
+  <text x="238" y="88" opacity=".8" font-size="11">starts, stops, SoundSwitches</text>
   <text x="545" y="44" opacity=".8" font-size="11">play(T)</text><text x="548" y="196" opacity=".8" font-size="11">MIDI</text>
   <text x="420" y="236" opacity=".8" font-size="11">counters, atomics</text>
 </svg>
@@ -251,7 +252,7 @@ python3 tools/build_notices.py      # target/notices/THIRD_PARTY_NOTICES.txt</co
 
 <h3 id="kit">The kit: lanes and note maps</h3>
 <p>A <code>Lane</code> is an instrument as the program sees it (kick, snare, cross-stick, closed/open/pedal hi-hat, four toms, two crashes, ride, bell, china, splash, cowbell, other). Everything that varies per instrument is a <code>match</code> on <code>Lane</code>, so adding one is a compiler-guided change (<a href="#t-lane">tutorial 6</a>).</p>
-{{code:core/src/drums.rs::pub fn family::12}}
+{{code:core/src/drums.rs::fn pad_family::16}}
 <p>A <code>NoteMap</code> maps MIDI notes to lanes; <code>NoteMap::roland_v31()</code> is the factory map and the user can edit it. <code>Lane::by_hihat_pedal</code> turns a hit on the closed or open hi-hat note into one or the other from the pedal position (CC#4) attached to the hit.</p>
 
 <h3 id="take">The life of a take</h3>
@@ -286,20 +287,20 @@ python3 tools/build_notices.py      # target/notices/THIRD_PARTY_NOTICES.txt</co
 <p>Every thread the program creates, who starts it, how long it lives, what it owns and how it talks to the rest. Anything not in the table runs on the UI thread.</p>
 <table class="compact">
 <tr><th>Thread</th><th>Started by</th><th>Lives</th><th>Owns</th><th>Talks to the rest through</th></tr>
-<tr><td><strong>UI</strong> (the program's main thread)</td><td><code>main</code> / eframe</td><td>the whole run</td><td><code>DrumApp</code> and everything in it, including the <code>cpal::Stream</code> (<code>AudioOutput</code>)</td><td>Takes the MIDI queues once per frame; starts and stops the sound threads; writes <code>Control</code> atomics; reads engine counters</td></tr>
+<tr><td><strong>UI</strong> (the program's main thread)</td><td><code>main</code> / eframe</td><td>the whole run</td><td><code>DrumApp</code> and everything in it, including the <code>cpal::Stream</code> (<code>AudioOutput</code>)</td><td>Takes the MIDI queues once per frame; starts and stops the sound threads; writes <code>SoundSwitches</code> atomics; reads engine counters</td></tr>
 <tr><td><strong>MIDI input: drum module</strong></td><td><code>midir</code>, from <code>midi::connect_input</code></td><td>while the port is open</td><td>nothing but its closure (the last hi-hat pedal value)</td><td>Pushes <code>RawEvent</code>s into <code>Arc&lt;Mutex&lt;Vec&gt;&gt;</code></td></tr>
 <tr><td><strong>MIDI input: controller</strong></td><td><code>midir</code>, from <code>midi::connect_controller</code></td><td>while the port is open</td><td>nothing</td><td>Pushes raw bytes into a second queue; the UI thread parses them</td></tr>
-<tr><td><strong><code>metronome</code></strong></td><td><code>Metronome::start</code> (a take, a calibration)</td><td>count-in and clicks of one take</td><td>Its list of clicks, an optional MIDI output connection</td><td>Hands each click to the engine (<code>EngineHandle::play</code>); reads <code>Control</code>; an <code>AtomicBool</code> stops it</td></tr>
-<tr><td><strong><code>playback</code></strong></td><td><code>Player::start</code> (Listen, the metronome tab, an audition)</td><td>one run, plus up to 2.2 s of tail</td><td>Its cue list, a MIDI output connection, a <code>DeviceSink</code> with the kit at the stream's rate</td><td>Hands sounds to the engine, sends MIDI at the exact moment, reads <code>Control</code>; an <code>AtomicBool</code> stops it</td></tr>
+<tr><td><strong><code>metronome</code></strong></td><td><code>Metronome::start</code> (a take, a calibration)</td><td>count-in and clicks of one take</td><td>Its list of clicks, an optional MIDI output connection</td><td>Hands each click to the engine (<code>EngineHandle::play</code>); reads <code>SoundSwitches</code>; an <code>AtomicBool</code> stops it</td></tr>
+<tr><td><strong><code>playback</code></strong></td><td><code>Player::start</code> (Listen, the metronome tab, an audition)</td><td>one run, plus up to 2.2 s of tail</td><td>Its cue list, a MIDI output connection, a <code>DeviceSink</code> with the kit at the stream's rate</td><td>Hands sounds to the engine, sends MIDI at the exact moment, reads <code>SoundSwitches</code>; an <code>AtomicBool</code> stops it</td></tr>
 <tr><td><strong>Audio callback</strong> (a thread that cpal creates)</td><td><code>cpal</code>, when the stream is built (<code>Engine::open</code>)</td><td>while the engine is open; ends on a stream error</td><td>The <code>Callback</code>: the queue's consumer end, the <code>Mixer</code>, the clock <code>Estimator</code></td><td>Reads the command queue, publishes the clock estimate and counters in <code>Shared</code> (atomics), puts finished samples in the graveyard queue</td></tr>
 <tr><td><strong>Sound-output scan</strong></td><td><code>app/startup.rs</code></td><td>a few hundred milliseconds at start-up</td><td>nothing</td><td>One <code>mpsc</code> message with the device names</td></tr>
 </table>
-<p>At most one <code>metronome</code> and one <code>playback</code> thread per purpose exist at a time (Listen, the metronome tab and the audition button each have their own <code>Player</code> and <code>Control</code>), but they can overlap, which is why the engine accepts commands from several threads. Starting a take, a calibration or opening a file stops the others.</p>
+<p>At most one <code>metronome</code> and one <code>playback</code> thread per purpose exist at a time (Listen, the metronome tab and the audition button each have their own <code>Player</code> and <code>SoundSwitches</code>), but they can overlap, which is why the engine accepts commands from several threads. Starting a take, a calibration or opening a file stops the others.</p>
 <p>The three kinds of boundary the data crosses:</p>
 <table class="compact">
 <tr><th>Boundary</th><th>Mechanism</th><th>May it block?</th></tr>
 <tr><td>MIDI callback &rarr; UI</td><td><code>Mutex&lt;Vec&gt;</code> that the callback appends to and the UI takes whole</td><td>Both sides lock briefly; the callback does nothing else while it holds it</td></tr>
-<tr><td>UI &rarr; sound threads</td><td>Atomics (<code>Control</code>), an <code>AtomicBool</code> for stop, data moved in at start</td><td>Never</td></tr>
+<tr><td>UI &rarr; sound threads</td><td>Atomics (<code>SoundSwitches</code>), an <code>AtomicBool</code> for stop, data moved in at start</td><td>Never</td></tr>
 <tr><td>Sound threads &rarr; audio callback</td><td>A bounded wait-free queue (<code>rtrb</code>) whose producer end sits behind a <code>Mutex</code> shared by the sound threads</td><td>The sound threads may wait for each other; <strong>the callback never waits</strong>, it only pops</td></tr>
 <tr><td>Audio callback &rarr; everyone</td><td>Atomics in <code>Shared</code> (clock estimate, counters) and a second wait-free queue (the graveyard)</td><td>Never</td></tr>
 </table>
@@ -319,10 +320,10 @@ python3 tools/build_notices.py      # target/notices/THIRD_PARTY_NOTICES.txt</co
 <p><code>DrumApp.listen</code> exists only while the playhead runs; the <code>player</code> may outlive it by up to 2.2 seconds so the last cymbal rings out.</p>
 
 <h3 id="control">Shared live settings</h3>
-<p>Click on/off, notes on/off, looping, volumes and per-instrument gain must change <em>while</em> sound plays. They live in <code>Control</code>, a struct of atomics shared by <code>Arc</code>. Floats are stored as their bit pattern in an <code>AtomicU32</code>, so the sound threads read them without locks.</p>
-{{code:src/control.rs::pub struct Control}}
+<p>Click on/off, notes on/off, looping, volumes and per-instrument gain must change <em>while</em> sound plays. They live in <code>SoundSwitches</code>, a struct of atomics shared by <code>Arc</code>. Floats are stored as their bit pattern in an <code>AtomicU32</code>, so the sound threads read them without locks.</p>
+{{code:src/control.rs::pub struct SoundSwitches}}
 {{code:src/control.rs::fn store(}}
-<p>Every frame <code>sync_control</code> copies the relevant settings (and the effective gain, with mute and solo applied) into the <code>Control</code>s. There are three: one for takes and Listen, one for the free metronome and one for the audition button, so the audition never disturbs Listen.</p>
+<p>Every frame <code>sync_control</code> copies the relevant settings (and the effective gain, with mute and solo applied) into the <code>SoundSwitches</code>. There are three: one for takes and Listen, one for the free metronome and one for the audition button, so the audition never disturbs Listen.</p>
 
 <h3 id="ramp">Tempo ramp</h3>
 <p>A looping run can speed up: <code>PlayOptions.ramp</code> is a <code>Ramp { every, step }</code>. The cues of a pass are always given for the starting tempo; <code>run_with</code> squeezes pass <em>p</em> by <code>1 / factor(p)</code> and starts it where the shorter earlier passes ended (<code>start_of</code>), so there is no gap and no new cue list. Everything that shows where the music is (Listen's playhead and label, the metronome's beat lights and rolling staff) asks <code>Ramp::locate</code> or <code>base_seconds</code> to turn real seconds into seconds at the starting tempo, and then works as before. The count-in is never squeezed. The test with the fake sink measures the gaps between cues.</p>
@@ -717,8 +718,8 @@ python3 tools/build_notices.py      # target/notices/THIRD_PARTY_NOTICES.txt</co
 
 <h3 id="widgets">Widgets and style</h3>
 <ul>
-<li>Every slider goes through <code>widgets::slider</code>: the caption comes first and the mouse wheel moves the value by a step per notch (and is consumed so a surrounding scroll area stays put). Do not add a bare <code>egui::Slider</code>.</li>
-{{code:src/widgets.rs::pub fn slider<N}}
+<li>Every slider is a <code>widgets::Slider</code> (<code>Slider::new("zoom", &amp;mut v, range).step(0.05).show(ui)</code>): the caption comes first and the mouse wheel moves the value by a step per notch (and is consumed so a surrounding scroll area stays put). A test fails when a bare <code>egui::Slider</code> appears anywhere else.</li>
+{{code:src/widgets.rs::pub struct Slider<}}
 <li><code>widgets::roomy</code> scales text and spacing for the controls used from the drum stool; it is applied with <code>ui.scope</code> so it does not leak.</li>
 <li><code>ui.horizontal</code> follows its parent's direction, so a right-to-left parent reverses it; do not put captioned sliders inside one. Sliders do not wrap inside <code>horizontal_wrapped</code>, so wide control rows are plain <code>horizontal</code> rows that must still fit a 760 px window.</li>
 <li>The "small" text style is scaled by 1.5 at start-up for the grey helper texts, in both the light and the dark style (<code>all_styles_mut</code>).</li>
@@ -907,7 +908,7 @@ ring  = tempo -&gt; cc 20 scale=127      # a plain value 0..scale instead</code>
 <h3>Traits as seams for testing</h3>
 <p><code>Sink</code> separates "decide what to play" from "play it" (see <a href="#sink">the Sink seam</a>). The trait is used as <code>&amp;mut dyn Sink</code>: dynamic dispatch costs nothing that matters here, and the scheduler takes one reference instead of being generic.</p>
 <h3>Atomics behind <code>Arc</code> for live settings</h3>
-<p><code>Arc&lt;Control&gt;</code> of <code>AtomicBool</code>/<code>AtomicU32</code> with <code>Relaxed</code> ordering: independent flags and levels, no invariants spanning two of them, so nothing stronger is needed and no thread can block another.</p>
+<p><code>Arc&lt;SoundSwitches&gt;</code> of <code>AtomicBool</code>/<code>AtomicU32</code> with <code>Relaxed</code> ordering: independent flags and levels, no invariants spanning two of them, so nothing stronger is needed and no thread can block another.</p>
 <h3>RAII for threads</h3>
 <p>Thread handles wrap a stop flag and a <code>JoinHandle</code>; <code>Drop</code> stops and joins. Replacing an <code>Option&lt;Player&gt;</code> with <code>None</code> therefore stops its sound.</p>
 <h3><code>let &hellip; else</code> for early exit</h3>
@@ -916,12 +917,12 @@ ring  = tempo -&gt; cc 20 scale=127      # a plain value 0..scale instead</code>
 <h3>Exhaustive destructuring as a compile-time checklist</h3>
 <p>See <code>activate</code> above: naming all fields without <code>..</code> turns "I forgot a field" into a compile error. Use it wherever two structs must be kept in step.</p>
 <h3>Const tables and <code>const fn</code></h3>
-<p>The rudiment catalogue is a <code>static</code> array of a fixed length (<code>[Rudiment; 40]</code>) built with a <code>const fn</code>; the compiler checks the count and the data costs no start-up work. <code>Lane::ALL</code> plays the same role, and <code>Control</code> sizes an atomic array from it with <code>[AtomicU32; Lane::ALL.len()]</code>.</p>
+<p>The rudiment catalogue is a <code>static</code> array of a fixed length (<code>[Rudiment; 40]</code>) built with a <code>const fn</code>; the compiler checks the count and the data costs no start-up work. <code>Lane::ALL</code> plays the same role, and <code>SoundSwitches</code> sizes an atomic array from it with <code>[AtomicU32; Lane::ALL.len()]</code>.</p>
 <h3>Conditional compilation with a stub</h3>
 <p>Audio is an optional feature. Rather than sprinkling <code>cfg</code> through callers, <code>audio.rs</code> re-exports either the real backend or <code>silent.rs</code> under the same names, so the rest of the code is feature-agnostic. Without the feature <code>Engine</code> is an enum with no variants: it can never be opened, so the stub methods are <code>match *self {}</code> and no unit value is passed around (which clippy would flag):</p>
 {{code:src/audio/silent.rs::pub enum Engine}}
 <h3>Generics where they remove duplication</h3>
-<p><code>widgets::slider&lt;N: Numeric&gt;</code> serves integers and floats with one body. Elsewhere the code prefers plain functions over clever generics.</p>
+<p><code>widgets::Slider&lt;N: Numeric&gt;</code> serves integers and floats with one body. Elsewhere the code prefers plain functions over clever generics.</p>
 <h3>Iterators returning <code>impl Trait</code></h3>
 <p>Small, lazy filters are returned as iterators instead of allocated vectors, for example the cues of a playback pass:</p>
 {{code:src/playback.rs::fn pass_cues}}
@@ -1105,7 +1106,7 @@ impl DrumApp {
 <h3 id="t-lane">Tutorial 6: add an instrument</h3>
 <p><span class="pill">medium</span> Goal: a <em>Rim click</em> lane, separate from the cross-stick.</p>
 <ol class="steps">
-<li><strong>Enum.</strong> Add <code>RimClick</code> to <code>enum Lane</code> and to <code>Lane::ALL</code> (change the array length from 18 to 19). Everything sized from <code>Lane::ALL.len()</code>, such as the atomic array in <code>Control</code>, follows.</li>
+<li><strong>Enum.</strong> Add <code>RimClick</code> to <code>enum Lane</code> and to <code>Lane::ALL</code> (change the array length from 18 to 19). Everything sized from <code>Lane::ALL.len()</code>, such as the atomic array in <code>SoundSwitches</code>, follows.</li>
 <li><strong>Let the compiler lead.</strong> <code>cargo build</code> lists each exhaustive <code>match</code> on <code>Lane</code> that lacks the new variant: <code>name</code> (settings key), <code>label</code> (shown name), <code>standard_note</code> (General MIDI key, for example 37 is taken by the cross-stick; pick a free note), <code>default_staff</code> (position and notehead) and the synthesiser in <code>synth.rs</code>. Give it a sound: copy a similar lane's recipe and change its parameters.</li>
 <li><strong>Family.</strong> If it is easily confused with another instrument and should earn partial credit, put it in the same <code>family()</code> arm (here: with <code>CrossStick</code> and <code>Snare</code>).</li>
 <li><strong>Mapper and groups.</strong> Add the MIDI notes to <code>NoteMap::roland_v31()</code> if the module has the pad. For the controller's mixer strips add it to a group in <code>controller::group_lanes</code> (a test requires every instrument but <code>Other</code> to be in exactly one group).</li>
@@ -1118,9 +1119,9 @@ impl DrumApp {
 <p><span class="pill easy">small</span> Goal: a test that the click is silenced during the music but not during the count-in. The pattern applies to anything that decides what sounds.</p>
 <ol class="steps">
 <li><strong>Find the helpers.</strong> The <code>tests</code> module of <code>playback.rs</code> defines a <code>Fake</code> sink that records <code>Ev</code> events, <code>opts()</code> (a <code>PlayOptions</code> with audio and MIDI on), <code>click(t)</code> and <code>drum(lane, t)</code> to make cues, and <code>play(cue, opts, control)</code> which runs <code>dispatch</code> once and returns the recorded events. <code>PlayOptions</code> has no <code>Default</code>, so build on <code>opts()</code>.</li>
-<li><strong>Read the existing test.</strong> This exact behaviour is already covered; it is the model to copy. The live switch is in <code>Control</code>, the count-in is a cue at negative time:
+<li><strong>Read the existing test.</strong> This exact behaviour is already covered; it is the model to copy. The live switch is in <code>SoundSwitches</code>, the count-in is a cue at negative time:
 {{code:src/playback/tests.rs::fn click_switch_mutes_the_music_but_not_the_count_in}}</li>
-<li><strong>Write yours the same way:</strong> build the <code>Control</code> and cues, call <code>play(&amp;cue, &amp;opts(), &amp;control)</code>, assert on the returned events. Run it with <code>cargo test click_switch</code>. Change one thing (for example a second <code>Control</code> with <code>set_notes(false)</code>) to see the test fail for the right reason.</li>
+<li><strong>Write yours the same way:</strong> build the <code>SoundSwitches</code> and cues, call <code>play(&amp;cue, &amp;opts(), &amp;control)</code>, assert on the returned events. Run it with <code>cargo test click_switch</code>. Change one thing (for example a second <code>SoundSwitches</code> with <code>set_notes(false)</code>) to see the test fail for the right reason.</li>
 <li><strong>Time-dependent behaviour</strong> (looping, stopping, late cues) goes through <code>run_with</code>, which takes the zero instant, the cues, a stop flag and the sink, with a short <code>tail</code>, so a test can run a real pass in a few milliseconds. Look at <code>looping_repeats_until_switched_off_and_finishes_the_pass</code>.</li>
 </ol>
 <div class="callout"><strong class="label">What cannot be tested</strong>That a real device makes the right sound at the right moment. Check it by ear and, on Windows, with the per-application peak meter, and record the result in <code>HANDOFF.md</code>. The timing of the engine <em>can</em> be measured from outside, by loopback recording (<a href="#aud-measure">Measuring it</a>).</div>
@@ -1198,7 +1199,7 @@ impl DrumApp {
 <li>Callbacks only push to queues; sound threads never block on the UI; the UI thread owns <code>DrumApp</code>.</li>
 <li>The audio callback never allocates, locks or frees: fixed pools, a wait-free queue in, a graveyard queue out, atomics for everything it publishes. A sound is told to the engine with the instant it should start, about 30 ms ahead; MIDI is held back to its time.</li>
 <li>A change that moves the click in time raises <code>audio::ENGINE_GENERATION</code>, so that a stored latency is flagged as stale. The output opens at the first sound, never in <code>DrumApp::new</code>.</li>
-<li>Every slider goes through <code>widgets::slider</code>; new settings go on their page and into <code>config.rs</code> with a round-trip test.</li>
+<li>Every slider is a <code>widgets::Slider</code>; new settings go on their page and into <code>config.rs</code> with a round-trip test.</li>
 <li>Practice fields are swapped only by <code>activate</code>; <code>open_file</code> activates the Score source.</li>
 <li>Rudiment scores are written at <code>BASE_BPM</code>, so the practice tempo in percent is the BPM.</li>
 <li>Listen and takes share <code>plan_run</code>; changing it changes both.</li>

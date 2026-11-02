@@ -29,6 +29,7 @@ mod error;
 mod mapper;
 mod message;
 mod preset;
+mod store;
 #[cfg(test)]
 mod tests;
 
@@ -39,6 +40,7 @@ pub use message::{parse, Encoding, Msg, Reading};
 pub use preset::{
     builtin_text, custom_presets, load_preset, preset_source, Binding, Input, Light, Preset, PresetKind, PresetSource, BUILTIN,
 };
+pub use store::{check_name, PresetStore, RenameError};
 
 use crate::drums::Lane;
 

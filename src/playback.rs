@@ -6,7 +6,7 @@
 //! MIDI connection, so the click and the drums can share one MIDI port.
 //!
 //! Settings that can change while playing (click on/off, notes on/off,
-//! volumes, per-instrument gain, looping) live in a shared [`Control`]. What
+//! volumes, per-instrument gain, looping) live in a shared [`SoundSwitches`]. What
 //! gets played for a cue is decided by [`dispatch`], which talks to a [`Sink`];
 //! the real sink drives the devices, the tests use a fake one.
 
@@ -24,9 +24,13 @@ use crate::audio::click::ClickBank;
 use crate::audio::mixer::NO_GROUP;
 use crate::audio::resample::resample;
 use crate::audio::EngineHandle;
-use crate::control::{ClickLevel, Control, ErrorLog};
+use crate::config::Subdivision;
+use crate::control::{ErrorLog, SoundSwitches};
 use crate::drums::Lane;
 use crate::metronome::{at, wait_until, AUDIO_LOOKAHEAD};
+use crate::practice::{ClickLevel, Ramp};
+use crate::score::Click;
+use crate::score::Dynamic;
 use crate::synth::{velocity_gain, Kit, SAMPLE_RATE};
 
 /// A cue whose turn comes later than this (the thread stalled, or the sound
@@ -49,74 +53,8 @@ pub struct Cue {
     pub sound: Sound,
 }
 
-/// A tempo ramp for a looping run: every `every` passes the tempo rises by `step`, a fraction of
-/// the starting tempo (0.05 = five per cent of it), up to `MAX_FACTOR` times the starting tempo.
-/// Cue times are given for the starting tempo; the player squeezes the later passes.
-#[derive(Clone, Copy, Debug, Default, PartialEq)]
-pub struct Ramp {
-    /// 0 = no ramp.
-    pub every: usize,
-    pub step: f64,
-}
-
-impl Ramp {
-    /// The tempo never rises beyond this many times the starting tempo.
-    pub const MAX_FACTOR: f64 = 3.0;
-
-    /// How many times faster than the start pass number `pass` (the first is 0) is played.
-    pub fn factor(self, pass: usize) -> f64 {
-        if self.every == 0 || self.step <= 0.0 {
-            return 1.0;
-        }
-        (1.0 + self.step * (pass / self.every) as f64).min(Self::MAX_FACTOR)
-    }
-
-    fn is_off(self) -> bool {
-        self.every == 0 || self.step <= 0.0
-    }
-
-    /// Where `elapsed` real seconds into the run are: the pass (from 0) and the seconds into that
-    /// pass counted at the starting tempo. Before the start (the count-in) nothing is squeezed.
-    pub fn locate(self, pass_len: f64, elapsed: f64) -> (usize, f64) {
-        let pass_len = pass_len.max(0.001);
-        if elapsed < 0.0 || self.is_off() {
-            return if elapsed < 0.0 { (0, elapsed) } else { ((elapsed / pass_len) as usize, elapsed % pass_len) };
-        }
-        let (mut left, mut pass) = (elapsed, 0usize);
-        loop {
-            let f = self.factor(pass);
-            let real_len = pass_len / f;
-            if f >= Self::MAX_FACTOR {
-                // From here on every pass is the same length.
-                let whole = (left / real_len).floor();
-                return (pass + whole as usize, (left - whole * real_len) * f);
-            }
-            if left < real_len {
-                return (pass, left * f);
-            }
-            left -= real_len;
-            pass += 1;
-        }
-    }
-
-    /// `elapsed` real seconds into the run, as seconds at the starting tempo: what a clock or a
-    /// playhead that does not know about the ramp would show.
-    pub fn base_seconds(self, pass_len: f64, elapsed: f64) -> f64 {
-        let (pass, into) = self.locate(pass_len, elapsed);
-        if elapsed < 0.0 {
-            return elapsed;
-        }
-        pass as f64 * pass_len.max(0.001) + into
-    }
-
-    /// When pass `pass` starts, in real seconds after the start of the first.
-    fn start_of(self, pass_len: f64, pass: usize) -> f64 {
-        (0..pass).map(|p| pass_len / self.factor(p)).sum()
-    }
-}
-
 /// What is fixed for one run of the player. Everything that can change while
-/// it plays is in the shared [`Control`] instead.
+/// it plays is in the shared [`SoundSwitches`] instead.
 #[derive(Clone, Debug)]
 pub struct PlayOptions {
     /// Play the drums through the sound card.
@@ -146,9 +84,9 @@ pub struct PlayOptions {
 
 /// MIDI velocity for a score note.
 pub fn velocity_for(e: &Expected) -> u8 {
-    if e.ghost {
+    if e.dynamic == Dynamic::Ghost {
         45
-    } else if e.accent {
+    } else if e.dynamic == Dynamic::Accent {
         120
     } else if e.grace {
         70
@@ -159,55 +97,14 @@ pub fn velocity_for(e: &Expected) -> u8 {
 
 /// The notes of a take and its click track as one list ordered by time. At
 /// the same instant the click comes first.
-pub fn cues(expected: &[Expected], clicks: &[(f64, bool)]) -> Vec<Cue> {
+pub fn cues(expected: &[Expected], clicks: &[Click]) -> Vec<Cue> {
     let mut v: Vec<Cue> = clicks
         .iter()
-        .map(|&(t, accent)| Cue { t, sound: Sound::Click { level: ClickLevel::from_accent(accent) } })
-        .chain(expected.iter().map(|e| Cue { t: e.t, sound: Sound::Drum { lane: e.lane, velocity: velocity_for(e) } }))
+        .map(|c| Cue { t: c.t.0, sound: Sound::Click { level: ClickLevel::from_accent(c.accent) } })
+        .chain(expected.iter().map(|e| Cue { t: e.t.0, sound: Sound::Drum { lane: e.lane, velocity: velocity_for(e) } }))
         .collect();
     v.sort_by(|a, b| a.t.total_cmp(&b.t)); // stable
     v
-}
-
-/// How a beat of the free metronome is divided.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Subdivision {
-    None,
-    Eighths,
-    Triplets,
-    Sixteenths,
-}
-
-impl Subdivision {
-    pub const ALL: [Subdivision; 4] = [Subdivision::None, Subdivision::Eighths, Subdivision::Triplets, Subdivision::Sixteenths];
-
-    pub fn label(self) -> &'static str {
-        match self {
-            Subdivision::None => "none",
-            Subdivision::Eighths => "eighths",
-            Subdivision::Triplets => "triplets",
-            Subdivision::Sixteenths => "sixteenths",
-        }
-    }
-
-    /// Clicks per beat.
-    pub fn parts(self) -> u32 {
-        match self {
-            Subdivision::None => 1,
-            Subdivision::Eighths => 2,
-            Subdivision::Triplets => 3,
-            Subdivision::Sixteenths => 4,
-        }
-    }
-
-    /// Position in `ALL`, as stored in the settings file.
-    pub fn index(self) -> usize {
-        Subdivision::ALL.iter().position(|s| *s == self).unwrap_or(0)
-    }
-
-    pub fn from_index(i: usize) -> Subdivision {
-        Subdivision::ALL.get(i).copied().unwrap_or(Subdivision::None)
-    }
 }
 
 /// One bar of the free metronome and its length in seconds: an accent on the
@@ -255,7 +152,7 @@ pub trait Sink {
 
 /// Decides what a cue sounds like, from the options and the live controls, and hands it to the
 /// sink to start at `when`.
-fn dispatch(cue: &Cue, when: Instant, opts: &PlayOptions, control: &Control, sink: &mut dyn Sink) {
+fn dispatch(cue: &Cue, when: Instant, opts: &PlayOptions, control: &SoundSwitches, sink: &mut dyn Sink) {
     match cue.sound {
         Sound::Click { level } => {
             // The count-in (before zero) always sounds; the click during the music can be switched off.
@@ -316,7 +213,7 @@ struct Run<'a> {
     cues: &'a [Cue],
     pass_len: f64,
     opts: &'a PlayOptions,
-    control: &'a Control,
+    control: &'a SoundSwitches,
     stop: &'a AtomicBool,
     /// How long the last sounds ring out after the music.
     tail: Duration,
@@ -404,7 +301,7 @@ pub struct Player {
 impl Player {
     /// Starts a thread that plays `cues` relative to `zero`; one pass is
     /// `pass_len` seconds long and repeats while `control.looping()` is on.
-    pub fn start(zero: Instant, cues: Vec<Cue>, pass_len: f64, opts: PlayOptions, control: Arc<Control>) -> Player {
+    pub fn start(zero: Instant, cues: Vec<Cue>, pass_len: f64, opts: PlayOptions, control: Arc<SoundSwitches>) -> Player {
         control.set_music_done(false);
         let stop = Arc::new(AtomicBool::new(false));
         let errors = ErrorLog::default();
@@ -412,6 +309,7 @@ impl Player {
         let handle = std::thread::Builder::new()
             .name("playback".into())
             .spawn(move || run(zero, cues, pass_len, opts, control, stop2, errors2))
+            .map_err(|e| errors.push(format!("Could not start the playback thread: {e}")))
             .ok();
         Player { stop, errors, handle }
     }
@@ -441,9 +339,12 @@ impl Drop for Player {
     }
 }
 
-fn note_on_off(conn: &mut MidiOutputConnection, channel: u8, note: u8, velocity: u8) {
-    let _ = conn.send(&[0x90 | channel, note, velocity.clamp(1, 127)]);
-    let _ = conn.send(&[0x80 | channel, note, 0]);
+fn note_on_off(conn: &mut MidiOutputConnection, errors: &ErrorLog, channel: u8, note: u8, velocity: u8) {
+    for message in [[0x90 | channel, note, velocity.clamp(1, 127)], [0x80 | channel, note, 0]] {
+        if let Err(e) = conn.send(&message) {
+            errors.midi_failed(e);
+        }
+    }
 }
 
 /// The choke group of a lane (the bit a later sound can choke it by) and the groups it chokes itself.
@@ -476,6 +377,7 @@ struct DeviceSink {
     /// How much later the MIDI click and the MIDI drums go out (see `PlayOptions::midi_delay`).
     click_delay: Duration,
     drum_delay: Duration,
+    errors: ErrorLog,
 }
 
 /// The delays of the MIDI click and of the MIDI drums: `opts.midi_delay` for each that is also played
@@ -493,7 +395,7 @@ impl DeviceSink {
         let when = when + delay;
         if self.lookahead().is_zero() || when <= Instant::now() {
             if let Some(conn) = self.midi.as_mut() {
-                note_on_off(conn, channel, note, velocity);
+                note_on_off(conn, &self.errors, channel, note, velocity);
             }
         } else {
             self.held.push(HeldNote { when, channel, note, velocity });
@@ -505,7 +407,9 @@ impl Sink for DeviceSink {
     fn audio_click(&mut self, level: ClickLevel, volume: f32, when: Instant) {
         if let (Some(engine), Some(bank)) = (self.engine.as_ref(), self.clicks.as_ref()) {
             let (sound, gain) = bank.get(level, volume);
-            let _ = engine.play(self.run, when, sound, gain, NO_GROUP, 0);
+            if let Err(e) = engine.play(self.run, when, sound, gain, NO_GROUP, 0) {
+                self.errors.play_failed(e);
+            }
         }
     }
 
@@ -516,7 +420,9 @@ impl Sink for DeviceSink {
     fn audio_drum(&mut self, lane: Lane, gain: f32, when: Instant) {
         if let (Some(engine), Some(sound)) = (self.engine.as_ref(), self.kit.get(&lane)) {
             let (group, chokes) = choke_groups(lane);
-            let _ = engine.play(self.run, when, sound, gain, group, chokes);
+            if let Err(e) = engine.play(self.run, when, sound, gain, group, chokes) {
+                self.errors.play_failed(e);
+            }
         }
     }
 
@@ -538,11 +444,12 @@ impl Sink for DeviceSink {
 
     fn flush(&mut self, now: Instant) {
         let Some(conn) = self.midi.as_mut() else { return };
+        let errors = &self.errors;
         self.held.retain(|h| {
             if h.when > now {
                 return true;
             }
-            note_on_off(conn, h.channel, h.note, h.velocity);
+            note_on_off(conn, errors, h.channel, h.note, h.velocity);
             false
         });
     }
@@ -557,7 +464,15 @@ impl Drop for DeviceSink {
     }
 }
 
-fn run(zero: Instant, cues: Vec<Cue>, pass_len: f64, opts: PlayOptions, control: Arc<Control>, stop: Arc<AtomicBool>, errors: ErrorLog) {
+fn run(
+    zero: Instant,
+    cues: Vec<Cue>,
+    pass_len: f64,
+    opts: PlayOptions,
+    control: Arc<SoundSwitches>,
+    stop: Arc<AtomicBool>,
+    errors: ErrorLog,
+) {
     let lanes = cues.iter().filter_map(|c| match c.sound {
         Sound::Drum { lane, .. } if opts.audio => Some(lane),
         _ => None,
@@ -604,6 +519,7 @@ fn run(zero: Instant, cues: Vec<Cue>, pass_len: f64, opts: PlayOptions, control:
         drum_channel: opts.drum_channel.clamp(1, 16) - 1,
         click_delay,
         drum_delay,
+        errors: errors.clone(),
     };
     run_with(&Run { zero, cues: &cues, pass_len, opts: &opts, control: &control, stop: &stop, tail: TAIL }, &mut sink, &SystemClock);
 }

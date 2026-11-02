@@ -1,74 +1,13 @@
 //! What a controller command does in the application: the state the lights show, and every action.
 
 use super::super::{DrumApp, Source, Tab};
-use crate::analysis::Report;
 use crate::config::{limits, Config, MAX_LANE_GAIN};
 use crate::controller::{self, Action, Command, State, GROUPS};
+use crate::practice::{nudged_volume, register_tap, shifted_range, worst_measure, Direction};
 use crate::practice_tempo::PracticeTempo;
 use crate::rudiments::{Lead, MAX_REPEATS};
-use crate::score::Score;
 use std::path::Path;
-use std::time::{Duration, Instant};
-
-/// Taps further apart than this start a new tap tempo.
-pub(super) const TAP_GAP: Duration = Duration::from_secs(2);
-/// Taps that count towards the tempo.
-pub(super) const TAPS_KEPT: usize = 6;
-
-/// Adds a tap and returns the tempo (beats per minute) they give, once there are two.
-pub(super) fn register_tap(taps: &mut Vec<Instant>, now: Instant) -> Option<f64> {
-    if taps.last().is_some_and(|last| now.saturating_duration_since(*last) > TAP_GAP) {
-        taps.clear();
-    }
-    taps.push(now);
-    if taps.len() > TAPS_KEPT {
-        taps.remove(0);
-    }
-    if taps.len() < 2 {
-        return None;
-    }
-    let span = taps[taps.len() - 1].saturating_duration_since(taps[0]).as_secs_f64();
-    (span > 0.0).then(|| 60.0 * (taps.len() - 1) as f64 / span)
-}
-
-/// The range of the same length before or after `from..=to` in a score of `n` measures.
-pub(super) fn shifted_range(from: usize, to: usize, n: usize, forward: bool) -> Option<(usize, usize)> {
-    let len = to.saturating_sub(from) + 1;
-    if forward {
-        (to + 1 < n).then(|| (from + len, (to + len).min(n - 1)))
-    } else {
-        (from > 0).then(|| {
-            let from = from.saturating_sub(len);
-            (from, from + len - 1)
-        })
-    }
-}
-
-/// The measure the last take went worst in: the most missed, wrong or
-/// sloppy notes and extra hits (`extra_in`: the measure of each). `None` if all was perfect.
-pub(super) fn worst_measure(score: &Score, report: &Report, extra_in: &[usize]) -> Option<usize> {
-    let mut loss = vec![0.0_f64; score.measures.len()];
-    for (e, r) in report.expected.iter().zip(&report.results) {
-        if r.grade == crate::analysis::Grade::Pending {
-            continue;
-        }
-        if let Some(slot) = score.notes.get(e.note_idx).and_then(|n| loss.get_mut(n.measure)) {
-            *slot += 1.0 - r.grade.credit();
-        }
-    }
-    for m in extra_in {
-        if let Some(slot) = loss.get_mut(*m) {
-            *slot += 1.0;
-        }
-    }
-    let (worst, most) = loss.iter().copied().enumerate().fold((0, 0.0), |best, (i, l)| if l > best.1 { (i, l) } else { best });
-    (most > 1e-9).then_some(worst)
-}
-
-/// Steps of 2 % on a 0..1 volume, without the rounding errors adding up.
-pub(super) fn nudged_volume(v: f32, steps: i32) -> f32 {
-    (((v + 0.02 * steps as f32) * 50.0).round() / 50.0).clamp(0.0, 1.0)
-}
+use std::time::Instant;
 
 /// The actions that change the tempo, the range or the score: locked while a take records.
 fn locked_by_recording(action: Action) -> bool {
@@ -88,10 +27,10 @@ fn locked_by_recording(action: Action) -> bool {
             | Action::Tempo
             | Action::RangeFrom
             | Action::RangeTo
-            | Action::Score
+            | Action::BrowseScores
             | Action::Repeats
             | Action::Lead
-            | Action::Rudiment
+            | Action::BrowseRudiments
     )
 }
 
@@ -113,7 +52,7 @@ impl DrumApp {
             Action::RangeTo => Action::Lead,
             Action::RangeBack => Action::PrevRudiment,
             Action::RangeForward => Action::NextRudiment,
-            Action::Score => Action::Rudiment,
+            Action::BrowseScores => Action::BrowseRudiments,
             other => other,
         }
     }
@@ -124,7 +63,7 @@ impl DrumApp {
         let along = |i: usize| if measures > 1 { i as f32 / (measures - 1) as f32 } else { 0.0 };
         let tempo = if self.tempo_is_metronome() { limits::METRO_BPM.unit(c.metro_bpm) } else { self.practice.tempo.position() };
         let mut s = State {
-            record: self.practice.take.as_ref().is_some_and(|t| t.running),
+            record: self.take_running(),
             listen: self.playback.listen.is_some(),
             click: c.metronome_during_take,
             looping: self.playback.looping,
@@ -155,7 +94,7 @@ impl DrumApp {
         s
     }
 
-    pub(super) fn take_running(&self) -> bool {
+    pub(in crate::app) fn take_running(&self) -> bool {
         self.practice.take.as_ref().is_some_and(|t| t.running)
     }
 
@@ -190,7 +129,7 @@ impl DrumApp {
         }
         let running = self.take_running();
         match action {
-            Action::Record if running => self.stop_take(false),
+            Action::Record if running => self.stop_take(crate::app::session::StopReason::Aborted),
             Action::Record if self.practice.score.is_some() => self.start_take(),
             Action::Listen if !running && self.practice.score.is_some() => {
                 if self.playback.listen.is_some() {
@@ -205,9 +144,7 @@ impl DrumApp {
                 }
             }
             Action::Stop => {
-                self.stop_take(false);
-                self.stop_listen();
-                self.stop_metro();
+                self.stop_all_sound();
             }
             Action::Click => self.cfg.metronome_during_take = !self.cfg.metronome_during_take,
             Action::Loop if !running => self.playback.looping = !self.playback.looping,
@@ -223,8 +160,8 @@ impl DrumApp {
             Action::Loop | Action::Notes | Action::Metronome => {}
             Action::NextTab => self.next_tab(),
             Action::LoopWorstBar => self.loop_worst_bar(),
-            Action::RangeBack => self.move_range(false),
-            Action::RangeForward => self.move_range(true),
+            Action::RangeBack => self.move_range(Direction::Back),
+            Action::RangeForward => self.move_range(Direction::Forward),
             Action::TapTempo => self.tap_tempo(),
             Action::TempoDown => self.turn(Action::Tempo, -5),
             Action::TempoUp => self.turn(Action::Tempo, 5),
@@ -268,8 +205,8 @@ impl DrumApp {
             | Action::Gain(_)
             | Action::Repeats
             | Action::Lead
-            | Action::Score
-            | Action::Rudiment => {}
+            | Action::BrowseScores
+            | Action::BrowseRudiments => {}
         }
     }
 
@@ -307,7 +244,7 @@ impl DrumApp {
                 let g = self.cfg.gain_of(controller::group_lanes(i as usize)[0]);
                 self.set_group_gain(i as usize, (g + 0.05 * steps as f32).clamp(0.0, MAX_LANE_GAIN));
             }
-            Action::Score => self.browse_scores(steps),
+            Action::BrowseScores => self.browse_scores(steps),
             Action::Repeats => {
                 self.step_repeats(steps);
                 self.view.status = format!("{} repeats", self.cfg.rudiment_repeats);
@@ -316,7 +253,7 @@ impl DrumApp {
                 self.step_lead(one);
                 self.view.status = format!("{} hand leads", self.rudiment_lead().label());
             }
-            Action::Rudiment => self.step_rudiment(one),
+            Action::BrowseRudiments => self.step_rudiment(one),
             // A range with no measures has nothing to move.
             Action::RangeFrom | Action::RangeTo => {}
             // Buttons are pressed, not turned.
@@ -379,8 +316,8 @@ impl DrumApp {
             // A range with no measures has nothing to set.
             Action::RangeFrom | Action::RangeTo => {}
             // Browsed by turning only, and the buttons are pressed.
-            Action::Score
-            | Action::Rudiment
+            Action::BrowseScores
+            | Action::BrowseRudiments
             | Action::Record
             | Action::Listen
             | Action::Stop
@@ -420,11 +357,11 @@ impl DrumApp {
             tabs.push(Tab::Score);
         }
         tabs.extend([Tab::Rudiments, Tab::Metronome, Tab::Results, Tab::Settings]);
-        self.view.tab = match tabs.iter().position(|t| *t == self.view.tab) {
+        let next = match tabs.iter().position(|t| *t == self.view.tab) {
             Some(i) => tabs[(i + 1) % tabs.len()],
             None => tabs[0],
         };
-        self.sync_source();
+        self.show_tab(next);
     }
 
     pub(super) fn tap_tempo(&mut self) {
@@ -446,9 +383,9 @@ impl DrumApp {
         }
     }
 
-    pub(super) fn move_range(&mut self, forward: bool) {
+    pub(super) fn move_range(&mut self, direction: Direction) {
         let Some(n) = self.practice.score.as_ref().map(|s| s.measures.len()) else { return };
-        if let Some((from, to)) = shifted_range(self.practice.range_from, self.practice.range_to, n, forward) {
+        if let Some((from, to)) = shifted_range(self.practice.range_from, self.practice.range_to, n, direction) {
             self.practice.range_from = from;
             self.practice.range_to = to;
             self.status_range();
@@ -497,12 +434,7 @@ impl DrumApp {
 
     pub(super) fn set_group_gain(&mut self, group: usize, gain: f32) {
         for lane in controller::group_lanes(group) {
-            // The default is not stored, as in the mixer.
-            if (gain - 1.0).abs() < 0.01 {
-                self.cfg.lane_gain.remove(lane);
-            } else {
-                self.cfg.lane_gain.insert(*lane, gain);
-            }
+            self.cfg.set_gain(*lane, gain);
         }
         self.view.status = format!("{}: volume {:.0} %", controller::group_label(group), gain * 100.0);
     }

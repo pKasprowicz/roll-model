@@ -6,6 +6,23 @@ All notable changes are recorded here. The format follows [Keep a Changelog](htt
 
 ## [Unreleased]
 
+## [0.10.4] - 2026-11-02
+
+More of the code review of 0.10.1. Your best clean tempos now live in their own file, `progress.txt`, and the sound threads' problems are written to `roll-model.log`. The on-screen buttons follow the same rules as the keys and the controller, settings numbers stay inside the ranges the screen offers, the metronome subdivision is saved by name, and an imported drag keeps both of its grace notes. Under the surface: quarter notes, seconds and milliseconds are types, one scoring model holds every grading number, and the score view no longer recomputes its notation on every frame.
+
+
+### Changed
+- The best clean tempo of each rudiment is kept in its own file, `progress.txt`, beside the settings and no longer in them (RV-71); the ones in an older settings file are moved at the first start.
+- The metronome subdivision is saved by name (`metro_sub = triplets`) and not by its position in a list (RV-41); a settings file from an earlier version, with the number, is still read.
+- **The on-screen buttons Record, Stop, Listen, click, notes, loop and the metronome Start/Stop follow the same rules as the keys and the controller** (RV-12): while a take records, the tempo, range and mode buttons refuse with "Locked while a take is recording." or do nothing, as the keys did; the metronome Start button no longer ends a recording.
+- The ramp settings in the settings file are kept in the ranges of their sliders (RV-40); the ladder tooltip takes its numbers from the code.
+
+### Fixed
+- **The two grace notes of a drag in an imported MusicXML file keep their places** before the main note (RV-19): both were read as the one right before it, and the second was dropped as a duplicate.
+
+### Added
+- Problems the sound threads report are kept in `roll-model.log` in the settings folder, and the screen says how many more there were than the one it shows (RV-50).
+
 ## [0.10.3] - 2026-11-02
 
 Housekeeping from the code review of 0.10.1, with a few behaviour fixes. The keys R, L, M, K and Esc now behave exactly like the controller buttons, a file whose import would give an inconsistent score is refused with a message, the CSV of a take quotes its fields, the drum MIDI queue is capped, and numbers in a hand-edited settings file are kept inside the ranges the screen offers. Under the surface, the program's state per source, the tempo with its unit, the grading constants and the ranges each have one definition.

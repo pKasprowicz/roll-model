@@ -29,7 +29,7 @@ mod silent;
 #[cfg(not(feature = "audio"))]
 pub use silent::{default_output_device, output_devices, Engine};
 
-pub use handle::EngineHandle;
+pub use handle::{EngineHandle, PlayError};
 
 /// Which generation of audio engine this is. A latency compensation set with another one is
 /// probably wrong (`Config::latency_is_stale`): raise it when a change moves the click in time.

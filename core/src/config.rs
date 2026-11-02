@@ -71,8 +71,7 @@ pub struct Config {
     /// The free metronome.
     pub metro_bpm: f32,
     pub metro_beats: u32,
-    /// Index into `playback::Subdivision::ALL`.
-    pub metro_sub: usize,
+    pub metro_sub: Subdivision,
     /// Show the loaded score rolling by on the Metronome tab.
     pub metro_preview: bool,
     /// The free metronome gets faster by `metro_ramp_bpm` (0 = off) every `metro_ramp_bars` bars.
@@ -90,9 +89,11 @@ pub struct Config {
     pub rudiment_nard_only: bool,
     /// Raise the tempo after every clean take.
     pub rudiment_ladder: bool,
-    /// The tempo (BPM) last used with each rudiment, and the fastest clean take of each.
+    /// The tempo (BPM) last used with each rudiment.
     pub rudiment_bpm: BTreeMap<u8, f32>,
-    pub rudiment_best: BTreeMap<u8, f32>,
+    /// The fastest clean take of each rudiment, as older files kept it. Only read now, to hand over to
+    /// `progress::Progress`, which has a file of its own.
+    pub legacy_best: BTreeMap<u8, f32>,
     /// The start trigger: two hits in a row (these instruments, in this order) start a recording.
     pub trigger_enabled: bool,
     pub trigger_first: Lane,
@@ -165,7 +166,7 @@ impl Default for Config {
             lane_mute: BTreeSet::new(),
             metro_bpm: 100.0,
             metro_beats: 4,
-            metro_sub: 0,
+            metro_sub: Subdivision::None,
             metro_preview: true,
             metro_ramp_bpm: 0,
             metro_ramp_bars: 4,
@@ -176,7 +177,7 @@ impl Default for Config {
             rudiment_nard_only: false,
             rudiment_ladder: false,
             rudiment_bpm: BTreeMap::new(),
-            rudiment_best: BTreeMap::new(),
+            legacy_best: BTreeMap::new(),
             trigger_enabled: false,
             trigger_first: Lane::Crash1,
             trigger_second: Lane::Tom1,
@@ -260,6 +261,12 @@ pub mod limits {
     pub const PERFECT_MS: Span<f64> = Span::new(5.0, 50.0);
     pub const GOOD_MS: Span<f64> = Span::new(10.0, 100.0);
     pub const WINDOW_MS: Span<f64> = Span::new(40.0, 250.0);
+    /// Listen's tempo ramp: points of the written tempo, and passes between steps.
+    pub const RAMP_PERCENT: Span<u32> = Span::new(0, 20);
+    pub const RAMP_PASSES: Span<usize> = Span::new(1, 16);
+    /// The metronome's tempo ramp: BPM, and bars between steps.
+    pub const METRO_RAMP_BPM: Span<u32> = Span::new(0, 20);
+    pub const METRO_RAMP_BARS: Span<usize> = Span::new(1, 32);
 }
 
 struct Text;
@@ -348,6 +355,67 @@ impl<T: Numeric> Setting<T> for Number<T> {
     }
 }
 
+/// How a beat of the free metronome is divided.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Subdivision {
+    None,
+    Eighths,
+    Triplets,
+    Sixteenths,
+}
+
+impl Subdivision {
+    pub const ALL: [Subdivision; 4] = [Subdivision::None, Subdivision::Eighths, Subdivision::Triplets, Subdivision::Sixteenths];
+
+    /// Its name on the screen.
+    pub fn label(self) -> &'static str {
+        match self {
+            Subdivision::None => "none",
+            Subdivision::Eighths => "eighths",
+            Subdivision::Triplets => "triplets",
+            Subdivision::Sixteenths => "sixteenths",
+        }
+    }
+
+    /// Clicks per beat.
+    pub fn parts(self) -> u32 {
+        match self {
+            Subdivision::None => 1,
+            Subdivision::Eighths => 2,
+            Subdivision::Triplets => 3,
+            Subdivision::Sixteenths => 4,
+        }
+    }
+
+    /// Its name in the settings file: the label, which no reordering of `ALL` changes.
+    pub fn name(self) -> &'static str {
+        self.label()
+    }
+
+    /// From the name in the file, or from the position in the order of 0.10 and before, when the
+    /// file stored the number.
+    pub fn from_name(text: &str) -> Option<Subdivision> {
+        let text = text.trim();
+        Subdivision::ALL
+            .iter()
+            .copied()
+            .find(|s| s.name() == text)
+            .or_else(|| text.parse::<usize>().ok().and_then(|i| Subdivision::ALL.get(i).copied()))
+    }
+}
+
+/// A subdivision by name.
+struct SubdivisionName;
+
+impl Setting<Subdivision> for SubdivisionName {
+    fn read(&self, slot: &mut Subdivision, text: &str) {
+        *slot = Subdivision::from_name(text).unwrap_or(*slot);
+    }
+    fn write(&self, value: &Subdivision) -> String {
+        value.name().to_string()
+    }
+}
+
 impl Setting<Lane> for LaneName {
     fn read(&self, slot: &mut Lane, text: &str) {
         *slot = Lane::from_name(text).filter(|l| *l != Lane::Other).unwrap_or(*slot);
@@ -401,8 +469,8 @@ const KEYS: &[Key] = &[
     key!("count_in_bars", c.count_in_bars, within(limits::COUNT_IN_BARS)),
     key!("listen_count_in", c.listen_count_in, Flag),
     key!("break_at_pause", c.break_at_pause, Flag),
-    key!("ramp_percent", c.ramp_percent, number(0, 50)),
-    key!("ramp_passes", c.ramp_passes, number(1, 32)),
+    key!("ramp_percent", c.ramp_percent, within(limits::RAMP_PERCENT)),
+    key!("ramp_passes", c.ramp_passes, within(limits::RAMP_PASSES)),
     key!("click_audio", c.click_audio, Flag),
     key!("click_volume", c.click_volume, within(limits::CLICK_VOLUME)),
     key!("click_midi", c.click_midi, Flag),
@@ -421,10 +489,10 @@ const KEYS: &[Key] = &[
     key!("layout_align_bar", c.layout_align_bar, number(0, 9999)),
     key!("metro_bpm", c.metro_bpm, within(limits::METRO_BPM)),
     key!("metro_beats", c.metro_beats, number(1, 12)),
-    key!("metro_sub", c.metro_sub, number(0, 3)),
+    key!("metro_sub", c.metro_sub, SubdivisionName),
     key!("metro_preview", c.metro_preview, Flag),
-    key!("metro_ramp_bpm", c.metro_ramp_bpm, number(0, 60)),
-    key!("metro_ramp_bars", c.metro_ramp_bars, number(1, 64)),
+    key!("metro_ramp_bpm", c.metro_ramp_bpm, within(limits::METRO_RAMP_BPM)),
+    key!("metro_ramp_bars", c.metro_ramp_bars, within(limits::METRO_RAMP_BARS)),
     key!("controller_preset", c.controller_preset, Text),
     key!("controller_port", c.controller_port, Text),
     key!("trigger_enabled", c.trigger_enabled, Flag),
@@ -500,6 +568,16 @@ impl Paths {
         self.dir.as_ref().map(|d| d.join("config.txt"))
     }
 
+    /// What the user has achieved (see `progress`).
+    pub fn progress_file(&self) -> Option<PathBuf> {
+        self.dir.as_ref().map(|d| d.join("progress.txt"))
+    }
+
+    /// The log of what the sound threads reported.
+    pub fn log_file(&self) -> Option<PathBuf> {
+        self.dir.as_ref().map(|d| d.join("roll-model.log"))
+    }
+
     /// Folder with WAV files that replace built-in sounds.
     pub fn sounds_dir(&self) -> Option<PathBuf> {
         self.dir.as_ref().map(|d| d.join("sounds"))
@@ -530,6 +608,16 @@ impl Config {
     /// Volume of one instrument in Listen (1.0 unless changed).
     pub fn gain_of(&self, lane: Lane) -> f32 {
         self.lane_gain.get(&lane).copied().unwrap_or(1.0)
+    }
+
+    /// Sets the volume of one instrument. The default (1.0, give or take a hundredth) is not stored,
+    /// so it can be changed later without leaving traces.
+    pub fn set_gain(&mut self, lane: Lane, gain: f32) {
+        if (gain - 1.0).abs() < 0.01 {
+            self.lane_gain.remove(&lane);
+        } else {
+            self.lane_gain.insert(lane, gain.clamp(0.0, MAX_LANE_GAIN));
+        }
     }
 
     /// What an instrument is played at in Listen: its volume, or silence when
@@ -646,9 +734,6 @@ impl Config {
         for (n, bpm) in &self.rudiment_bpm {
             kv(&format!("rudiment_bpm.{n}"), bpm.to_string());
         }
-        for (n, bpm) in &self.rudiment_best {
-            kv(&format!("rudiment_best.{n}"), bpm.to_string());
-        }
         for lane in Lane::ALL {
             if self.gain_of(lane) != 1.0 {
                 kv(&format!("gain.{}", lane.name()), self.gain_of(lane).to_string());
@@ -721,7 +806,7 @@ impl Config {
                         }
                     } else if let Some(n) = k.strip_prefix("rudiment_best.").and_then(|n| n.parse::<u8>().ok()) {
                         if let (Some(_), Some(bpm)) = (rudiments::by_number(n), v.parse::<f32>().ok().filter(|x| x.is_finite())) {
-                            c.rudiment_best.insert(n, bpm.clamp(crate::practice_tempo::BPM_RANGE.0, crate::practice_tempo::BPM_RANGE.1));
+                            c.legacy_best.insert(n, bpm.clamp(crate::practice_tempo::BPM_RANGE.0, crate::practice_tempo::BPM_RANGE.1));
                         }
                     }
                 }
