@@ -64,10 +64,10 @@ impl DrumApp {
         let tempo = if self.tempo_is_metronome() { limits::METRO_BPM.unit(c.metro_bpm) } else { self.practice.tempo.position() };
         let mut s = State {
             record: self.take_running(),
-            listen: self.playback.listen.is_some(),
+            listen: self.playback.is_listening(),
             click: c.metronome_during_take,
-            looping: self.playback.looping,
-            notes: self.playback.notes,
+            looping: self.playback.looping(),
+            notes: self.playback.notes(),
             metronome: self.metro_run.run.is_some(),
             tempo: tempo.clamp(0.0, 1.0),
             range_from: along(self.practice.range_from),
@@ -89,7 +89,7 @@ impl DrumApp {
             let lanes = controller::group_lanes(i);
             s.gain[i] = (c.gain_of(lanes[0]) / MAX_LANE_GAIN).clamp(0.0, 1.0);
             s.mute[i] = lanes.iter().all(|l| c.lane_mute.contains(l));
-            s.solo[i] = lanes.iter().all(|l| self.playback.solo.contains(l));
+            s.solo[i] = lanes.iter().all(|l| self.playback.is_soloed(*l));
         }
         s
     }
@@ -132,7 +132,7 @@ impl DrumApp {
             Action::Record if running => self.stop_take(crate::app::session::StopReason::Aborted),
             Action::Record if self.practice.score.is_some() => self.start_take(),
             Action::Listen if !running && self.practice.score.is_some() => {
-                if self.playback.listen.is_some() {
+                if self.playback.is_listening() {
                     self.stop_listen();
                 } else {
                     self.start_listen();
@@ -147,8 +147,8 @@ impl DrumApp {
                 self.stop_all_sound();
             }
             Action::Click => self.cfg.metronome_during_take = !self.cfg.metronome_during_take,
-            Action::Loop if !running => self.playback.looping = !self.playback.looping,
-            Action::Notes if !running => self.playback.notes = !self.playback.notes,
+            Action::Loop if !running => self.playback.toggle_looping(),
+            Action::Notes if !running => self.playback.toggle_notes(),
             Action::Metronome if !running => {
                 if self.metro_run.run.is_some() {
                     self.stop_metro();
@@ -413,7 +413,7 @@ impl DrumApp {
             Some(Some(m)) => {
                 self.practice.range_from = m;
                 self.practice.range_to = m;
-                self.playback.looping = true;
+                self.playback.set_looping(true);
                 self.status_range();
                 self.start_listen();
             }
@@ -454,13 +454,9 @@ impl DrumApp {
 
     pub(super) fn toggle_solo(&mut self, group: usize) {
         let lanes = controller::group_lanes(group);
-        let soloed = lanes.iter().all(|l| self.playback.solo.contains(l));
+        let soloed = lanes.iter().all(|l| self.playback.is_soloed(*l));
         for lane in lanes {
-            if soloed {
-                self.playback.solo.remove(lane);
-            } else {
-                self.playback.solo.insert(*lane);
-            }
+            self.playback.set_soloed(*lane, !soloed);
         }
         self.view.status = format!("{} {}", controller::group_label(group), if soloed { "no longer solo" } else { "solo" });
     }

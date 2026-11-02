@@ -111,10 +111,10 @@ fn mixer_strips_control_groups_of_instruments() {
     assert!(app.cfg.lane_mute.is_empty());
 
     app.apply_command(Command::Press(Action::Solo(7)));
-    assert!(app.playback.solo.contains(&Lane::Ride) && app.controller_state().solo[7]);
-    assert_eq!(app.cfg.effective_gain(&app.playback.solo, Lane::Kick), 0.0);
+    assert!(app.playback.is_soloed(Lane::Ride) && app.controller_state().solo[7]);
+    assert_eq!(app.cfg.effective_gain(app.playback.solo(), Lane::Kick), 0.0);
     app.apply_command(Command::Press(Action::Solo(7)));
-    assert!(app.playback.solo.is_empty());
+    assert!(app.playback.solo().is_empty());
 }
 
 #[test]
@@ -145,10 +145,10 @@ fn switches_and_tabs() {
     let click = app.cfg.metronome_during_take;
     app.apply_command(Command::Press(Action::Click));
     assert_eq!(app.cfg.metronome_during_take, !click);
-    assert!(app.playback.notes && !app.playback.looping);
+    assert!(app.playback.notes() && !app.playback.looping());
     app.apply_command(Command::Press(Action::Loop));
     app.apply_command(Command::Press(Action::Notes));
-    assert!(!app.playback.notes && app.playback.looping);
+    assert!(!app.playback.notes() && app.playback.looping());
     let s = app.controller_state();
     assert!(s.looping && !s.notes && !s.record && !s.listen && !s.metronome);
 
@@ -269,10 +269,10 @@ fn the_keys_and_the_controller_buttons_follow_the_same_rules() {
     press_key(&mut app, egui::Key::R);
     assert!(app.take_running());
     // The modes cannot be changed while the take records, by key or by button.
-    let looping = app.playback.looping;
+    let looping = app.playback.looping();
     press_key(&mut app, egui::Key::M);
     app.apply_command(Command::Press(Action::Loop));
-    assert!(app.metro_run.run.is_none() && app.playback.looping == looping);
+    assert!(app.metro_run.run.is_none() && app.playback.looping() == looping);
     assert!(app.take_running());
     press_key(&mut app, egui::Key::R);
     assert!(!app.take_running(), "R stops the recording like the Record button");
@@ -331,12 +331,12 @@ fn loop_worst_bar_and_discard_need_a_take() {
     let mut app = app_with_score();
     app.apply_command(Command::Press(Action::LoopWorstBar));
     assert_eq!(app.view.status, "Record a take first.");
-    assert!(!app.playback.looping);
+    assert!(!app.playback.looping());
     app.apply_command(Command::Press(Action::DiscardTake));
     let mut closed = DrumApp::with_config(Config::default());
     closed.apply_command(Command::Press(Action::Record));
     assert_eq!(closed.view.status, "Open a score first.");
-    assert!(closed.practice.take.is_none() && closed.playback.listen.is_none());
+    assert!(closed.practice.take.is_none() && !closed.playback.is_listening());
 }
 
 #[test]

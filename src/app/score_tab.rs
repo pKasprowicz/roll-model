@@ -84,7 +84,7 @@ impl DrumApp {
                     self.press(Action::Record);
                 }
             }
-            if self.playback.listen.is_some() {
+            if self.playback.is_listening() {
                 if ui.button(RichText::new("⏹ Stop listening (L)").strong()).clicked() {
                     self.press(Action::Listen);
                 }
@@ -147,7 +147,7 @@ impl DrumApp {
             self.press(Action::Click);
         }
         ui.add_enabled_ui(!running, |ui| {
-            let mut notes = self.playback.notes;
+            let mut notes = self.playback.notes();
             if ui
                 .checkbox(&mut notes, "notes")
                 .on_hover_text("Play the notes of the score in Listen. Switch them off to use Listen as a click track.")
@@ -155,7 +155,7 @@ impl DrumApp {
             {
                 self.press(Action::Notes);
             }
-            let mut looping = self.playback.looping;
+            let mut looping = self.playback.looping();
             if ui
                 .checkbox(&mut looping, "loop")
                 .on_hover_text("Repeat the selected measures in Listen until it is stopped. Switching it off lets the current round finish.")
@@ -251,7 +251,7 @@ impl DrumApp {
             playhead_q: playhead,
             range: (self.practice.range_from, self.practice.range_to),
             zoom: self.cfg.zoom,
-            follow: self.follow && (running || self.playback.listen.is_some()),
+            follow: self.follow && (running || self.playback.is_listening()),
             layout: LayoutOpts {
                 bars_per_row: self.cfg.bars_per_row,
                 align_bar: self.cfg.layout_align_bar,

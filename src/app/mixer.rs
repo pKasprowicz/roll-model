@@ -44,13 +44,9 @@ impl DrumApp {
                     }
                 }
 
-                let mut soloed = self.playback.solo.contains(&lane);
+                let mut soloed = self.playback.is_soloed(lane);
                 if ui.checkbox(&mut soloed, "").on_hover_text("Hear only the soloed instruments (not saved)").changed() {
-                    if soloed {
-                        self.playback.solo.insert(lane);
-                    } else {
-                        self.playback.solo.remove(&lane);
-                    }
+                    self.playback.set_soloed(lane, soloed);
                 }
 
                 if ui.button("⏵").on_hover_text("Play this instrument").clicked() {
@@ -68,11 +64,11 @@ impl DrumApp {
             }
         });
         ui.horizontal(|ui| {
-            let changed = !self.cfg.lane_gain.is_empty() || !self.cfg.lane_mute.is_empty() || !self.playback.solo.is_empty();
+            let changed = !self.cfg.lane_gain.is_empty() || !self.cfg.lane_mute.is_empty() || !self.playback.solo().is_empty();
             if ui.add_enabled(changed, egui::Button::new("Reset volumes, mutes and solos")).clicked() {
                 self.cfg.lane_gain.clear();
                 self.cfg.lane_mute.clear();
-                self.playback.solo.clear();
+                self.playback.clear_solo();
             }
         });
         if let Some(lane) = audition {

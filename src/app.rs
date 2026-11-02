@@ -8,6 +8,7 @@ mod home;
 mod import_menu;
 mod metro;
 mod mixer;
+mod playback_state;
 mod results;
 mod rudiment;
 mod score_tab;
@@ -16,7 +17,7 @@ mod settings;
 mod startup;
 mod trigger;
 
-use std::collections::{BTreeMap, BTreeSet, VecDeque};
+use std::collections::{BTreeMap, VecDeque};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
@@ -32,13 +33,13 @@ use crate::import::load_score;
 use crate::metronome::Metronome;
 use crate::midi::{self, EventQueue, InputHandle, RawEvent};
 use crate::playback::Player;
-use crate::practice::Ramp;
 use crate::practice_tempo::PracticeTempo;
 use crate::score::Click;
 use crate::score::Score;
 use crate::theme;
 use crate::units::{Millis, Seconds};
 use crate::widgets;
+use playback_state::{Listen, ListenKey, Playback};
 use session::signed_secs;
 use settings::SettingsPage;
 
@@ -137,33 +138,6 @@ struct Take {
 /// not something to do on every frame.
 const GRADING_INTERVAL: Seconds = Seconds(0.05);
 
-/// The score being played back to the user ("Listen"), for the playhead.
-struct Listen {
-    /// Score time zero = start of the first measure of the range.
-    zero: Instant,
-    tempo_scale: f64,
-    /// Seconds from score start to the first measure of the range.
-    t0: Seconds,
-    end_sec: Seconds,
-    /// Seconds per beat of the first measure, and the beats of the count-in.
-    beat_sec: Seconds,
-    count_in_beats: u32,
-    /// The tempo ramp it plays with (none: `every` is 0).
-    ramp: Ramp,
-    /// What it was started with; a change of it restarts Listen.
-    key: ListenKey,
-}
-
-/// What Listen plays: the bars, the tempo (rounded, in the unit of the practice tempo) and which
-/// score (`score_gen`). A change of any restarts a running Listen once it has settled.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-struct ListenKey {
-    from: usize,
-    to: usize,
-    tempo: i32,
-    score_gen: u32,
-}
-
 /// What a take or a playback of the selected range needs: where time zero is
 /// and the click track.
 struct Plan {
@@ -218,25 +192,6 @@ struct MidiState {
     monitor: VecDeque<(RawEvent, Option<Lane>)>,
     learn: Option<Lane>,
     lane_text: BTreeMap<Lane, String>,
-}
-
-/// Listen, and the instrument played from the mixer.
-struct Playback {
-    /// Set while the playhead runs; the player may outlive it while the last notes ring.
-    listen: Option<Listen>,
-    player: Option<Player>,
-    /// Live switches of Listen (the click switch is `cfg.metronome_during_take`).
-    notes: bool,
-    looping: bool,
-    /// Range and tempo changed while listening, and since when: restarts once it settles.
-    restart: debounce::Debounce<ListenKey>,
-    /// Shared with the sound threads of Listen and of takes.
-    control: Arc<SoundSwitches>,
-    /// Instruments soloed in the mixer (not saved).
-    solo: BTreeSet<Lane>,
-    /// One instrument played from the mixer; it has its own control so it never disturbs Listen.
-    audition: Option<Player>,
-    audition_control: Arc<SoundSwitches>,
 }
 
 /// The free metronome tab's run, its sound thread and the settings that thread shares.
@@ -371,17 +326,7 @@ impl DrumApp {
             },
             metronome: None,
             calibration: None,
-            playback: Playback {
-                listen: None,
-                player: None,
-                notes: true,
-                looping: false,
-                restart: Default::default(),
-                control: SoundSwitches::new(),
-                solo: BTreeSet::new(),
-                audition: None,
-                audition_control: SoundSwitches::new(),
-            },
+            playback: Playback::new(),
             audio_devices: Vec::new(),
             audio_default: None,
             audio: audio_output::AudioOutput::default(),
@@ -501,7 +446,7 @@ impl DrumApp {
         }
         self.stop_take(session::StopReason::Aborted);
         self.stop_listen();
-        self.playback.restart.cancel();
+        self.playback.cancel_restart();
         std::mem::swap(&mut self.practice, &mut self.parked);
         self.source = source;
         self.score_gen += 1;
@@ -767,7 +712,7 @@ impl DrumApp {
     /// Keep animating while recording, calibrating, listening or clicking; otherwise poll MIDI
     /// often enough for the monitor and MIDI-learn.
     fn schedule_repaint(&self, ctx: &egui::Context) {
-        if self.take_running() || self.calibration.is_some() || self.playback.listen.is_some() || self.metro_run.run.is_some() {
+        if self.take_running() || self.calibration.is_some() || self.playback.is_listening() || self.metro_run.run.is_some() {
             ctx.request_repaint();
         } else {
             ctx.request_repaint_after(Duration::from_millis(50));

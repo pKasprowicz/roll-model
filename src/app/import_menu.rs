@@ -54,7 +54,7 @@ impl DrumApp {
     pub(super) fn poll_loading(&mut self) {
         let Some(pending) = self.loading.take() else { return };
         // A file that arrives while something is recording or playing waits; it must not stop that.
-        if self.take_running() || self.playback.listen.is_some() {
+        if self.take_running() || self.playback.is_listening() {
             self.loading = Some(pending);
             return;
         }
