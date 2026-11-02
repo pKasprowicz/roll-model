@@ -294,7 +294,7 @@ pub struct DrumApp {
     /// The free metronome tab.
     metro_run: MetroState,
 
-    /// The Mackie SoundSwitches surface (X-Touch).
+    /// The Mackie Control surface (X-Touch).
     controller: controls::Controller,
 
     /// The help screen of the controller, opened from its indicator in the top bar.
