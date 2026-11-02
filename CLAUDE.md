@@ -2,7 +2,7 @@
 
 Rust (eframe/egui 0.29) desktop app: MusicXML drum score + Roland V31 MIDI capture + performance grading.
 
-- Start with `HANDOFF.md`: current status, the todo list for the next session, invariants, known gaps.
+- Start with `STATUS.md` (what is true now: architecture, invariants, known gaps) and `HANDOFF.md` (the task list; every open task is also a GitHub issue).
 - User docs: `README.md`.
 - Build/test: `cargo build`, `cargo test` (Linux needs `libasound2-dev pkg-config`). Format with `cargo fmt` (`rustfmt.toml`) and keep `cargo clippy --all-targets -- -D warnings` clean: CI checks both.
 - Versioning is SemVer (see `README.md`): version in `Cargo.toml`, release tags `vX.Y.Z`, user-visible changes go under `[Unreleased]` in `CHANGELOG.md`. Bump `Cargo.toml`, `core/Cargo.toml` and `Cargo.lock` together.
