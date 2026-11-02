@@ -28,6 +28,16 @@ pub(super) struct State {
     built: Option<(u8, usize, Lead)>,
 }
 
+/// What the rudiment picker was asked for in one frame.
+struct Picked {
+    /// A rudiment chosen from the list.
+    chosen: Option<u8>,
+    /// Prev (-1) or Next (1).
+    steps: i32,
+    repeats: usize,
+    lead: Lead,
+}
+
 impl DrumApp {
     pub(super) fn rudiment(&self) -> &'static Rudiment {
         rudiments::by_number(self.cfg.rudiment).unwrap_or(&rudiments::all()[0])
@@ -48,7 +58,6 @@ impl DrumApp {
             }
             _ => {}
         }
-        self.remember_tempo();
     }
 
     /// Builds the score of the chosen rudiment unless that is what is there already. A take
@@ -63,6 +72,10 @@ impl DrumApp {
             return;
         }
         let another = self.rud.built.is_none_or(|b| b.0 != params.0);
+        if another {
+            // The tempo of the rudiment that goes is kept before the next one's takes its place.
+            self.remember_tempo();
+        }
         let score = r.build(params.1, params.2);
         self.practice.range_from = 0;
         self.practice.range_to = score.measures.len() - 1;
@@ -79,7 +92,7 @@ impl DrumApp {
 
     /// Keeps the tempo of the rudiment in the settings, so it comes back next time; nothing is
     /// stored for a rudiment that is still at its starting tempo.
-    fn remember_tempo(&mut self) {
+    pub(super) fn remember_tempo(&mut self) {
         let (Source::Rudiments, Some((number, ..))) = (self.source, self.rud.built) else { return };
         let Some(r) = rudiments::by_number(number) else { return };
         let bpm = self.practice.tempo.value().round();
@@ -164,11 +177,13 @@ impl DrumApp {
 
     pub(super) fn rudiments_tab(&mut self, ui: &mut egui::Ui) {
         let running = self.practice.take.as_ref().is_some_and(|t| t.running);
-        ui.scope(|ui| {
-            widgets::roomy(ui);
-            self.rudiment_picker(ui, running);
-        });
-        self.ensure_rudiment();
+        let picked = ui
+            .scope(|ui| {
+                widgets::roomy(ui);
+                self.rudiment_picker(ui, running)
+            })
+            .inner;
+        self.apply_picked(picked);
         let Some(score) = self.practice.score.as_ref() else { return };
         let n_measures = score.measures.len();
         let part = score.part_name.clone();
@@ -211,11 +226,13 @@ impl DrumApp {
         self.score_body(ui, running, n_measures);
     }
 
-    /// Choosing the rudiment, how often it repeats and which hand starts.
-    fn rudiment_picker(&mut self, ui: &mut egui::Ui, running: bool) {
+    /// Draws the choice of the rudiment, how often it repeats and which hand starts, and returns
+    /// what was asked; nothing is changed here, `apply_picked` does that.
+    fn rudiment_picker(&mut self, ui: &mut egui::Ui, running: bool) -> Picked {
         let mut chosen: Option<u8> = None;
         let mut steps = 0;
         let mut lead = self.rudiment_lead();
+        let mut repeats = self.cfg.rudiment_repeats;
         ui.horizontal(|ui| {
             ui.add_enabled_ui(!running, |ui| {
                 if ui.button("Prev").on_hover_text("The previous rudiment").clicked() {
@@ -230,24 +247,31 @@ impl DrumApp {
                 if ui.button("Next").on_hover_text("The next rudiment").clicked() {
                     steps = 1;
                 }
-                let mut repeats = self.cfg.rudiment_repeats;
                 widgets::slider(ui, "repeats", &mut repeats, 1..=MAX_REPEATS, "", 1.0);
-                self.cfg.rudiment_repeats = repeats;
                 ui.label("lead");
                 for l in Lead::ALL {
                     ui.selectable_value(&mut lead, l, l.label());
                 }
             });
         });
+        Picked { chosen, steps, repeats, lead }
+    }
+
+    /// Does what the picker asked: the repetitions and the lead first, then the other rudiment, and
+    /// then the score is built again if anything it depends on changed.
+    fn apply_picked(&mut self, picked: Picked) {
+        let Picked { chosen, steps, repeats, lead } = picked;
+        self.cfg.rudiment_repeats = repeats;
+        if lead != self.rudiment_lead() {
+            self.rud.lead = Some(lead);
+        }
         if let Some(n) = chosen {
             self.select_rudiment(n);
         }
         if steps != 0 {
             self.step_rudiment(steps);
         }
-        if lead != self.rudiment_lead() {
-            self.rud.lead = Some(lead);
-        }
+        self.ensure_rudiment();
     }
 
     /// The menu of all rudiments by family, with a search box; returns the one clicked.
@@ -432,11 +456,31 @@ mod tests {
     }
 
     #[test]
+    fn the_picker_only_asks_and_apply_picked_changes_and_rebuilds_once() {
+        let mut app = on_rudiments();
+        let before = (app.cfg.rudiment_repeats, app.cfg.rudiment, app.practice.score.as_ref().map(|s| s.measures.len()));
+        // Drawing the tab with no input changes nothing.
+        let ctx = egui::Context::default();
+        for _ in 0..2 {
+            let _ = ctx.run(egui::RawInput::default(), |ctx| {
+                egui::CentralPanel::default().show(ctx, |ui| app.rudiments_tab(ui));
+            });
+        }
+        assert_eq!(before, (app.cfg.rudiment_repeats, app.cfg.rudiment, app.practice.score.as_ref().map(|s| s.measures.len())));
+
+        // What the picker asked for is applied in one place, and the score is built for it.
+        let lead = app.rudiment_lead();
+        app.apply_picked(Picked { chosen: Some(16), steps: 0, repeats: 3, lead });
+        assert_eq!((app.cfg.rudiment, app.cfg.rudiment_repeats), (16, 3));
+        assert_eq!(app.practice.score.as_ref().map(|s| s.measures.len()), Some(3), "one bar for each repetition");
+    }
+
+    #[test]
     fn the_tempo_is_remembered_per_rudiment() {
         let mut app = on_rudiments();
         app.select_rudiment(16);
         app.practice.tempo = PracticeTempo::Bpm(104.0);
-        app.sync_source();
+        app.remember_tempo();
         assert_eq!(app.cfg.rudiment_bpm.get(&16), Some(&104.0));
         app.select_rudiment(24);
         app.sync_source();
@@ -446,7 +490,7 @@ mod tests {
         assert_eq!(app.practice.tempo.value(), 104.0, "and the first comes back at the tempo it was left at");
         // Back at the starting tempo, the stored one is replaced, not kept.
         app.reset_rudiment_tempo();
-        app.sync_source();
+        app.remember_tempo();
         assert_eq!(app.cfg.rudiment_bpm.get(&16), Some(&90.0));
     }
 

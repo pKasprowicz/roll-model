@@ -644,6 +644,7 @@ impl DrumApp {
     /// lifecycles of takes, Listen, the metronome, auditions and the calibration.
     fn update_state(&mut self, ctx: &egui::Context, key_taken: bool) {
         self.sync_source();
+        self.remember_tempo();
         self.poll_loading();
         self.drain_midi();
         self.update_controller();
