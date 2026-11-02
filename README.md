@@ -11,7 +11,7 @@ A Rust desktop app (egui) for practising drum parts against a score:
 
 ## User manual
 
-An extensive manual (setup, every tab, the controller, grading, troubleshooting, and a reference of the 40 rudiments) is one HTML file, `roll-model-manual.html`, included in every release archive and attached to the release; the latest one is also published at <https://pkasprowicz.github.io/roll-model/manual/>. It is built from `docs/manual/manual.template.html` and the rudiment data in `core/src/rudiments.rs`:
+An extensive manual (setup, every tab, the controller, grading, troubleshooting, and a reference of the 40 rudiments) is one HTML file, `roll-model-manual.html`, included in every release archive and attached to the release; the latest one is also published at <https://pkasprowicz.github.io/roll-model/manual/>. It is built from `docs/manual/manual.template.html` and the rudiment data in `docs/manual/rudiments.json` (written from `core/src/rudiments.rs` by `cargo run -p roll-model-core --example dump_rudiments`, and checked against it by a test):
 
 ```sh
 python3 tools/build_manual.py      # writes target/manual/roll-model-manual.html (standard library only)

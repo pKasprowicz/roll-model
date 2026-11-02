@@ -121,8 +121,8 @@ const fn rud(
 }
 
 /// The 40 rudiments, in the PAS order.
-// One rudiment to a line: tools/build_manual.py reads the rows with a regular expression, so rustfmt
-// must not wrap them.
+// One rudiment to a line, to read the table as a table. The manual does not parse this text: it reads
+// docs/manual/rudiments.json, which `catalogue_json` writes and a test keeps up to date.
 #[rustfmt::skip]
 static CATALOGUE: [Rudiment; 40] = [
     rud(1, "Single stroke roll", Family::Roll, true, S16, "R L R L R L R L", "Alternating single strokes."),
@@ -169,6 +169,28 @@ static CATALOGUE: [Rudiment; 40] = [
 
 pub fn all() -> &'static [Rudiment] {
     &CATALOGUE
+}
+
+/// The catalogue as JSON, one rudiment to a line: what the manual's reference tables are built from
+/// (`docs/manual/rudiments.json`; `cargo run -p roll-model-core --example dump_rudiments` writes it).
+pub fn catalogue_json() -> String {
+    let text = |s: &str| format!("\"{}\"", s.replace('\\', "\\\\").replace('"', "\\\""));
+    let rows: Vec<String> = all()
+        .iter()
+        .map(|r| {
+            format!(
+                "  {{\"number\": {}, \"name\": {}, \"family\": {}, \"nard\": {}, \"pattern\": {}, \"beats\": {}, \"about\": {}}}",
+                r.number,
+                text(r.name),
+                text(&format!("{:?}", r.family)),
+                r.nard,
+                text(r.pattern),
+                r.cell().beats,
+                text(r.about)
+            )
+        })
+        .collect();
+    format!("[\n{}\n]\n", rows.join(",\n"))
 }
 
 pub fn by_number(number: u8) -> Option<&'static Rudiment> {
@@ -321,6 +343,16 @@ impl Rudiment {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_json_of_the_manual_is_the_catalogue() {
+        let file = include_str!("../../docs/manual/rudiments.json").replace("\r\n", "\n");
+        assert_eq!(
+            file,
+            catalogue_json(),
+            "docs/manual/rudiments.json is out of date: run `cargo run -p roll-model-core --example dump_rudiments > docs/manual/rudiments.json`"
+        );
+    }
 
     fn rudiment(number: u8) -> &'static Rudiment {
         by_number(number).unwrap()
