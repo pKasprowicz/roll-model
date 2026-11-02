@@ -62,20 +62,20 @@ fn the_adaptive_window_follows_the_spacing_of_the_notes() {
     // 16ths at 150 BPM, 100 ms apart: the usual window (100 ms) reaches the neighbours.
     let e: Vec<_> = (0..8).map(|i| exp(i as f64 * 0.1, Lane::Snare)).collect();
     let tol = Tolerances::default();
-    let w = windows(&e, &tol, true);
+    let w = windows(&e, &tol, &ScoringModel::default(), true);
     assert!(w.iter().all(|x| (x - 0.045).abs() < 1e-9), "{w:?}");
-    assert!(windows(&e, &tol, false).iter().all(|x| (x - 0.1).abs() < 1e-9));
+    assert!(windows(&e, &tol, &ScoringModel::default(), false).iter().all(|x| (x - 0.1).abs() < 1e-9));
     // Slow notes keep the whole window; very fast ones never go below "perfect".
     let slow: Vec<_> = (0..4).map(|i| exp(i as f64, Lane::Snare)).collect();
-    assert!(windows(&slow, &tol, true).iter().all(|x| (x - 0.1).abs() < 1e-9));
+    assert!(windows(&slow, &tol, &ScoringModel::default(), true).iter().all(|x| (x - 0.1).abs() < 1e-9));
     let fast: Vec<_> = (0..4).map(|i| exp(i as f64 * 0.03, Lane::Snare)).collect();
-    assert!(windows(&fast, &tol, true).iter().all(|x| (x - 0.02).abs() < 1e-9));
+    assert!(windows(&fast, &tol, &ScoringModel::default(), true).iter().all(|x| (x - 0.02).abs() < 1e-9));
     // Notes played together on two lanes are not neighbours of each other.
     let together = vec![exp(0.0, Lane::Snare), exp(0.0, Lane::Kick), exp(1.0, Lane::Snare)];
-    assert!((windows(&together, &tol, true)[0] - 0.1).abs() < 1e-9);
+    assert!((windows(&together, &tol, &ScoringModel::default(), true)[0] - 0.1).abs() < 1e-9);
     // A grace note is only looked for close to its time.
     let flam = Expected { grace: true, ..exp(-0.035, Lane::Snare) };
-    assert!((windows(&[flam], &tol, true)[0] - GRACE_WINDOW).abs() < 1e-9);
+    assert!((windows(&[flam], &tol, &ScoringModel::default(), true)[0] - ScoringModel::default().grace_window_s).abs() < 1e-9);
 }
 
 #[test]
@@ -147,4 +147,42 @@ fn the_earlier_grace_notes_of_a_drag_are_expected_earlier() {
     assert!((t[2] - 1.0).abs() < 1e-9);
     assert!((t[1] - (1.0 - GRACE_SPACING)).abs() < 1e-9);
     assert!((t[0] - (1.0 - 2.0 * GRACE_SPACING)).abs() < 1e-9);
+}
+
+/// Eight of ten notes played 30 ms late (graded Good), two missed, nothing extra, no accents:
+/// the whole formula worked out by hand, so that a change of any constant shows here.
+fn the_golden_take() -> (Vec<Expected>, Vec<Hit>) {
+    let e: Vec<_> = (0..10).map(|i| exp(i as f64 * 0.5, Lane::Snare)).collect();
+    let h: Vec<_> = e.iter().take(8).map(|x| hit(x.t + 0.030, x.lane)).collect();
+    (e, h)
+}
+
+#[test]
+fn the_shipped_model_gives_the_score_worked_out_by_hand() {
+    let (e, h) = the_golden_take();
+    let r = analyze(&e, &h, &Tolerances::default(), f64::INFINITY);
+    let accuracy = 8.0 * 0.85 / 10.0;
+    let timing = (-30.0f64 / 45.0).exp();
+    let overall = 0.60 * accuracy + 0.28 * timing + 0.12 - 0.2 * (0.28 + 0.12) * 0.5;
+    assert!((r.accuracy - accuracy).abs() < 1e-9);
+    assert!((r.timing_score - timing).abs() < 1e-9);
+    assert!((r.overall - 100.0 * overall).abs() < 1e-6, "overall {} against {}", r.overall, 100.0 * overall);
+    assert_eq!(r.letter(), "D");
+}
+
+#[test]
+fn another_model_changes_the_score_and_the_letters() {
+    let (e, h) = the_golden_take();
+    let tol = Tolerances::default();
+    let shipped = analyze_with_model(&e, &h, &tol, &ScoringModel::default(), f64::INFINITY, false);
+    let only_accuracy = ScoringModel {
+        weights_without_dynamics: Weights { accuracy: 1.0, timing: 0.0, extra: 0.0, dynamics: 0.0 },
+        letters: [99.0, 95.0, 90.0, 80.0, 70.0],
+        ..ScoringModel::default()
+    };
+    let r = analyze_with_model(&e, &h, &tol, &only_accuracy, f64::INFINITY, false);
+    assert!((r.overall - 68.0).abs() < 1e-6, "accuracy only: {}", r.overall);
+    assert!(r.overall != shipped.overall);
+    assert_eq!(r.letter_in(&only_accuracy), "E");
+    assert_eq!(shipped.letter_in(&ScoringModel::default()), "D");
 }

@@ -153,7 +153,7 @@ The hardware tasks (HW-*) have a step-by-step plan in `docs/hardware-test-plan.m
 | **RV-24** [#83](https://github.com/pKasprowicz/roll-model/issues/83) | Public fields everywhere in core (S3, effort M) | code |
 | **RV-40** [#84](https://github.com/pKasprowicz/roll-model/issues/84) | Ranges are defined in three or four places and already disagree (S2, effort M) | code |
 | **RV-41** [#85](https://github.com/pKasprowicz/roll-model/issues/85) | Persisted enum indices (S3, effort S) | code |
-| **RV-42** [#86](https://github.com/pKasprowicz/roll-model/issues/86) | The grading model is inline arithmetic (S2, effort S) | code |
+| **RV-42** [#86](https://github.com/pKasprowicz/roll-model/issues/86) | The grading model is inline arithmetic (S2, effort S) — **done 2026-11-02:** `ScoringModel` (weights, decays, margins, letters, advice thresholds) with `Default`, `analyze_with_model`, two golden tests | code |
 | **RV-43** [#87](https://github.com/pKasprowicz/roll-model/issues/87) | Renderer geometry magic (S3, effort S) | code |
 | **RV-30** [#88](https://github.com/pKasprowicz/roll-model/issues/88) | Two schedulers, still (S2, effort L) | code |
 | **RV-31** [#89](https://github.com/pKasprowicz/roll-model/issues/89) | Restart-after-settle debounce, written twice (S3, effort S) | code |

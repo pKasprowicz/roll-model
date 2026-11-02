@@ -29,6 +29,98 @@ impl Default for Tolerances {
     }
 }
 
+/// Every number that turns a take into a score and into advice, in one place to tune with real
+/// takes. `Default` is the model the program ships with; `analyze_with_model` takes another.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct ScoringModel {
+    /// Seconds added to the distance of a hit on a related pad, so that a right pad always wins.
+    pub related_pad_penalty_s: f64,
+    /// Adaptive window: this share of the gap to the neighbouring notes.
+    pub gap_share: f64,
+    /// A grace note is matched with a hit at most this far from its time, seconds.
+    pub grace_window_s: f64,
+    /// Timing score: `exp(-mean|dt| / this) * exp(-spread / that)`, both in ms.
+    pub timing_decay_mean_ms: f64,
+    pub timing_decay_spread_ms: f64,
+    /// Weights of accuracy, timing, extra hits and dynamics when the score has accents or ghosts.
+    pub weights_with_dynamics: Weights,
+    /// The same without them (the dynamics weight is shared out).
+    pub weights_without_dynamics: Weights,
+    /// The share of the timing and extra-hit weights that is taken off for notes never played.
+    pub unplayed_penalty: f64,
+    /// An accent has to be this many velocity points above the plain notes, a ghost note this many below.
+    pub accent_margin: f64,
+    pub ghost_margin: f64,
+    /// The plain velocity to compare with when a lane has no plain note.
+    pub fallback_velocity: f64,
+    /// Overall score from which each letter is given: A+, A, B, C, D (below the last: E).
+    pub letters: [f64; 5],
+    /// Advice appears from these deviations.
+    pub advice: Advice,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Weights {
+    pub accuracy: f64,
+    pub timing: f64,
+    pub extra: f64,
+    pub dynamics: f64,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Advice {
+    /// Mean offset, ms, and the number of graded hits needed for it to be worth saying.
+    pub offset_ms: f64,
+    pub offset_min_hits: usize,
+    pub drift_ms_per_min: f64,
+    pub spread_ms: f64,
+    /// A lane's offset from the whole, ms: its own, and how far from the overall one.
+    pub lane_offset_ms: f64,
+    pub lane_offset_apart_ms: f64,
+    /// Missed notes of a lane: one in this many.
+    pub lane_missed_one_in: usize,
+    pub lane_wrong_pad: usize,
+    pub lane_extra: usize,
+    /// Dynamics score under which accents and ghosts are called indistinct.
+    pub dynamics_floor: f64,
+    /// Difference between the hands, ms and velocity points.
+    pub hands_ms: f64,
+    pub hands_velocity: f64,
+}
+
+impl Default for ScoringModel {
+    fn default() -> Self {
+        ScoringModel {
+            related_pad_penalty_s: 0.040,
+            gap_share: 0.45,
+            grace_window_s: 0.050,
+            timing_decay_mean_ms: 45.0,
+            timing_decay_spread_ms: 120.0,
+            weights_with_dynamics: Weights { accuracy: 0.55, timing: 0.25, extra: 0.10, dynamics: 0.10 },
+            weights_without_dynamics: Weights { accuracy: 0.60, timing: 0.28, extra: 0.12, dynamics: 0.0 },
+            unplayed_penalty: 0.5,
+            accent_margin: 10.0,
+            ghost_margin: 15.0,
+            fallback_velocity: 80.0,
+            letters: [95.0, 90.0, 80.0, 70.0, 60.0],
+            advice: Advice {
+                offset_ms: 10.0,
+                offset_min_hits: 4,
+                drift_ms_per_min: 15.0,
+                spread_ms: 25.0,
+                lane_offset_ms: 15.0,
+                lane_offset_apart_ms: 10.0,
+                lane_missed_one_in: 5,
+                lane_wrong_pad: 2,
+                lane_extra: 3,
+                dynamics_floor: 0.6,
+                hands_ms: 8.0,
+                hands_velocity: 10.0,
+            },
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Grade {
     Perfect,
@@ -145,14 +237,13 @@ pub struct Report {
 
 impl Report {
     pub fn letter(&self) -> &'static str {
-        match self.overall {
-            x if x >= 95.0 => "A+",
-            x if x >= 90.0 => "A",
-            x if x >= 80.0 => "B",
-            x if x >= 70.0 => "C",
-            x if x >= 60.0 => "D",
-            _ => "E",
-        }
+        self.letter_in(&ScoringModel::default())
+    }
+
+    pub fn letter_in(&self, model: &ScoringModel) -> &'static str {
+        const LETTERS: [&str; 5] = ["A+", "A", "B", "C", "D"];
+        let at = model.letters.iter().position(|from| self.overall >= *from);
+        at.map_or("E", |i| LETTERS[i])
     }
 }
 
@@ -184,7 +275,7 @@ pub fn expected_notes(score: &Score, from_measure: usize, to_measure: usize, tem
 /// or, if `adaptive`, no more than 45 % of the gap to the neighbouring notes (but not
 /// less than the "perfect" tolerance), so that a hit is never within reach of two
 /// strokes at once at a fast tempo. A grace note is only looked for shortly around its time.
-fn windows(expected: &[Expected], tol: &Tolerances, adaptive: bool) -> Vec<f64> {
+fn windows(expected: &[Expected], tol: &Tolerances, model: &ScoringModel, adaptive: bool) -> Vec<f64> {
     let win = tol.window_ms / 1000.0;
     if !adaptive {
         return vec![win; expected.len()];
@@ -196,7 +287,7 @@ fn windows(expected: &[Expected], tol: &Tolerances, adaptive: bool) -> Vec<f64> 
         .iter()
         .map(|e| {
             if e.grace {
-                return win.min(GRACE_WINDOW);
+                return win.min(model.grace_window_s);
             }
             // Notes played together (other lanes) are not neighbours.
             let before = times.partition_point(|t| *t < e.t - 1e-6);
@@ -204,15 +295,12 @@ fn windows(expected: &[Expected], tol: &Tolerances, adaptive: bool) -> Vec<f64> 
             let prev = before.checked_sub(1).map(|i| e.t - times[i]);
             let next = times.get(after).map(|t| t - e.t);
             match prev.into_iter().chain(next).reduce(f64::min) {
-                Some(gap) => (0.45 * gap).clamp(floor, win),
+                Some(gap) => (model.gap_share * gap).clamp(floor, win),
                 None => win,
             }
         })
         .collect()
 }
-
-/// A grace note is matched with a hit at most this far from its time, seconds.
-const GRACE_WINDOW: f64 = 0.050;
 
 /// `analyze_with` with the fixed hit window: what a score is graded with.
 pub fn analyze(expected: &[Expected], hits: &[Hit], tol: &Tolerances, elapsed: f64) -> Report {
@@ -224,7 +312,19 @@ pub fn analyze(expected: &[Expected], hits: &[Hit], tol: &Tolerances, elapsed: f
 /// spacing of the notes (for fast exercises such as rudiments, where the usual window spans
 /// several strokes).
 pub fn analyze_with(expected: &[Expected], hits: &[Hit], tol: &Tolerances, elapsed: f64, adaptive: bool) -> Report {
-    let wins = windows(expected, tol, adaptive);
+    analyze_with_model(expected, hits, tol, &ScoringModel::default(), elapsed, adaptive)
+}
+
+/// `analyze_with` under another scoring model.
+pub fn analyze_with_model(
+    expected: &[Expected],
+    hits: &[Hit],
+    tol: &Tolerances,
+    model: &ScoringModel,
+    elapsed: f64,
+    adaptive: bool,
+) -> Report {
+    let wins = windows(expected, tol, model, adaptive);
     let mut order: Vec<usize> = (0..hits.len()).collect();
     order.sort_by(|a, b| hits[*a].t.total_cmp(&hits[*b].t));
     let sorted_t: Vec<f64> = order.iter().map(|&i| hits[i].t).collect();
@@ -243,7 +343,7 @@ pub fn analyze_with(expected: &[Expected], hits: &[Hit], tol: &Tolerances, elaps
             if h.lane == e.lane {
                 cands.push((dt, ei, hi, false));
             } else if h.lane.related(e.lane) {
-                cands.push((dt + 0.040, ei, hi, true));
+                cands.push((dt + model.related_pad_penalty_s, ei, hi, true));
             }
         }
     }
@@ -278,7 +378,7 @@ pub fn analyze_with(expected: &[Expected], hits: &[Hit], tol: &Tolerances, elaps
     }
 
     let mut r = Report { results, expected: expected.to_vec(), hit_match, ..Default::default() };
-    summarize(&mut r, hits);
+    summarize(&mut r, hits, model);
     r
 }
 
@@ -291,7 +391,7 @@ fn mean_std(v: &[f64]) -> (f64, f64) {
     (m, var.sqrt())
 }
 
-fn summarize(r: &mut Report, hits: &[Hit]) {
+fn summarize(r: &mut Report, hits: &[Hit], model: &ScoringModel) {
     let mut dts = Vec::new();
     let mut dt_points = Vec::new(); // (t, dt)
     let mut credit = 0.0;
@@ -389,20 +489,26 @@ fn summarize(r: &mut Report, hits: &[Hit]) {
     r.std_dt_ms = s;
     r.mean_abs_dt_ms = if dts.is_empty() { 0.0 } else { dts.iter().map(|d| d.abs()).sum::<f64>() / dts.len() as f64 };
     r.drift_ms_per_min = regression_slope(&dt_points) * 60.0;
-    r.timing_score = if dts.is_empty() { 0.0 } else { (-(r.mean_abs_dt_ms.max(0.0)) / 45.0).exp() * (-(r.std_dt_ms) / 120.0).exp() };
-    r.extra_penalty = (r.extra as f64 / r.evaluated as f64).min(1.0);
-    r.dynamics_score = dynamics_score(r, hits);
-
-    let (w_acc, w_time, w_extra, w_dyn) = match r.dynamics_score {
-        Some(_) => (0.55, 0.25, 0.10, 0.10),
-        None => (0.60, 0.28, 0.12, 0.0),
+    r.timing_score = if dts.is_empty() {
+        0.0
+    } else {
+        (-(r.mean_abs_dt_ms.max(0.0)) / model.timing_decay_mean_ms).exp() * (-(r.std_dt_ms) / model.timing_decay_spread_ms).exp()
     };
-    let overall =
-        w_acc * r.accuracy + w_time * r.timing_score + w_extra * (1.0 - r.extra_penalty) + w_dyn * r.dynamics_score.unwrap_or(0.0);
+    r.extra_penalty = (r.extra as f64 / r.evaluated as f64).min(1.0);
+    r.dynamics_score = dynamics_score(r, hits, model);
+
+    let w = match r.dynamics_score {
+        Some(_) => model.weights_with_dynamics,
+        None => model.weights_without_dynamics,
+    };
+    let overall = w.accuracy * r.accuracy
+        + w.timing * r.timing_score
+        + w.extra * (1.0 - r.extra_penalty)
+        + w.dynamics * r.dynamics_score.unwrap_or(0.0);
     // Timing credit only counts as far as notes were actually played.
     let played_fraction = (r.evaluated - r.missed) as f64 / r.evaluated as f64;
-    r.overall = (100.0 * (overall - (1.0 - played_fraction) * (w_time + w_extra) * 0.5)).clamp(0.0, 100.0);
-    r.feedback = feedback(r);
+    r.overall = (100.0 * (overall - (1.0 - played_fraction) * (w.timing + w.extra) * model.unplayed_penalty)).clamp(0.0, 100.0);
+    r.feedback = feedback(r, &model.advice);
 }
 
 fn regression_slope(points: &[(f64, f64)]) -> f64 {
@@ -421,7 +527,7 @@ fn regression_slope(points: &[(f64, f64)]) -> f64 {
 
 /// Accented notes should be louder, ghost notes softer, than plain notes on
 /// the same lane.
-fn dynamics_score(r: &Report, hits: &[Hit]) -> Option<f64> {
+fn dynamics_score(r: &Report, hits: &[Hit], model: &ScoringModel) -> Option<f64> {
     let mut plain: BTreeMap<Lane, Vec<f64>> = BTreeMap::new();
     for (e, res) in r.expected.iter().zip(&r.results) {
         if let Some(hi) = res.hit {
@@ -443,39 +549,39 @@ fn dynamics_score(r: &Report, hits: &[Hit]) -> Option<f64> {
             continue;
         }
         let v = hits[hi].velocity as f64;
-        let reference = plain.get(&e.lane).filter(|p| !p.is_empty()).map(median).unwrap_or(80.0);
+        let reference = plain.get(&e.lane).filter(|p| !p.is_empty()).map(median).unwrap_or(model.fallback_velocity);
         checks += 1;
-        if (e.accent && v >= reference + 10.0) || (e.ghost && v <= reference - 15.0) {
+        if (e.accent && v >= reference + model.accent_margin) || (e.ghost && v <= reference - model.ghost_margin) {
             good += 1;
         }
     }
     (checks > 0).then(|| good as f64 / checks as f64)
 }
 
-fn feedback(r: &Report) -> Vec<String> {
+fn feedback(r: &Report, a: &Advice) -> Vec<String> {
     let mut f = Vec::new();
-    if r.mean_dt_ms.abs() >= 10.0 && r.perfect + r.good + r.ok > 4 {
+    if r.mean_dt_ms.abs() >= a.offset_ms && r.perfect + r.good + r.ok > a.offset_min_hits {
         f.push(format!(
             "Overall you play {:.0} ms {} the beat.",
             r.mean_dt_ms.abs(),
             if r.mean_dt_ms > 0.0 { "behind (dragging)" } else { "ahead of (rushing)" }
         ));
     }
-    if r.drift_ms_per_min.abs() >= 15.0 {
+    if r.drift_ms_per_min.abs() >= a.drift_ms_per_min {
         f.push(format!(
             "Your time drifts {} by about {:.0} ms per minute — practise with the metronome on.",
             if r.drift_ms_per_min > 0.0 { "later (slowing down)" } else { "earlier (speeding up)" },
             r.drift_ms_per_min.abs()
         ));
     }
-    if r.std_dt_ms >= 25.0 {
+    if r.std_dt_ms >= a.spread_ms {
         f.push(format!("Timing is uneven (spread ±{:.0} ms). Slow the tempo down and aim for consistency.", r.std_dt_ms));
     }
     for (lane, ls) in &r.lanes {
-        if ls.expected >= 4 && ls.missed * 5 >= ls.expected {
+        if ls.expected >= 4 && ls.missed * a.lane_missed_one_in >= ls.expected {
             f.push(format!("{}: missed {} of {} notes.", lane.label(), ls.missed, ls.expected));
         }
-        if ls.hit >= 4 && ls.mean_dt_ms.abs() >= 15.0 && (ls.mean_dt_ms - r.mean_dt_ms).abs() >= 10.0 {
+        if ls.hit >= 4 && ls.mean_dt_ms.abs() >= a.lane_offset_ms && (ls.mean_dt_ms - r.mean_dt_ms).abs() >= a.lane_offset_apart_ms {
             f.push(format!(
                 "{} tends to be {:.0} ms {}.",
                 lane.label(),
@@ -483,19 +589,19 @@ fn feedback(r: &Report) -> Vec<String> {
                 if ls.mean_dt_ms > 0.0 { "late" } else { "early" }
             ));
         }
-        if ls.wrong_pad >= 2 {
+        if ls.wrong_pad >= a.lane_wrong_pad {
             f.push(format!("{}: {} hits on the wrong zone/articulation.", lane.label(), ls.wrong_pad));
         }
-        if ls.extra >= 3 {
+        if ls.extra >= a.lane_extra {
             f.push(format!("{}: {} extra hits that are not in the score.", lane.label(), ls.extra));
         }
     }
     if let Some(d) = r.dynamics_score {
-        if d < 0.6 {
+        if d < a.dynamics_floor {
             f.push("Accents and ghost notes are not distinct enough in velocity.".into());
         }
     }
-    hand_feedback(r, &mut f);
+    hand_feedback(r, a, &mut f);
     if f.is_empty() && r.evaluated > 0 {
         f.push("Solid take — try a faster tempo or a harder section.".into());
     }
@@ -506,19 +612,19 @@ fn feedback(r: &Report) -> Vec<String> {
 const MIN_HAND_STROKES: usize = 4;
 
 /// Compares the hands: how far apart in time and in loudness their plain strokes are.
-fn hand_feedback(r: &Report, f: &mut Vec<String>) {
+fn hand_feedback(r: &Report, a: &Advice, f: &mut Vec<String>) {
     let stats = |hand: Hand| r.hands.iter().find(|(h, _)| *h == hand).map(|(_, s)| *s);
     let (Some(right), Some(left)) = (stats(Hand::Right), stats(Hand::Left)) else { return };
     if right.hit >= MIN_HAND_STROKES && left.hit >= MIN_HAND_STROKES {
         let apart = left.mean_dt_ms - right.mean_dt_ms;
-        if apart.abs() >= 8.0 {
+        if apart.abs() >= a.hands_ms {
             let (late, early) = if apart > 0.0 { (Hand::Left, Hand::Right) } else { (Hand::Right, Hand::Left) };
             f.push(format!("Your {} is {:.0} ms behind your {}.", late.label().to_lowercase(), apart.abs(), early.label().to_lowercase()));
         }
     }
     if right.plain >= MIN_HAND_STROKES && left.plain >= MIN_HAND_STROKES {
         let apart = left.mean_velocity - right.mean_velocity;
-        if apart.abs() >= 10.0 {
+        if apart.abs() >= a.hands_velocity {
             let (soft, loud) = if apart < 0.0 { (Hand::Left, Hand::Right) } else { (Hand::Right, Hand::Left) };
             f.push(format!(
                 "Your {} plays {:.0} velocity points softer than your {}: aim for even strokes.",
