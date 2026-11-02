@@ -6,6 +6,7 @@ use crate::config::MAX_LANE_GAIN;
 use crate::controller::{Action, Command};
 use crate::drums::Lane;
 use crate::rudiments::{Lead, MAX_REPEATS};
+use crate::units::Seconds;
 
 use super::super::{DrumApp, Source, Tab};
 use super::apply::{register_tap, shifted_range, worst_measure, TAPS_KEPT};
@@ -83,14 +84,14 @@ fn the_worst_measure_is_where_most_goes_wrong() {
         .filter(|e| score.notes[e.note_idx].measure != 1)
         .map(|e| Hit { t: e.t, note: 36, velocity: 100, lane: e.lane })
         .collect();
-    let report = analyze(&expected, &hits, tol, f64::INFINITY);
+    let report = analyze(&expected, &hits, tol, Seconds::INFINITY);
     assert_eq!(worst_measure(score, &report, &[]), Some(1));
     // Enough stray hits in measure 4 make it the worst one.
     let strays = vec![last; expected.len()];
     assert_eq!(worst_measure(score, &report, &strays), Some(last));
     // Nothing wrong, nothing to practise.
     let all: Vec<Hit> = expected.iter().map(|e| Hit { t: e.t, note: 36, velocity: 100, lane: e.lane }).collect();
-    let perfect = analyze(&expected, &all, tol, f64::INFINITY);
+    let perfect = analyze(&expected, &all, tol, Seconds::INFINITY);
     assert_eq!(worst_measure(score, &perfect, &[]), None);
 }
 

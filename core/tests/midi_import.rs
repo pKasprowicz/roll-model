@@ -4,6 +4,7 @@
 use roll_model_core::drums::Lane;
 use roll_model_core::import::smf::{write_smf, Ev};
 use roll_model_core::import::{check_invariants, import_bytes, ImportError, ImportOptions, Limits, Loaded};
+use roll_model_core::units::Quarters;
 
 const PPQ: u16 = 480;
 const SAMPLE_XML: &str = include_str!("../../examples/basic_rock_beat.musicxml");
@@ -61,7 +62,7 @@ fn open(bytes: &[u8]) -> Result<Loaded, ImportError> {
 }
 
 fn placed(score: &roll_model_core::score::Score) -> Vec<(i64, usize, Lane)> {
-    score.notes.iter().map(|n| ((n.q * 1000.0).round() as i64, n.measure, n.lane)).collect()
+    score.notes.iter().map(|n| ((n.q.0 * 1000.0).round() as i64, n.measure, n.lane)).collect()
 }
 
 #[test]
@@ -80,7 +81,7 @@ fn a_midi_groove_opens_as_the_same_score_as_its_musicxml() {
     let xml = import_bytes(SAMPLE_XML.as_bytes(), "sample.musicxml", &ImportOptions::default()).unwrap();
     assert_eq!(placed(&midi.score), placed(&xml.score));
     assert_eq!(midi.score.measures.len(), xml.score.measures.len());
-    assert!((midi.score.tempo.bpm_at(0.0) - 100.0).abs() < 1e-9);
+    assert!((midi.score.tempo.bpm_at(Quarters(0.0)) - 100.0).abs() < 1e-9);
     assert_eq!(midi.report.format.name(), "MIDI");
 }
 
@@ -94,10 +95,10 @@ fn tempo_changes_and_a_new_time_signature_are_kept() {
         track_of(&[(0.0, KICK, 100), (4.0, SNARE, 100), (8.0, KICK, 100), (9.0, HAT, 100), (10.0, SNARE, 100), (11.0, KICK, 100)], 9);
     let loaded = open(&write_smf(1, PPQ, &[conductor, drums])).unwrap();
     let s = loaded.score;
-    let lens: Vec<(f64, u32, u32)> = s.measures.iter().map(|m| (m.len_q, m.beats, m.beat_type)).collect();
+    let lens: Vec<(f64, u32, u32)> = s.measures.iter().map(|m| (m.len_q.0, m.beats, m.beat_type)).collect();
     assert_eq!(lens, [(4.0, 4, 4), (4.0, 4, 4), (3.0, 3, 4), (3.0, 3, 4)]);
-    assert!((s.tempo.bpm_at(0.0) - 120.0).abs() < 1e-6);
-    assert!((s.tempo.bpm_at(8.0) - 90.0).abs() < 1e-3);
+    assert!((s.tempo.bpm_at(Quarters(0.0)) - 120.0).abs() < 1e-6);
+    assert!((s.tempo.bpm_at(Quarters(8.0)) - 90.0).abs() < 1e-3);
     assert_eq!(s.notes.iter().map(|n| n.measure).collect::<Vec<_>>(), [0, 1, 2, 2, 2, 3]);
 }
 
@@ -154,7 +155,7 @@ fn a_file_without_tempo_or_signature_gets_the_defaults_and_says_so() {
     let loaded = open(&write_smf(0, PPQ, &[track_of(&[(0.0, KICK, 100), (4.0, KICK, 100)], 9)])).unwrap();
     let s = loaded.score;
     assert_eq!(s.measures.len(), 2);
-    assert!((s.tempo.bpm_at(0.0) - 120.0).abs() < 1e-9);
+    assert!((s.tempo.bpm_at(Quarters(0.0)) - 120.0).abs() < 1e-9);
     assert!(s.warnings.iter().any(|w| w.contains("No time signature")));
     assert!(s.warnings.iter().any(|w| w.contains("No tempo")));
 }
@@ -267,7 +268,7 @@ fn real_files() {
                         "FILE {}: {} bars, {:.0} BPM, {} accents {} ghosts, {lanes:?}",
                         path.file_name().unwrap().to_string_lossy(),
                         loaded.score.measures.len(),
-                        loaded.score.tempo.bpm_at(0.0),
+                        loaded.score.tempo.bpm_at(Quarters(0.0)),
                         loaded.score.notes.iter().filter(|n| n.is_accent()).count(),
                         loaded.score.notes.iter().filter(|n| n.is_ghost()).count()
                     );
@@ -350,7 +351,7 @@ fn the_first_bar_can_start_later_and_the_music_before_it_is_a_short_bar() {
     options.midi.first_bar_beats = 1;
     let shifted = import_bytes(&bytes, "x.mid", &options).unwrap().score;
     check_invariants(&shifted).unwrap();
-    let lens: Vec<f64> = shifted.measures.iter().map(|m| m.len_q).collect();
+    let lens: Vec<f64> = shifted.measures.iter().map(|m| m.len_q.0).collect();
     assert_eq!(lens, [1.0, 4.0, 4.0]);
     assert_eq!(shifted.notes.iter().map(|n| n.measure).collect::<Vec<_>>(), [0, 1, 1, 2, 2]);
     assert!(shifted.measures.iter().all(|m| (m.beats, m.beat_type) == (4, 4)), "the signature is the file's");
@@ -365,7 +366,7 @@ fn the_first_bar_does_not_start_later_when_the_time_signature_changes() {
     let mut options = ImportOptions::default();
     options.midi.first_bar_beats = 1;
     let s = import_bytes(&bytes, "x.mid", &options).unwrap().score;
-    assert_eq!(s.measures[0].len_q, 4.0);
+    assert_eq!(s.measures[0].len_q, Quarters(4.0));
     assert!(s.warnings.iter().any(|w| w.contains("cannot start later")), "{:?}", s.warnings);
 }
 
@@ -381,7 +382,7 @@ fn compare_two_files() {
     let load = |p: &std::ffi::OsString| roll_model_core::import::load_score(std::path::Path::new(p), &options).unwrap().score;
     let (a, b) = (load(&a), load(&b));
     let key = |s: &roll_model_core::score::Score| -> Vec<(i64, String)> {
-        s.notes.iter().map(|n| ((n.q * 1000.0).round() as i64, format!("{:?}", n.lane))).collect()
+        s.notes.iter().map(|n| ((n.q.0 * 1000.0).round() as i64, format!("{:?}", n.lane))).collect()
     };
     let (ka, kb) = (key(&a), key(&b));
     println!("A: {} notes, bars {}, first q {:?}, last q {:?}", ka.len(), a.measures.len(), ka.first(), ka.last());

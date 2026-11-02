@@ -34,6 +34,7 @@ use crate::playback::{Player, Ramp};
 use crate::practice_tempo::PracticeTempo;
 use crate::render::{self};
 use crate::score::Score;
+use crate::units::{Millis, Seconds};
 use crate::widgets;
 use session::signed_secs;
 use settings::SettingsPage;
@@ -118,13 +119,13 @@ struct Take {
     to: usize,
     tempo_scale: f64,
     /// Seconds from score start to the `from` measure (at `tempo_scale`).
-    t0: f64,
-    end_sec: f64,
+    t0: Seconds,
+    end_sec: Seconds,
     expected: Vec<Expected>,
     hits: Vec<Hit>,
     report: Report,
     running: bool,
-    count_in_beat_sec: f64,
+    count_in_beat_sec: Seconds,
 }
 
 /// The score being played back to the user ("Listen"), for the playhead.
@@ -133,10 +134,10 @@ struct Listen {
     zero: Instant,
     tempo_scale: f64,
     /// Seconds from score start to the first measure of the range.
-    t0: f64,
-    end_sec: f64,
+    t0: Seconds,
+    end_sec: Seconds,
     /// Seconds per beat of the first measure, and the beats of the count-in.
-    beat_sec: f64,
+    beat_sec: Seconds,
     count_in_beats: u32,
     /// The tempo ramp it plays with (none: `every` is 0).
     ramp: Ramp,
@@ -154,11 +155,11 @@ struct Plan {
     to: usize,
     scale: f64,
     bpm: f64,
-    beat_sec: f64,
+    beat_sec: Seconds,
     count_in_beats: u32,
     zero: Instant,
-    t0: f64,
-    end_sec: f64,
+    t0: Seconds,
+    end_sec: Seconds,
     /// Count-in and beat clicks, seconds from the first measure.
     clicks: Vec<(f64, bool)>,
 }
@@ -432,13 +433,13 @@ impl DrumApp {
 
     fn record_calibration_hit(&mut self, ev: RawEvent) {
         if let Some(cal) = self.calibration.as_mut() {
-            cal.hits.push(signed_secs(ev.at, cal.zero));
+            cal.hits.push(signed_secs(ev.at, cal.zero).0);
         }
     }
 
     /// A hit of `lane` goes into the take that is running (from a little before its first beat on).
     fn record_take_hit(&mut self, ev: RawEvent, lane: Lane) {
-        let latency = self.cfg.latency_ms / 1000.0;
+        let latency = Millis(self.cfg.latency_ms).secs();
         if let Some(take) = self.practice.take.as_mut().filter(|t| t.running) {
             let t = signed_secs(ev.at, take.zero) - latency;
             if t > -take.count_in_beat_sec * 0.75 {
@@ -826,7 +827,7 @@ mod tests {
         app.practice.midi_options.first_bar_beats = 1;
         app.reimport();
         let score = app.practice.score.as_ref().unwrap();
-        assert_eq!(score.measures[0].len_q, 1.0, "a short first bar");
+        assert_eq!(score.measures[0].len_q, crate::units::Quarters(1.0), "a short first bar");
         assert_eq!((app.practice.range_from, app.practice.range_to), (1, 2), "the selected bars stay");
         assert!(app.view.tab == Tab::Results, "the tab stays");
         assert!(app.score_gen > gen);
@@ -834,7 +835,7 @@ mod tests {
         // Opening a file again starts from the default settings.
         app.open_file(&midi);
         assert_eq!(app.practice.midi_options, crate::import::MidiOptions::default());
-        assert_eq!(app.practice.score.as_ref().unwrap().measures[0].len_q, 4.0);
+        assert_eq!(app.practice.score.as_ref().unwrap().measures[0].len_q, crate::units::Quarters(4.0));
 
         // A MusicXML score has no such menu.
         app.open_file(&sample());

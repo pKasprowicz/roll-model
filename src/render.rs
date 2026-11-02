@@ -8,6 +8,7 @@ use crate::analysis::Grade;
 use crate::drums::{Lane, NoteHead};
 use crate::notation::{self, Beam, Notation, RestGlyph, RestKind};
 use crate::score::{Hand, Score, ScoreNote};
+use crate::units::{Millis, Quarters};
 
 const LS: f32 = 8.0; // staff line spacing
 const STEP: f32 = LS / 2.0;
@@ -51,7 +52,7 @@ pub struct PlayedNote {
     pub lane: Lane,
     pub velocity: u8,
     pub status: HitStatus,
-    pub dt_ms: Option<f64>,
+    pub dt: Option<Millis>,
 }
 
 pub struct ScoreView<'a> {
@@ -149,9 +150,9 @@ fn row_starts(n: usize, per_row: usize, align: Option<usize>) -> Vec<usize> {
 fn typical_len_q(score: &Score) -> f64 {
     let mut counts: Vec<(f64, usize)> = Vec::new();
     for m in &score.measures {
-        match counts.iter_mut().find(|(len, _)| (*len - m.len_q).abs() < 1e-6) {
+        match counts.iter_mut().find(|(len, _)| (*len - m.len_q.0).abs() < 1e-6) {
             Some(c) => c.1 += 1,
-            None => counts.push((m.len_q, 1)),
+            None => counts.push((m.len_q.0, 1)),
         }
     }
     counts.into_iter().max_by(|a, b| a.1.cmp(&b.1).then(a.0.total_cmp(&b.0))).map(|c| c.0).unwrap_or(4.0).max(0.25)
@@ -204,7 +205,7 @@ fn layout(score: &Score, width: f32, zoom: f32, opts: LayoutOpts) -> Layout {
         let mut start = 0usize;
         let mut w = 0.0f32;
         for (i, m) in score.measures.iter().enumerate() {
-            let mw = m.len_q as f32 * ppq + 2.0 * MEASURE_PAD;
+            let mw = m.len_q.0 as f32 * ppq + 2.0 * MEASURE_PAD;
             let after_pause = i > 0 && pauses.get(i - 1).copied().unwrap_or(false);
             if i > start && (w + mw > line_w || align == Some(i) || after_pause) {
                 systems.push((start, i));
@@ -218,7 +219,7 @@ fn layout(score: &Score, width: f32, zoom: f32, opts: LayoutOpts) -> Layout {
     let mut measures = Vec::with_capacity(n);
     let last = systems.len().saturating_sub(1);
     for (si, (a, b)) in systems.iter().enumerate() {
-        let natural: f32 = (*a..*b).map(|i| score.measures[i].len_q as f32 * ppq + 2.0 * MEASURE_PAD).sum();
+        let natural: f32 = (*a..*b).map(|i| score.measures[i].len_q.0 as f32 * ppq + 2.0 * MEASURE_PAD).sum();
         let stretch = if fixed {
             // Same width as the other rows; only squeeze a row that is too wide.
             if natural > line_w {
@@ -235,7 +236,7 @@ fn layout(score: &Score, width: f32, zoom: f32, opts: LayoutOpts) -> Layout {
         let mut x = LEFT;
         for i in *a..*b {
             let m = &score.measures[i];
-            let mw = (m.len_q as f32 * ppq + 2.0 * MEASURE_PAD) * stretch;
+            let mw = (m.len_q.0 as f32 * ppq + 2.0 * MEASURE_PAD) * stretch;
             measures.push(MeasurePos { x0: x, pad: MEASURE_PAD * stretch, w: mw, px_per_q: ppq * stretch });
             x += mw;
         }
@@ -246,7 +247,7 @@ fn layout(score: &Score, width: f32, zoom: f32, opts: LayoutOpts) -> Layout {
 impl Layout {
     fn x_of(&self, score: &Score, mi: usize, q: f64) -> f32 {
         let mp = &self.measures[mi];
-        mp.x0 + mp.pad + ((q - score.measures[mi].start_q) as f32) * mp.px_per_q
+        mp.x0 + mp.pad + ((q - score.measures[mi].start_q.0) as f32) * mp.px_per_q
     }
 
     /// Where the playhead is at `q` in measure `mi`. It is where a note at `q` is drawn, except
@@ -261,8 +262,8 @@ impl Layout {
         }
         let (mp, m) = (&self.measures[mi], &score.measures[mi]);
         // The stretch, in quarters; never more than a quarter of the bar.
-        let stretch = ((2.0 * mp.pad / mp.px_per_q) as f64).min(m.len_q / 4.0).max(1e-6);
-        let from_q = m.end_q() - stretch;
+        let stretch = ((2.0 * mp.pad / mp.px_per_q) as f64).min(m.len_q.0 / 4.0).max(1e-6);
+        let from_q = m.end_q().0 - stretch;
         if q <= from_q {
             return aligned;
         }
@@ -314,7 +315,7 @@ pub fn rolling(ui: &mut Ui, view: &RollingView) {
         return;
     }
     let (a, b) = (view.range.0.min(last), view.range.1.clamp(view.range.0.min(last), last));
-    let (start, end) = (score.measures[a].start_q, score.measures[b].end_q());
+    let (start, end) = (score.measures[a].start_q.0, score.measures[b].end_q().0);
     let len = end - start;
     let width = ui.available_width().max(300.0);
     let (response, painter) = ui.allocate_painter(vec2(width, ROLL_H), Sense::hover());
@@ -346,8 +347,8 @@ pub fn rolling(ui: &mut Ui, view: &RollingView) {
         for mi in a..=b {
             let m = &score.measures[mi];
             let mut bq = 0.0;
-            while bq < m.len_q - 1e-6 {
-                let x = x_of(m.start_q + bq + shift);
+            while bq < m.len_q.0 - 1e-6 {
+                let x = x_of(m.start_q.0 + bq + shift);
                 let first = bq == 0.0;
                 clipped.line_segment(
                     [pos2(x, top), pos2(x, bot)],
@@ -356,11 +357,11 @@ pub fn rolling(ui: &mut Ui, view: &RollingView) {
                 if first {
                     clipped.text(pos2(x + 3.0, top - 14.0), Align2::LEFT_TOP, &m.number, FontId::proportional(9.0), weak);
                 }
-                bq += m.beat_q();
+                bq += m.beat_q().0;
             }
         }
         for n in score.notes.iter().filter(|n| n.measure >= a && n.measure <= b) {
-            let x = x_of(n.q + shift) + grace_dx(n);
+            let x = x_of(n.q.0 + shift) + grace_dx(n);
             if x < x_min - 12.0 || x > x_max + 12.0 {
                 continue;
             }
@@ -636,7 +637,7 @@ impl Frame<'_> {
     fn head_near(&self, mi: usize, x: f32, y0: f32, y1: f32, staff_bottom: f32, notes: &[ScoreNote]) -> bool {
         self.notes_by_measure[mi].iter().any(|&i| {
             let n = &notes[i];
-            let (nx, ny) = (self.x_of(mi, n.q) + grace_dx(n), y_of(n.staff_step, staff_bottom));
+            let (nx, ny) = (self.x_of(mi, n.q.0) + grace_dx(n), y_of(n.staff_step, staff_bottom));
             (nx - x).abs() < 9.0 && ny + 4.5 > y0 && ny - 4.5 < y1
         })
     }
@@ -663,9 +664,9 @@ impl Rows {
 fn played_by_measure(score: &Score, played: &[PlayedNote]) -> Vec<Vec<usize>> {
     let mut by_measure: Vec<Vec<usize>> = vec![Vec::new(); score.measures.len()];
     for (i, pn) in played.iter().enumerate() {
-        if let Some(mi) = score.measure_at(pn.q) {
+        if let Some(mi) = score.measure_at(Quarters(pn.q)) {
             let m = &score.measures[mi];
-            if pn.q < m.end_q() + m.len_q * 0.5 || mi + 1 < score.measures.len() {
+            if pn.q < m.end_q().0 + m.len_q.0 * 0.5 || mi + 1 < score.measures.len() {
                 by_measure[mi].push(i);
             }
         } else if pn.q < 0.0 {
@@ -717,8 +718,8 @@ fn holds_playhead(view: &ScoreView, system: usize, first: usize, end: usize) -> 
     let Some(q) = view.playhead_q else { return false };
     let score = view.score;
     let (first, last) = (&score.measures[first], &score.measures[end - 1]);
-    let inside = q >= first.start_q && (q < last.end_q() || end == score.measures.len() && q < last.end_q() + 8.0);
-    inside || (system == 0 && q < first.start_q)
+    let inside = q >= first.start_q.0 && (q < last.end_q().0 || end == score.measures.len() && q < last.end_q().0 + 8.0);
+    inside || (system == 0 && q < first.start_q.0)
 }
 
 pub fn show(ui: &mut Ui, view: &ScoreView) -> ViewOutput {
@@ -849,7 +850,7 @@ fn draw_system(f: &Frame, rows: &Rows, bars: (usize, usize), hover_text: &mut Op
 
     // playhead
     if let Some(q) = view.playhead_q {
-        if let Some(mi) = view.score.measure_at(q.max(0.0)) {
+        if let Some(mi) = view.score.measure_at(Quarters(q.max(0.0))) {
             if mi >= a && mi < b && q >= 0.0 {
                 let x = f.origin.x + lay.playhead_x(view.score, mi, q, mi + 1 < b);
                 painter.line_segment([pos2(x, rows.y0 + 12.0), pos2(x, rows.vel_base + 2.0)], Stroke::new(2.0_f32, ACCENT));
@@ -885,10 +886,10 @@ fn draw_measure_marks(f: &Frame, rows: &Rows, mi: usize) {
     // beat grid under the played staff (where timing is judged)
     let beat_q = m.beat_q();
     let mut bq = 0.0;
-    while bq < m.len_q - 1e-6 {
-        let x = f.x_of(mi, m.start_q + bq);
+    while bq < m.len_q.0 - 1e-6 {
+        let x = f.x_of(mi, m.start_q.0 + bq);
         painter.line_segment([pos2(x, rows.play_top - 6.0), pos2(x, rows.vel_base)], Stroke::new(1.0_f32, cv.grid));
-        bq += beat_q;
+        bq += beat_q.0;
     }
 }
 
@@ -897,7 +898,7 @@ fn draw_measure_marks(f: &Frame, rows: &Rows, mi: usize) {
 fn draw_score_note(f: &Frame, rows: &Rows, mi: usize, ni: usize) {
     let (cv, view) = (&f.cv, f.view);
     let n = &view.score.notes[ni];
-    let x = f.x_of(mi, n.q) + grace_dx(n);
+    let x = f.x_of(mi, n.q.0) + grace_dx(n);
     let col = view.grades.get(ni).copied().flatten().map_or(cv.text, grade_color);
     let end = StemEnd { tip: f.stem_tips[ni].map(|t| rows.exp_bot + t), flags: f.notation.flags[ni] };
     cv.written_note(n, x, rows.exp_bot, rows.y0 + 28.0, Ink { note: col, hand: cv.text, hand_dy: 18.0 }, end);
@@ -972,7 +973,7 @@ fn draw_played_note(f: &Frame, rows: &Rows, mi: usize, pi: usize, hover_text: &m
     painter.rect_filled(Rect::from_min_max(pos2(x - 1.5, rows.vel_base - h), pos2(x + 1.5, rows.vel_base)), 0.0, col);
     if let Some(hp) = f.hover {
         if (hp - pos2(x, y)).length() < 7.0 {
-            let timing = match pn.dt_ms {
+            let timing = match pn.dt.map(|d| d.0) {
                 Some(d) if d >= 0.5 => format!("{d:.0} ms late"),
                 Some(d) if d <= -0.5 => format!("{:.0} ms early", -d),
                 Some(_) => "on time".to_string(),
@@ -999,7 +1000,8 @@ mod tests {
             .iter()
             .enumerate()
             .map(|(i, len)| {
-                let m = Measure { number: (i + 1).to_string(), start_q: q, len_q: *len, beats: *len as u32, beat_type: 4 };
+                let m =
+                    Measure { number: (i + 1).to_string(), start_q: Quarters(q), len_q: Quarters(*len), beats: *len as u32, beat_type: 4 };
                 q += len;
                 m
             })
@@ -1021,11 +1023,11 @@ mod tests {
         // Bar 2 (index 1) ends with a rest from its third beat; bar 5 has a rest but a note after it.
         let q = |bar: usize, beat: f64| bar as f64 * 4.0 + beat;
         score.rests = vec![
-            Rest { measure: 1, q: q(1, 2.0), dur_q: 2.0, stem: Stem::Up, whole_bar: false },
-            Rest { measure: 4, q: q(4, 1.0), dur_q: 3.0, stem: Stem::Down, whole_bar: false },
+            Rest { measure: 1, q: Quarters(q(1, 2.0)), dur_q: Quarters(2.0), stem: Stem::Up, whole_bar: false },
+            Rest { measure: 4, q: Quarters(q(4, 1.0)), dur_q: Quarters(3.0), stem: Stem::Down, whole_bar: false },
         ];
         let note = |measure: usize, q: f64| crate::score::ScoreNote {
-            q,
+            q: Quarters(q),
             measure,
             lane: Lane::Snare,
             staff_step: 5,
@@ -1044,17 +1046,17 @@ mod tests {
         let fixed = LayoutOpts { bars_per_row: 4, break_at_pause: true, ..LayoutOpts::default() };
         assert_eq!(layout(&score, W, 1.0, fixed).systems, [(0, 2), (2, 6)]);
         let two = LayoutOpts { bars_per_row: 2, break_at_pause: true, ..LayoutOpts::default() };
-        score.rests = vec![Rest { measure: 2, q: q(2, 2.0), dur_q: 2.0, stem: Stem::Up, whole_bar: false }];
+        score.rests = vec![Rest { measure: 2, q: Quarters(q(2, 2.0)), dur_q: Quarters(2.0), stem: Stem::Up, whole_bar: false }];
         score.notes = vec![note(2, q(2, 0.0))];
         assert_eq!(layout(&score, W, 1.0, two).systems, [(0, 2), (2, 3), (3, 5), (5, 6)], "pause after bar 3, then pairs again");
         score.notes.clear();
         score.rests.clear();
         // Empty bars in a row make one pause: the row ends after the last of them.
-        let empty = |measure: usize| Rest { measure, q: q(measure, 0.0), dur_q: 4.0, stem: Stem::Up, whole_bar: true };
+        let empty = |measure: usize| Rest { measure, q: Quarters(q(measure, 0.0)), dur_q: Quarters(4.0), stem: Stem::Up, whole_bar: true };
         score.notes.clear();
         score.rests = vec![empty(0), empty(1), empty(2)];
         assert_eq!(layout(&score, 2400.0, 1.0, on).systems, [(0, 3), (3, 6)]);
-        score.rests = vec![Rest { measure: 1, q: q(1, 2.0), dur_q: 2.0, stem: Stem::Up, whole_bar: false }];
+        score.rests = vec![Rest { measure: 1, q: Quarters(q(1, 2.0)), dur_q: Quarters(2.0), stem: Stem::Up, whole_bar: false }];
         // A pause at the end of the score adds no empty row.
         score.rests.push(empty(5));
         assert_eq!(layout(&score, 2400.0, 1.0, on).systems.last(), Some(&(2, 6)));

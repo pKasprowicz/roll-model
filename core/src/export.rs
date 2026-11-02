@@ -26,7 +26,7 @@ pub fn take_csv(score: &Score, expected: &[Expected], hits: &[Hit], report: &Rep
             .hit
             .map(|h| {
                 let h = &hits[h];
-                (format!("{:.1}", h.t * 1000.0), h.note.to_string(), h.velocity.to_string())
+                (format!("{:.1}", h.t.millis()), h.note.to_string(), h.velocity.to_string())
             })
             .unwrap_or_default();
         s.push_str(&format!(
@@ -34,9 +34,9 @@ pub fn take_csv(score: &Score, expected: &[Expected], hits: &[Hit], report: &Rep
             field(&m.number),
             beat,
             field(e.lane.label()),
-            e.t * 1000.0,
+            e.t.millis(),
             played,
-            r.dt_ms.map(|d| format!("{d:.1}")).unwrap_or_default(),
+            r.dt.map(|d| format!("{d:.1}")).unwrap_or_default(),
             note,
             vel,
             field(r.outcome.label())
@@ -44,7 +44,7 @@ pub fn take_csv(score: &Score, expected: &[Expected], hits: &[Hit], report: &Rep
     }
     for (hi, h) in hits.iter().enumerate() {
         if report.hit_match[hi].is_none() {
-            s.push_str(&format!(",,{},,{:.1},,{},{},Extra\n", field(h.lane.label()), h.t * 1000.0, h.note, h.velocity));
+            s.push_str(&format!(",,{},,{:.1},,{},{},Extra\n", field(h.lane.label()), h.t.millis(), h.note, h.velocity));
         }
     }
     s
@@ -55,6 +55,7 @@ mod tests {
     use super::*;
     use crate::analysis::{analyze, expected_notes, Tolerances};
     use crate::drums::Lane;
+    use crate::units::Seconds;
 
     #[test]
     fn a_field_with_a_comma_or_a_quote_is_quoted() {
@@ -74,10 +75,10 @@ mod tests {
             .iter()
             .enumerate()
             .filter(|(i, _)| *i != 1)
-            .map(|(i, e)| Hit { t: e.t + if i == 2 { 0.02 } else { 0.0 }, note: 38, velocity: 90, lane: e.lane })
+            .map(|(i, e)| Hit { t: e.t + Seconds(if i == 2 { 0.02 } else { 0.0 }), note: 38, velocity: 90, lane: e.lane })
             .collect();
-        hits.push(Hit { t: 0.1, note: 49, velocity: 100, lane: Lane::Crash1 });
-        let report = analyze(&expected, &hits, &Tolerances::default(), f64::INFINITY);
+        hits.push(Hit { t: Seconds(0.1), note: 49, velocity: 100, lane: Lane::Crash1 });
+        let report = analyze(&expected, &hits, &Tolerances::default(), Seconds::INFINITY);
         let csv = take_csv(&score, &expected, &hits, &report);
         let rows: Vec<&str> = csv.lines().collect();
         assert_eq!(rows[0], CSV_HEADER);

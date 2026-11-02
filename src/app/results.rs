@@ -117,7 +117,7 @@ impl DrumApp {
 
             ui.add_space(8.0);
             ui.heading("Timing distribution");
-            let dts: Vec<f64> = r.results.iter().filter_map(|x| x.dt_ms).collect();
+            let dts: Vec<f64> = r.results.iter().filter_map(|x| x.dt.map(|d| d.0)).collect();
             histogram(ui, &dts, self.cfg.tol.window_ms);
 
             ui.add_space(8.0);

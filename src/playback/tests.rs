@@ -4,9 +4,10 @@ use super::*;
 use crate::analysis::expected_notes;
 use crate::import::{import_bytes, ImportOptions};
 use crate::synth::SAMPLE_RATE;
+use crate::units::Seconds;
 
 fn note(lane: Lane, t: f64) -> Expected {
-    Expected { note_idx: 0, t, lane, dynamic: Dynamic::Normal, grace: false, hand: None }
+    Expected { note_idx: 0, t: Seconds(t), lane, dynamic: Dynamic::Normal, grace: false, hand: None }
 }
 
 #[derive(Debug, PartialEq)]
@@ -340,7 +341,8 @@ fn sample_score_renders_a_note_at_every_onset() {
             .unwrap()
             .score;
     let expected = expected_notes(&score, 0, score.measures.len() - 1, 1.0);
-    let clicks = score.click_track(0, score.measures.len() - 1, 1.0, 4, true);
+    let clicks: Vec<(f64, bool)> =
+        score.click_track(0, score.measures.len() - 1, 1.0, 4, true).into_iter().map(|(t, a)| (t.0, a)).collect();
     let all = cues(&expected, &clicks);
     let lead = 2.4; // one count-in bar at 100 BPM
     let out = mix(&all, lead, 1.0);
@@ -353,12 +355,12 @@ fn sample_score_renders_a_note_at_every_onset() {
     // Every note starts audibly within 5 ms of its time.
     let window = (0.005 * SAMPLE_RATE as f64) as usize;
     for e in &expected {
-        let at = ((e.t + lead) * SAMPLE_RATE as f64).round() as usize;
+        let at = ((e.t.0 + lead) * SAMPLE_RATE as f64).round() as usize;
         let peak = out[at..at + window].iter().fold(0.0_f32, |m, s| m.max(s.abs()));
-        assert!(peak > 0.02, "silent at {:.3}s for {:?}", e.t, e.lane);
+        assert!(peak > 0.02, "silent at {:.3}s for {:?}", e.t.0, e.lane);
     }
     // And the take is not far longer than the music plus the last ring-out.
-    let last = expected.iter().map(|e| e.t).fold(0.0, f64::max) + lead;
+    let last = expected.iter().map(|e| e.t.0).fold(0.0, f64::max) + lead;
     assert!(out.len() as f64 / (SAMPLE_RATE as f64) < last + 2.5);
 }
 

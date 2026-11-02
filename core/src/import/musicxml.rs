@@ -368,6 +368,7 @@ fn parse_note(el: &Element, offset_q: f64, grace: bool, instruments: &HashMap<St
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::units::{Quarters, Seconds};
     pub const SAMPLE: &str = include_str!("../../../examples/basic_rock_beat.musicxml");
 
     fn parse_sample(text: &str) -> crate::score::Score {
@@ -381,15 +382,15 @@ mod tests {
         let s = parse_sample(SAMPLE);
         assert_eq!(s.title, "Basic Rock Beat");
         assert_eq!(s.measures.len(), 4);
-        assert!((s.tempo.bpm_at(0.0) - 100.0).abs() < 1e-9);
+        assert!((s.tempo.bpm_at(Quarters::ZERO) - 100.0).abs() < 1e-9);
         // Each of the 4 bars: 8 hi-hats + 2 kicks + 2 snares (bar 4: crash + fill)
         let hh = s.notes.iter().filter(|n| n.lane == Lane::HiHatClosed).count();
         assert_eq!(hh, 24);
-        let kicks: Vec<f64> = s.notes.iter().filter(|n| n.lane == Lane::Kick && n.measure == 0).map(|n| n.q).collect();
+        let kicks: Vec<f64> = s.notes.iter().filter(|n| n.lane == Lane::Kick && n.measure == 0).map(|n| n.q.0).collect();
         assert_eq!(kicks, vec![0.0, 2.0]);
-        let snares: Vec<f64> = s.notes.iter().filter(|n| n.lane == Lane::Snare && n.measure == 0).map(|n| n.q).collect();
+        let snares: Vec<f64> = s.notes.iter().filter(|n| n.lane == Lane::Snare && n.measure == 0).map(|n| n.q.0).collect();
         assert_eq!(snares, vec![1.0, 3.0]);
-        assert!(s.notes.iter().any(|n| n.lane == Lane::Crash1 && (n.q - 12.0).abs() < 1e-9));
+        assert!(s.notes.iter().any(|n| n.lane == Lane::Crash1 && (n.q - Quarters(12.0)).abs() < Quarters(1e-9)));
         assert!(s.notes.iter().any(|n| n.is_accent()));
         // hi-hat drawn at G5 with x noteheads, kick at F4
         let hhn = s.notes.iter().find(|n| n.lane == Lane::HiHatClosed).unwrap();
@@ -404,14 +405,14 @@ mod tests {
         // Practise bars 2..4 at 80% tempo; play everything 12 ms late except
         // one missed kick and one extra crash.
         let exp = expected_notes(&s, 1, 3, 0.8);
-        assert!((exp[0].t).abs() < 1e-9, "range starts at t=0");
+        assert!(exp[0].t.abs() < Seconds(1e-9), "range starts at t=0");
         let mut hits: Vec<Hit> = exp
             .iter()
             .skip(1)
-            .map(|e| Hit { t: e.t + 0.012, note: 0, velocity: if e.dynamic == Dynamic::Accent { 120 } else { 80 }, lane: e.lane })
+            .map(|e| Hit { t: e.t + Seconds(0.012), note: 0, velocity: if e.dynamic == Dynamic::Accent { 120 } else { 80 }, lane: e.lane })
             .collect();
-        hits.push(Hit { t: 1.1, note: 49, velocity: 100, lane: Lane::Crash1 });
-        let r = analyze(&exp, &hits, &Tolerances::default(), f64::INFINITY);
+        hits.push(Hit { t: Seconds(1.1), note: 49, velocity: 100, lane: Lane::Crash1 });
+        let r = analyze(&exp, &hits, &Tolerances::default(), Seconds::INFINITY);
         assert_eq!(r.results[0].outcome, crate::analysis::Outcome::Graded(Grade::Missed));
         assert_eq!(r.missed, 1);
         assert_eq!(r.extra, 1);
@@ -421,8 +422,8 @@ mod tests {
         assert!(r.overall > 85.0 && r.overall < 100.0, "{}", r.overall);
         // score-time <-> q mapping used to draw the hits
         let t0 = s.tempo.q_to_sec(s.measures[1].start_q, 0.8);
-        let q = s.tempo.sec_to_q(hits[0].t - 0.012 + t0, 0.8);
-        assert!((q - s.notes[exp[1].note_idx].q).abs() < 1e-9);
+        let q = s.tempo.sec_to_q(hits[0].t - Seconds(0.012) + t0, 0.8);
+        assert!((q - s.notes[exp[1].note_idx].q).abs() < Quarters(1e-9));
     }
 
     #[test]
@@ -445,7 +446,7 @@ mod tests {
         let xml = format!("<score-partwise><part-list><score-part id=\"P1\"><part-name>D</part-name></score-part></part-list><part id=\"P1\">{body}</part></score-partwise>");
         let s = parse_sample(&xml);
         let rests: Vec<(usize, f64, f64, bool, bool)> =
-            s.rests.iter().map(|r| (r.measure, r.q, r.dur_q, r.stem.is_up(), r.whole_bar)).collect();
+            s.rests.iter().map(|r| (r.measure, r.q.0, r.dur_q.0, r.stem.is_up(), r.whole_bar)).collect();
         assert_eq!(
             rests,
             vec![(0, 1.0, 1.0, true, false), (0, 2.0, 2.0, true, false), (0, 1.0, 2.0, false, false), (1, 4.0, 4.0, true, true)]

@@ -164,7 +164,7 @@ pub fn cues(expected: &[Expected], clicks: &[(f64, bool)]) -> Vec<Cue> {
     let mut v: Vec<Cue> = clicks
         .iter()
         .map(|&(t, accent)| Cue { t, sound: Sound::Click { level: ClickLevel::from_accent(accent) } })
-        .chain(expected.iter().map(|e| Cue { t: e.t, sound: Sound::Drum { lane: e.lane, velocity: velocity_for(e) } }))
+        .chain(expected.iter().map(|e| Cue { t: e.t.0, sound: Sound::Drum { lane: e.lane, velocity: velocity_for(e) } }))
         .collect();
     v.sort_by(|a, b| a.t.total_cmp(&b.t)); // stable
     v

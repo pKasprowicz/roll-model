@@ -13,6 +13,7 @@ use crate::metronome::HAS_AUDIO;
 use crate::playback::{self, PlayOptions, Player, Ramp, Subdivision};
 use crate::render;
 use crate::score::Score;
+use crate::units::Quarters;
 use crate::widgets;
 
 /// A running metronome and what it was started with.
@@ -182,14 +183,14 @@ impl DrumApp {
 
     /// Where the rolling preview is, in quarters from the start of the score: the
     /// practice range repeats, and the metronome's first beat is its first note.
-    fn metro_preview_pos(&self, start_q: f64, len_q: f64) -> f64 {
-        let Some(run) = self.metro_run.run.as_ref() else { return start_q };
+    fn metro_preview_pos(&self, start_q: Quarters, len_q: Quarters) -> f64 {
+        let Some(run) = self.metro_run.run.as_ref() else { return start_q.0 };
         let now = self.shown_now();
         let elapsed = match now.checked_duration_since(run.zero) {
             Some(d) => d.as_secs_f64(),
             None => -run.zero.duration_since(now).as_secs_f64(),
         };
-        start_q + (run.ramp.base_seconds(run.bar_sec, elapsed) / run.beat_sec).rem_euclid(len_q.max(1e-6))
+        start_q.0 + (run.ramp.base_seconds(run.bar_sec, elapsed) / run.beat_sec).rem_euclid(len_q.0.max(1e-6))
     }
 
     /// The loaded score, or with none the metronome's own bar, scrolling past a
@@ -232,7 +233,7 @@ impl DrumApp {
         });
         if match_score {
             self.cfg.metro_bpm = (score_bpm as f32).clamp(20.0, 300.0);
-            self.cfg.metro_beats = (bar_q.round() as u32).clamp(1, 12);
+            self.cfg.metro_beats = (bar_q.0.round() as u32).clamp(1, 12);
         }
         if !self.cfg.metro_preview {
             return;

@@ -17,6 +17,7 @@
 
 use crate::drums::Lane;
 use crate::score::{Dynamic, Hand, Kind, Measure, Score, ScoreNote, Stem, TempoMap};
+use crate::units::Quarters;
 
 /// The tempo the rudiment scores are written at; the practice tempo (percent) is then the BPM.
 pub const BASE_BPM: f64 = 100.0;
@@ -307,8 +308,8 @@ impl Rudiment {
             ..Score::default()
         };
         for i in 0..repeats {
-            let start_q = i as f64 * beats;
-            score.measures.push(Measure { number: (i + 1).to_string(), start_q, len_q: beats, beats: cell.beats, beat_type: 4 });
+            let start_q = Quarters(i as f64 * beats);
+            score.measures.push(Measure { number: (i + 1).to_string(), start_q, len_q: Quarters(beats), beats: cell.beats, beat_type: 4 });
             let mirrored = match lead {
                 Lead::Right => false,
                 Lead::Left => true,
@@ -317,7 +318,7 @@ impl Rudiment {
             for stroke in &cell.strokes {
                 let hand = if mirrored { stroke.hand.other() } else { stroke.hand };
                 let note = |grace_order: u8, hand: Option<Hand>, accent: bool| ScoreNote {
-                    q: start_q + stroke.at,
+                    q: start_q + Quarters(stroke.at),
                     measure: i,
                     lane: Lane::Snare,
                     staff_step: step,
@@ -473,12 +474,12 @@ mod tests {
         let r = rudiment(24); // flam paradiddle
         let score = r.build(3, Lead::Right);
         assert_eq!(score.measures.len(), 3);
-        assert!(score.measures.iter().all(|m| m.len_q == 2.0 && m.beats == 2 && m.beat_type == 4));
-        assert_eq!(score.measures[1].start_q, 2.0);
+        assert!(score.measures.iter().all(|m| m.len_q == Quarters(2.0) && m.beats == 2 && m.beat_type == 4));
+        assert_eq!(score.measures[1].start_q, Quarters(2.0));
         assert_eq!(score.notes.len(), 3 * (8 + 2), "eight strokes and two grace notes per bar");
         assert!(score.notes.windows(2).all(|w| w[0].q <= w[1].q), "in time order");
         assert!(score.notes.iter().all(|n| n.lane == Lane::Snare));
-        assert!((score.tempo.bpm_at(0.0) - BASE_BPM).abs() < 1e-9);
+        assert!((score.tempo.bpm_at(Quarters::ZERO) - BASE_BPM).abs() < 1e-9);
         // A grace note comes right before its main note, with the other hand, and is not accented.
         let (g, m) = (&score.notes[0], &score.notes[1]);
         assert!(g.is_grace() && g.grace_order() == 1 && !g.is_accent() && g.hand == Some(Hand::Left));

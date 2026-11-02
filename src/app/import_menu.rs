@@ -6,6 +6,7 @@ use std::path::{Path, PathBuf};
 use std::sync::mpsc;
 
 use crate::import::{Format, Grid, ImportError, ImportOptions, Loaded, MidiOptions};
+use crate::units::Quarters;
 use crate::widgets;
 
 use super::{DrumApp, Source};
@@ -97,7 +98,7 @@ impl DrumApp {
             score.title,
             score.measures.len(),
             score.notes.len(),
-            score.tempo.bpm_at(0.0),
+            score.tempo.bpm_at(Quarters::ZERO),
             report.midi.as_ref().map(|m| format!(" ({})", m.summary())).unwrap_or_default(),
         );
         let last = score.measures.len().saturating_sub(1);

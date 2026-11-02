@@ -5,6 +5,7 @@ use roll_model_core::analysis::{analyze, expected_notes, Hit, Tolerances};
 use roll_model_core::config::Config;
 use roll_model_core::controller::{self, Action, Command, Mapper, Msg, State};
 use roll_model_core::import::{import_bytes, ImportOptions};
+use roll_model_core::units::Seconds;
 
 const SAMPLE: &str = include_str!("../../examples/basic_rock_beat.musicxml");
 
@@ -15,7 +16,7 @@ fn a_perfect_take_of_the_example_score_grades_perfect() {
     let expected = expected_notes(&score, 0, last, 1.0);
     assert!(!expected.is_empty());
     let hits: Vec<Hit> = expected.iter().map(|e| Hit { t: e.t, note: 0, velocity: 100, lane: e.lane }).collect();
-    let report = analyze(&expected, &hits, &Tolerances::default(), f64::INFINITY);
+    let report = analyze(&expected, &hits, &Tolerances::default(), Seconds::INFINITY);
     assert_eq!((report.missed, report.extra), (0, 0));
     assert_eq!(report.perfect, expected.len());
 }

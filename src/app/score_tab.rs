@@ -5,6 +5,7 @@ use egui::{Color32, RichText};
 use crate::config::limits;
 use crate::controller::Action;
 use crate::render::{self, LayoutOpts, ScoreView};
+use crate::units::Seconds;
 use crate::widgets;
 
 use super::session::{score_q, signed_secs};
@@ -182,7 +183,7 @@ impl DrumApp {
                 let r = &take.report;
                 if take.running {
                     let el = signed_secs(self.shown_now(), take.zero);
-                    if el < 0.0 {
+                    if el < Seconds::ZERO {
                         let beats_left = (-el / take.count_in_beat_sec).ceil() as i64;
                         ui.label(RichText::new(format!("Count-in… {beats_left}")).size(22.0).strong().color(render::ACCENT));
                     } else {

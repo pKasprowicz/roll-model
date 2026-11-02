@@ -19,4 +19,5 @@ pub mod practice_tempo;
 pub mod rudiments;
 pub mod score;
 pub mod trigger;
+pub mod units;
 pub mod xml;

@@ -6,6 +6,7 @@ use std::collections::HashMap;
 use super::ir::{RawMeasure, RawNote, RawScore};
 use super::{ImportError, ImportOptions};
 use crate::score::{Kind, Measure, Rest, Score, ScoreNote, TempoMap};
+use crate::units::Quarters;
 
 /// How far before its main note each note of a measure is played, if it is a grace note: the run of
 /// grace notes that ends at a main note is numbered backwards from it (1 is the one right before),
@@ -44,15 +45,21 @@ pub fn finish(raw: RawScore, opts: &ImportOptions) -> Result<Score, ImportError>
 
     let mut score = Score { title: raw.title, part_name: raw.part_name, warnings: raw.warnings, ..Default::default() };
     let mut tempo_pts = Vec::new();
-    let mut q = 0.0;
+    let mut q = Quarters::ZERO;
     for &mi in &order {
         let rm = &raw.measures[mi];
         let idx = score.measures.len();
-        score.measures.push(Measure { number: rm.number.clone(), start_q: q, len_q: rm.len_q, beats: rm.beats, beat_type: rm.beat_type });
+        score.measures.push(Measure {
+            number: rm.number.clone(),
+            start_q: q,
+            len_q: Quarters(rm.len_q),
+            beats: rm.beats,
+            beat_type: rm.beat_type,
+        });
         let orders = grace_orders(&rm.notes);
         for (n, order) in rm.notes.iter().zip(orders) {
             score.notes.push(ScoreNote {
-                q: q + n.offset_q,
+                q: q + Quarters(n.offset_q),
                 measure: idx,
                 lane: n.lane,
                 staff_step: n.staff_step,
@@ -64,12 +71,18 @@ pub fn finish(raw: RawScore, opts: &ImportOptions) -> Result<Score, ImportError>
             });
         }
         for r in &rm.rests {
-            score.rests.push(Rest { measure: idx, q: q + r.offset_q, dur_q: r.dur_q, stem: r.stem, whole_bar: r.whole_bar });
+            score.rests.push(Rest {
+                measure: idx,
+                q: q + Quarters(r.offset_q),
+                dur_q: Quarters(r.dur_q),
+                stem: r.stem,
+                whole_bar: r.whole_bar,
+            });
         }
         for (off, bpm) in &rm.tempos {
-            tempo_pts.push((q + off, *bpm));
+            tempo_pts.push((q + Quarters(*off), *bpm));
         }
-        q += rm.len_q;
+        q += Quarters(rm.len_q);
         if score.notes.len() > limits.max_notes {
             return Err(ImportError::TooLarge(format!("more than {} notes", limits.max_notes)));
         }
@@ -79,7 +92,7 @@ pub fn finish(raw: RawScore, opts: &ImportOptions) -> Result<Score, ImportError>
     }
     score.tempo = TempoMap::from_points(tempo_pts);
     score.notes.sort_by(|a, b| a.q.total_cmp(&b.q).then(a.lane.cmp(&b.lane)));
-    score.notes.dedup_by(|b, a| (a.q - b.q).abs() < 1e-6 && a.lane == b.lane && a.kind == b.kind);
+    score.notes.dedup_by(|b, a| (a.q - b.q).abs() < Quarters(1e-6) && a.lane == b.lane && a.kind == b.kind);
     if score.notes.is_empty() {
         score.warnings.push("No drum notes found in the part".into());
     }
@@ -93,18 +106,18 @@ pub fn finish(raw: RawScore, opts: &ImportOptions) -> Result<Score, ImportError>
 /// without a gap, notes and rests are in time order and inside their measure, and every index
 /// points at a measure that exists. The error says which rule broke.
 pub fn check_invariants(score: &Score) -> Result<(), String> {
-    const EPS: f64 = 1e-6;
-    let mut at = 0.0;
+    const EPS: Quarters = Quarters(1e-6);
+    let mut at = Quarters::ZERO;
     for (i, m) in score.measures.iter().enumerate() {
         if (m.start_q - at).abs() > EPS {
             return Err(format!("measure {i} starts at {} but the one before ends at {at}", m.start_q));
         }
-        if m.len_q <= 0.0 || !m.len_q.is_finite() {
+        if m.len_q <= Quarters::ZERO || !m.len_q.0.is_finite() {
             return Err(format!("measure {i} has length {}", m.len_q));
         }
         at = m.end_q();
     }
-    let inside = |kind: &str, i: usize, measure: usize, q: f64| -> Result<(), String> {
+    let inside = |kind: &str, i: usize, measure: usize, q: Quarters| -> Result<(), String> {
         let m = score.measures.get(measure).ok_or_else(|| format!("{kind} {i} is in measure {measure}, which does not exist"))?;
         if q < m.start_q - EPS || q > m.end_q() + EPS {
             return Err(format!("{kind} {i} at q={q} lies outside its measure {measure} ({}..{})", m.start_q, m.end_q()));
@@ -245,10 +258,10 @@ mod tests {
         score.notes[1].measure = 5;
         assert!(check_invariants(&score).unwrap_err().contains("does not exist"));
         let mut score = Score::click_bar(4, 1);
-        score.notes[1].q = 9.0;
+        score.notes[1].q = Quarters(9.0);
         assert!(check_invariants(&score).unwrap_err().contains("outside its measure"));
         let mut score = Score::click_bar(4, 1);
-        score.measures[0].start_q = 1.0;
+        score.measures[0].start_q = Quarters(1.0);
         assert!(check_invariants(&score).unwrap_err().contains("starts at"));
     }
 }

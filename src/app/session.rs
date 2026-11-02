@@ -9,19 +9,20 @@ use crate::metronome::{ClickOptions, Metronome, HAS_AUDIO};
 use crate::playback::{self, PlayOptions, Player, Ramp};
 use crate::render::{HitStatus, PlayedNote};
 use crate::score::Score;
+use crate::units::Seconds;
 
 use super::{Calibration, DrumApp, Listen, Plan, Source, Take, TakeSummary, CLEAN_TAKE, RESTART_DELAY};
 
-pub(super) fn signed_secs(t: Instant, zero: Instant) -> f64 {
+pub(super) fn signed_secs(t: Instant, zero: Instant) -> Seconds {
     if t >= zero {
-        (t - zero).as_secs_f64()
+        Seconds((t - zero).as_secs_f64())
     } else {
-        -(zero - t).as_secs_f64()
+        Seconds(-(zero - t).as_secs_f64())
     }
 }
 
-pub(super) fn score_q(score: &Score, take: &Take, elapsed: f64) -> f64 {
-    score.tempo.sec_to_q(elapsed + take.t0, take.tempo_scale)
+pub(super) fn score_q(score: &Score, take: &Take, elapsed: Seconds) -> f64 {
+    score.tempo.sec_to_q(elapsed + take.t0, take.tempo_scale).0
 }
 
 /// What stopping a take came to.
@@ -97,13 +98,13 @@ impl DrumApp {
         let written = score.tempo.bpm_at(m0.start_q);
         let scale = self.practice.tempo.scale(written);
         let bpm = written * scale;
-        let beat_sec = 60.0 / bpm * m0.beat_q();
+        let beat_sec = Seconds(60.0 / bpm * m0.beat_q().0);
         let count_in_beats = if count_in { self.cfg.count_in_bars * m0.beats } else { 0 };
         let lead = 0.5;
-        let zero = Instant::now() + Duration::from_secs_f64(lead + count_in_beats as f64 * beat_sec);
+        let zero = Instant::now() + Duration::from_secs_f64(lead + count_in_beats as f64 * beat_sec.0);
         let t0 = score.tempo.q_to_sec(m0.start_q, scale);
         let end_sec = score.tempo.q_to_sec(score.measures[to].end_q(), scale) - t0;
-        let clicks = score.click_track(from, to, scale, count_in_beats, true);
+        let clicks = score.click_track(from, to, scale, count_in_beats, true).into_iter().map(|(t, accent)| (t.0, accent)).collect();
         Some(Plan { from, to, scale, bpm, beat_sec, count_in_beats, zero, t0, end_sec, clicks })
     }
 
@@ -134,7 +135,7 @@ impl DrumApp {
             tempo_scale: plan.scale,
             t0: plan.t0,
             end_sec: plan.end_sec,
-            report: analyze_with(&expected, &[], &self.cfg.tol, f64::NEG_INFINITY, adaptive),
+            report: analyze_with(&expected, &[], &self.cfg.tol, Seconds::NEG_INFINITY, adaptive),
             label,
             adaptive,
             expected,
@@ -225,7 +226,7 @@ impl DrumApp {
             format!("Listening to measures {}–{} at {:.0} BPM", score.measures[plan.from].number, score.measures[plan.to].number, plan.bpm)
         };
         let cues = playback::cues(&expected, &plan.clicks);
-        self.playback.player = Some(Player::start(plan.zero, cues, plan.end_sec, opts, self.playback.control.clone()));
+        self.playback.player = Some(Player::start(plan.zero, cues, plan.end_sec.0, opts, self.playback.control.clone()));
         self.playback.listen = Some(Listen {
             zero: plan.zero,
             tempo_scale: plan.scale,
@@ -305,12 +306,12 @@ impl DrumApp {
         let l = self.playback.listen.as_ref()?;
         let score = self.practice.score.as_ref()?;
         let elapsed = signed_secs(self.shown_now(), l.zero);
-        if elapsed < 0.0 {
+        if elapsed < Seconds::ZERO {
             let left = (-elapsed / l.beat_sec).ceil() as u32;
             return Some(if left > l.count_in_beats { "starting…".into() } else { format!("count-in {left}") });
         }
-        let (pass, e) = l.ramp.locate(l.end_sec, elapsed);
-        let q = score.tempo.sec_to_q(e + l.t0, l.tempo_scale);
+        let (pass, e) = l.ramp.locate(l.end_sec.0, elapsed.0);
+        let q = score.tempo.sec_to_q(Seconds(e) + l.t0, l.tempo_scale);
         let m = &score.measures[score.measure_at(q)?];
         let beat = (((q - m.start_q) / m.beat_q()).floor() as u32 + 1).min(m.beats);
         let mut text = format!("bar {} · beat {}", m.number, beat);
@@ -333,8 +334,8 @@ impl DrumApp {
         let l = self.playback.listen.as_ref()?;
         let score = self.practice.score.as_ref()?;
         let elapsed = signed_secs(self.shown_now(), l.zero);
-        let (_, e) = l.ramp.locate(l.end_sec, elapsed);
-        Some(score.tempo.sec_to_q(e + l.t0, l.tempo_scale))
+        let (_, e) = l.ramp.locate(l.end_sec.0, elapsed.0);
+        Some(score.tempo.sec_to_q(Seconds(e) + l.t0, l.tempo_scale).0)
     }
 
     /// Plays one instrument on its own so it can be heard (and tuned) without a score.
@@ -394,7 +395,7 @@ impl DrumApp {
             return TakeOutcome::NoTake;
         }
         take.running = false;
-        let elapsed = if completed { f64::INFINITY } else { signed_secs(Instant::now(), take.zero) };
+        let elapsed = if completed { Seconds::INFINITY } else { signed_secs(Instant::now(), take.zero) };
         take.report = analyze_with(&take.expected, &take.hits, &self.cfg.tol, elapsed, take.adaptive);
         let r = &take.report;
         if r.evaluated == 0 {
@@ -443,7 +444,7 @@ impl DrumApp {
         }
         let elapsed = signed_secs(Instant::now(), take.zero);
         take.report = analyze_with(&take.expected, &take.hits, &self.cfg.tol, elapsed, take.adaptive);
-        if elapsed > take.end_sec + 1.0 {
+        if elapsed > take.end_sec + Seconds(1.0) {
             self.stop_take(true);
         }
     }
@@ -467,7 +468,7 @@ impl DrumApp {
 
     pub(super) fn update_calibration(&mut self) {
         let Some(cal) = self.calibration.as_ref() else { return };
-        let now = signed_secs(Instant::now(), cal.zero);
+        let now = signed_secs(Instant::now(), cal.zero).0;
         if now < cal.beats.last().copied().unwrap_or(0.0) + 0.6 {
             return;
         }
@@ -500,18 +501,12 @@ impl DrumApp {
                     Some(ei) => {
                         let r = take.report.results[ei];
                         let s = r.outcome.grade().map_or(HitStatus::Neutral, HitStatus::Graded);
-                        (s, r.dt_ms)
+                        (s, r.dt)
                     }
-                    None if h.t > take.end_sec + 0.2 || h.t < -0.2 => (HitStatus::Neutral, None),
+                    None if h.t > take.end_sec + Seconds(0.2) || h.t < Seconds(-0.2) => (HitStatus::Neutral, None),
                     None => (HitStatus::Extra, None),
                 };
-                PlayedNote {
-                    q: score.tempo.sec_to_q(h.t + take.t0, take.tempo_scale),
-                    lane: h.lane,
-                    velocity: h.velocity,
-                    status,
-                    dt_ms: dt,
-                }
+                PlayedNote { q: score.tempo.sec_to_q(h.t + take.t0, take.tempo_scale).0, lane: h.lane, velocity: h.velocity, status, dt }
             })
             .collect()
     }
