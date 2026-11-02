@@ -7,35 +7,6 @@ use std::sync::{Arc, Mutex};
 
 use crate::drums::Lane;
 
-/// How strong a metronome click is.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum ClickLevel {
-    /// First beat of a bar.
-    Accent,
-    Beat,
-    /// A subdivision between beats (eighths, sixteenths, triplets).
-    Sub,
-}
-
-impl ClickLevel {
-    pub fn from_accent(accent: bool) -> ClickLevel {
-        if accent {
-            ClickLevel::Accent
-        } else {
-            ClickLevel::Beat
-        }
-    }
-
-    /// MIDI velocity of the click note.
-    pub fn velocity(self) -> u8 {
-        match self {
-            ClickLevel::Accent => 127,
-            ClickLevel::Beat => 90,
-            ClickLevel::Sub => 55,
-        }
-    }
-}
-
 fn load(a: &AtomicU32) -> f32 {
     f32::from_bits(a.load(Relaxed))
 }
@@ -201,14 +172,6 @@ mod tests {
         for (i, lane) in Lane::ALL.iter().enumerate() {
             assert_eq!(c.lane_gain(*lane), i as f32 / 10.0, "{lane:?}");
         }
-    }
-
-    #[test]
-    fn click_levels() {
-        assert_eq!(ClickLevel::from_accent(true), ClickLevel::Accent);
-        assert_eq!(ClickLevel::from_accent(false), ClickLevel::Beat);
-        assert!(ClickLevel::Accent.velocity() > ClickLevel::Beat.velocity());
-        assert!(ClickLevel::Beat.velocity() > ClickLevel::Sub.velocity());
     }
 
     #[test]

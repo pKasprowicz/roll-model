@@ -25,9 +25,10 @@ use crate::audio::mixer::NO_GROUP;
 use crate::audio::resample::resample;
 use crate::audio::EngineHandle;
 use crate::config::Subdivision;
-use crate::control::{ClickLevel, ErrorLog, SoundSwitches};
+use crate::control::{ErrorLog, SoundSwitches};
 use crate::drums::Lane;
 use crate::metronome::{at, wait_until, AUDIO_LOOKAHEAD};
+use crate::practice::{ClickLevel, Ramp};
 use crate::score::Click;
 use crate::score::Dynamic;
 use crate::synth::{velocity_gain, Kit, SAMPLE_RATE};
@@ -50,72 +51,6 @@ pub enum Sound {
 pub struct Cue {
     pub t: f64,
     pub sound: Sound,
-}
-
-/// A tempo ramp for a looping run: every `every` passes the tempo rises by `step`, a fraction of
-/// the starting tempo (0.05 = five per cent of it), up to `MAX_FACTOR` times the starting tempo.
-/// Cue times are given for the starting tempo; the player squeezes the later passes.
-#[derive(Clone, Copy, Debug, Default, PartialEq)]
-pub struct Ramp {
-    /// 0 = no ramp.
-    pub every: usize,
-    pub step: f64,
-}
-
-impl Ramp {
-    /// The tempo never rises beyond this many times the starting tempo.
-    pub const MAX_FACTOR: f64 = 3.0;
-
-    /// How many times faster than the start pass number `pass` (the first is 0) is played.
-    pub fn factor(self, pass: usize) -> f64 {
-        if self.every == 0 || self.step <= 0.0 {
-            return 1.0;
-        }
-        (1.0 + self.step * (pass / self.every) as f64).min(Self::MAX_FACTOR)
-    }
-
-    fn is_off(self) -> bool {
-        self.every == 0 || self.step <= 0.0
-    }
-
-    /// Where `elapsed` real seconds into the run are: the pass (from 0) and the seconds into that
-    /// pass counted at the starting tempo. Before the start (the count-in) nothing is squeezed.
-    pub fn locate(self, pass_len: f64, elapsed: f64) -> (usize, f64) {
-        let pass_len = pass_len.max(0.001);
-        if elapsed < 0.0 || self.is_off() {
-            return if elapsed < 0.0 { (0, elapsed) } else { ((elapsed / pass_len) as usize, elapsed % pass_len) };
-        }
-        let (mut left, mut pass) = (elapsed, 0usize);
-        loop {
-            let f = self.factor(pass);
-            let real_len = pass_len / f;
-            if f >= Self::MAX_FACTOR {
-                // From here on every pass is the same length.
-                let whole = (left / real_len).floor();
-                return (pass + whole as usize, (left - whole * real_len) * f);
-            }
-            if left < real_len {
-                return (pass, left * f);
-            }
-            left -= real_len;
-            pass += 1;
-        }
-    }
-
-    /// `elapsed` real seconds into the run, as seconds at the starting tempo: what a clock or a
-    /// playhead that does not know about the ramp would show.
-    pub fn base_seconds(self, pass_len: f64, elapsed: f64) -> f64 {
-        let (pass, into) = self.locate(pass_len, elapsed);
-        if elapsed < 0.0 {
-            return elapsed;
-        }
-        pass as f64 * pass_len.max(0.001) + into
-    }
-
-    /// When pass `pass` starts, in real seconds after the start of the first.
-    fn start_of(self, pass_len: f64, pass: usize) -> f64 {
-        (0..pass).map(|p| pass_len / self.factor(p)).sum()
-    }
 }
 
 /// What is fixed for one run of the player. Everything that can change while

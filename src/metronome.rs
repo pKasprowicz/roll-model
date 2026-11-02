@@ -11,7 +11,8 @@ use std::time::{Duration, Instant};
 use crate::audio::click::ClickBank;
 use crate::audio::mixer::NO_GROUP;
 use crate::audio::EngineHandle;
-use crate::control::{ClickLevel, ErrorLog, SoundSwitches};
+use crate::control::{ErrorLog, SoundSwitches};
+use crate::practice::ClickLevel;
 use crate::score::Click;
 
 #[derive(Clone, Debug)]

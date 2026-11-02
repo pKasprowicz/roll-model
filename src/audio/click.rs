@@ -4,7 +4,7 @@
 use std::f64::consts::TAU;
 use std::sync::Arc;
 
-use crate::control::ClickLevel;
+use crate::practice::ClickLevel;
 
 /// How long a click sounds.
 pub const CLICK_SECS: f64 = 0.030;

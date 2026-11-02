@@ -1,15 +1,12 @@
 use std::path::{Path, PathBuf};
 
-use crate::analysis::{analyze, expected_notes, Hit};
 use crate::config::Config;
 use crate::config::MAX_LANE_GAIN;
 use crate::controller::{Action, Command};
 use crate::drums::Lane;
 use crate::rudiments::{Lead, MAX_REPEATS};
-use crate::units::Seconds;
 
 use super::super::{DrumApp, Source, Tab};
-use super::apply::{register_tap, shifted_range, worst_measure, Direction, TAPS_KEPT};
 use super::page::copy_preset;
 use super::*;
 
@@ -36,63 +33,6 @@ fn a_controller_is_noticed_when_plugged_in_or_pulled_out() {
     // The drum input is never mistaken for the controller.
     assert_eq!(watch_step(None, &only_drums, "Roland", Some("Roland V31")), Watch::Keep);
     assert_eq!(watch_step(None, &only_drums, "Roland", None), Watch::Connect);
-}
-
-#[test]
-fn tapping_gives_the_tempo_and_a_pause_starts_over() {
-    let t0 = Instant::now();
-    let at = |ms: u64| t0 + Duration::from_millis(ms);
-    let mut taps = Vec::new();
-    assert_eq!(register_tap(&mut taps, at(0)), None);
-    let bpm = register_tap(&mut taps, at(500)).unwrap();
-    assert!((bpm - 120.0).abs() < 1e-6);
-    assert!((register_tap(&mut taps, at(1000)).unwrap() - 120.0).abs() < 1e-6);
-    // Slowing down: the average follows.
-    let slower = register_tap(&mut taps, at(1700)).unwrap();
-    assert!(slower < 120.0 && slower > 90.0, "{slower}");
-    // A long pause starts a new tap tempo.
-    assert_eq!(register_tap(&mut taps, at(10_000)), None);
-    assert_eq!(taps.len(), 1);
-    // Only the last few taps count.
-    for i in 1..20 {
-        register_tap(&mut taps, at(10_000 + i * 400));
-    }
-    assert_eq!(taps.len(), TAPS_KEPT);
-}
-
-#[test]
-fn the_range_moves_by_its_own_length_and_stops_at_the_ends() {
-    assert_eq!(shifted_range(0, 3, 16, Direction::Forward), Some((4, 7)));
-    assert_eq!(shifted_range(4, 7, 16, Direction::Back), Some((0, 3)));
-    assert_eq!(shifted_range(0, 3, 16, Direction::Back), None);
-    assert_eq!(shifted_range(12, 15, 16, Direction::Forward), None);
-    assert_eq!(shifted_range(10, 13, 16, Direction::Forward), Some((14, 15)), "the last chunk may be shorter");
-    assert_eq!(shifted_range(2, 5, 16, Direction::Back), Some((0, 3)), "not below the first measure");
-    assert_eq!(shifted_range(3, 3, 8, Direction::Forward), Some((4, 4)));
-}
-
-#[test]
-fn the_worst_measure_is_where_most_goes_wrong() {
-    let app = app_with_score();
-    let score = app.practice.score.as_ref().unwrap();
-    let last = score.measures.len() - 1;
-    let expected = expected_notes(score, 0, last, 1.0);
-    let tol = &app.cfg.tol;
-    // Everything played perfectly, except that measure 2 (index 1) is left out.
-    let hits: Vec<Hit> = expected
-        .iter()
-        .filter(|e| score.notes[e.note_idx].measure != 1)
-        .map(|e| Hit { t: e.t, note: 36, velocity: 100, lane: e.lane })
-        .collect();
-    let report = analyze(&expected, &hits, tol, Seconds::INFINITY);
-    assert_eq!(worst_measure(score, &report, &[]), Some(1));
-    // Enough stray hits in measure 4 make it the worst one.
-    let strays = vec![last; expected.len()];
-    assert_eq!(worst_measure(score, &report, &strays), Some(last));
-    // Nothing wrong, nothing to practise.
-    let all: Vec<Hit> = expected.iter().map(|e| Hit { t: e.t, note: 36, velocity: 100, lane: e.lane }).collect();
-    let perfect = analyze(&expected, &all, tol, Seconds::INFINITY);
-    assert_eq!(worst_measure(score, &perfect, &[]), None);
 }
 
 #[test]

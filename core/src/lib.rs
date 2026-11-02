@@ -1,6 +1,6 @@
 //! The core of Roll Model: everything that needs no window, no MIDI port and no sound card.
 //! Scores (`import`, `xml`, `score`, `drums`), grading (`analysis`), rudiments, the
-//! start trigger, the CSV of a take (`export`), the practice tempo and its unit (`practice_tempo`), the hardware controller (`controller`, `controller_layout`) and the settings
+//! start trigger, the CSV of a take (`export`), the practice tempo and its unit (`practice_tempo`), tap tempo, the tempo ramp and the worst bar of a take (`practice`), the hardware controller (`controller`, `controller_layout`) and the settings
 //! file (`config`). Positions in a score are quarter notes (`q`); seconds come only from
 //! `score::TempoMap`.
 //!
@@ -19,6 +19,7 @@ pub mod drums;
 pub mod export;
 pub mod import;
 pub mod notation;
+pub mod practice;
 pub mod practice_tempo;
 pub mod progress;
 pub mod rudiments;

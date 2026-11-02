@@ -1,79 +1,13 @@
 //! What a controller command does in the application: the state the lights show, and every action.
 
 use super::super::{DrumApp, Source, Tab};
-use crate::analysis::Report;
 use crate::config::{limits, Config, MAX_LANE_GAIN};
 use crate::controller::{self, Action, Command, State, GROUPS};
+use crate::practice::{nudged_volume, register_tap, shifted_range, worst_measure, Direction};
 use crate::practice_tempo::PracticeTempo;
 use crate::rudiments::{Lead, MAX_REPEATS};
-use crate::score::Score;
 use std::path::Path;
-use std::time::{Duration, Instant};
-
-/// Taps further apart than this start a new tap tempo.
-pub(super) const TAP_GAP: Duration = Duration::from_secs(2);
-/// Taps that count towards the tempo.
-pub(super) const TAPS_KEPT: usize = 6;
-
-/// Adds a tap and returns the tempo (beats per minute) they give, once there are two.
-pub(super) fn register_tap(taps: &mut Vec<Instant>, now: Instant) -> Option<f64> {
-    if taps.last().is_some_and(|last| now.saturating_duration_since(*last) > TAP_GAP) {
-        taps.clear();
-    }
-    taps.push(now);
-    if taps.len() > TAPS_KEPT {
-        taps.remove(0);
-    }
-    if taps.len() < 2 {
-        return None;
-    }
-    let span = taps[taps.len() - 1].saturating_duration_since(taps[0]).as_secs_f64();
-    (span > 0.0).then(|| 60.0 * (taps.len() - 1) as f64 / span)
-}
-
-/// Which way the selected bars move.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(super) enum Direction {
-    Back,
-    Forward,
-}
-
-/// The range of the same length before or after `from..=to` in a score of `n` measures.
-pub(super) fn shifted_range(from: usize, to: usize, n: usize, direction: Direction) -> Option<(usize, usize)> {
-    let len = to.saturating_sub(from) + 1;
-    if direction == Direction::Forward {
-        (to + 1 < n).then(|| (from + len, (to + len).min(n - 1)))
-    } else {
-        (from > 0).then(|| {
-            let from = from.saturating_sub(len);
-            (from, from + len - 1)
-        })
-    }
-}
-
-/// The measure the last take went worst in: the most missed, wrong or
-/// sloppy notes and extra hits (`extra_in`: the measure of each). `None` if all was perfect.
-pub(super) fn worst_measure(score: &Score, report: &Report, extra_in: &[usize]) -> Option<usize> {
-    let mut loss = vec![0.0_f64; score.measures.len()];
-    for (e, r) in report.expected.iter().zip(&report.results) {
-        let Some(grade) = r.outcome.grade() else { continue };
-        if let Some(slot) = score.notes.get(e.note_idx).and_then(|n| loss.get_mut(n.measure)) {
-            *slot += 1.0 - grade.credit();
-        }
-    }
-    for m in extra_in {
-        if let Some(slot) = loss.get_mut(*m) {
-            *slot += 1.0;
-        }
-    }
-    let (worst, most) = loss.iter().copied().enumerate().fold((0, 0.0), |best, (i, l)| if l > best.1 { (i, l) } else { best });
-    (most > 1e-9).then_some(worst)
-}
-
-/// Steps of 2 % on a 0..1 volume, without the rounding errors adding up.
-pub(super) fn nudged_volume(v: f32, steps: i32) -> f32 {
-    (((v + 0.02 * steps as f32) * 50.0).round() / 50.0).clamp(0.0, 1.0)
-}
+use std::time::Instant;
 
 /// The actions that change the tempo, the range or the score: locked while a take records.
 fn locked_by_recording(action: Action) -> bool {
