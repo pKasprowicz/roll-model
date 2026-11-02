@@ -3,6 +3,7 @@
 
 use egui::RichText;
 
+use crate::config::limits;
 use crate::drums::{format_note_list, parse_note_list, Lane};
 use crate::metronome::HAS_AUDIO;
 use crate::midi;
@@ -141,7 +142,7 @@ impl DrumApp {
             ui.label("Latency compensation");
             ui.horizontal(|ui| {
                 let before = self.cfg.latency_ms;
-                widgets::slider(ui, "", &mut self.cfg.latency_ms, -50.0..=200.0, " ms", 1.0);
+                widgets::slider(ui, "", &mut self.cfg.latency_ms, limits::LATENCY_MS.range(), " ms", 1.0);
                 if self.cfg.latency_ms != before {
                     self.cfg.latency_engine = crate::audio::ENGINE_GENERATION; // set by hand with this engine
                 }
@@ -158,13 +159,13 @@ impl DrumApp {
             );
             ui.end_row();
             ui.label("Perfect within");
-            widgets::slider(ui, "", &mut self.cfg.tol.perfect_ms, 5.0..=50.0, " ms", 1.0);
+            widgets::slider(ui, "", &mut self.cfg.tol.perfect_ms, limits::PERFECT_MS.range(), " ms", 1.0);
             ui.end_row();
             ui.label("Good within");
-            widgets::slider(ui, "", &mut self.cfg.tol.good_ms, 10.0..=100.0, " ms", 1.0);
+            widgets::slider(ui, "", &mut self.cfg.tol.good_ms, limits::GOOD_MS.range(), " ms", 1.0);
             ui.end_row();
             ui.label("Hit window (beyond = extra/missed)");
-            widgets::slider(ui, "", &mut self.cfg.tol.window_ms, 40.0..=250.0, " ms", 5.0);
+            widgets::slider(ui, "", &mut self.cfg.tol.window_ms, limits::WINDOW_MS.range(), " ms", 5.0);
             ui.end_row();
         });
         if self.cfg.latency_is_stale(crate::audio::ENGINE_GENERATION) {
@@ -268,7 +269,7 @@ impl DrumApp {
         ui.add_enabled_ui(HAS_AUDIO, |ui| {
             ui.horizontal(|ui| {
                 ui.checkbox(&mut self.cfg.click_audio, "Click through the computer's sound output");
-                widgets::slider(ui, "volume", &mut self.cfg.click_volume, 0.0..=1.0, "", 0.02);
+                widgets::slider(ui, "volume", &mut self.cfg.click_volume, limits::CLICK_VOLUME.range(), "", 0.02);
             });
         });
         ui.checkbox(&mut self.cfg.click_midi, "Send the click to the MIDI output");

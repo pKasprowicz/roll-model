@@ -2,7 +2,7 @@
 
 use super::super::{DrumApp, Source, Tab};
 use crate::analysis::Report;
-use crate::config::{Config, MAX_LANE_GAIN};
+use crate::config::{limits, Config, MAX_LANE_GAIN};
 use crate::controller::{self, Action, Command, State, GROUPS};
 use crate::practice_tempo::PracticeTempo;
 use crate::rudiments::{Lead, MAX_REPEATS};
@@ -14,7 +14,6 @@ use std::time::{Duration, Instant};
 pub(super) const TAP_GAP: Duration = Duration::from_secs(2);
 /// Taps that count towards the tempo.
 pub(super) const TAPS_KEPT: usize = 6;
-pub(super) const METRO_RANGE: (f32, f32) = (20.0, 300.0);
 
 /// Adds a tap and returns the tempo (beats per minute) they give, once there are two.
 pub(super) fn register_tap(taps: &mut Vec<Instant>, now: Instant) -> Option<f64> {
@@ -123,11 +122,7 @@ impl DrumApp {
         let c = &self.cfg;
         let measures = self.practice.score.as_ref().map_or(0, |s| s.measures.len());
         let along = |i: usize| if measures > 1 { i as f32 / (measures - 1) as f32 } else { 0.0 };
-        let tempo = if self.tempo_is_metronome() {
-            (c.metro_bpm - METRO_RANGE.0) / (METRO_RANGE.1 - METRO_RANGE.0)
-        } else {
-            self.practice.tempo.position()
-        };
+        let tempo = if self.tempo_is_metronome() { limits::METRO_BPM.unit(c.metro_bpm) } else { self.practice.tempo.position() };
         let mut s = State {
             record: self.practice.take.as_ref().is_some_and(|t| t.running),
             listen: self.playback.listen.is_some(),
@@ -140,10 +135,10 @@ impl DrumApp {
             range_to: along(self.practice.range_to),
             click_volume: c.click_volume,
             music_volume: c.playback_volume,
-            count_in: c.count_in_bars as f32 / 2.0,
-            bars_per_row: c.bars_per_row as f32 / 8.0,
+            count_in: limits::COUNT_IN_BARS.unit(c.count_in_bars),
+            bars_per_row: limits::BARS_PER_ROW.unit(c.bars_per_row),
             repeats: (c.rudiment_repeats - 1) as f32 / (MAX_REPEATS - 1) as f32,
-            lead: Lead::ALL.iter().position(|l| *l == self.rudiment_lead()).unwrap_or(0) as f32 / 2.0,
+            lead: Lead::ALL.iter().position(|l| *l == self.rudiment_lead()).unwrap_or(0) as f32 / (Lead::ALL.len() - 1) as f32,
             ..Default::default()
         };
         if self.source == Source::Rudiments {
@@ -288,7 +283,7 @@ impl DrumApp {
         match action {
             Action::Tempo => {
                 if tempo_here {
-                    self.cfg.metro_bpm = (self.cfg.metro_bpm.round() + steps as f32).clamp(METRO_RANGE.0, METRO_RANGE.1);
+                    self.cfg.metro_bpm = limits::METRO_BPM.clamp(self.cfg.metro_bpm.round() + steps as f32);
                     self.view.status = format!("Metronome {:.0} BPM", self.cfg.metro_bpm);
                 } else {
                     self.practice.tempo = self.practice.tempo.stepped(steps);
@@ -306,8 +301,8 @@ impl DrumApp {
             }
             Action::ClickVolume => self.cfg.click_volume = nudged_volume(self.cfg.click_volume, steps),
             Action::MusicVolume => self.cfg.playback_volume = nudged_volume(self.cfg.playback_volume, steps),
-            Action::CountIn => self.cfg.count_in_bars = (self.cfg.count_in_bars as i32 + one).clamp(0, 2) as u32,
-            Action::BarsPerRow => self.cfg.bars_per_row = (self.cfg.bars_per_row as i32 + one).clamp(0, 8) as usize,
+            Action::CountIn => self.cfg.count_in_bars = limits::COUNT_IN_BARS.clamp((self.cfg.count_in_bars as i32 + one).max(0) as u32),
+            Action::BarsPerRow => self.cfg.bars_per_row = limits::BARS_PER_ROW.clamp((self.cfg.bars_per_row as i32 + one).max(0) as usize),
             Action::Gain(i) => {
                 let g = self.cfg.gain_of(controller::group_lanes(i as usize)[0]);
                 self.set_group_gain(i as usize, (g + 0.05 * steps as f32).clamp(0.0, MAX_LANE_GAIN));
@@ -361,7 +356,7 @@ impl DrumApp {
         match action {
             Action::Tempo => {
                 if self.tempo_is_metronome() {
-                    self.cfg.metro_bpm = (METRO_RANGE.0 + x * (METRO_RANGE.1 - METRO_RANGE.0)).round();
+                    self.cfg.metro_bpm = limits::METRO_BPM.at(x).round();
                 } else {
                     self.practice.tempo = self.practice.tempo.at_position(x);
                 }
@@ -370,14 +365,14 @@ impl DrumApp {
             Action::RangeTo if measures > 0 => self.practice.range_to = bar(x).max(self.practice.range_from),
             Action::ClickVolume => self.cfg.click_volume = x,
             Action::MusicVolume => self.cfg.playback_volume = x,
-            Action::CountIn => self.cfg.count_in_bars = (x * 2.0).round() as u32,
-            Action::BarsPerRow => self.cfg.bars_per_row = (x * 8.0).round() as usize,
+            Action::CountIn => self.cfg.count_in_bars = limits::COUNT_IN_BARS.at(x),
+            Action::BarsPerRow => self.cfg.bars_per_row = limits::BARS_PER_ROW.at(x),
             Action::Repeats => {
                 self.cfg.rudiment_repeats = 1 + (x * (MAX_REPEATS - 1) as f32).round() as usize;
                 self.ensure_rudiment();
             }
             Action::Lead => {
-                self.rud.lead = Some(Lead::ALL[(x * 2.0).round() as usize]);
+                self.rud.lead = Some(Lead::ALL[(x * (Lead::ALL.len() - 1) as f32).round() as usize]);
                 self.ensure_rudiment();
             }
             Action::Gain(i) => self.set_group_gain(i as usize, x * MAX_LANE_GAIN),
@@ -438,7 +433,7 @@ impl DrumApp {
             return;
         };
         if self.tempo_is_metronome() {
-            self.cfg.metro_bpm = (bpm as f32).clamp(METRO_RANGE.0, METRO_RANGE.1);
+            self.cfg.metro_bpm = limits::METRO_BPM.clamp(bpm as f32);
             self.view.status = format!("Metronome {:.0} BPM (tapped)", self.cfg.metro_bpm);
         } else if let Some(score) = self.practice.score.as_ref() {
             let written = score.tempo.bpm_at(score.measures[self.practice.range_from.min(score.measures.len() - 1)].start_q);

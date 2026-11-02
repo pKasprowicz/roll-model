@@ -13,6 +13,7 @@ All notable changes are recorded here. The format follows [Keep a Changelog](htt
 - **A file whose import would produce an inconsistent score is refused with a message** instead of being opened and failing later (RV-5); the check ran only in test builds before.
 - **The CSV of a take quotes its fields** (RV-9): a printed measure number with a comma or a quote no longer breaks the rows.
 - **The drum MIDI queue is capped** like the controller's (RV-7), and a thread that panicked while holding a MIDI or sound queue no longer silences it or is reported as a full queue (RV-8).
+- **Numbers in the settings file are kept in the range the screen offers** (RV-40): a hand-edited file can no longer give a negative tolerance, a click volume of 1e30 or 12 bars per row.
 
 ## [0.10.2] - 2026-11-01
 

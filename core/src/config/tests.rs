@@ -1,4 +1,5 @@
 use super::*;
+use crate::practice_tempo::BPM_RANGE;
 
 #[test]
 fn settings_of_the_old_name_are_copied_to_the_new_folder_once() {
@@ -35,9 +36,9 @@ fn every_key_is_written_once_and_read_back() {
     }
     let mut c = Config::default();
     (KEYS.iter().find(|k| k.name == "zoom").unwrap().read)(&mut c, "9");
-    assert_eq!(c.zoom, 4.0, "a number is kept in its range");
+    assert_eq!(c.zoom, limits::ZOOM.hi, "a number is kept in its range");
     (KEYS.iter().find(|k| k.name == "zoom").unwrap().read)(&mut c, "nan");
-    assert_eq!(c.zoom, 4.0, "and a bad one changes nothing");
+    assert_eq!(c.zoom, limits::ZOOM.hi, "and a bad one changes nothing");
 }
 
 #[test]
@@ -108,7 +109,7 @@ fn rudiment_settings_are_clamped_and_default_when_missing() {
     );
     assert_eq!(c.rudiment, 1, "not a rudiment: keeps the default");
     assert_eq!(c.rudiment_repeats, MAX_REPEATS);
-    assert_eq!(c.rudiment_bpm.get(&16), Some(&300.0));
+    assert_eq!(c.rudiment_bpm.get(&16), Some(&BPM_RANGE.1));
     assert_eq!(c.rudiment_bpm.len(), 1, "unknown rudiments are dropped");
     assert_eq!(c.rudiment_best.len(), 1);
     assert_eq!(c.rudiment_best.get(&21), Some(&88.0));
@@ -142,7 +143,7 @@ fn mixer_layout_and_metronome_settings_are_clamped_and_default_when_missing() {
         "bars_per_row = 99\nlayout_align_bar = 1000000\nmetro_bpm = 5\nmetro_beats = 0\nmetro_sub = 9\n\
          gain.Ride = 9\ngain.Snare = abc\ngain.Nope = 1\nmute.Kick = true\nmute.Snare = maybe\naudio_output =\n",
     );
-    assert_eq!((c.bars_per_row, c.layout_align_bar), (16, 9999));
+    assert_eq!((c.bars_per_row, c.layout_align_bar), (limits::BARS_PER_ROW.hi, 9999));
     assert_eq!((c.metro_bpm, c.metro_beats, c.metro_sub), (20.0, 1, 3));
     assert_eq!(c.gain_of(Lane::Ride), MAX_LANE_GAIN);
     assert_eq!(c.gain_of(Lane::Snare), 1.0, "an unreadable gain keeps the default");
@@ -219,7 +220,11 @@ fn a_score_keeps_its_row_layout() {
 #[test]
 fn bad_layout_lines_are_ignored_and_the_list_is_capped() {
     let c = Config::from_text("layout = x 2 a.xml\nlayout = 3\nlayout = 3 4 \nlayout = 99 99999 big.xml\nlayout = 0 0 auto.xml\n");
-    assert_eq!(c.layouts, vec![("big.xml".to_string(), RowLayout { bars_per_row: 16, align_bar: 9999 })], "clamped; auto is not kept");
+    assert_eq!(
+        c.layouts,
+        vec![("big.xml".to_string(), RowLayout { bars_per_row: limits::BARS_PER_ROW.hi, align_bar: 9999 })],
+        "clamped; auto is not kept"
+    );
     let mut c = Config::default();
     for i in 0..MAX_LAYOUTS + 5 {
         c.remember_layout(&format!("score{i}.xml"), RowLayout { bars_per_row: 2, align_bar: 0 });

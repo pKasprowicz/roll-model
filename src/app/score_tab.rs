@@ -2,6 +2,7 @@
 
 use egui::{Color32, RichText};
 
+use crate::config::limits;
 use crate::render::{self, LayoutOpts, ScoreView};
 use crate::widgets;
 
@@ -97,14 +98,14 @@ impl DrumApp {
             // With a fixed number of bars per row the bars fill the width, so there is nothing to zoom.
             let auto_rows = self.cfg.bars_per_row == 0;
             ui.add_enabled_ui(auto_rows, |ui| {
-                widgets::slider(ui, "zoom", &mut self.cfg.zoom, 0.5..=3.0, "", 0.05);
+                widgets::slider(ui, "zoom", &mut self.cfg.zoom, limits::ZOOM.range(), "", 0.05);
             })
             .response
             .on_disabled_hover_text("Zoom sets how wide a bar is drawn when the rows are automatic. With a fixed number of bars per row (Layout menu) the bars fill the width instead; set bars per row to auto to use the zoom.");
             ui.checkbox(&mut self.follow, "follow");
             ui.menu_button("Layout", |ui| {
                 ui.set_min_width(320.0);
-                let bars = widgets::slider_with_zero(ui, "bars per row", &mut self.cfg.bars_per_row, 0..=8, "", 1.0, Some("auto"));
+                let bars = widgets::slider_with_zero(ui, "bars per row", &mut self.cfg.bars_per_row, limits::BARS_PER_ROW.range(), "", 1.0, Some("auto"));
                 let align = widgets::slider_with_zero(ui, "start a row at bar", &mut self.cfg.layout_align_bar, 0..=n_measures, "", 1.0, Some("off"));
                 if bars.changed() || align.changed() {
                     self.keep_layout();
@@ -138,7 +139,7 @@ impl DrumApp {
                 .on_hover_text("Play the notes of the score in Listen. Switch them off to use Listen as a click track.");
             ui.checkbox(&mut self.playback.looping, "loop")
                 .on_hover_text("Repeat the selected measures in Listen until it is stopped. Switching it off lets the current round finish.");
-            widgets::slider(ui, "count-in bars", &mut self.cfg.count_in_bars, 0..=2, "", 1.0);
+            widgets::slider(ui, "count-in bars", &mut self.cfg.count_in_bars, limits::COUNT_IN_BARS.range(), "", 1.0);
             ui.checkbox(&mut self.cfg.listen_count_in, "in Listen")
                 .on_hover_text("Start Listen with the count-in too. A recording always has one; switch this off to hear the music at once.");
             widgets::slider_with_zero(ui, "ramp +", &mut self.cfg.ramp_percent, 0..=20, " %", 1.0, Some("off"))

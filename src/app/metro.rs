@@ -7,6 +7,7 @@ use std::time::{Duration, Instant};
 use egui::{pos2, vec2, RichText, Sense, Stroke};
 
 use super::{DrumApp, Source};
+use crate::config::limits;
 use crate::metronome::HAS_AUDIO;
 use crate::playback::{self, PlayOptions, Player, Ramp, Subdivision};
 use crate::render;
@@ -155,7 +156,7 @@ impl DrumApp {
                 }
             }
             ui.add_space(6.0);
-            widgets::slider(ui, "tempo", &mut self.cfg.metro_bpm, 20.0..=300.0, " BPM", 1.0);
+            widgets::slider(ui, "tempo", &mut self.cfg.metro_bpm, limits::METRO_BPM.range(), " BPM", 1.0);
             widgets::slider(ui, "beats per bar", &mut self.cfg.metro_beats, 1..=12, "", 1.0);
             ui.horizontal(|ui| {
                 ui.label("subdivision");
@@ -163,7 +164,7 @@ impl DrumApp {
                     ui.selectable_value(&mut self.cfg.metro_sub, s.index(), s.label());
                 }
             });
-            widgets::slider(ui, "volume", &mut self.cfg.click_volume, 0.0..=1.0, "", 0.02);
+            widgets::slider(ui, "volume", &mut self.cfg.click_volume, limits::CLICK_VOLUME.range(), "", 0.02);
             ui.horizontal(|ui| {
                 widgets::slider_with_zero(ui, "faster by", &mut self.cfg.metro_ramp_bpm, 0..=20, " BPM", 1.0, Some("off"))
                     .on_hover_text("A tempo ramp: the metronome gets faster by this much every few bars, up to three times the starting tempo. Takes effect at the next start.");
