@@ -153,20 +153,20 @@ impl DrumApp {
                 self.press(Action::Metronome);
             }
             ui.add_space(6.0);
-            widgets::slider(ui, "tempo", &mut self.cfg.metro_bpm, limits::METRO_BPM.range(), " BPM", 1.0);
-            widgets::slider(ui, "beats per bar", &mut self.cfg.metro_beats, 1..=12, "", 1.0);
+            widgets::Slider::new("tempo", &mut self.cfg.metro_bpm, limits::METRO_BPM.range()).suffix(" BPM").show(ui);
+            widgets::Slider::new("beats per bar", &mut self.cfg.metro_beats, 1..=12).show(ui);
             ui.horizontal(|ui| {
                 ui.label("subdivision");
                 for s in Subdivision::ALL {
                     ui.selectable_value(&mut self.cfg.metro_sub, s, s.label());
                 }
             });
-            widgets::slider(ui, "volume", &mut self.cfg.click_volume, limits::CLICK_VOLUME.range(), "", 0.02);
+            widgets::Slider::new("volume", &mut self.cfg.click_volume, limits::CLICK_VOLUME.range()).step(0.02).show(ui);
             ui.horizontal(|ui| {
-                widgets::slider_with_zero(ui, "faster by", &mut self.cfg.metro_ramp_bpm, limits::METRO_RAMP_BPM.range(), " BPM", 1.0, Some("off"))
+                widgets::Slider::new("faster by", &mut self.cfg.metro_ramp_bpm, limits::METRO_RAMP_BPM.range()).suffix(" BPM").zero_text("off").show(ui)
                     .on_hover_text("A tempo ramp: the metronome gets faster by this much every few bars, up to three times the starting tempo. Takes effect at the next start.");
                 if self.cfg.metro_ramp_bpm > 0 {
-                    widgets::slider(ui, "every", &mut self.cfg.metro_ramp_bars, limits::METRO_RAMP_BARS.range(), " bars", 1.0);
+                    widgets::Slider::new("every", &mut self.cfg.metro_ramp_bars, limits::METRO_RAMP_BARS.range()).suffix(" bars").show(ui);
                 }
             });
         });

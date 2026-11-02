@@ -234,7 +234,7 @@ impl DrumApp {
                 ui.add_enabled_ui(!running, |ui| {
                     let (lo, hi) = self.practice.tempo.range();
                     let mut bpm = self.practice.tempo.value();
-                    widgets::slider(ui, "tempo", &mut bpm, lo..=hi, " BPM", 1.0);
+                    widgets::Slider::new("tempo", &mut bpm, lo..=hi).suffix(" BPM").show(ui);
                     self.practice.tempo = self.practice.tempo.with_value(bpm);
                 });
                 self.playback_switches(ui, running);
@@ -264,7 +264,7 @@ impl DrumApp {
                 if ui.button("Next").on_hover_text("The next rudiment").clicked() {
                     steps = 1;
                 }
-                widgets::slider(ui, "repeats", &mut repeats, 1..=MAX_REPEATS, "", 1.0);
+                widgets::Slider::new("repeats", &mut repeats, 1..=MAX_REPEATS).show(ui);
                 ui.label("lead");
                 for l in Lead::ALL {
                     ui.selectable_value(&mut lead, l, l.label());

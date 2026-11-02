@@ -718,8 +718,8 @@ python3 tools/build_notices.py      # target/notices/THIRD_PARTY_NOTICES.txt</co
 
 <h3 id="widgets">Widgets and style</h3>
 <ul>
-<li>Every slider goes through <code>widgets::slider</code>: the caption comes first and the mouse wheel moves the value by a step per notch (and is consumed so a surrounding scroll area stays put). Do not add a bare <code>egui::Slider</code>.</li>
-{{code:src/widgets.rs::pub fn slider<N}}
+<li>Every slider is a <code>widgets::Slider</code> (<code>Slider::new("zoom", &amp;mut v, range).step(0.05).show(ui)</code>): the caption comes first and the mouse wheel moves the value by a step per notch (and is consumed so a surrounding scroll area stays put). A test fails when a bare <code>egui::Slider</code> appears anywhere else.</li>
+{{code:src/widgets.rs::pub struct Slider<}}
 <li><code>widgets::roomy</code> scales text and spacing for the controls used from the drum stool; it is applied with <code>ui.scope</code> so it does not leak.</li>
 <li><code>ui.horizontal</code> follows its parent's direction, so a right-to-left parent reverses it; do not put captioned sliders inside one. Sliders do not wrap inside <code>horizontal_wrapped</code>, so wide control rows are plain <code>horizontal</code> rows that must still fit a 760 px window.</li>
 <li>The "small" text style is scaled by 1.5 at start-up for the grey helper texts, in both the light and the dark style (<code>all_styles_mut</code>).</li>
@@ -922,7 +922,7 @@ ring  = tempo -&gt; cc 20 scale=127      # a plain value 0..scale instead</code>
 <p>Audio is an optional feature. Rather than sprinkling <code>cfg</code> through callers, <code>audio.rs</code> re-exports either the real backend or <code>silent.rs</code> under the same names, so the rest of the code is feature-agnostic. Without the feature <code>Engine</code> is an enum with no variants: it can never be opened, so the stub methods are <code>match *self {}</code> and no unit value is passed around (which clippy would flag):</p>
 {{code:src/audio/silent.rs::pub enum Engine}}
 <h3>Generics where they remove duplication</h3>
-<p><code>widgets::slider&lt;N: Numeric&gt;</code> serves integers and floats with one body. Elsewhere the code prefers plain functions over clever generics.</p>
+<p><code>widgets::Slider&lt;N: Numeric&gt;</code> serves integers and floats with one body. Elsewhere the code prefers plain functions over clever generics.</p>
 <h3>Iterators returning <code>impl Trait</code></h3>
 <p>Small, lazy filters are returned as iterators instead of allocated vectors, for example the cues of a playback pass:</p>
 {{code:src/playback.rs::fn pass_cues}}
@@ -1199,7 +1199,7 @@ impl DrumApp {
 <li>Callbacks only push to queues; sound threads never block on the UI; the UI thread owns <code>DrumApp</code>.</li>
 <li>The audio callback never allocates, locks or frees: fixed pools, a wait-free queue in, a graveyard queue out, atomics for everything it publishes. A sound is told to the engine with the instant it should start, about 30 ms ahead; MIDI is held back to its time.</li>
 <li>A change that moves the click in time raises <code>audio::ENGINE_GENERATION</code>, so that a stored latency is flagged as stale. The output opens at the first sound, never in <code>DrumApp::new</code>.</li>
-<li>Every slider goes through <code>widgets::slider</code>; new settings go on their page and into <code>config.rs</code> with a round-trip test.</li>
+<li>Every slider is a <code>widgets::Slider</code>; new settings go on their page and into <code>config.rs</code> with a round-trip test.</li>
 <li>Practice fields are swapped only by <code>activate</code>; <code>open_file</code> activates the Score source.</li>
 <li>Rudiment scores are written at <code>BASE_BPM</code>, so the practice tempo in percent is the BPM.</li>
 <li>Listen and takes share <code>plan_run</code>; changing it changes both.</li>

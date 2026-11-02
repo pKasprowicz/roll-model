@@ -153,12 +153,12 @@ impl DrumApp {
             ui.separator();
             ui.checkbox(&mut self.practice.midi_options.remove_offset, "remove a constant offset")
                 .on_hover_text("A recording made with a fixed delay is moved as a whole before its notes are put on the grid.");
-            widgets::slider_with_zero(ui, "first bar starts at beat", &mut self.practice.midi_options.first_bar_beats, 0..=7, "", 1.0, Some("1 (as in the file)"))
+            widgets::Slider::new("first bar starts at beat", &mut self.practice.midi_options.first_bar_beats, 0..=7).zero_text("1 (as in the file)").show(ui)
                 .on_hover_text("Moves the bar lines, not the notes: the music before the first bar becomes a short bar (a pickup or a count-in). Not possible when the time signature changes later in the file.");
             ui.separator();
-            widgets::slider(ui, "accent from", &mut self.practice.midi_options.accent_ratio, 1.1..=2.0, "× median", 0.05)
+            widgets::Slider::new("accent from", &mut self.practice.midi_options.accent_ratio, 1.1..=2.0).suffix("× median").step(0.05).show(ui)
                 .on_hover_text("A note this much louder than the median of its instrument is an accent.");
-            widgets::slider(ui, "ghost up to", &mut self.practice.midi_options.ghost_ratio, 0.2..=0.9, "× median", 0.05)
+            widgets::Slider::new("ghost up to", &mut self.practice.midi_options.ghost_ratio, 0.2..=0.9).suffix("× median").step(0.05).show(ui)
                 .on_hover_text("A note this much quieter than the median of its instrument is a ghost note.");
             if ui.button("Defaults").clicked() {
                 self.practice.midi_options = MidiOptions::default();

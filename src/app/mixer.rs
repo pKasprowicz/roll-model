@@ -31,7 +31,7 @@ impl DrumApp {
                 ui.label(lane.label());
 
                 let mut gain = self.cfg.gain_of(lane);
-                if widgets::slider(ui, "", &mut gain, 0.0..=MAX_LANE_GAIN, "", 0.05).changed() {
+                if widgets::Slider::new("", &mut gain, 0.0..=MAX_LANE_GAIN).step(0.05).show(ui).changed() {
                     self.cfg.set_gain(lane, gain);
                 }
 

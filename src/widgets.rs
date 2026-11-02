@@ -17,67 +17,93 @@ pub fn hint(ui: &mut Ui, text: impl Into<String>) -> Response {
     ui.label(RichText::new(text).small().weak())
 }
 
-/// A slider with its `caption` in front of it. The control also follows the
-/// mouse wheel while the pointer is over the caption, the slider or the value
-/// box: one notch moves the value by `step` (and snaps it to the `step` grid
-/// that starts at the low end of the range). The wheel is then not passed on,
-/// so a scrolling page stays put while a slider is being tuned.
-pub fn slider<N: Numeric>(ui: &mut Ui, caption: &str, value: &mut N, range: RangeInclusive<N>, suffix: &str, step: f64) -> Response {
-    slider_with_zero(ui, caption, value, range, suffix, step, None)
+/// A slider with its `caption` in front of it:
+///
+/// ```ignore
+/// Slider::new("zoom", &mut zoom, limits::ZOOM.range()).step(0.05).show(ui);
+/// ```
+///
+/// The control also follows the mouse wheel while the pointer is over the caption, the slider or
+/// the value box: one notch moves the value by `step` (1 unless set; it snaps the value to the
+/// `step` grid that starts at the low end of the range). The wheel is then not passed on, so a
+/// scrolling page stays put while a slider is being tuned. `zero_text` shows a value of zero as
+/// a word ("auto", "off"). Every slider of the program is one of these, not a bare `egui::Slider`.
+pub struct Slider<'a, N: Numeric> {
+    caption: &'a str,
+    value: &'a mut N,
+    range: RangeInclusive<N>,
+    suffix: &'a str,
+    step: f64,
+    zero_text: Option<&'a str>,
 }
 
-/// Like [`slider`], but a value of zero is shown as `zero_text` ("auto", "off").
-pub fn slider_with_zero<N: Numeric>(
-    ui: &mut Ui,
-    caption: &str,
-    value: &mut N,
-    range: RangeInclusive<N>,
-    suffix: &str,
-    step: f64,
-    zero_text: Option<&str>,
-) -> Response {
-    let (lo, hi) = (range.start().to_f64(), range.end().to_f64());
-    // Show only as many decimals as the step needs ("100%", not "100.0%").
-    let decimals = if step >= 1.0 { 0 } else { (-step.log10()).ceil().clamp(0.0, 6.0) as usize };
-    let group = ui.horizontal(|ui| {
-        if !caption.is_empty() {
-            ui.label(caption);
-        }
-        let mut slider = egui::Slider::new(value, range).suffix(suffix).max_decimals(decimals);
-        if let Some(zero) = zero_text {
-            let zero = zero.to_string();
-            slider = slider.custom_formatter(move |n, _| if n == 0.0 { zero.clone() } else { format!("{n}") });
-        }
-        ui.add(slider)
-    });
-    let mut response = group.inner;
+impl<'a, N: Numeric> Slider<'a, N> {
+    pub fn new(caption: &'a str, value: &'a mut N, range: RangeInclusive<N>) -> Self {
+        Slider { caption, value, range, suffix: "", step: 1.0, zero_text: None }
+    }
 
-    if ui.is_enabled() && step > 0.0 && ui.rect_contains_pointer(group.response.rect) {
-        let dy = ui.input(|i| i.raw_scroll_delta.y);
-        if dy != 0.0 {
-            ui.input_mut(|i| {
-                i.raw_scroll_delta = Vec2::ZERO;
-                i.smooth_scroll_delta = Vec2::ZERO;
-            });
-            // A smooth wheel or touchpad sends many small deltas: collect them into notches
-            // (egui turns one wheel "line" into `line_scroll_speed` points).
-            let notch = ui.ctx().options(|o| o.line_scroll_speed).max(1.0);
-            let id = response.id.with("wheel");
-            let notches = ui.data_mut(|d| {
-                let acc = d.get_temp_mut_or_default::<f32>(id);
-                *acc += dy;
-                let n = (*acc / notch).trunc();
-                *acc -= n * notch;
-                n
-            });
-            if notches != 0.0 {
-                let on_grid = lo + ((value.to_f64() - lo) / step).round() * step;
-                *value = N::from_f64((on_grid + notches as f64 * step).clamp(lo, hi));
-                response.mark_changed();
+    /// Text after the number (" ms", "%").
+    pub fn suffix(mut self, suffix: &'a str) -> Self {
+        self.suffix = suffix;
+        self
+    }
+
+    /// How far one notch of the wheel moves the value.
+    pub fn step(mut self, step: f64) -> Self {
+        self.step = step;
+        self
+    }
+
+    pub fn zero_text(mut self, text: &'a str) -> Self {
+        self.zero_text = Some(text);
+        self
+    }
+
+    pub fn show(self, ui: &mut Ui) -> Response {
+        let Slider { caption, value, range, suffix, step, zero_text } = self;
+        let (lo, hi) = (range.start().to_f64(), range.end().to_f64());
+        // Show only as many decimals as the step needs ("100%", not "100.0%").
+        let decimals = if step >= 1.0 { 0 } else { (-step.log10()).ceil().clamp(0.0, 6.0) as usize };
+        let group = ui.horizontal(|ui| {
+            if !caption.is_empty() {
+                ui.label(caption);
+            }
+            let mut slider = egui::Slider::new(value, range).suffix(suffix).max_decimals(decimals);
+            if let Some(zero) = zero_text {
+                let zero = zero.to_string();
+                slider = slider.custom_formatter(move |n, _| if n == 0.0 { zero.clone() } else { format!("{n}") });
+            }
+            ui.add(slider)
+        });
+        let mut response = group.inner;
+
+        if ui.is_enabled() && step > 0.0 && ui.rect_contains_pointer(group.response.rect) {
+            let dy = ui.input(|i| i.raw_scroll_delta.y);
+            if dy != 0.0 {
+                ui.input_mut(|i| {
+                    i.raw_scroll_delta = Vec2::ZERO;
+                    i.smooth_scroll_delta = Vec2::ZERO;
+                });
+                // A smooth wheel or touchpad sends many small deltas: collect them into notches
+                // (egui turns one wheel "line" into `line_scroll_speed` points).
+                let notch = ui.ctx().options(|o| o.line_scroll_speed).max(1.0);
+                let id = response.id.with("wheel");
+                let notches = ui.data_mut(|d| {
+                    let acc = d.get_temp_mut_or_default::<f32>(id);
+                    *acc += dy;
+                    let n = (*acc / notch).trunc();
+                    *acc -= n * notch;
+                    n
+                });
+                if notches != 0.0 {
+                    let on_grid = lo + ((value.to_f64() - lo) / step).round() * step;
+                    *value = N::from_f64((on_grid + notches as f64 * step).clamp(lo, hi));
+                    response.mark_changed();
+                }
             }
         }
+        response
     }
-    response
 }
 
 /// Bigger controls for the Score tab, which is used with the mouse while the
@@ -127,16 +153,16 @@ mod tests {
         let ctx = egui::Context::default();
         let mut tempo = 100.0_f32;
         let mut centre = Pos2::ZERO;
-        frame(&ctx, vec![], |ui| centre = slider(ui, "tempo", &mut tempo, 25.0..=150.0, "%", 1.0).rect.center());
+        frame(&ctx, vec![], |ui| centre = Slider::new("tempo", &mut tempo, 25.0..=150.0).suffix("%").show(ui).rect.center());
         assert_eq!(tempo, 100.0, "no wheel, no change");
 
         let mut changed = false;
-        frame(&ctx, wheel_at(centre, 1.0), |ui| changed = slider(ui, "tempo", &mut tempo, 25.0..=150.0, "%", 1.0).changed());
+        frame(&ctx, wheel_at(centre, 1.0), |ui| changed = Slider::new("tempo", &mut tempo, 25.0..=150.0).suffix("%").show(ui).changed());
         assert_eq!(tempo, 101.0, "wheel up raises the value");
         assert!(changed, "the response reports the change");
-        frame(&ctx, wheel_at(centre, -3.0), |ui| _ = slider(ui, "tempo", &mut tempo, 25.0..=150.0, "%", 1.0));
+        frame(&ctx, wheel_at(centre, -3.0), |ui| _ = Slider::new("tempo", &mut tempo, 25.0..=150.0).suffix("%").show(ui));
         assert_eq!(tempo, 98.0, "three notches down");
-        frame(&ctx, wheel_at(centre, 500.0), |ui| _ = slider(ui, "tempo", &mut tempo, 25.0..=150.0, "%", 1.0));
+        frame(&ctx, wheel_at(centre, 500.0), |ui| _ = Slider::new("tempo", &mut tempo, 25.0..=150.0).suffix("%").show(ui));
         assert_eq!(tempo, 150.0, "clamped at the top");
     }
 
@@ -146,8 +172,8 @@ mod tests {
         let (mut bars, mut volume) = (1_u32, 0.7_f32);
         let (mut bars_at, mut volume_at) = (Pos2::ZERO, Pos2::ZERO);
         let draw = |ui: &mut Ui, bars: &mut u32, volume: &mut f32| {
-            let a = slider(ui, "count-in bars", bars, 0..=2, "", 1.0).rect.center();
-            let b = slider(ui, "volume", volume, 0.0..=1.0, "", 0.02).rect.center();
+            let a = Slider::new("count-in bars", bars, 0..=2).show(ui).rect.center();
+            let b = Slider::new("volume", volume, 0.0..=1.0).step(0.02).show(ui).rect.center();
             (a, b)
         };
         frame(&ctx, vec![], |ui| (bars_at, volume_at) = draw(ui, &mut bars, &mut volume));
@@ -163,7 +189,7 @@ mod tests {
         let ctx = egui::Context::default();
         let mut bars = 0_usize;
         let mut at = Pos2::ZERO;
-        let draw = |ui: &mut Ui, bars: &mut usize| slider_with_zero(ui, "bars per row", bars, 0..=8, "", 1.0, Some("auto")).rect.center();
+        let draw = |ui: &mut Ui, bars: &mut usize| Slider::new("bars per row", bars, 0..=8).zero_text("auto").show(ui).rect.center();
         frame(&ctx, vec![], |ui| at = draw(ui, &mut bars));
         frame(&ctx, wheel_at(at, 3.0), |ui| _ = draw(ui, &mut bars));
         assert_eq!(bars, 3);
@@ -176,8 +202,8 @@ mod tests {
         let ctx = egui::Context::default();
         let mut v = 5_u8;
         let mut at = Pos2::ZERO;
-        frame(&ctx, vec![], |ui| ui.add_enabled_ui(false, |ui| at = slider(ui, "x", &mut v, 0..=10, "", 1.0).rect.center()).inner);
-        frame(&ctx, wheel_at(at, 3.0), |ui| _ = ui.add_enabled_ui(false, |ui| slider(ui, "x", &mut v, 0..=10, "", 1.0)));
+        frame(&ctx, vec![], |ui| ui.add_enabled_ui(false, |ui| at = Slider::new("x", &mut v, 0..=10).show(ui).rect.center()).inner);
+        frame(&ctx, wheel_at(at, 3.0), |ui| _ = ui.add_enabled_ui(false, |ui| Slider::new("x", &mut v, 0..=10).show(ui)));
         assert_eq!(v, 5);
     }
 
@@ -188,7 +214,7 @@ mod tests {
         let mut at = Pos2::ZERO;
         let page = |ui: &mut Ui, v: &mut i32| -> (Pos2, f32) {
             let out = egui::ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| {
-                let at = slider(ui, "level", v, 0..=100, "", 1.0).rect.center();
+                let at = Slider::new("level", v, 0..=100).show(ui).rect.center();
                 ui.add_space(3000.0);
                 at
             });
@@ -231,5 +257,27 @@ mod tests {
         assert!(typing_with_focus_on("text"));
         assert!(!typing_with_focus_on("button"), "a button with the focus does not stop the shortcuts");
         assert!(!typing_with_focus_on("nothing"));
+    }
+
+    /// A convention that a rule of prose did not keep: every slider is a `Slider`, so that the
+    /// caption and the wheel behave the same everywhere.
+    #[test]
+    fn no_slider_of_egui_is_made_outside_this_file() {
+        fn walk(dir: &std::path::Path, found: &mut Vec<String>) {
+            for entry in std::fs::read_dir(dir).unwrap().flatten() {
+                let path = entry.path();
+                if path.is_dir() {
+                    walk(&path, found);
+                } else if path.extension().is_some_and(|e| e == "rs") && !path.ends_with("widgets.rs") {
+                    let text = std::fs::read_to_string(&path).unwrap();
+                    if text.contains("egui::Slider::new") {
+                        found.push(path.display().to_string());
+                    }
+                }
+            }
+        }
+        let mut found = Vec::new();
+        walk(&std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src"), &mut found);
+        assert!(found.is_empty(), "use widgets::Slider instead of egui::Slider in {found:?}");
     }
 }

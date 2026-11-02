@@ -46,8 +46,8 @@ impl DrumApp {
                     let mut from = self.practice.range_from + 1;
                     let mut to = self.practice.range_to + 1;
                     ui.label("Measures");
-                    widgets::slider(ui, "from", &mut from, 1..=n_measures, "", 1.0);
-                    widgets::slider(ui, "to", &mut to, 1..=n_measures, "", 1.0);
+                    widgets::Slider::new("from", &mut from, 1..=n_measures).show(ui);
+                    widgets::Slider::new("to", &mut to, 1..=n_measures).show(ui);
                     self.practice.range_from = from - 1;
                     self.practice.range_to = (to - 1).max(self.practice.range_from);
                 });
@@ -56,7 +56,7 @@ impl DrumApp {
                 ui.add_enabled_ui(!running, |ui| {
                     let (lo, hi) = self.practice.tempo.range();
                     let mut value = self.practice.tempo.value();
-                    widgets::slider(ui, "tempo", &mut value, lo..=hi, self.practice.tempo.unit(), 1.0);
+                    widgets::Slider::new("tempo", &mut value, lo..=hi).suffix(self.practice.tempo.unit()).show(ui);
                     self.practice.tempo = self.practice.tempo.with_value(value);
                     ui.label(format!("= {:.0} BPM", self.practice.tempo.bpm(base_bpm)));
                 });
@@ -102,15 +102,15 @@ impl DrumApp {
             // With a fixed number of bars per row the bars fill the width, so there is nothing to zoom.
             let auto_rows = self.cfg.bars_per_row == 0;
             ui.add_enabled_ui(auto_rows, |ui| {
-                widgets::slider(ui, "zoom", &mut self.cfg.zoom, limits::ZOOM.range(), "", 0.05);
+                widgets::Slider::new("zoom", &mut self.cfg.zoom, limits::ZOOM.range()).step(0.05).show(ui);
             })
             .response
             .on_disabled_hover_text("Zoom sets how wide a bar is drawn when the rows are automatic. With a fixed number of bars per row (Layout menu) the bars fill the width instead; set bars per row to auto to use the zoom.");
             ui.checkbox(&mut self.follow, "follow");
             ui.menu_button("Layout", |ui| {
                 ui.set_min_width(320.0);
-                let bars = widgets::slider_with_zero(ui, "bars per row", &mut self.cfg.bars_per_row, limits::BARS_PER_ROW.range(), "", 1.0, Some("auto"));
-                let align = widgets::slider_with_zero(ui, "start a row at bar", &mut self.cfg.layout_align_bar, 0..=n_measures, "", 1.0, Some("off"));
+                let bars = widgets::Slider::new("bars per row", &mut self.cfg.bars_per_row, limits::BARS_PER_ROW.range()).zero_text("auto").show(ui);
+                let align = widgets::Slider::new("start a row at bar", &mut self.cfg.layout_align_bar, 0..=n_measures).zero_text("off").show(ui);
                 if bars.changed() || align.changed() {
                     self.keep_layout();
                 }
@@ -163,13 +163,13 @@ impl DrumApp {
             {
                 self.press(Action::Loop);
             }
-            widgets::slider(ui, "count-in bars", &mut self.cfg.count_in_bars, limits::COUNT_IN_BARS.range(), "", 1.0);
+            widgets::Slider::new("count-in bars", &mut self.cfg.count_in_bars, limits::COUNT_IN_BARS.range()).show(ui);
             ui.checkbox(&mut self.cfg.listen_count_in, "in Listen")
                 .on_hover_text("Start Listen with the count-in too. A recording always has one; switch this off to hear the music at once.");
-            widgets::slider_with_zero(ui, "ramp +", &mut self.cfg.ramp_percent, limits::RAMP_PERCENT.range(), " %", 1.0, Some("off"))
+            widgets::Slider::new("ramp +", &mut self.cfg.ramp_percent, limits::RAMP_PERCENT.range()).suffix(" %").zero_text("off").show(ui)
                 .on_hover_text("With loop on, Listen gets faster by this many per cent of the written tempo every few passes (up to three times the starting tempo). Takes effect at the next start.");
             if self.cfg.ramp_percent > 0 {
-                widgets::slider(ui, "every", &mut self.cfg.ramp_passes, limits::RAMP_PASSES.range(), " passes", 1.0);
+                widgets::Slider::new("every", &mut self.cfg.ramp_passes, limits::RAMP_PASSES.range()).suffix(" passes").show(ui);
             }
         });
     }

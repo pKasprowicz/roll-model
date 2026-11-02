@@ -102,7 +102,7 @@ impl DrumApp {
         ui.add_space(6.0);
         ui.horizontal(|ui| {
             ui.label("Hi-hat pedal (CC#4) value when closed");
-            widgets::slider(ui, "", &mut self.cfg.hihat_cc_max, 1..=127, "", 1.0);
+            widgets::Slider::new("", &mut self.cfg.hihat_cc_max, 1..=127).show(ui);
         });
         widgets::hint(ui, "The hi-hat counts as closed when the pedal is at least three quarters of the way to this value, otherwise open, so hits on the closed or open hi-hat note follow the pedal. Lower it if your pedal never reports up to 127: close the pedal, hit the hi-hat and read the pedal value in the monitor. Hits before any pedal message keep the note's own open/closed meaning.");
 
@@ -142,7 +142,7 @@ impl DrumApp {
             ui.label("Latency compensation");
             ui.horizontal(|ui| {
                 let before = self.cfg.latency_ms;
-                widgets::slider(ui, "", &mut self.cfg.latency_ms, limits::LATENCY_MS.range(), " ms", 1.0);
+                widgets::Slider::new("", &mut self.cfg.latency_ms, limits::LATENCY_MS.range()).suffix(" ms").show(ui);
                 if self.cfg.latency_ms != before {
                     self.cfg.latency_engine = crate::audio::ENGINE_GENERATION; // set by hand with this engine
                 }
@@ -159,13 +159,13 @@ impl DrumApp {
             );
             ui.end_row();
             ui.label("Perfect within");
-            widgets::slider(ui, "", &mut self.cfg.tol.perfect_ms, limits::PERFECT_MS.range(), " ms", 1.0);
+            widgets::Slider::new("", &mut self.cfg.tol.perfect_ms, limits::PERFECT_MS.range()).suffix(" ms").show(ui);
             ui.end_row();
             ui.label("Good within");
-            widgets::slider(ui, "", &mut self.cfg.tol.good_ms, limits::GOOD_MS.range(), " ms", 1.0);
+            widgets::Slider::new("", &mut self.cfg.tol.good_ms, limits::GOOD_MS.range()).suffix(" ms").show(ui);
             ui.end_row();
             ui.label("Hit window (beyond = extra/missed)");
-            widgets::slider(ui, "", &mut self.cfg.tol.window_ms, limits::WINDOW_MS.range(), " ms", 5.0);
+            widgets::Slider::new("", &mut self.cfg.tol.window_ms, limits::WINDOW_MS.range()).suffix(" ms").step(5.0).show(ui);
             ui.end_row();
         });
         if self.cfg.latency_is_stale(crate::audio::ENGINE_GENERATION) {
@@ -269,13 +269,13 @@ impl DrumApp {
         ui.add_enabled_ui(HAS_AUDIO, |ui| {
             ui.horizontal(|ui| {
                 ui.checkbox(&mut self.cfg.click_audio, "Click through the computer's sound output");
-                widgets::slider(ui, "volume", &mut self.cfg.click_volume, limits::CLICK_VOLUME.range(), "", 0.02);
+                widgets::Slider::new("volume", &mut self.cfg.click_volume, limits::CLICK_VOLUME.range()).step(0.02).show(ui);
             });
         });
         ui.checkbox(&mut self.cfg.click_midi, "Send the click to the MIDI output");
         ui.horizontal(|ui| {
-            widgets::slider(ui, "click note", &mut self.cfg.click_note, 0..=127, "", 1.0);
-            widgets::slider(ui, "channel", &mut self.cfg.click_channel, 1..=16, "", 1.0);
+            widgets::Slider::new("click note", &mut self.cfg.click_note, 0..=127).show(ui);
+            widgets::Slider::new("channel", &mut self.cfg.click_channel, 1..=16).show(ui);
         });
         widgets::hint(ui, "Sending the click to the V31 (channel 10, an unmapped note such as 76 = wood block) puts it in your headphones with no extra audio latency.");
 
@@ -288,12 +288,12 @@ impl DrumApp {
         ui.add_enabled_ui(HAS_AUDIO, |ui| {
             ui.horizontal(|ui| {
                 ui.checkbox(&mut self.cfg.playback_audio, "Play through the computer's sound output (built-in drum sounds)");
-                widgets::slider(ui, "volume", &mut self.cfg.playback_volume, 0.0..=1.0, "", 0.02);
+                widgets::Slider::new("volume", &mut self.cfg.playback_volume, 0.0..=1.0).step(0.02).show(ui);
             });
         });
         ui.horizontal(|ui| {
             ui.checkbox(&mut self.cfg.playback_midi, "Send the notes to the MIDI output (the module's own sounds)");
-            widgets::slider(ui, "channel", &mut self.cfg.playback_channel, 1..=16, "", 1.0);
+            widgets::Slider::new("channel", &mut self.cfg.playback_channel, 1..=16).show(ui);
         });
         widgets::hint(ui, "Each instrument is sent as its standard General MIDI / Roland note, or the note mapped to it on the MIDI input page, so the V31 plays its own kit.");
 
