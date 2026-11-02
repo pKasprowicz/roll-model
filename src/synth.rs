@@ -374,6 +374,15 @@ pub fn velocity_gain(velocity: u8) -> f32 {
     0.2 + 0.8 * x.powf(1.4)
 }
 
+/// The built-in sound of `lane`, rendered once for the whole run of the program: it is the same
+/// every time, and synthesising the cymbals (40 partials, two seconds) is not something to do at
+/// every start of Listen, inside the half second before the first note.
+fn builtin(lane: Lane) -> Arc<Vec<f32>> {
+    static RENDERED: std::sync::OnceLock<std::sync::Mutex<BTreeMap<Lane, Arc<Vec<f32>>>>> = std::sync::OnceLock::new();
+    let cache = RENDERED.get_or_init(Default::default);
+    crate::sync::locked(cache).entry(lane).or_insert_with(|| Arc::new(render(lane))).clone()
+}
+
 /// Rendered samples for the lanes a piece uses.
 pub struct Kit {
     samples: BTreeMap<Lane, Arc<Vec<f32>>>,
@@ -403,7 +412,7 @@ impl Kit {
                     None
                 }
             });
-            samples.insert(lane, Arc::new(custom.unwrap_or_else(|| render(lane))));
+            samples.insert(lane, custom.map(Arc::new).unwrap_or_else(|| builtin(lane)));
         }
         (Kit { samples }, warnings)
     }
@@ -674,5 +683,13 @@ mod tests {
         assert!(kit.sample(Lane::Kick).is_some() && kit.sample(Lane::Snare).is_some());
         assert!(kit.sample(Lane::Ride).is_none());
         assert_eq!(kit.samples.len(), 2);
+    }
+
+    #[test]
+    fn the_built_in_sounds_are_rendered_once_and_shared_by_every_kit() {
+        let (a, _) = Kit::load([Lane::Snare, Lane::Crash1], None);
+        let (b, _) = Kit::load([Lane::Crash1], None);
+        assert!(Arc::ptr_eq(a.sample(Lane::Crash1).unwrap(), b.sample(Lane::Crash1).unwrap()));
+        assert_eq!(**a.sample(Lane::Snare).unwrap(), render(Lane::Snare), "the same sound as a fresh rendering");
     }
 }
