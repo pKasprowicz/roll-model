@@ -65,10 +65,10 @@ impl DrumApp {
         ui.heading("MIDI input");
         ui.horizontal(|ui| {
             ui.label("Input port");
-            let current = self.midi.input.as_ref().map(|h| h.port_name.clone()).unwrap_or_else(|| "— none —".into());
+            let current = self.midi.connected_port().map(str::to_string).unwrap_or_else(|| "— none —".into());
             let mut choice: Option<String> = None;
             egui::ComboBox::from_id_salt("midi_in_port").selected_text(current).width(260.0).show_ui(ui, |ui| {
-                for p in &self.midi.inputs {
+                for p in self.midi.inputs() {
                     if ui.selectable_label(false, p.as_str()).clicked() {
                         choice = Some(p.clone());
                     }
@@ -80,8 +80,8 @@ impl DrumApp {
             if ui.button("⟳ Refresh ports").clicked() {
                 self.refresh_ports();
             }
-            if self.midi.input.is_some() && ui.button("Disconnect").clicked() {
-                self.midi.input = None;
+            if self.midi.is_connected() && ui.button("Disconnect").clicked() {
+                self.midi.disconnect();
             }
         });
         widgets::hint(ui, "Connect the V31 by USB (or a MIDI interface on MIDI OUT). Close other apps that use the port — on Windows a MIDI port can only be opened by one program.");
@@ -89,7 +89,7 @@ impl DrumApp {
         ui.add_space(6.0);
         ui.label(RichText::new("Monitor (latest first)").strong());
         egui::Grid::new("monitor").num_columns(5).striped(true).show(ui, |ui| {
-            for (ev, lane) in &self.midi.monitor {
+            for (ev, lane) in self.midi.monitor() {
                 ui.label(format!("ch {}", ev.channel));
                 ui.label(format!("note {} ({})", ev.note, midi::note_name(ev.note)));
                 ui.label(format!("vel {}", ev.velocity));
@@ -118,21 +118,21 @@ impl DrumApp {
                     continue;
                 }
                 ui.label(lane.label());
-                let text = self.midi.lane_text.entry(lane).or_insert_with(|| format_note_list(&self.cfg.note_map.notes_for(lane)));
+                let text = self.midi.note_text(lane, || format_note_list(&self.cfg.note_map.notes_for(lane)));
                 if ui.add(egui::TextEdit::singleline(text).desired_width(140.0)).changed() {
                     let notes = parse_note_list(text);
                     self.cfg.note_map.set_lane_notes(lane, &notes);
                 }
-                let learning = self.midi.learn == Some(lane);
+                let learning = self.midi.learning() == Some(lane);
                 if ui.selectable_label(learning, if learning { "hit a pad…" } else { "Learn" }).clicked() {
-                    self.midi.learn = if learning { None } else { Some(lane) };
+                    self.midi.toggle_learning(lane);
                 }
                 ui.end_row();
             }
         });
         if ui.button("Reset to Roland V31 defaults").clicked() {
             self.cfg.note_map = crate::drums::NoteMap::roland_v31();
-            self.midi.lane_text.clear();
+            self.midi.forget_note_texts();
         }
     }
 
@@ -254,7 +254,7 @@ impl DrumApp {
         ui.horizontal(|ui| {
             ui.label("Output port");
             egui::ComboBox::from_id_salt("midi_out_port").selected_text(self.cfg.midi_out_port.clone()).width(260.0).show_ui(ui, |ui| {
-                for p in &self.midi.outputs {
+                for p in self.midi.outputs() {
                     ui.selectable_value(&mut self.cfg.midi_out_port, p.clone(), p.as_str());
                 }
             });

@@ -191,7 +191,7 @@ impl DrumApp {
         let wanted = if self.cfg.controller_port.is_empty() { preset.port.clone() } else { self.cfg.controller_port.clone() };
         c.wanted = wanted.clone();
         match midi::connect_controller(&wanted, c.queue.clone()) {
-            Ok(handle) if self.midi.input.as_ref().is_some_and(|h| h.port_name == handle.port_name) => {
+            Ok(handle) if self.midi.connected_port() == Some(handle.port_name.as_str()) => {
                 c.message = format!("\"{}\" is the drum input. Choose the controller's own port.", handle.port_name);
             }
             Ok(handle) => {
@@ -253,7 +253,7 @@ impl DrumApp {
         self.controller.last_watch = Instant::now();
         let ports = midi::list_inputs().unwrap_or_default();
         let connected = self.controller.link.as_ref().map(|l| l.handle.port_name.as_str());
-        let drum = self.midi.input.as_ref().map(|h| h.port_name.as_str());
+        let drum = self.midi.connected_port();
         match watch_step(connected, &ports, &self.controller.wanted, drum) {
             Watch::Keep => {}
             Watch::Lost => {

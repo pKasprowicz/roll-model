@@ -8,6 +8,7 @@ mod home;
 mod import_menu;
 mod metro;
 mod metro_state;
+mod midi_state;
 mod mixer;
 mod playback_state;
 mod results;
@@ -18,9 +19,7 @@ mod settings;
 mod startup;
 mod trigger;
 
-use std::collections::{BTreeMap, VecDeque};
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use egui::RichText;
@@ -31,7 +30,7 @@ use crate::controller::Action;
 use crate::drums::Lane;
 use crate::import::load_score;
 use crate::metronome::Metronome;
-use crate::midi::{self, EventQueue, InputHandle, RawEvent};
+use crate::midi::{self, RawEvent};
 use crate::practice_tempo::PracticeTempo;
 use crate::score::Click;
 use crate::score::Score;
@@ -39,6 +38,7 @@ use crate::theme;
 use crate::units::{Millis, Seconds};
 use crate::widgets;
 use metro_state::MetroState;
+use midi_state::MidiState;
 use playback_state::{Listen, ListenKey, Playback};
 use session::signed_secs;
 use settings::SettingsPage;
@@ -182,18 +182,6 @@ struct ViewState {
     fit_bars: Option<usize>,
 }
 
-/// The drum module's MIDI input: the ports, the connection, the events waiting and what the
-/// settings page shows of them.
-struct MidiState {
-    inputs: Vec<String>,
-    outputs: Vec<String>,
-    input: Option<InputHandle>,
-    queue: EventQueue,
-    monitor: VecDeque<(RawEvent, Option<Lane>)>,
-    learn: Option<Lane>,
-    lane_text: BTreeMap<Lane, String>,
-}
-
 pub struct DrumApp {
     cfg: Config,
     saved_cfg: Config,
@@ -308,15 +296,7 @@ impl DrumApp {
             settings_dirty_since: None,
             background_bytes: 1 << 20,
             follow: true,
-            midi: MidiState {
-                inputs: Vec::new(),
-                outputs: Vec::new(),
-                input: None,
-                queue: Arc::new(Mutex::new(Vec::new())),
-                monitor: VecDeque::new(),
-                learn: None,
-                lane_text: BTreeMap::new(),
-            },
+            midi: MidiState::new(),
             metronome: None,
             calibration: None,
             playback: Playback::new(),
@@ -333,20 +313,16 @@ impl DrumApp {
     // ----------------------------------------------------------------- MIDI
 
     fn refresh_ports(&mut self) {
-        self.midi.inputs = midi::list_inputs().unwrap_or_default();
-        self.midi.outputs = midi::list_outputs().unwrap_or_default();
+        self.midi.refresh_ports();
         self.audio_devices = crate::audio::output_devices();
         self.audio_default = crate::audio::default_output_device();
     }
 
     /// Connects the drum module's input; `Ok` holds the name of the port. Says nothing.
     fn connect_midi(&mut self, name: Option<String>) -> Result<String, midi::MidiError> {
-        self.midi.input = None; // close the old port first (Windows ports are exclusive)
         let wanted = name.unwrap_or_else(|| self.cfg.midi_in_port.clone());
-        let handle = midi::connect_input(&wanted, self.midi.queue.clone())?;
-        let port = handle.port_name.clone();
+        let port = self.midi.connect(&wanted)?;
         self.cfg.midi_in_port = port.clone();
-        self.midi.input = Some(handle);
         Ok(port)
     }
 
@@ -365,7 +341,7 @@ impl DrumApp {
     }
 
     fn drain_midi(&mut self) {
-        let events: Vec<RawEvent> = std::mem::take(&mut *crate::sync::locked(&self.midi.queue));
+        let events = self.midi.drain();
         for ev in events {
             self.handle_event(ev);
         }
@@ -374,8 +350,7 @@ impl DrumApp {
     fn handle_event(&mut self, ev: RawEvent) {
         self.learn_note(ev);
         let lane = self.cfg.note_map.lane(ev.note).map(|l| l.by_hihat_pedal(ev.hihat, self.cfg.hihat_cc_max));
-        self.midi.monitor.push_front((ev, lane));
-        self.midi.monitor.truncate(MONITOR_LINES);
+        self.midi.show_on_monitor(ev, lane, MONITOR_LINES);
         self.record_calibration_hit(ev);
         if let Some(lane) = lane {
             // A hit that belongs to the start trigger is no note of the take it starts.
@@ -388,9 +363,9 @@ impl DrumApp {
 
     /// MIDI-learn: the note now belongs to the lane that was waiting for one, and to no other.
     fn learn_note(&mut self, ev: RawEvent) {
-        if let Some(lane) = self.midi.learn.take() {
+        if let Some(lane) = self.midi.take_learning() {
             self.cfg.note_map.assign(ev.note, lane);
-            self.midi.lane_text.clear();
+            self.midi.forget_note_texts();
             self.view.status = format!("Note {} ({}) mapped to {}", ev.note, midi::note_name(ev.note), lane.label());
         }
     }
@@ -551,8 +526,8 @@ impl DrumApp {
                 self.show_tab(tab);
             }
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                match &self.midi.input {
-                    Some(h) => ui.label(RichText::new(format!("⏺ {}", h.port_name)).color(theme::GREEN)),
+                match self.midi.connected_port() {
+                    Some(port) => ui.label(RichText::new(format!("⏺ {port}")).color(theme::GREEN)),
                     None => ui.label(RichText::new("⏺ no MIDI input").color(theme::RED)),
                 };
                 if let Some(controls::ControllerLabel { text, connected }) = self.controller.label(!self.cfg.controller_preset.is_empty()) {
@@ -566,7 +541,7 @@ impl DrumApp {
                         self.toggle_controller_help();
                     }
                 }
-                if let Some((ev, lane)) = self.midi.monitor.front() {
+                if let Some((ev, lane)) = self.midi.latest() {
                     if ev.at.elapsed() < Duration::from_millis(1500) {
                         ui.label(format!("{} · note {} · vel {}", lane.map(|l| l.label()).unwrap_or("unmapped"), ev.note, ev.velocity));
                     }

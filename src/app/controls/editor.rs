@@ -396,11 +396,11 @@ impl DrumApp {
 
     /// A new, empty preset for the chosen port, to be taught by pressing the controls.
     fn new_learned_preset(&mut self) {
-        let drum = self.midi.input.as_ref().map(|h| h.port_name.clone());
+        let drum = self.midi.connected_port().map(str::to_string);
         let port = if !self.cfg.controller_port.is_empty() {
             Some(self.cfg.controller_port.clone())
         } else {
-            self.midi.inputs.iter().find(|p| Some(*p) != drum.as_ref()).cloned()
+            self.midi.inputs().iter().find(|p| Some(*p) != drum.as_ref()).cloned()
         };
         let Some(port) = port else {
             self.controller.editor.say("No MIDI input to use. Plug the controller in, then use Refresh and reconnect.");
@@ -1269,7 +1269,7 @@ bind = note 36 -> record
         let (_guard, dir) = temp_dir("new");
         let mut app = DrumApp::with_config(Config { controller_preset: "Behringer X-Touch Mini".into(), ..Config::default() });
         app.paths = Paths::in_dir(dir.parent().unwrap().to_path_buf());
-        app.midi.inputs = vec!["Some Pad Controller".into()];
+        app.midi.set_inputs(vec!["Some Pad Controller".into()]);
         assert!(app.editable_path().is_none(), "a built-in preset is not edited");
         app.new_learned_preset();
         assert_eq!(app.cfg.controller_preset, "My controller");
@@ -1393,7 +1393,7 @@ bind = note 36 -> record
         let (_guard, dir) = temp_dir("window");
         app.controller.editor.view.open = false;
         app.paths = Paths::in_dir(dir.parent().unwrap().to_path_buf());
-        app.midi.inputs = vec!["Some Pad Controller".into()];
+        app.midi.set_inputs(vec!["Some Pad Controller".into()]);
         app.new_learned_preset();
         assert!(app.controller.editor.view.open, "a new preset opens the editor");
         frame(&mut app);

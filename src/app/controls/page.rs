@@ -64,7 +64,7 @@ impl DrumApp {
                 if ui.selectable_label(self.cfg.controller_port.is_empty(), "automatic (the preset's port)").clicked() {
                     port = Some(String::new());
                 }
-                for p in &self.midi.inputs {
+                for p in self.midi.inputs() {
                     if ui.selectable_label(&self.cfg.controller_port == p, p.as_str()).clicked() {
                         port = Some(p.clone());
                     }
