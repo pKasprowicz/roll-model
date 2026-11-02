@@ -69,7 +69,7 @@ impl DrumApp {
     /// Builds the score of the chosen rudiment unless that is what is there already. A take
     /// that is recording keeps the score it began with.
     pub(super) fn ensure_rudiment(&mut self) {
-        if self.source != Source::Rudiments || self.practice.take.as_ref().is_some_and(|t| t.running) {
+        if self.source != Source::Rudiments || self.take_running() {
             return;
         }
         let r = self.rudiment();
@@ -182,7 +182,7 @@ impl DrumApp {
     }
 
     pub(super) fn rudiments_tab(&mut self, ui: &mut egui::Ui) {
-        let running = self.practice.take.as_ref().is_some_and(|t| t.running);
+        let running = self.take_running();
         let picked = ui
             .scope(|ui| {
                 widgets::roomy(ui);

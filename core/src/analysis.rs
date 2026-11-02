@@ -4,6 +4,7 @@ use std::collections::BTreeMap;
 
 use crate::drums::Lane;
 use crate::score::{Dynamic, Hand, Score};
+use crate::stats::median;
 use crate::units::{Millis, Seconds};
 
 /// A captured hit, already mapped to a lane and expressed in score time
@@ -562,11 +563,6 @@ fn dynamics_score(r: &Report, hits: &[Hit], model: &ScoringModel) -> Option<f64>
             }
         }
     }
-    let median = |v: &Vec<f64>| {
-        let mut s = v.clone();
-        s.sort_by(|a, b| a.total_cmp(b));
-        s[s.len() / 2]
-    };
     let mut checks = 0usize;
     let mut good = 0usize;
     for (e, res) in r.expected.iter().zip(&r.results) {
@@ -575,7 +571,7 @@ fn dynamics_score(r: &Report, hits: &[Hit], model: &ScoringModel) -> Option<f64>
             continue;
         }
         let v = hits[hi].velocity as f64;
-        let reference = plain.get(&e.lane).filter(|p| !p.is_empty()).map(median).unwrap_or(model.fallback_velocity);
+        let reference = plain.get(&e.lane).filter(|p| !p.is_empty()).map(|v| median(&mut v.clone())).unwrap_or(model.fallback_velocity);
         checks += 1;
         if (e.dynamic == Dynamic::Accent && v >= reference + model.accent_margin)
             || (e.dynamic == Dynamic::Ghost && v <= reference - model.ghost_margin)

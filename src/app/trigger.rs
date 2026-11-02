@@ -22,7 +22,7 @@ impl DrumApp {
         self.cfg.trigger_enabled
             && matches!(self.view.tab, Tab::Score | Tab::Rudiments)
             && self.practice.score.is_some()
-            && !self.practice.take.as_ref().is_some_and(|t| t.running)
+            && !self.take_running()
             && self.calibration.is_none()
     }
 
@@ -46,7 +46,7 @@ impl DrumApp {
             return false;
         }
         self.start_take();
-        if self.practice.take.as_ref().is_some_and(|t| t.running) {
+        if self.take_running() {
             self.view.status = format!("{} — recording started by the trigger", self.view.status);
         }
         true
@@ -130,7 +130,7 @@ mod tests {
     }
 
     fn recording(app: &DrumApp) -> bool {
-        app.practice.take.as_ref().is_some_and(|t| t.running)
+        app.take_running()
     }
 
     #[test]

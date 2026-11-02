@@ -742,11 +742,7 @@ impl DrumApp {
     /// Keep animating while recording, calibrating, listening or clicking; otherwise poll MIDI
     /// often enough for the monitor and MIDI-learn.
     fn schedule_repaint(&self, ctx: &egui::Context) {
-        if self.practice.take.as_ref().is_some_and(|t| t.running)
-            || self.calibration.is_some()
-            || self.playback.listen.is_some()
-            || self.metro_run.run.is_some()
-        {
+        if self.take_running() || self.calibration.is_some() || self.playback.listen.is_some() || self.metro_run.run.is_some() {
             ctx.request_repaint();
         } else {
             ctx.request_repaint_after(Duration::from_millis(50));

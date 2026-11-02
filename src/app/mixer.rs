@@ -32,12 +32,7 @@ impl DrumApp {
 
                 let mut gain = self.cfg.gain_of(lane);
                 if widgets::slider(ui, "", &mut gain, 0.0..=MAX_LANE_GAIN, "", 0.05).changed() {
-                    // The default is not stored, so it can be changed later without leaving traces.
-                    if (gain - 1.0).abs() < 0.01 {
-                        self.cfg.lane_gain.remove(&lane);
-                    } else {
-                        self.cfg.lane_gain.insert(lane, gain);
-                    }
+                    self.cfg.set_gain(lane, gain);
                 }
 
                 let mut muted = self.cfg.lane_mute.contains(&lane);

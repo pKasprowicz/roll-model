@@ -19,7 +19,7 @@ impl DrumApp {
             return;
         };
         let n_measures = score.measures.len();
-        let running = self.practice.take.as_ref().is_some_and(|t| t.running);
+        let running = self.take_running();
         let base_bpm = score.tempo.bpm_at(score.measures[self.practice.range_from.min(n_measures - 1)].start_q);
         let title = score.title.clone();
         let part = score.part_name.clone();

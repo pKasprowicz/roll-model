@@ -122,7 +122,7 @@ impl DrumApp {
         let along = |i: usize| if measures > 1 { i as f32 / (measures - 1) as f32 } else { 0.0 };
         let tempo = if self.tempo_is_metronome() { limits::METRO_BPM.unit(c.metro_bpm) } else { self.practice.tempo.position() };
         let mut s = State {
-            record: self.practice.take.as_ref().is_some_and(|t| t.running),
+            record: self.take_running(),
             listen: self.playback.listen.is_some(),
             click: c.metronome_during_take,
             looping: self.playback.looping,
@@ -153,7 +153,7 @@ impl DrumApp {
         s
     }
 
-    pub(super) fn take_running(&self) -> bool {
+    pub(in crate::app) fn take_running(&self) -> bool {
         self.practice.take.as_ref().is_some_and(|t| t.running)
     }
 
@@ -203,9 +203,7 @@ impl DrumApp {
                 }
             }
             Action::Stop => {
-                self.stop_take(false);
-                self.stop_listen();
-                self.stop_metro();
+                self.stop_all_sound();
             }
             Action::Click => self.cfg.metronome_during_take = !self.cfg.metronome_during_take,
             Action::Loop if !running => self.playback.looping = !self.playback.looping,
@@ -495,12 +493,7 @@ impl DrumApp {
 
     pub(super) fn set_group_gain(&mut self, group: usize, gain: f32) {
         for lane in controller::group_lanes(group) {
-            // The default is not stored, as in the mixer.
-            if (gain - 1.0).abs() < 0.01 {
-                self.cfg.lane_gain.remove(lane);
-            } else {
-                self.cfg.lane_gain.insert(*lane, gain);
-            }
+            self.cfg.set_gain(*lane, gain);
         }
         self.view.status = format!("{}: volume {:.0} %", controller::group_label(group), gain * 100.0);
     }

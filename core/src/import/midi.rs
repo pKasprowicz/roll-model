@@ -12,6 +12,7 @@ use super::quantise::{self, MidiOptions};
 use super::{Format, ImportError, ImportOptions, Limits};
 use crate::drums::{gm_lane, Lane};
 use crate::score::Dynamic;
+use crate::stats::median;
 
 /// Where a drum note starts, in ticks from the start of the file.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -237,10 +238,9 @@ fn dynamics(onsets: &[Onset], lanes: &[Lane], opts: &MidiOptions) -> Vec<Dynamic
     }
     let medians: HashMap<Lane, Option<f64>> = by_lane
         .into_iter()
-        .map(|(lane, mut v)| {
-            v.sort_unstable();
-            let spread = v[v.len() - 1] - v[0];
-            let median = (f64::from(v[(v.len() - 1) / 2]) + f64::from(v[v.len() / 2])) / 2.0;
+        .map(|(lane, v)| {
+            let spread = v.iter().max().unwrap_or(&0) - v.iter().min().unwrap_or(&0);
+            let median = median(&mut v.iter().map(|x| f64::from(*x)).collect::<Vec<f64>>());
             (lane, (v.len() >= 4 && spread >= 8).then_some(median))
         })
         .collect();

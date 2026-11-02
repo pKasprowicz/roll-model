@@ -13,6 +13,7 @@
 use std::collections::{BTreeMap, HashSet};
 
 use crate::drums::Lane;
+use crate::stats::median;
 
 /// How fine the grid may get.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
@@ -155,16 +156,6 @@ impl Tempos<'_> {
         let at = self.points.partition_point(|(t, _)| (*t as f64) <= tick);
         let us = if at == 0 { self.points.first().map_or(500_000, |p| p.1) } else { self.points[at - 1].1 };
         f64::from(us) / 1000.0 / self.ppq as f64
-    }
-}
-
-fn median(values: &mut [f64]) -> f64 {
-    values.sort_by(f64::total_cmp);
-    let n = values.len();
-    if n % 2 == 1 {
-        values[n / 2]
-    } else {
-        (values[n / 2 - 1] + values[n / 2]) / 2.0
     }
 }
 

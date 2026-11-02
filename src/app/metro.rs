@@ -66,9 +66,7 @@ impl DrumApp {
     }
 
     pub(super) fn start_metro(&mut self) {
-        self.stop_take(false);
-        self.stop_listen();
-        self.stop_metro();
+        self.stop_all_sound();
         self.ensure_audio();
         let opts = self.metro_options();
         if !opts.click_audio && !opts.click_midi {

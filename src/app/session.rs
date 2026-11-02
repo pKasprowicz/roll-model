@@ -108,10 +108,15 @@ impl DrumApp {
         Some(Plan { from, to, scale, bpm, beat_sec, count_in_beats, zero, t0, end_sec, clicks })
     }
 
-    pub(super) fn start_take(&mut self) {
+    /// Stops everything that makes sound by itself: a take, Listen and the metronome.
+    pub(super) fn stop_all_sound(&mut self) {
         self.stop_take(false);
         self.stop_listen();
         self.stop_metro();
+    }
+
+    pub(super) fn start_take(&mut self) {
+        self.stop_all_sound();
         self.ensure_audio();
         self.sync_control();
         if self.source == Source::Rudiments && !self.rudiment().gradable() {
@@ -205,9 +210,7 @@ impl DrumApp {
     }
 
     pub(super) fn begin_listen(&mut self, count_in: bool) {
-        self.stop_take(false);
-        self.stop_listen();
-        self.stop_metro();
+        self.stop_all_sound();
         self.ensure_audio();
         self.playback.restart.cancel();
         let opts = self.play_options();
@@ -444,9 +447,7 @@ impl DrumApp {
     }
 
     pub(super) fn start_calibration(&mut self) {
-        self.stop_take(false);
-        self.stop_listen();
-        self.stop_metro();
+        self.stop_all_sound();
         self.ensure_audio();
         let beat = 0.6; // 100 BPM
         let zero = Instant::now() + Duration::from_secs_f64(1.0);

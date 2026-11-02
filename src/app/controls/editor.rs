@@ -36,6 +36,8 @@ pub(super) struct ManageView {
 }
 
 /// How many clicks to each side tell an encoder's encoding.
+/// What the Manage window says when a control is to be learned and there is no controller.
+const CONNECT_FIRST: &str = "Connect the controller first (Refresh and reconnect, above).";
 const DETECT_CLICKS: usize = 4;
 
 /// The values an encoder sent while its encoding is being found out.
@@ -833,7 +835,7 @@ impl DrumApp {
         match op {
             Op::Learn(action) => {
                 if !self.controller.is_connected() {
-                    self.controller.editor.say("Connect the controller first (Refresh and reconnect, above).");
+                    self.controller.editor.say(CONNECT_FIRST);
                 } else {
                     self.controller.editor.start_learning(action);
                 }
@@ -841,7 +843,7 @@ impl DrumApp {
             Op::Cancel => self.controller.editor.stop_learning(),
             Op::Detect(action) => {
                 if !self.controller.is_connected() {
-                    self.controller.editor.say("Connect the controller first (Refresh and reconnect, above).");
+                    self.controller.editor.say(CONNECT_FIRST);
                 } else {
                     let editor = &mut self.controller.editor;
                     editor.stop_learning();
@@ -877,7 +879,7 @@ impl DrumApp {
             Op::LearnLayer => {
                 let name = self.controller.editor.view.new_layer.trim().to_string();
                 if !self.controller.is_connected() {
-                    self.controller.editor.say("Connect the controller first (Refresh and reconnect, above).");
+                    self.controller.editor.say(CONNECT_FIRST);
                 } else {
                     let editor = &mut self.controller.editor;
                     editor.stop_learning();

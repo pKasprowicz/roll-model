@@ -271,3 +271,14 @@ fn the_subdivision_is_stored_by_name_and_the_old_numbers_still_read() {
     c.metro_sub = Subdivision::Sixteenths;
     assert_eq!(Config::from_text("metro_sub = sixteenths\n").metro_sub, c.metro_sub);
 }
+
+#[test]
+fn the_default_volume_of_an_instrument_is_not_stored() {
+    let mut c = Config::default();
+    c.set_gain(Lane::Ride, 0.5);
+    assert_eq!(c.gain_of(Lane::Ride), 0.5);
+    c.set_gain(Lane::Ride, 1.004);
+    assert!(c.lane_gain.is_empty(), "back to the default leaves nothing");
+    c.set_gain(Lane::Snare, 99.0);
+    assert_eq!(c.gain_of(Lane::Snare), MAX_LANE_GAIN, "kept in range");
+}

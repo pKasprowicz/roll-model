@@ -598,6 +598,16 @@ impl Config {
         self.lane_gain.get(&lane).copied().unwrap_or(1.0)
     }
 
+    /// Sets the volume of one instrument. The default (1.0, give or take a hundredth) is not stored,
+    /// so it can be changed later without leaving traces.
+    pub fn set_gain(&mut self, lane: Lane, gain: f32) {
+        if (gain - 1.0).abs() < 0.01 {
+            self.lane_gain.remove(&lane);
+        } else {
+            self.lane_gain.insert(lane, gain.clamp(0.0, MAX_LANE_GAIN));
+        }
+    }
+
     /// What an instrument is played at in Listen: its volume, or silence when
     /// it is muted, or when other instruments are soloed and it is not one.
     pub fn effective_gain(&self, solo: &BTreeSet<Lane>, lane: Lane) -> f32 {
