@@ -10,6 +10,9 @@ All notable changes are recorded here. The format follows [Keep a Changelog](htt
 - **The on-screen buttons Record, Stop, Listen, click, notes, loop and the metronome Start/Stop follow the same rules as the keys and the controller** (RV-12): while a take records, the tempo, range and mode buttons refuse with "Locked while a take is recording." or do nothing, as the keys did; the metronome Start button no longer ends a recording.
 - The ramp settings in the settings file are kept in the ranges of their sliders (RV-40); the ladder tooltip takes its numbers from the code.
 
+### Fixed
+- **The two grace notes of a drag in an imported MusicXML file keep their places** before the main note (RV-19): both were read as the one right before it, and the second was dropped as a duplicate.
+
 ## [0.10.3] - 2026-11-02
 
 Housekeeping from the code review of 0.10.1, with a few behaviour fixes. The keys R, L, M, K and Esc now behave exactly like the controller buttons, a file whose import would give an inconsistent score is refused with a message, the CSV of a take quotes its fields, the drum MIDI queue is capped, and numbers in a hand-edited settings file are kept inside the ranges the screen offers. Under the surface, the program's state per source, the tempo with its unit, the grading constants and the ranges each have one definition.

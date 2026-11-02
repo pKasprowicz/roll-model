@@ -49,11 +49,9 @@ pub(super) fn shifted_range(from: usize, to: usize, n: usize, forward: bool) -> 
 pub(super) fn worst_measure(score: &Score, report: &Report, extra_in: &[usize]) -> Option<usize> {
     let mut loss = vec![0.0_f64; score.measures.len()];
     for (e, r) in report.expected.iter().zip(&report.results) {
-        if r.grade == crate::analysis::Grade::Pending {
-            continue;
-        }
+        let Some(grade) = r.outcome.grade() else { continue };
         if let Some(slot) = score.notes.get(e.note_idx).and_then(|n| loss.get_mut(n.measure)) {
-            *slot += 1.0 - r.grade.credit();
+            *slot += 1.0 - grade.credit();
         }
     }
     for m in extra_in {

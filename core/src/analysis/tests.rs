@@ -1,7 +1,7 @@
 use super::*;
 
 fn exp(t: f64, lane: Lane) -> Expected {
-    Expected { note_idx: 0, t, lane, accent: false, ghost: false, grace: false, hand: None }
+    Expected { note_idx: 0, t, lane, dynamic: Dynamic::Normal, grace: false, hand: None }
 }
 fn hit(t: f64, lane: Lane) -> Hit {
     Hit { t, note: 0, velocity: 90, lane }
@@ -31,7 +31,7 @@ fn grading_and_matching() {
         hit(1.2, Lane::Ride),    // extra
     ];
     let r = analyze(&e, &h, &Tolerances::default(), f64::INFINITY);
-    let g: Vec<Grade> = r.results.iter().map(|x| x.grade).collect();
+    let g: Vec<Grade> = r.results.iter().map(|x| x.outcome.grade().unwrap()).collect();
     assert_eq!(g, vec![Grade::Perfect, Grade::Good, Grade::WrongPad, Grade::Missed, Grade::Ok]);
     assert_eq!(r.extra, 1);
     assert!((r.results[1].dt_ms.unwrap() - 40.0).abs() < 1e-6);
@@ -44,7 +44,7 @@ fn closest_hit_wins_and_pending() {
     let r = analyze(&e, &h, &Tolerances::default(), 2.0);
     assert_eq!(r.results[0].hit, Some(1));
     assert_eq!(r.results[1].hit, Some(0));
-    assert_eq!(r.results[2].grade, Grade::Pending);
+    assert_eq!(r.results[2].outcome, Outcome::Pending);
     assert_eq!(r.evaluated, 2);
 }
 
@@ -130,12 +130,10 @@ fn the_earlier_grace_notes_of_a_drag_are_expected_earlier() {
         lane: Lane::Snare,
         staff_step: 5,
         head: crate::drums::NoteHead::Normal,
-        accent: false,
-        ghost: false,
-        grace: grace_order > 0,
-        grace_order,
+        dynamic: Dynamic::Normal,
+        kind: if grace_order > 0 { crate::score::Kind::grace(grace_order) } else { crate::score::Kind::Main },
         hand: None,
-        stem_up: None,
+        stem: None,
     };
     let score = Score {
         measures: vec![Measure { number: "1".into(), start_q: 0.0, len_q: 4.0, beats: 4, beat_type: 4 }],

@@ -3,7 +3,7 @@
 use std::collections::BTreeMap;
 
 use crate::drums::Lane;
-use crate::score::{Hand, Score};
+use crate::score::{Dynamic, Hand, Score};
 
 /// A captured hit, already mapped to a lane and expressed in score time
 /// (seconds since the start of the practice range, latency-compensated).
@@ -129,8 +129,6 @@ pub enum Grade {
     /// Right time, related pad (e.g. open instead of closed hi-hat).
     WrongPad,
     Missed,
-    /// Not yet reached (recording still running or stopped early).
-    Pending,
 }
 
 impl Grade {
@@ -140,7 +138,7 @@ impl Grade {
             Grade::Good => 0.85,
             Grade::Ok => 0.6,
             Grade::WrongPad => 0.3,
-            Grade::Missed | Grade::Pending => 0.0,
+            Grade::Missed => 0.0,
         }
     }
     pub fn label(self) -> &'static str {
@@ -150,8 +148,27 @@ impl Grade {
             Grade::Ok => "OK",
             Grade::WrongPad => "Wrong pad",
             Grade::Missed => "Missed",
-            Grade::Pending => "-",
         }
+    }
+}
+
+/// What became of an expected note: not reached yet (the recording still runs or stopped early),
+/// or graded.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Outcome {
+    Pending,
+    Graded(Grade),
+}
+
+impl Outcome {
+    pub fn grade(self) -> Option<Grade> {
+        match self {
+            Outcome::Pending => None,
+            Outcome::Graded(g) => Some(g),
+        }
+    }
+    pub fn label(self) -> &'static str {
+        self.grade().map_or("-", Grade::label)
     }
 }
 
@@ -162,15 +179,14 @@ pub struct Expected {
     pub note_idx: usize,
     pub t: f64,
     pub lane: Lane,
-    pub accent: bool,
-    pub ghost: bool,
+    pub dynamic: Dynamic,
     pub grace: bool,
     pub hand: Option<Hand>,
 }
 
 #[derive(Clone, Copy, Debug)]
 pub struct NoteResult {
-    pub grade: Grade,
+    pub outcome: Outcome,
     pub hit: Option<usize>,
     /// Hit time minus expected time, ms (positive = late).
     pub dt_ms: Option<f64>,
@@ -262,11 +278,11 @@ pub fn expected_notes(score: &Score, from_measure: usize, to_measure: usize, tem
         .filter(|(_, n)| n.measure >= from_measure && n.measure <= to_measure)
         .map(|(i, n)| {
             let mut t = score.tempo.q_to_sec(n.q, tempo_scale) - t0;
-            if n.grace {
+            if n.is_grace() {
                 // Grace notes / flams land just before the beat, the earlier ones of a drag earlier still.
-                t -= GRACE_SPACING * f64::from(n.grace_order.max(1));
+                t -= GRACE_SPACING * f64::from(n.grace_order());
             }
-            Expected { note_idx: i, t, lane: n.lane, accent: n.accent, ghost: n.ghost, grace: n.grace, hand: n.hand }
+            Expected { note_idx: i, t, lane: n.lane, dynamic: n.dynamic, grace: n.is_grace(), hand: n.hand }
         })
         .collect()
 }
@@ -307,7 +323,7 @@ pub fn analyze(expected: &[Expected], hits: &[Hit], tol: &Tolerances, elapsed: f
     analyze_with(expected, hits, tol, elapsed, false)
 }
 
-/// `elapsed` is how far into the take we are (seconds); notes later than that are `Pending`.
+/// `elapsed` is how far into the take we are (seconds); notes later than that are `Outcome::Pending`.
 /// Pass `f64::INFINITY` for a finished take. With `adaptive` the hit window is shrunk to the
 /// spacing of the notes (for fast exercises such as rudiments, where the usual window spans
 /// several strokes).
@@ -349,7 +365,7 @@ pub fn analyze_with_model(
     }
     cands.sort_by(|a, b| a.0.total_cmp(&b.0));
 
-    let mut results = vec![NoteResult { grade: Grade::Missed, hit: None, dt_ms: None }; expected.len()];
+    let mut results = vec![NoteResult { outcome: Outcome::Graded(Grade::Missed), hit: None, dt_ms: None }; expected.len()];
     let mut hit_match: Vec<Option<usize>> = vec![None; hits.len()];
     let mut e_taken = vec![false; expected.len()];
     for (_, ei, hi, wrong) in cands {
@@ -369,11 +385,11 @@ pub fn analyze_with_model(
         } else {
             Grade::Ok
         };
-        results[ei] = NoteResult { grade, hit: Some(hi), dt_ms: Some(dt_ms) };
+        results[ei] = NoteResult { outcome: Outcome::Graded(grade), hit: Some(hi), dt_ms: Some(dt_ms) };
     }
     for (ei, e) in expected.iter().enumerate() {
         if results[ei].hit.is_none() && e.t + wins[ei] > elapsed {
-            results[ei].grade = Grade::Pending;
+            results[ei].outcome = Outcome::Pending;
         }
     }
 
@@ -402,9 +418,7 @@ fn summarize(r: &mut Report, hits: &[Hit], model: &ScoringModel) {
     let mut hand_vel: [Vec<f64>; 2] = Default::default();
 
     for (e, res) in r.expected.iter().zip(&r.results) {
-        if res.grade == Grade::Pending {
-            continue;
-        }
+        let Outcome::Graded(grade) = res.outcome else { continue };
         // Grace notes are optional: never counted as missed.
         if e.grace && res.hit.is_none() {
             continue;
@@ -412,8 +426,8 @@ fn summarize(r: &mut Report, hits: &[Hit], model: &ScoringModel) {
         r.evaluated += 1;
         let ls = r.lanes.entry(e.lane).or_default();
         ls.expected += 1;
-        credit += res.grade.credit();
-        match res.grade {
+        credit += grade.credit();
+        match grade {
             Grade::Perfect => r.perfect += 1,
             Grade::Good => r.good += 1,
             Grade::Ok => r.ok += 1,
@@ -425,7 +439,6 @@ fn summarize(r: &mut Report, hits: &[Hit], model: &ScoringModel) {
                 r.missed += 1;
                 ls.missed += 1;
             }
-            Grade::Pending => {}
         }
         if let (Some(dt), Some(hi)) = (res.dt_ms, res.hit) {
             ls.hit += 1;
@@ -436,7 +449,7 @@ fn summarize(r: &mut Report, hits: &[Hit], model: &ScoringModel) {
             if let (Some(hand), false) = (e.hand, e.grace) {
                 let side = usize::from(hand == Hand::Left);
                 hand_dts[side].push(dt);
-                if !e.accent && !e.ghost {
+                if e.dynamic == Dynamic::Normal {
                     hand_vel[side].push(hits[hi].velocity as f64);
                 }
             }
@@ -460,7 +473,7 @@ fn summarize(r: &mut Report, hits: &[Hit], model: &ScoringModel) {
         .expected
         .iter()
         .zip(&r.results)
-        .filter(|(_, res)| res.grade != Grade::Pending)
+        .filter(|(_, res)| res.outcome != Outcome::Pending)
         .map(|(e, _)| e.t)
         .fold(f64::NEG_INFINITY, f64::max);
     for (hi, m) in r.hit_match.iter().enumerate() {
@@ -531,7 +544,7 @@ fn dynamics_score(r: &Report, hits: &[Hit], model: &ScoringModel) -> Option<f64>
     let mut plain: BTreeMap<Lane, Vec<f64>> = BTreeMap::new();
     for (e, res) in r.expected.iter().zip(&r.results) {
         if let Some(hi) = res.hit {
-            if !e.accent && !e.ghost && !e.grace {
+            if e.dynamic == Dynamic::Normal && !e.grace {
                 plain.entry(e.lane).or_default().push(hits[hi].velocity as f64);
             }
         }
@@ -545,13 +558,15 @@ fn dynamics_score(r: &Report, hits: &[Hit], model: &ScoringModel) -> Option<f64>
     let mut good = 0usize;
     for (e, res) in r.expected.iter().zip(&r.results) {
         let Some(hi) = res.hit else { continue };
-        if !(e.accent || e.ghost) {
+        if e.dynamic == Dynamic::Normal {
             continue;
         }
         let v = hits[hi].velocity as f64;
         let reference = plain.get(&e.lane).filter(|p| !p.is_empty()).map(median).unwrap_or(model.fallback_velocity);
         checks += 1;
-        if (e.accent && v >= reference + model.accent_margin) || (e.ghost && v <= reference - model.ghost_margin) {
+        if (e.dynamic == Dynamic::Accent && v >= reference + model.accent_margin)
+            || (e.dynamic == Dynamic::Ghost && v <= reference - model.ghost_margin)
+        {
             good += 1;
         }
     }

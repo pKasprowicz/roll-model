@@ -268,8 +268,8 @@ fn real_files() {
                         path.file_name().unwrap().to_string_lossy(),
                         loaded.score.measures.len(),
                         loaded.score.tempo.bpm_at(0.0),
-                        loaded.score.notes.iter().filter(|n| n.accent).count(),
-                        loaded.score.notes.iter().filter(|n| n.ghost).count()
+                        loaded.score.notes.iter().filter(|n| n.is_accent()).count(),
+                        loaded.score.notes.iter().filter(|n| n.is_ghost()).count()
                     );
                 }
                 if let Some(m) = &loaded.report.midi {
@@ -283,8 +283,8 @@ fn real_files() {
                         *subdivisions.entry(*n).or_default() += c;
                     }
                 }
-                accents += loaded.score.notes.iter().filter(|n| n.accent).count();
-                ghosts += loaded.score.notes.iter().filter(|n| n.ghost).count();
+                accents += loaded.score.notes.iter().filter(|n| n.is_accent()).count();
+                ghosts += loaded.score.notes.iter().filter(|n| n.is_ghost()).count();
                 check_invariants(&loaded.score).unwrap_or_else(|e| panic!("{}: {e}", path.display()));
                 for w in &loaded.score.warnings {
                     if w.contains("No drum notes") || w.contains("no recognisable") {

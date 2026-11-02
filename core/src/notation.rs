@@ -61,7 +61,7 @@ pub fn analyse(score: &Score) -> Notation {
     let mut groups: Vec<((usize, i64, bool), Vec<usize>)> = Vec::new();
     let mut index: HashMap<(usize, i64, bool), usize> = HashMap::new();
     for (i, n) in score.notes.iter().enumerate() {
-        let Some(m) = score.measures.get(n.measure).filter(|_| !n.grace) else { continue };
+        let Some(m) = score.measures.get(n.measure).filter(|_| !n.is_grace()) else { continue };
         let beat = ((n.q - m.start_q + EPS) / group_len(m.beats, m.beat_type)).floor() as i64;
         let key = (n.measure, beat, n.stem_is_up());
         match index.get(&key) {
@@ -182,7 +182,7 @@ fn tuplet_of(onsets: &[Onset], start: f64) -> Option<u8> {
 /// is not a pause. A run of empty bars counts once, at its last bar.
 pub fn pause_bars(score: &Score) -> Vec<bool> {
     let mut last_onset: Vec<Option<f64>> = vec![None; score.measures.len()];
-    for n in score.notes.iter().filter(|n| !n.grace) {
+    for n in score.notes.iter().filter(|n| !n.is_grace()) {
         if let Some(slot) = last_onset.get_mut(n.measure) {
             *slot = Some(slot.map_or(n.q, |q| q.max(n.q)));
         }
@@ -272,12 +272,10 @@ mod tests {
             lane,
             staff_step: 4,
             head: NoteHead::Normal,
-            accent: false,
-            ghost: false,
-            grace: false,
-            grace_order: 0,
+            dynamic: Default::default(),
+            kind: Default::default(),
             hand: None,
-            stem_up: None,
+            stem: None,
         }
     }
 
@@ -327,7 +325,7 @@ mod tests {
     #[test]
     fn hands_and_feet_are_beamed_apart() {
         let mut notes = vec![note(0.0, Lane::HiHatClosed), note(0.0, Lane::Kick), note(0.5, Lane::HiHatClosed), note(0.5, Lane::Snare)];
-        notes[1].stem_up = Some(false);
+        notes[1].stem = Some(crate::score::Stem::Down);
         let s = score_of(4, 4, 1, notes);
         let n = analyse(&s);
         // Hi-hat and snare both have their stems up and beam together (the snare at 0.5 is in
@@ -361,7 +359,7 @@ mod tests {
     fn compound_meters_beam_in_dotted_quarters_and_grace_notes_are_left_out() {
         let mut notes = hands(&[0.0, 0.5, 1.0, 1.5, 2.0, 2.5]);
         let mut grace = note(0.0, Lane::Snare);
-        grace.grace = true;
+        grace.kind = crate::score::Kind::grace(1);
         notes.insert(0, grace);
         let s = score_of(6, 8, 1, notes);
         let n = analyse(&s);
@@ -382,7 +380,7 @@ mod tests {
     #[test]
     fn a_rest_is_written_with_one_sign_when_it_can_be() {
         use crate::score::Rest;
-        let rest = |dur_q: f64, whole_bar: bool| Rest { measure: 0, q: 1.0, dur_q, up: true, whole_bar };
+        let rest = |dur_q: f64, whole_bar: bool| Rest { measure: 0, q: 1.0, dur_q, stem: crate::score::Stem::Up, whole_bar };
         let kinds = |r: &Rest| rest_glyphs(r).iter().map(|g| (g.kind, g.dotted)).collect::<Vec<_>>();
         assert_eq!(kinds(&rest(1.0, false)), vec![(RestKind::Quarter, false)]);
         assert_eq!(kinds(&rest(1.5, false)), vec![(RestKind::Quarter, true)]);

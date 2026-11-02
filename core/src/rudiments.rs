@@ -16,7 +16,7 @@
 //! whole quarter notes and it is repeated; the left lead is the mirror image.
 
 use crate::drums::Lane;
-use crate::score::{Hand, Measure, Score, ScoreNote, TempoMap};
+use crate::score::{Dynamic, Hand, Kind, Measure, Score, ScoreNote, Stem, TempoMap};
 
 /// The tempo the rudiment scores are written at; the practice tempo (percent) is then the BPM.
 pub const BASE_BPM: f64 = 100.0;
@@ -322,12 +322,10 @@ impl Rudiment {
                     lane: Lane::Snare,
                     staff_step: step,
                     head,
-                    accent,
-                    ghost: false,
-                    grace: grace_order > 0,
-                    grace_order,
+                    dynamic: if accent { Dynamic::Accent } else { Dynamic::Normal },
+                    kind: if grace_order > 0 { Kind::grace(grace_order) } else { Kind::Main },
                     hand,
-                    stem_up: Some(true),
+                    stem: Some(Stem::Up),
                 };
                 // The earliest grace note first, so the notes stay in the order they sound.
                 for order in (1..=stroke.graces).rev() {
@@ -483,15 +481,15 @@ mod tests {
         assert!((score.tempo.bpm_at(0.0) - BASE_BPM).abs() < 1e-9);
         // A grace note comes right before its main note, with the other hand, and is not accented.
         let (g, m) = (&score.notes[0], &score.notes[1]);
-        assert!(g.grace && g.grace_order == 1 && !g.accent && g.hand == Some(Hand::Left));
-        assert!(!m.grace && m.accent && m.hand == Some(Hand::Right) && g.q == m.q);
+        assert!(g.is_grace() && g.grace_order() == 1 && !g.is_accent() && g.hand == Some(Hand::Left));
+        assert!(!m.is_grace() && m.is_accent() && m.hand == Some(Hand::Right) && g.q == m.q);
         // Every note is in the bar its time says.
         for n in &score.notes {
             assert_eq!(score.measure_at(n.q), Some(n.measure));
         }
         // A drag has two, the earlier one first.
         let drag = rudiment(31).build(1, Lead::Right);
-        assert_eq!(drag.notes.iter().map(|n| n.grace_order).collect::<Vec<_>>(), [2, 1, 0, 2, 1, 0]);
+        assert_eq!(drag.notes.iter().map(|n| n.grace_order()).collect::<Vec<_>>(), [2, 1, 0, 2, 1, 0]);
         // The repetitions are limited.
         assert_eq!(r.build(0, Lead::Right).measures.len(), 1);
         assert_eq!(r.build(1000, Lead::Right).measures.len(), MAX_REPEATS);
@@ -499,7 +497,7 @@ mod tests {
 
     #[test]
     fn the_left_lead_is_the_mirror_image_and_alternate_alternates() {
-        let hands = |s: &Score| s.notes.iter().filter(|n| !n.grace).filter_map(|n| n.hand).map(|h| h.letter()).collect::<String>();
+        let hands = |s: &Score| s.notes.iter().filter(|n| !n.is_grace()).filter_map(|n| n.hand).map(|h| h.letter()).collect::<String>();
         let r = rudiment(16);
         assert_eq!(hands(&r.build(1, Lead::Right)), "RLRRLRLL");
         assert_eq!(hands(&r.build(1, Lead::Left)), "LRLLRLRR");
@@ -510,7 +508,7 @@ mod tests {
         assert_eq!(flam.notes[1].hand, Some(Hand::Left));
         // Only the hands change, not the timing.
         let (a, b) = (r.build(2, Lead::Right), r.build(2, Lead::Left));
-        assert!(a.notes.iter().zip(&b.notes).all(|(x, y)| x.q == y.q && x.accent == y.accent));
+        assert!(a.notes.iter().zip(&b.notes).all(|(x, y)| x.q == y.q && x.dynamic == y.dynamic));
     }
 
     #[test]
@@ -520,7 +518,7 @@ mod tests {
         assert!(all().iter().filter(|r| r.gradable()).count() == 39);
         let score = r.build(2, Lead::Right);
         assert_eq!(score.notes.len(), 2);
-        assert!(score.notes.iter().all(|n| n.hand.is_none() && !n.grace));
+        assert!(score.notes.iter().all(|n| n.hand.is_none() && !n.is_grace()));
     }
 
     #[test]
@@ -533,7 +531,7 @@ mod tests {
         assert_eq!(rudiment(4).default_lead(), Lead::Right);
         for r in all().iter().filter(|r| r.gradable()) {
             let score = r.build(4, r.default_lead());
-            let main: Vec<Hand> = score.notes.iter().filter(|n| !n.grace).filter_map(|n| n.hand).collect();
+            let main: Vec<Hand> = score.notes.iter().filter(|n| !n.is_grace()).filter_map(|n| n.hand).collect();
             let per_cell = r.cell().strokes.len();
             assert_eq!(main.len(), 4 * per_cell);
             for join in 1..4 {

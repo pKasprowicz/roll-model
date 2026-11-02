@@ -499,13 +499,7 @@ impl DrumApp {
                 let (status, dt) = match matched {
                     Some(ei) => {
                         let r = take.report.results[ei];
-                        let s = match r.grade {
-                            Grade::Perfect => HitStatus::Perfect,
-                            Grade::Good => HitStatus::Good,
-                            Grade::Ok => HitStatus::Ok,
-                            Grade::WrongPad => HitStatus::WrongPad,
-                            _ => HitStatus::Neutral,
-                        };
+                        let s = r.outcome.grade().map_or(HitStatus::Neutral, HitStatus::Graded);
                         (s, r.dt_ms)
                     }
                     None if h.t > take.end_sec + 0.2 || h.t < -0.2 => (HitStatus::Neutral, None),
@@ -528,7 +522,7 @@ impl DrumApp {
         if let Some(take) = self.practice.take.as_ref() {
             for (e, r) in take.expected.iter().zip(&take.report.results) {
                 if let Some(slot) = g.get_mut(e.note_idx) {
-                    *slot = Some(r.grade);
+                    *slot = r.outcome.grade();
                 }
             }
         }

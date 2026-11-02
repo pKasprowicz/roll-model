@@ -11,6 +11,7 @@ use super::ir::{PartInfo, RawMeasure, RawNote, RawScore};
 use super::quantise::{self, MidiOptions};
 use super::{Format, ImportError, ImportOptions, Limits};
 use crate::drums::{gm_lane, Lane};
+use crate::score::Dynamic;
 
 /// Where a drum note starts, in ticks from the start of the file.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -226,10 +227,10 @@ pub fn parse(bytes: &[u8], opts: &ImportOptions) -> Result<RawScore, ImportError
     build(read(bytes, &opts.limits)?, opts)
 }
 
-/// Accent and ghost flags from velocity, relative to the median of each instrument: a file played
+/// Accent or ghost from velocity, relative to the median of each instrument: a file played
 /// quietly has no accents under a fixed threshold. An instrument with too few notes, or whose notes
 /// are all one velocity (a programmed loop), has none.
-fn dynamics(onsets: &[Onset], lanes: &[Lane], opts: &MidiOptions) -> Vec<(bool, bool)> {
+fn dynamics(onsets: &[Onset], lanes: &[Lane], opts: &MidiOptions) -> Vec<Dynamic> {
     let mut by_lane: HashMap<Lane, Vec<u8>> = HashMap::new();
     for (o, lane) in onsets.iter().zip(lanes) {
         by_lane.entry(*lane).or_default().push(o.velocity);
@@ -247,8 +248,9 @@ fn dynamics(onsets: &[Onset], lanes: &[Lane], opts: &MidiOptions) -> Vec<(bool, 
         .iter()
         .zip(lanes)
         .map(|(o, lane)| match medians[lane] {
-            Some(m) => (f64::from(o.velocity) >= m * opts.accent_ratio, f64::from(o.velocity) <= m * opts.ghost_ratio),
-            None => (false, false),
+            Some(m) if f64::from(o.velocity) >= m * opts.accent_ratio => Dynamic::Accent,
+            Some(m) if f64::from(o.velocity) <= m * opts.ghost_ratio => Dynamic::Ghost,
+            _ => Dynamic::Normal,
         })
         .collect()
 }
@@ -292,8 +294,8 @@ pub fn build(data: MidiData, opts: &ImportOptions) -> Result<RawScore, ImportErr
             unknown_keys.push(data.onsets[p.index].key);
         }
         let (staff_step, head) = lane.default_staff();
-        let (accent, ghost) = flags[p.index];
-        measures[p.bar].notes.push(RawNote { offset_q: p.offset_q, lane, staff_step, head, accent, ghost, grace: false, stem_up: None });
+        let dynamic = flags[p.index];
+        measures[p.bar].notes.push(RawNote { offset_q: p.offset_q, lane, staff_step, head, dynamic, grace: false, stem: None });
         last_bar = last_bar.max(p.bar);
     }
     measures.truncate(last_bar + 1);

@@ -39,7 +39,7 @@ pub fn take_csv(score: &Score, expected: &[Expected], hits: &[Hit], report: &Rep
             r.dt_ms.map(|d| format!("{d:.1}")).unwrap_or_default(),
             note,
             vel,
-            field(r.grade.label())
+            field(r.outcome.label())
         ));
     }
     for (hi, h) in hits.iter().enumerate() {

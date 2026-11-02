@@ -27,6 +27,7 @@ use crate::audio::EngineHandle;
 use crate::control::{ClickLevel, Control, ErrorLog};
 use crate::drums::Lane;
 use crate::metronome::{at, wait_until, AUDIO_LOOKAHEAD};
+use crate::score::Dynamic;
 use crate::synth::{velocity_gain, Kit, SAMPLE_RATE};
 
 /// A cue whose turn comes later than this (the thread stalled, or the sound
@@ -146,9 +147,9 @@ pub struct PlayOptions {
 
 /// MIDI velocity for a score note.
 pub fn velocity_for(e: &Expected) -> u8 {
-    if e.ghost {
+    if e.dynamic == Dynamic::Ghost {
         45
-    } else if e.accent {
+    } else if e.dynamic == Dynamic::Accent {
         120
     } else if e.grace {
         70

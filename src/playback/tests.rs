@@ -6,7 +6,7 @@ use crate::import::{import_bytes, ImportOptions};
 use crate::synth::SAMPLE_RATE;
 
 fn note(lane: Lane, t: f64) -> Expected {
-    Expected { note_idx: 0, t, lane, accent: false, ghost: false, grace: false, hand: None }
+    Expected { note_idx: 0, t, lane, dynamic: Dynamic::Normal, grace: false, hand: None }
 }
 
 #[derive(Debug, PartialEq)]
@@ -72,9 +72,9 @@ fn play(cue: &Cue, opts: &PlayOptions, control: &Control) -> Vec<Ev> {
 #[test]
 fn cues_are_ordered_and_clicks_lead_at_ties() {
     let mut ghost = note(Lane::Snare, 1.0);
-    ghost.ghost = true;
+    ghost.dynamic = Dynamic::Ghost;
     let mut accent = note(Lane::Crash1, 0.0);
-    accent.accent = true;
+    accent.dynamic = Dynamic::Accent;
     let c = cues(&[ghost, accent, note(Lane::Kick, 0.0)], &[(-1.0, true), (0.0, true), (1.0, false)]);
     let times: Vec<f64> = c.iter().map(|c| c.t).collect();
     assert_eq!(times, vec![-1.0, 0.0, 0.0, 0.0, 1.0, 1.0]);
@@ -365,9 +365,9 @@ fn sample_score_renders_a_note_at_every_onset() {
 #[test]
 fn accents_are_louder_than_ghost_notes() {
     let mut accent = note(Lane::Snare, 0.0);
-    accent.accent = true;
+    accent.dynamic = Dynamic::Accent;
     let mut ghost = note(Lane::Snare, 0.0);
-    ghost.ghost = true;
+    ghost.dynamic = Dynamic::Ghost;
     let loud = mix(&cues(&[accent], &[]), 0.0, 1.0);
     let soft = mix(&cues(&[ghost], &[]), 0.0, 1.0);
     let peak = |v: &[f32]| v.iter().fold(0.0_f32, |m, s| m.max(s.abs()));

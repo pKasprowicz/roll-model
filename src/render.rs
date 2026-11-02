@@ -37,10 +37,9 @@ fn stem_x(x: f32, up: bool, scale: f32) -> f32 {
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum HitStatus {
-    Perfect,
-    Good,
-    Ok,
-    WrongPad,
+    /// Matched with an expected note, and graded so.
+    Graded(Grade),
+    /// Not in the score.
     Extra,
     /// Not graded (outside range / not yet evaluated).
     Neutral,
@@ -94,23 +93,19 @@ pub const ORANGE: Color32 = Color32::from_rgb(0xf2, 0x7a, 0x1d);
 pub const RED: Color32 = Color32::from_rgb(0xe0, 0x3e, 0x3e);
 pub const ACCENT: Color32 = Color32::from_rgb(0x3d, 0x8b, 0xfd);
 
-pub fn grade_color(g: Grade, neutral: Color32) -> Color32 {
+pub fn grade_color(g: Grade) -> Color32 {
     match g {
         Grade::Perfect => GREEN,
         Grade::Good => LIGHT_GREEN,
         Grade::Ok => AMBER,
         Grade::WrongPad => ORANGE,
         Grade::Missed => RED,
-        Grade::Pending => neutral,
     }
 }
 
 pub fn status_color(s: HitStatus, neutral: Color32) -> Color32 {
     match s {
-        HitStatus::Perfect => GREEN,
-        HitStatus::Good => LIGHT_GREEN,
-        HitStatus::Ok => AMBER,
-        HitStatus::WrongPad => ORANGE,
+        HitStatus::Graded(g) => grade_color(g),
         HitStatus::Extra => RED,
         HitStatus::Neutral => neutral,
     }
@@ -284,8 +279,8 @@ fn y_of(step: i32, staff_bottom: f32) -> f32 {
 
 /// How far left of its main note a grace note is drawn.
 fn grace_dx(n: &ScoreNote) -> f32 {
-    if n.grace {
-        -9.0 * f32::from(n.grace_order.max(1))
+    if n.is_grace() {
+        -9.0 * f32::from(n.grace_order())
     } else {
         0.0
     }
@@ -478,12 +473,12 @@ impl Canvas<'_> {
     fn hand(&self, x: f32, y: f32, n: &ScoreNote, text: Color32) {
         let p = self.painter;
         let Some(hand) = n.hand else { return };
-        let (size, color) = match (n.grace, hand) {
+        let (size, color) = match (n.is_grace(), hand) {
             (true, _) => (8.0, text.gamma_multiply(0.6)),
             (false, Hand::Right) => (11.0, text),
             (false, Hand::Left) => (11.0, ACCENT),
         };
-        let letter = if n.grace { hand.letter().to_lowercase() } else { hand.letter().to_string() };
+        let letter = if n.is_grace() { hand.letter().to_lowercase() } else { hand.letter().to_string() };
         p.text(pos2(x, y), Align2::CENTER_CENTER, letter, FontId::proportional(size), color);
     }
 
@@ -576,7 +571,7 @@ impl Canvas<'_> {
     /// includes the grace offset; `accent_up_y` is where the accent goes above a stem that points up.
     fn written_note(&self, n: &ScoreNote, x: f32, staff_bottom: f32, accent_up_y: f32, ink: Ink, end: StemEnd) {
         let p = self.painter;
-        let (col, scale) = (ink.note, if n.grace { 0.65 } else { 1.0 });
+        let (col, scale) = (ink.note, if n.is_grace() { 0.65 } else { 1.0 });
         let y = y_of(n.staff_step, staff_bottom);
         self.ledgers(x, n.staff_step, staff_bottom);
         self.head(pos2(x, y), n.head, col, scale);
@@ -592,11 +587,11 @@ impl Canvas<'_> {
             let curl = vec![pos2(sx, y0), pos2(sx + 3.5, y0 + 3.0 * dy), pos2(sx + 6.5, y0 + 8.0 * dy), pos2(sx + 4.5, y0 + 12.0 * dy)];
             p.add(Shape::line(curl, Stroke::new(1.6_f32, col)));
         }
-        if n.ghost {
+        if n.is_ghost() {
             p.text(pos2(x - 8.0, y), Align2::CENTER_CENTER, "(", FontId::proportional(11.0), col);
             p.text(pos2(x + 8.0, y), Align2::CENTER_CENTER, ")", FontId::proportional(11.0), col);
         }
-        if n.accent {
+        if n.is_accent() {
             let ay = if up { accent_up_y } else { staff_bottom + STEM + 10.0 };
             let s = Stroke::new(1.4_f32, col);
             p.line_segment([pos2(x - 4.0, ay - 3.0), pos2(x + 4.0, ay)], s);
@@ -746,7 +741,7 @@ pub fn show(ui: &mut Ui, view: &ScoreView) -> ViewOutput {
     let mut rests_by_measure = vec![Vec::new(); score.measures.len()];
     for r in &score.rests {
         if let Some(slot) = rests_by_measure.get_mut(r.measure) {
-            slot.extend(notation::rest_glyphs(r).into_iter().map(|g| (r.up, g)));
+            slot.extend(notation::rest_glyphs(r).into_iter().map(|g| (r.stem.is_up(), g)));
         }
     }
     let two_voices = score.notes.iter().any(|n| n.stem_is_up()) && score.notes.iter().any(|n| !n.stem_is_up());
@@ -903,7 +898,7 @@ fn draw_score_note(f: &Frame, rows: &Rows, mi: usize, ni: usize) {
     let (cv, view) = (&f.cv, f.view);
     let n = &view.score.notes[ni];
     let x = f.x_of(mi, n.q) + grace_dx(n);
-    let col = view.grades.get(ni).copied().flatten().map(|g| grade_color(g, cv.text)).unwrap_or(cv.text);
+    let col = view.grades.get(ni).copied().flatten().map_or(cv.text, grade_color);
     let end = StemEnd { tip: f.stem_tips[ni].map(|t| rows.exp_bot + t), flags: f.notation.flags[ni] };
     cv.written_note(n, x, rows.exp_bot, rows.y0 + 28.0, Ink { note: col, hand: cv.text, hand_dy: 18.0 }, end);
 }
@@ -995,6 +990,7 @@ fn draw_played_note(f: &Frame, rows: &Rows, mi: usize, pi: usize, hover_text: &m
 mod tests {
     use super::*;
     use crate::score::Measure;
+    use crate::score::Stem;
 
     /// A score whose bars have the given lengths in quarter notes.
     fn score_of(lens: &[f64]) -> Score {
@@ -1025,8 +1021,8 @@ mod tests {
         // Bar 2 (index 1) ends with a rest from its third beat; bar 5 has a rest but a note after it.
         let q = |bar: usize, beat: f64| bar as f64 * 4.0 + beat;
         score.rests = vec![
-            Rest { measure: 1, q: q(1, 2.0), dur_q: 2.0, up: true, whole_bar: false },
-            Rest { measure: 4, q: q(4, 1.0), dur_q: 3.0, up: false, whole_bar: false },
+            Rest { measure: 1, q: q(1, 2.0), dur_q: 2.0, stem: Stem::Up, whole_bar: false },
+            Rest { measure: 4, q: q(4, 1.0), dur_q: 3.0, stem: Stem::Down, whole_bar: false },
         ];
         let note = |measure: usize, q: f64| crate::score::ScoreNote {
             q,
@@ -1034,12 +1030,10 @@ mod tests {
             lane: Lane::Snare,
             staff_step: 5,
             head: NoteHead::Normal,
-            accent: false,
-            ghost: false,
-            grace: false,
-            grace_order: 0,
+            dynamic: Default::default(),
+            kind: Default::default(),
             hand: None,
-            stem_up: None,
+            stem: None,
         };
         score.notes = vec![note(1, q(1, 0.0)), note(4, q(4, 2.0))];
         let on = LayoutOpts { break_at_pause: true, ..LayoutOpts::default() };
@@ -1050,17 +1044,17 @@ mod tests {
         let fixed = LayoutOpts { bars_per_row: 4, break_at_pause: true, ..LayoutOpts::default() };
         assert_eq!(layout(&score, W, 1.0, fixed).systems, [(0, 2), (2, 6)]);
         let two = LayoutOpts { bars_per_row: 2, break_at_pause: true, ..LayoutOpts::default() };
-        score.rests = vec![Rest { measure: 2, q: q(2, 2.0), dur_q: 2.0, up: true, whole_bar: false }];
+        score.rests = vec![Rest { measure: 2, q: q(2, 2.0), dur_q: 2.0, stem: Stem::Up, whole_bar: false }];
         score.notes = vec![note(2, q(2, 0.0))];
         assert_eq!(layout(&score, W, 1.0, two).systems, [(0, 2), (2, 3), (3, 5), (5, 6)], "pause after bar 3, then pairs again");
         score.notes.clear();
         score.rests.clear();
         // Empty bars in a row make one pause: the row ends after the last of them.
-        let empty = |measure: usize| Rest { measure, q: q(measure, 0.0), dur_q: 4.0, up: true, whole_bar: true };
+        let empty = |measure: usize| Rest { measure, q: q(measure, 0.0), dur_q: 4.0, stem: Stem::Up, whole_bar: true };
         score.notes.clear();
         score.rests = vec![empty(0), empty(1), empty(2)];
         assert_eq!(layout(&score, 2400.0, 1.0, on).systems, [(0, 3), (3, 6)]);
-        score.rests = vec![Rest { measure: 1, q: q(1, 2.0), dur_q: 2.0, up: true, whole_bar: false }];
+        score.rests = vec![Rest { measure: 1, q: q(1, 2.0), dur_q: 2.0, stem: Stem::Up, whole_bar: false }];
         // A pause at the end of the score adds no empty row.
         score.rests.push(empty(5));
         assert_eq!(layout(&score, 2400.0, 1.0, on).systems.last(), Some(&(2, 6)));

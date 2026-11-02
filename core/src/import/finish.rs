@@ -3,9 +3,31 @@
 
 use std::collections::HashMap;
 
-use super::ir::{RawMeasure, RawScore};
+use super::ir::{RawMeasure, RawNote, RawScore};
 use super::{ImportError, ImportOptions};
-use crate::score::{Measure, Rest, Score, ScoreNote, TempoMap};
+use crate::score::{Kind, Measure, Rest, Score, ScoreNote, TempoMap};
+
+/// How far before its main note each note of a measure is played, if it is a grace note: the run of
+/// grace notes that ends at a main note is numbered backwards from it (1 is the one right before),
+/// so a drag keeps its two apart. A main note has 0.
+fn grace_orders(notes: &[RawNote]) -> Vec<u8> {
+    let mut run = 0u8;
+    let mut orders: Vec<u8> = notes
+        .iter()
+        .rev()
+        .map(|n| {
+            if n.grace {
+                run = run.saturating_add(1);
+                run
+            } else {
+                run = 0;
+                0
+            }
+        })
+        .collect();
+    orders.reverse();
+    orders
+}
 
 pub fn finish(raw: RawScore, opts: &ImportOptions) -> Result<Score, ImportError> {
     if raw.measures.is_empty() {
@@ -27,23 +49,22 @@ pub fn finish(raw: RawScore, opts: &ImportOptions) -> Result<Score, ImportError>
         let rm = &raw.measures[mi];
         let idx = score.measures.len();
         score.measures.push(Measure { number: rm.number.clone(), start_q: q, len_q: rm.len_q, beats: rm.beats, beat_type: rm.beat_type });
-        for n in &rm.notes {
+        let orders = grace_orders(&rm.notes);
+        for (n, order) in rm.notes.iter().zip(orders) {
             score.notes.push(ScoreNote {
                 q: q + n.offset_q,
                 measure: idx,
                 lane: n.lane,
                 staff_step: n.staff_step,
                 head: n.head,
-                accent: n.accent,
-                ghost: n.ghost,
-                grace: n.grace,
-                grace_order: u8::from(n.grace),
+                dynamic: n.dynamic,
+                kind: if n.grace { Kind::grace(order) } else { Kind::Main },
                 hand: None,
-                stem_up: n.stem_up,
+                stem: n.stem,
             });
         }
         for r in &rm.rests {
-            score.rests.push(Rest { measure: idx, q: q + r.offset_q, dur_q: r.dur_q, up: r.up, whole_bar: r.whole_bar });
+            score.rests.push(Rest { measure: idx, q: q + r.offset_q, dur_q: r.dur_q, stem: r.stem, whole_bar: r.whole_bar });
         }
         for (off, bpm) in &rm.tempos {
             tempo_pts.push((q + off, *bpm));
@@ -58,7 +79,7 @@ pub fn finish(raw: RawScore, opts: &ImportOptions) -> Result<Score, ImportError>
     }
     score.tempo = TempoMap::from_points(tempo_pts);
     score.notes.sort_by(|a, b| a.q.total_cmp(&b.q).then(a.lane.cmp(&b.lane)));
-    score.notes.dedup_by(|b, a| (a.q - b.q).abs() < 1e-6 && a.lane == b.lane && a.grace == b.grace);
+    score.notes.dedup_by(|b, a| (a.q - b.q).abs() < 1e-6 && a.lane == b.lane && a.kind == b.kind);
     if score.notes.is_empty() {
         score.warnings.push("No drum notes found in the part".into());
     }
@@ -191,10 +212,9 @@ mod tests {
             lane: crate::drums::Lane::Kick,
             staff_step: 1,
             head: crate::drums::NoteHead::Normal,
-            accent: false,
-            ghost: false,
+            dynamic: crate::score::Dynamic::Normal,
             grace: false,
-            stem_up: None,
+            stem: None,
         });
         let err = finish(RawScore { measures: vec![stray], ..Default::default() }, &ImportOptions::default()).unwrap_err();
         assert!(matches!(&err, ImportError::Invalid(why) if why.contains("outside its measure")), "{err:?}");

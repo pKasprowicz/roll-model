@@ -1,6 +1,8 @@
 //! Score model: a flat, time-ordered list of drum onsets plus measures and
 //! a tempo map. Positions are in quarter notes ("q") from the score start.
 
+use std::num::NonZeroU8;
+
 use crate::drums::{Lane, NoteHead};
 
 /// The hand a stroke is played with, when the score says (rudiments do).
@@ -42,21 +44,82 @@ pub struct ScoreNote {
     pub lane: Lane,
     pub staff_step: i32,
     pub head: NoteHead,
-    pub accent: bool,
-    pub ghost: bool,
-    pub grace: bool,
-    /// For a grace note: 1 = the one right before its main note, 2 = the one before that
-    /// (a drag has two). 0 for every other note.
-    pub grace_order: u8,
+    pub dynamic: Dynamic,
+    pub kind: Kind,
     /// Which hand plays it, if the score says; drawn as a letter under the note.
     pub hand: Option<Hand>,
-    pub stem_up: Option<bool>,
+    /// The stem direction the file gives, if it does.
+    pub stem: Option<Stem>,
+}
+
+/// Which way a stem points: up for the hands, down for the feet, as a score is usually written. It
+/// also tells the two voices apart.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Stem {
+    Up,
+    Down,
+}
+
+impl Stem {
+    pub fn is_up(self) -> bool {
+        self == Stem::Up
+    }
+    pub fn from_up(up: bool) -> Stem {
+        if up {
+            Stem::Up
+        } else {
+            Stem::Down
+        }
+    }
+}
+
+/// How loud a note is meant to be played, against the notes around it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
+pub enum Dynamic {
+    #[default]
+    Normal,
+    Accent,
+    /// Played softly, written in parentheses.
+    Ghost,
+}
+
+/// A note of the music, or a grace note before one.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
+pub enum Kind {
+    #[default]
+    Main,
+    /// 1 = the one right before its main note, 2 = the one before that (a drag has two). Never 0.
+    Grace { order: NonZeroU8 },
+}
+
+impl Kind {
+    /// A grace note of this place before its main note; 0 is taken as 1.
+    pub fn grace(order: u8) -> Kind {
+        Kind::Grace { order: NonZeroU8::new(order).unwrap_or(NonZeroU8::MIN) }
+    }
 }
 
 impl ScoreNote {
+    pub fn is_accent(&self) -> bool {
+        self.dynamic == Dynamic::Accent
+    }
+    pub fn is_ghost(&self) -> bool {
+        self.dynamic == Dynamic::Ghost
+    }
+    pub fn is_grace(&self) -> bool {
+        matches!(self.kind, Kind::Grace { .. })
+    }
+    /// For a grace note, how far before its main note it comes (1 or 2); 0 for any other note.
+    pub fn grace_order(&self) -> u8 {
+        match self.kind {
+            Kind::Main => 0,
+            Kind::Grace { order } => order.get(),
+        }
+    }
+
     /// Whether its stem points up: as the file says, else up for the hands and down for the feet.
     pub fn stem_is_up(&self) -> bool {
-        self.stem_up.unwrap_or(!self.lane.is_foot())
+        self.stem.map_or(!self.lane.is_foot(), Stem::is_up)
     }
 }
 
@@ -68,7 +131,7 @@ pub struct Rest {
     pub q: f64,
     pub dur_q: f64,
     /// The voice it belongs to: true for the hands (stems up), false for the feet.
-    pub up: bool,
+    pub stem: Stem,
     /// A rest for the whole bar, whatever its length.
     pub whole_bar: bool,
 }
@@ -245,12 +308,16 @@ impl Score {
                     lane: Lane::Other,
                     staff_step: 4,
                     head: NoteHead::Normal,
-                    accent: b == 0 && p == 0,
-                    ghost: p > 0,
-                    grace: false,
-                    grace_order: 0,
+                    dynamic: if b == 0 && p == 0 {
+                        Dynamic::Accent
+                    } else if p > 0 {
+                        Dynamic::Ghost
+                    } else {
+                        Dynamic::Normal
+                    },
+                    kind: Kind::Main,
                     hand: None,
-                    stem_up: Some(true),
+                    stem: Some(Stem::Up),
                 });
             }
         }
@@ -263,7 +330,7 @@ impl Score {
     }
 
     pub fn staff_for_lane(&self, lane: Lane) -> (i32, NoteHead) {
-        self.notes.iter().find(|n| n.lane == lane && !n.grace).map(|n| (n.staff_step, n.head)).unwrap_or_else(|| lane.default_staff())
+        self.notes.iter().find(|n| n.lane == lane && !n.is_grace()).map(|n| (n.staff_step, n.head)).unwrap_or_else(|| lane.default_staff())
     }
 }
 
@@ -276,8 +343,8 @@ mod tests {
         let bar = Score::click_bar(3, 2);
         assert_eq!(bar.notes.len(), 6);
         assert_eq!(bar.measures[0].len_q, 3.0);
-        assert!(bar.notes[0].accent && bar.notes.iter().filter(|n| n.accent).count() == 1);
-        let soft: Vec<f64> = bar.notes.iter().filter(|n| n.ghost).map(|n| n.q).collect();
+        assert!(bar.notes[0].is_accent() && bar.notes.iter().filter(|n| n.is_accent()).count() == 1);
+        let soft: Vec<f64> = bar.notes.iter().filter(|n| n.is_ghost()).map(|n| n.q).collect();
         assert_eq!(soft, [0.5, 1.5, 2.5]);
         assert!(bar.notes.windows(2).all(|w| w[0].q < w[1].q), "in time order");
         assert_eq!(Score::click_bar(0, 0).notes.len(), 1, "never empty");
