@@ -7,6 +7,7 @@ All notable changes are recorded here. The format follows [Keep a Changelog](htt
 ## [Unreleased]
 
 ### Changed
+- **The on-screen buttons Record, Stop, Listen, click, notes, loop and the metronome Start/Stop follow the same rules as the keys and the controller** (RV-12): while a take records, the tempo, range and mode buttons refuse with "Locked while a take is recording." or do nothing, as the keys did; the metronome Start button no longer ends a recording.
 - The ramp settings in the settings file are kept in the ranges of their sliders (RV-40); the ladder tooltip takes its numbers from the code.
 
 ## [0.10.3] - 2026-11-02
