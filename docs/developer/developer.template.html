@@ -251,7 +251,7 @@ python3 tools/build_notices.py      # target/notices/THIRD_PARTY_NOTICES.txt</co
 
 <h3 id="kit">The kit: lanes and note maps</h3>
 <p>A <code>Lane</code> is an instrument as the program sees it (kick, snare, cross-stick, closed/open/pedal hi-hat, four toms, two crashes, ride, bell, china, splash, cowbell, other). Everything that varies per instrument is a <code>match</code> on <code>Lane</code>, so adding one is a compiler-guided change (<a href="#t-lane">tutorial 6</a>).</p>
-{{code:core/src/drums.rs::pub fn family::12}}
+{{code:core/src/drums.rs::fn pad_family::16}}
 <p>A <code>NoteMap</code> maps MIDI notes to lanes; <code>NoteMap::roland_v31()</code> is the factory map and the user can edit it. <code>Lane::by_hihat_pedal</code> turns a hit on the closed or open hi-hat note into one or the other from the pedal position (CC#4) attached to the hit.</p>
 
 <h3 id="take">The life of a take</h3>
