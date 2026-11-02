@@ -373,6 +373,7 @@ impl Player {
         let handle = std::thread::Builder::new()
             .name("playback".into())
             .spawn(move || run(zero, cues, pass_len, opts, control, stop2, errors2))
+            .map_err(|e| errors.push(format!("Could not start the playback thread: {e}")))
             .ok();
         Player { stop, errors, handle }
     }
@@ -402,9 +403,12 @@ impl Drop for Player {
     }
 }
 
-fn note_on_off(conn: &mut MidiOutputConnection, channel: u8, note: u8, velocity: u8) {
-    let _ = conn.send(&[0x90 | channel, note, velocity.clamp(1, 127)]);
-    let _ = conn.send(&[0x80 | channel, note, 0]);
+fn note_on_off(conn: &mut MidiOutputConnection, errors: &ErrorLog, channel: u8, note: u8, velocity: u8) {
+    for message in [[0x90 | channel, note, velocity.clamp(1, 127)], [0x80 | channel, note, 0]] {
+        if let Err(e) = conn.send(&message) {
+            errors.midi_failed(e);
+        }
+    }
 }
 
 /// The choke group of a lane (the bit a later sound can choke it by) and the groups it chokes itself.
@@ -437,6 +441,7 @@ struct DeviceSink {
     /// How much later the MIDI click and the MIDI drums go out (see `PlayOptions::midi_delay`).
     click_delay: Duration,
     drum_delay: Duration,
+    errors: ErrorLog,
 }
 
 /// The delays of the MIDI click and of the MIDI drums: `opts.midi_delay` for each that is also played
@@ -454,7 +459,7 @@ impl DeviceSink {
         let when = when + delay;
         if self.lookahead().is_zero() || when <= Instant::now() {
             if let Some(conn) = self.midi.as_mut() {
-                note_on_off(conn, channel, note, velocity);
+                note_on_off(conn, &self.errors, channel, note, velocity);
             }
         } else {
             self.held.push(HeldNote { when, channel, note, velocity });
@@ -466,7 +471,9 @@ impl Sink for DeviceSink {
     fn audio_click(&mut self, level: ClickLevel, volume: f32, when: Instant) {
         if let (Some(engine), Some(bank)) = (self.engine.as_ref(), self.clicks.as_ref()) {
             let (sound, gain) = bank.get(level, volume);
-            let _ = engine.play(self.run, when, sound, gain, NO_GROUP, 0);
+            if let Err(e) = engine.play(self.run, when, sound, gain, NO_GROUP, 0) {
+                self.errors.play_failed(e);
+            }
         }
     }
 
@@ -477,7 +484,9 @@ impl Sink for DeviceSink {
     fn audio_drum(&mut self, lane: Lane, gain: f32, when: Instant) {
         if let (Some(engine), Some(sound)) = (self.engine.as_ref(), self.kit.get(&lane)) {
             let (group, chokes) = choke_groups(lane);
-            let _ = engine.play(self.run, when, sound, gain, group, chokes);
+            if let Err(e) = engine.play(self.run, when, sound, gain, group, chokes) {
+                self.errors.play_failed(e);
+            }
         }
     }
 
@@ -499,11 +508,12 @@ impl Sink for DeviceSink {
 
     fn flush(&mut self, now: Instant) {
         let Some(conn) = self.midi.as_mut() else { return };
+        let errors = &self.errors;
         self.held.retain(|h| {
             if h.when > now {
                 return true;
             }
-            note_on_off(conn, h.channel, h.note, h.velocity);
+            note_on_off(conn, errors, h.channel, h.note, h.velocity);
             false
         });
     }
@@ -565,6 +575,7 @@ fn run(zero: Instant, cues: Vec<Cue>, pass_len: f64, opts: PlayOptions, control:
         drum_channel: opts.drum_channel.clamp(1, 16) - 1,
         click_delay,
         drum_delay,
+        errors: errors.clone(),
     };
     run_with(&Run { zero, cues: &cues, pass_len, opts: &opts, control: &control, stop: &stop, tail: TAIL }, &mut sink, &SystemClock);
 }

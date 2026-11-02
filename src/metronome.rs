@@ -43,8 +43,11 @@ impl Metronome {
         let stop = Arc::new(AtomicBool::new(false));
         let errors = ErrorLog::default();
         let (stop2, errors2) = (stop.clone(), errors.clone());
-        let handle =
-            std::thread::Builder::new().name("metronome".into()).spawn(move || run(zero, clicks, opts, control, stop2, errors2)).ok();
+        let handle = std::thread::Builder::new()
+            .name("metronome".into())
+            .spawn(move || run(zero, clicks, opts, control, stop2, errors2))
+            .map_err(|e| errors.push(format!("Could not start the metronome thread: {e}")))
+            .ok();
         Metronome { stop, errors, handle }
     }
 
@@ -151,7 +154,9 @@ fn run(
         if let (Some(engine), Some(bank), Some(run)) = (engine.as_ref(), bank.as_ref(), run_id) {
             let volume = control.as_ref().map_or(opts.volume, |c| c.click_volume());
             let (sound, gain) = bank.get(level, volume);
-            let _ = engine.play(run, target, sound, gain, NO_GROUP, 0);
+            if let Err(e) = engine.play(run, target, sound, gain, NO_GROUP, 0) {
+                errors.play_failed(e);
+            }
         }
         if let Some(conn) = midi.as_mut() {
             let delay =
@@ -159,8 +164,11 @@ fn run(
             if !wait_until(target + delay, &stop) {
                 break;
             }
-            let _ = conn.send(&[0x90 | ch, opts.midi_note, level.velocity()]);
-            let _ = conn.send(&[0x80 | ch, opts.midi_note, 0]);
+            for message in [[0x90 | ch, opts.midi_note, level.velocity()], [0x80 | ch, opts.midi_note, 0]] {
+                if let Err(e) = conn.send(&message) {
+                    errors.midi_failed(e);
+                }
+            }
         }
     }
     // Let the last click ring out; a stop cuts it off.

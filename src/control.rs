@@ -129,15 +129,44 @@ impl Control {
 /// Problems a sound thread ran into (no sound device, MIDI port missing),
 /// collected for the UI to show.
 #[derive(Clone, Default)]
-pub struct ErrorLog(Arc<Mutex<Vec<String>>>);
+pub struct ErrorLog {
+    messages: Arc<Mutex<Vec<String>>>,
+    /// Sounds the thread could not hand to the audio engine, or MIDI messages the port refused.
+    failed: Arc<AtomicU32>,
+}
 
 impl ErrorLog {
     pub fn push(&self, message: String) {
-        crate::sync::locked(&self.0).push(message);
+        crate::sync::locked(&self.messages).push(message);
     }
 
     pub fn take(&self) -> Vec<String> {
-        std::mem::take(&mut *crate::sync::locked(&self.0))
+        std::mem::take(&mut *crate::sync::locked(&self.messages))
+    }
+
+    /// A sound that was not played: counted, and said once (the thread would otherwise say it for
+    /// every note).
+    pub fn play_failed(&self, why: crate::audio::PlayError) {
+        if self.failed.fetch_add(1, Relaxed) == 0 {
+            let why = match why {
+                crate::audio::PlayError::NotReady => "the sound output has not started",
+                crate::audio::PlayError::QueueFull => "the sound output is not keeping up",
+            };
+            self.push(format!("A sound was not played because {why}; more may follow."));
+        }
+    }
+
+    /// A MIDI message the port refused: counted, and said once.
+    pub fn midi_failed(&self, why: impl std::fmt::Display) {
+        if self.failed.fetch_add(1, Relaxed) == 0 {
+            self.push(format!("A MIDI message was not sent: {why}; more may follow."));
+        }
+    }
+
+    /// How many sounds and MIDI messages were lost so far.
+    #[cfg(test)]
+    pub fn failed(&self) -> u32 {
+        self.failed.load(Relaxed)
     }
 }
 
@@ -190,5 +219,18 @@ mod tests {
         other.push("b".into());
         assert_eq!(log.take(), ["a", "b"]);
         assert!(other.take().is_empty());
+    }
+
+    #[test]
+    fn a_lost_sound_is_counted_every_time_and_said_once() {
+        use crate::audio::PlayError;
+        let log = ErrorLog::default();
+        log.play_failed(PlayError::QueueFull);
+        log.play_failed(PlayError::NotReady);
+        log.midi_failed("port closed");
+        assert_eq!(log.failed(), 3);
+        let said = log.take();
+        assert_eq!(said.len(), 1, "{said:?}");
+        assert!(said[0].contains("not keeping up"), "{said:?}");
     }
 }
