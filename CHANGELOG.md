@@ -6,6 +6,9 @@ All notable changes are recorded here. The format follows [Keep a Changelog](htt
 
 ## [Unreleased]
 
+### Changed
+- **The keys R, L, M, K and Esc do what the matching controller buttons do**, through the same code (RV-12): R pressed during a recording stops it, as the Record button does; R and L without a score say "Open a score first."; Esc always stops.
+
 ### Fixed
 - **A file whose import would produce an inconsistent score is refused with a message** instead of being opened and failing later (RV-5); the check ran only in test builds before.
 - **The CSV of a take quotes its fields** (RV-9): a printed measure number with a comma or a quote no longer breaks the rows.

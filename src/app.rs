@@ -25,6 +25,7 @@ use egui::RichText;
 use crate::analysis::{Expected, Hit, Report};
 use crate::config::{Config, Paths, RowLayout};
 use crate::control::Control;
+use crate::controller::Action;
 use crate::drums::Lane;
 use crate::import::load_score;
 use crate::metronome::Metronome;
@@ -638,36 +639,18 @@ impl DrumApp {
 
     /// R records, L listens, M starts the metronome, K switches the click, Esc stops.
     fn shortcut_keys(&mut self, ctx: &egui::Context) {
-        let (rec, listen, metro, click, esc) = ctx.input(|i| {
-            (
-                i.key_pressed(egui::Key::R),
-                i.key_pressed(egui::Key::L),
-                i.key_pressed(egui::Key::M),
-                i.key_pressed(egui::Key::K),
-                i.key_pressed(egui::Key::Escape),
-            )
-        });
-        if click {
-            self.cfg.metronome_during_take = !self.cfg.metronome_during_take;
-        }
-        let running = self.practice.take.as_ref().is_some_and(|t| t.running);
-        if esc && (running || self.playback.player.is_some() || self.metro_run.run.is_some()) {
-            self.stop_take(false);
-            self.stop_listen();
-            self.stop_metro();
-        } else if rec && !running && self.practice.score.is_some() {
-            self.start_take();
-        } else if listen && !running && self.practice.score.is_some() {
-            if self.playback.listen.is_some() {
-                self.stop_listen();
-            } else {
-                self.start_listen();
-            }
-        } else if metro && !running {
-            if self.metro_run.run.is_some() {
-                self.stop_metro();
-            } else {
-                self.start_metro();
+        // The keys are the same commands as the buttons of a controller, through the same function:
+        // the same rules, the same lock, the same messages.
+        let pressed = |key| ctx.input(|i| i.key_pressed(key));
+        for (key, action) in [
+            (egui::Key::K, Action::Click),
+            (egui::Key::Escape, Action::Stop),
+            (egui::Key::R, Action::Record),
+            (egui::Key::L, Action::Listen),
+            (egui::Key::M, Action::Metronome),
+        ] {
+            if pressed(key) {
+                self.press(action);
             }
         }
     }

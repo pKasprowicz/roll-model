@@ -304,6 +304,69 @@ fn the_rudiment_controls_are_locked_while_a_take_records() {
     assert_eq!(app.cfg.rudiment, 2);
 }
 
+/// A key press as the window would deliver it, handled by the keyboard shortcuts.
+fn press_key(app: &mut DrumApp, key: egui::Key) {
+    let ctx = egui::Context::default();
+    let mut input = egui::RawInput::default();
+    input.events.push(egui::Event::Key { key, physical_key: None, pressed: true, repeat: false, modifiers: egui::Modifiers::NONE });
+    let _ = ctx.run(input, |ctx| app.shortcut_keys(ctx));
+}
+
+#[test]
+fn the_keys_and_the_controller_buttons_follow_the_same_rules() {
+    // Without a score both say so.
+    let mut app = DrumApp::with_config(Config::default());
+    press_key(&mut app, egui::Key::R);
+    assert_eq!(app.view.status, "Open a score first.");
+    app.view.status.clear();
+    app.apply_command(Command::Press(Action::Record));
+    assert_eq!(app.view.status, "Open a score first.");
+
+    // With one, R records and a second R stops, as the Record button does.
+    let mut app = app_with_score();
+    app.cfg.click_audio = false;
+    app.cfg.click_midi = false;
+    press_key(&mut app, egui::Key::R);
+    assert!(app.take_running());
+    // The modes cannot be changed while the take records, by key or by button.
+    let looping = app.playback.looping;
+    press_key(&mut app, egui::Key::M);
+    app.apply_command(Command::Press(Action::Loop));
+    assert!(app.metro_run.run.is_none() && app.playback.looping == looping);
+    assert!(app.take_running());
+    press_key(&mut app, egui::Key::R);
+    assert!(!app.take_running(), "R stops the recording like the Record button");
+
+    // Esc stops whatever runs, and K switches the click, as the buttons do.
+    press_key(&mut app, egui::Key::R);
+    assert!(app.take_running());
+    press_key(&mut app, egui::Key::Escape);
+    assert!(!app.take_running());
+    let click = app.cfg.metronome_during_take;
+    press_key(&mut app, egui::Key::K);
+    assert_eq!(app.cfg.metronome_during_take, !click);
+}
+
+#[test]
+fn a_locked_change_says_so_once_and_changes_nothing() {
+    let mut app = app_with_score();
+    app.cfg.click_audio = false;
+    app.cfg.click_midi = false;
+    app.apply_command(Command::Press(Action::Record));
+    assert!(app.take_running());
+    let tempo = app.practice.tempo;
+    app.view.status.clear();
+    app.apply_command(Command::Turn(Action::Tempo, 5));
+    app.apply_command(Command::Set(Action::RangeTo, 0.5));
+    app.apply_command(Command::Press(Action::TempoUp));
+    assert_eq!(app.practice.tempo, tempo);
+    assert_eq!(app.view.status, "Locked while a take is recording.");
+    // What is not a change of tempo, range or score is not locked.
+    let volume = app.cfg.click_volume;
+    app.apply_command(Command::Turn(Action::ClickVolume, -5));
+    assert!(app.cfg.click_volume < volume, "the volume still moves");
+}
+
 #[test]
 fn recent_scores_are_browsed_and_opened() {
     let mut app = DrumApp::with_config(Config::default());

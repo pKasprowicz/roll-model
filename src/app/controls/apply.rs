@@ -71,6 +71,31 @@ pub(super) fn nudged_volume(v: f32, steps: i32) -> f32 {
     (((v + 0.02 * steps as f32) * 50.0).round() / 50.0).clamp(0.0, 1.0)
 }
 
+/// The actions that change the tempo, the range or the score: locked while a take records.
+fn locked_by_recording(action: Action) -> bool {
+    matches!(
+        action,
+        Action::LoopWorstBar
+            | Action::RangeBack
+            | Action::RangeForward
+            | Action::TapTempo
+            | Action::TempoDown
+            | Action::TempoUp
+            | Action::TempoReset
+            | Action::PrevRudiment
+            | Action::NextRudiment
+            | Action::DiscardTake
+            | Action::OpenScore
+            | Action::Tempo
+            | Action::RangeFrom
+            | Action::RangeTo
+            | Action::Score
+            | Action::Repeats
+            | Action::Lead
+            | Action::Rudiment
+    )
+}
+
 impl DrumApp {
     /// Tempo controls act on the metronome while its tab is open (or no score is loaded).
     pub(super) fn tempo_is_metronome(&self) -> bool {
@@ -148,6 +173,14 @@ impl DrumApp {
         true
     }
 
+    /// The one place that applies the lock of a recording: an action that changes the tempo, the
+    /// range or the score is refused (with the reason on the status line) while a take records.
+    /// `true` if the action may go on. It is asked once, before the action is looked at, so no
+    /// match guard has to write the status line.
+    fn allowed_now(&mut self, action: Action) -> bool {
+        !locked_by_recording(action) || self.unlocked()
+    }
+
     pub(super) fn apply_command(&mut self, command: Command) {
         match command {
             Command::Press(action) => self.press(self.in_context(action)),
@@ -156,7 +189,10 @@ impl DrumApp {
         }
     }
 
-    pub(super) fn press(&mut self, action: Action) {
+    pub(in crate::app) fn press(&mut self, action: Action) {
+        if !self.allowed_now(action) {
+            return;
+        }
         let running = self.take_running();
         match action {
             Action::Record if running => self.stop_take(false),
@@ -188,14 +224,16 @@ impl DrumApp {
                     self.start_metro();
                 }
             }
+            // Left alone while a take records (without a message: the buttons only toggle a mode).
+            Action::Loop | Action::Notes | Action::Metronome => {}
             Action::NextTab => self.next_tab(),
-            Action::LoopWorstBar if self.unlocked() => self.loop_worst_bar(),
-            Action::RangeBack if self.unlocked() => self.move_range(false),
-            Action::RangeForward if self.unlocked() => self.move_range(true),
-            Action::TapTempo if self.unlocked() => self.tap_tempo(),
-            Action::TempoDown if self.unlocked() => self.turn(Action::Tempo, -5),
-            Action::TempoUp if self.unlocked() => self.turn(Action::Tempo, 5),
-            Action::TempoReset if self.unlocked() => {
+            Action::LoopWorstBar => self.loop_worst_bar(),
+            Action::RangeBack => self.move_range(false),
+            Action::RangeForward => self.move_range(true),
+            Action::TapTempo => self.tap_tempo(),
+            Action::TempoDown => self.turn(Action::Tempo, -5),
+            Action::TempoUp => self.turn(Action::Tempo, 5),
+            Action::TempoReset => {
                 if self.tempo_is_metronome() {
                     self.cfg.metro_bpm = Config::default().metro_bpm;
                 } else if self.source == Source::Rudiments {
@@ -205,15 +243,15 @@ impl DrumApp {
                 }
                 self.view.status = "Tempo reset.".into();
             }
-            Action::PrevRudiment if self.unlocked() => self.step_rudiment(-1),
-            Action::NextRudiment if self.unlocked() => self.step_rudiment(1),
-            Action::DiscardTake if self.unlocked() => {
+            Action::PrevRudiment => self.step_rudiment(-1),
+            Action::NextRudiment => self.step_rudiment(1),
+            Action::DiscardTake => {
                 if let Some(take) = self.practice.take.take() {
                     self.practice.history.retain(|h| h.number != take.number);
                     self.view.status = format!("Take {} discarded.", take.number);
                 }
             }
-            Action::OpenScore if self.unlocked() => {
+            Action::OpenScore => {
                 match self.cfg.recent_files.get(self.controller.cursor.min(self.cfg.recent_files.len().saturating_sub(1))).cloned() {
                     Some(path) => self.open_file(Path::new(&path)),
                     None => self.view.status = "There are no recent scores to open.".into(),
@@ -222,16 +260,33 @@ impl DrumApp {
             Action::Mute(i) => self.toggle_mute(i as usize),
             Action::Solo(i) => self.toggle_solo(i as usize),
             Action::Audition(i) => self.audition(controller::group_lanes(i as usize)[0]),
-            _ => {}
+            // Held down: the mapper reads it and makes the encoders turn five times as far.
+            Action::Shift => {}
+            // These are turned or set, not pressed.
+            Action::Tempo
+            | Action::RangeFrom
+            | Action::RangeTo
+            | Action::ClickVolume
+            | Action::MusicVolume
+            | Action::CountIn
+            | Action::BarsPerRow
+            | Action::Gain(_)
+            | Action::Repeats
+            | Action::Lead
+            | Action::Score
+            | Action::Rudiment => {}
         }
     }
 
     pub(super) fn turn(&mut self, action: Action, steps: i32) {
+        if !self.allowed_now(action) {
+            return;
+        }
         let tempo_here = self.tempo_is_metronome();
         let measures = self.practice.score.as_ref().map_or(0, |s| s.measures.len());
         let one = steps.signum();
         match action {
-            Action::Tempo if self.unlocked() => {
+            Action::Tempo => {
                 if tempo_here {
                     self.cfg.metro_bpm = (self.cfg.metro_bpm.round() + steps as f32).clamp(METRO_RANGE.0, METRO_RANGE.1);
                     self.view.status = format!("Metronome {:.0} BPM", self.cfg.metro_bpm);
@@ -240,11 +295,11 @@ impl DrumApp {
                     self.view.status = format!("Tempo {}", self.practice.tempo.text());
                 }
             }
-            Action::RangeFrom if measures > 0 && self.unlocked() => {
+            Action::RangeFrom if measures > 0 => {
                 self.practice.range_from = (self.practice.range_from as i32 + steps).clamp(0, self.practice.range_to as i32) as usize;
                 self.status_range();
             }
-            Action::RangeTo if measures > 0 && self.unlocked() => {
+            Action::RangeTo if measures > 0 => {
                 self.practice.range_to =
                     (self.practice.range_to as i32 + steps).clamp(self.practice.range_from as i32, measures as i32 - 1) as usize;
                 self.status_range();
@@ -257,48 +312,103 @@ impl DrumApp {
                 let g = self.cfg.gain_of(controller::group_lanes(i as usize)[0]);
                 self.set_group_gain(i as usize, (g + 0.05 * steps as f32).clamp(0.0, MAX_LANE_GAIN));
             }
-            Action::Score if self.unlocked() => self.browse_scores(steps),
-            Action::Repeats if self.unlocked() => {
+            Action::Score => self.browse_scores(steps),
+            Action::Repeats => {
                 self.step_repeats(steps);
                 self.view.status = format!("{} repeats", self.cfg.rudiment_repeats);
             }
-            Action::Lead if self.unlocked() => {
+            Action::Lead => {
                 self.step_lead(one);
                 self.view.status = format!("{} hand leads", self.rudiment_lead().label());
             }
-            Action::Rudiment if self.unlocked() => self.step_rudiment(one),
-            _ => {}
+            Action::Rudiment => self.step_rudiment(one),
+            // A range with no measures has nothing to move.
+            Action::RangeFrom | Action::RangeTo => {}
+            // Buttons are pressed, not turned.
+            Action::Record
+            | Action::Listen
+            | Action::Stop
+            | Action::Click
+            | Action::Loop
+            | Action::Notes
+            | Action::Metronome
+            | Action::NextTab
+            | Action::LoopWorstBar
+            | Action::RangeBack
+            | Action::RangeForward
+            | Action::TapTempo
+            | Action::TempoDown
+            | Action::TempoUp
+            | Action::DiscardTake
+            | Action::TempoReset
+            | Action::OpenScore
+            | Action::PrevRudiment
+            | Action::NextRudiment
+            | Action::Shift
+            | Action::Mute(_)
+            | Action::Solo(_)
+            | Action::Audition(_) => {}
         }
     }
 
     pub(super) fn set(&mut self, action: Action, x: f32) {
+        if !self.allowed_now(action) {
+            return;
+        }
         let x = x.clamp(0.0, 1.0);
         let measures = self.practice.score.as_ref().map_or(0, |s| s.measures.len());
         let bar = |x: f32| (x * measures.saturating_sub(1) as f32).round() as usize;
         match action {
-            Action::Tempo if self.unlocked() => {
+            Action::Tempo => {
                 if self.tempo_is_metronome() {
                     self.cfg.metro_bpm = (METRO_RANGE.0 + x * (METRO_RANGE.1 - METRO_RANGE.0)).round();
                 } else {
                     self.practice.tempo = self.practice.tempo.at_position(x);
                 }
             }
-            Action::RangeFrom if measures > 0 && self.unlocked() => self.practice.range_from = bar(x).min(self.practice.range_to),
-            Action::RangeTo if measures > 0 && self.unlocked() => self.practice.range_to = bar(x).max(self.practice.range_from),
+            Action::RangeFrom if measures > 0 => self.practice.range_from = bar(x).min(self.practice.range_to),
+            Action::RangeTo if measures > 0 => self.practice.range_to = bar(x).max(self.practice.range_from),
             Action::ClickVolume => self.cfg.click_volume = x,
             Action::MusicVolume => self.cfg.playback_volume = x,
             Action::CountIn => self.cfg.count_in_bars = (x * 2.0).round() as u32,
             Action::BarsPerRow => self.cfg.bars_per_row = (x * 8.0).round() as usize,
-            Action::Repeats if self.unlocked() => {
+            Action::Repeats => {
                 self.cfg.rudiment_repeats = 1 + (x * (MAX_REPEATS - 1) as f32).round() as usize;
                 self.ensure_rudiment();
             }
-            Action::Lead if self.unlocked() => {
+            Action::Lead => {
                 self.rud.lead = Some(Lead::ALL[(x * 2.0).round() as usize]);
                 self.ensure_rudiment();
             }
             Action::Gain(i) => self.set_group_gain(i as usize, x * MAX_LANE_GAIN),
-            _ => {}
+            // A range with no measures has nothing to set.
+            Action::RangeFrom | Action::RangeTo => {}
+            // Browsed by turning only, and the buttons are pressed.
+            Action::Score
+            | Action::Rudiment
+            | Action::Record
+            | Action::Listen
+            | Action::Stop
+            | Action::Click
+            | Action::Loop
+            | Action::Notes
+            | Action::Metronome
+            | Action::NextTab
+            | Action::LoopWorstBar
+            | Action::RangeBack
+            | Action::RangeForward
+            | Action::TapTempo
+            | Action::TempoDown
+            | Action::TempoUp
+            | Action::DiscardTake
+            | Action::TempoReset
+            | Action::OpenScore
+            | Action::PrevRudiment
+            | Action::NextRudiment
+            | Action::Shift
+            | Action::Mute(_)
+            | Action::Solo(_)
+            | Action::Audition(_) => {}
         }
     }
 
