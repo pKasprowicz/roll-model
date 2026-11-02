@@ -26,6 +26,18 @@ const BEAM_W: f32 = 3.0;
 const BEAM_GAP: f32 = 4.5;
 const FLAG_GAP: f32 = 4.5;
 const STUB: f32 = 7.0;
+/// How far left of the first note the staff lines begin, and where the clef stands and ends.
+const STAFF_OVERHANG: f32 = 22.0;
+const CLEF_INSET: f32 = 18.0;
+/// A hit left of this (from `LEFT`) is in the margin, not on the staff.
+const MARGIN_EDGE: f32 = 20.0;
+/// Right of the last bar, the width kept free, and how far (in quarters) the playhead may run past the end of the last system before it counts as outside.
+const RIGHT_MARGIN: f32 = 8.0;
+const PLAYHEAD_GRACE_Q: f64 = 8.0;
+/// The narrowest width the score is laid out for.
+const MIN_WIDTH: f32 = 420.0;
+/// The faintest wash that marks the area under the pointer.
+const HOVER_WASH: f32 = 0.08;
 
 /// Where the stem of a note at `x` stands: right of the head going up, left of it going down.
 fn stem_x(x: f32, up: bool, scale: f32) -> f32 {
@@ -173,7 +185,7 @@ fn fixed_rows(n: usize, per_row: usize, align: Option<usize>, pauses: &[bool]) -
 fn layout(score: &Score, width: f32, zoom: f32, opts: LayoutOpts) -> SystemLayout {
     let n = score.measures.len();
     let pauses = if opts.break_at_pause { notation::pause_bars(score) } else { Vec::new() };
-    let line_w = (width - LEFT - 8.0).max(200.0);
+    let line_w = (width - LEFT - RIGHT_MARGIN).max(200.0);
     let align = (opts.align_bar >= 1 && opts.align_bar <= n).then(|| opts.align_bar - 1);
     let fixed = opts.bars_per_row > 0;
     let mut fit_bars = None;
@@ -712,7 +724,7 @@ fn holds_playhead(view: &ScoreView, system: usize, first: usize, end: usize) -> 
     let Some(q) = view.playhead_q else { return false };
     let score = view.score;
     let (first, last) = (&score.measures[first], &score.measures[end - 1]);
-    let inside = q >= first.start_q.0 && (q < last.end_q().0 || end == score.measures.len() && q < last.end_q().0 + 8.0);
+    let inside = q >= first.start_q.0 && (q < last.end_q().0 || end == score.measures.len() && q < last.end_q().0 + PLAYHEAD_GRACE_Q);
     inside || (system == 0 && q < first.start_q.0)
 }
 
@@ -723,7 +735,7 @@ pub fn show(ui: &mut Ui, view: &ScoreView) -> ViewOutput {
         ui.label("The score has no measures.");
         return out;
     }
-    let width = ui.available_width().max(420.0);
+    let width = ui.available_width().max(MIN_WIDTH);
     let lay = layout(score, width, view.zoom, view.layout);
     out.fit_bars = lay.fit_bars;
     let total_h = lay.systems.len() as f32 * SYS_H + 10.0;
@@ -813,14 +825,14 @@ fn draw_system(f: &Frame, rows: &Rows, bars: (usize, usize), hover_text: &mut Op
         if mi >= view.range.0 && mi <= view.range.1 {
             let mp = &lay.measures[mi];
             let r = Rect::from_min_max(pos2(f.origin.x + mp.x0, rows.y0 + 14.0), pos2(f.origin.x + mp.x0 + mp.w, rows.vel_base + 4.0));
-            painter.rect_filled(r, 0.0, ACCENT.gamma_multiply(0.08));
+            painter.rect_filled(r, 0.0, ACCENT.gamma_multiply(HOVER_WASH));
         }
     }
 
-    cv.staff(f.origin.x + LEFT - 22.0, x_end, rows.exp_top);
-    cv.staff(f.origin.x + LEFT - 22.0, x_end, rows.play_top);
-    cv.clef(f.origin.x + LEFT - 18.0, rows.exp_top, cv.text);
-    cv.clef(f.origin.x + LEFT - 18.0, rows.play_top, cv.weak);
+    cv.staff(f.origin.x + LEFT - STAFF_OVERHANG, x_end, rows.exp_top);
+    cv.staff(f.origin.x + LEFT - STAFF_OVERHANG, x_end, rows.play_top);
+    cv.clef(f.origin.x + LEFT - CLEF_INSET, rows.exp_top, cv.text);
+    cv.clef(f.origin.x + LEFT - CLEF_INSET, rows.play_top, cv.weak);
     painter.text(pos2(f.origin.x + 2.0, rows.exp_top + 2.0 * LS), Align2::LEFT_CENTER, "Score", FontId::proportional(11.0), cv.weak);
     painter.text(pos2(f.origin.x + 2.0, rows.play_top + 2.0 * LS), Align2::LEFT_CENTER, "You", FontId::proportional(11.0), ACCENT);
     painter.text(pos2(f.origin.x + 2.0, rows.vel_base - 6.0), Align2::LEFT_CENTER, "vel", FontId::proportional(9.0), cv.weak);
@@ -954,7 +966,7 @@ fn draw_played_note(f: &Frame, rows: &Rows, mi: usize, pi: usize, hover_text: &m
     let painter = cv.painter;
     let pn = &view.played[pi];
     let x = f.x_of(mi, pn.q);
-    if x < f.origin.x + LEFT - 20.0 {
+    if x < f.origin.x + LEFT - MARGIN_EDGE {
         return;
     }
     let lane = Lane::ALL.iter().position(|x| *x == pn.lane).unwrap_or(0);
@@ -1125,7 +1137,7 @@ mod tests {
         let lay = layout(&score, W, 1.0, FIXED(4, 0));
         assert_eq!(lay.systems, [(0, 4), (4, 8), (8, 10)]);
         assert_eq!(lay.fit_bars, None);
-        let line_w = W - LEFT - 8.0;
+        let line_w = W - LEFT - RIGHT_MARGIN;
         let row_end = lay.measures[3].x0 + lay.measures[3].w;
         assert!((row_end - (LEFT + line_w)).abs() < 0.01, "a full row fills the line: {row_end}");
         // The short last row has the same bar width and the same barlines as the first.
@@ -1172,7 +1184,7 @@ mod tests {
         assert_eq!(aligned.systems, [(0, 2), (2, 6), (6, 10), (10, 12)]);
         // Rows are still justified to the full width (except a short last one).
         let first_end = aligned.measures[5].x0 + aligned.measures[5].w;
-        assert!((first_end - (LEFT + 1100.0 - LEFT - 8.0)).abs() < 0.01);
+        assert!((first_end - (LEFT + 1100.0 - LEFT - RIGHT_MARGIN)).abs() < 0.01);
     }
 
     #[test]
@@ -1199,7 +1211,7 @@ mod tests {
         let long = score_of(&[4.0, 4.0, 4.0, 8.0, 4.0, 4.0, 4.0, 4.0]);
         let lay = layout(&long, W, 1.0, FIXED(4, 0));
         let row: f32 = (0..4).map(|i| width_of(&lay, i)).sum();
-        assert!((row - (W - LEFT - 8.0)).abs() < 0.01, "{row}");
+        assert!((row - (W - LEFT - RIGHT_MARGIN)).abs() < 0.01, "{row}");
     }
 
     #[test]
