@@ -2,7 +2,7 @@
 
 use super::super::DrumApp;
 use crate::controller::{self};
-use crate::render;
+use crate::theme;
 use crate::widgets;
 use egui::RichText;
 use std::path::Path;
@@ -96,8 +96,8 @@ impl DrumApp {
         }
 
         let (colour, text) = match self.controller.link.is_some() {
-            true => (render::GREEN, self.controller.message.clone()),
-            false => (render::AMBER, self.controller.message.clone()),
+            true => (theme::GREEN, self.controller.message.clone()),
+            false => (theme::AMBER, self.controller.message.clone()),
         };
         if !text.is_empty() {
             ui.label(RichText::new(text).color(colour));
@@ -109,7 +109,7 @@ impl DrumApp {
         if let Some(link) = self.controller.link.as_ref() {
             let preset = link.mapper.preset();
             for w in &preset.warnings {
-                ui.label(RichText::new(format!("⚠ {w}")).small().color(render::AMBER));
+                ui.label(RichText::new(format!("⚠ {w}")).small().color(theme::AMBER));
             }
             ui.add_space(6.0);
             let layer = link.mapper.layer_name().map(|l| format!("layer {l}")).unwrap_or_else(|| "no layers".into());

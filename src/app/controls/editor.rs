@@ -13,6 +13,7 @@ use egui::{RichText, ViewportBuilder, ViewportClass, ViewportId};
 use super::page::copy_preset;
 use super::*;
 use crate::controller::{Binding, Encoding, Light, Preset, Reading};
+use crate::theme;
 use crate::widgets;
 
 /// What the Manage window remembers between frames: widget state, not behaviour.
@@ -506,7 +507,7 @@ impl DrumApp {
         egui::TopBottomPanel::bottom("controller_preset_buttons").show_inside(ui, |ui| {
             ui.add_space(4.0);
             if self.controller.editor.view.confirm_delete {
-                ui.label(RichText::new(format!("Delete \"{chosen}\"? Its file is removed.")).color(render::AMBER));
+                ui.label(RichText::new(format!("Delete \"{chosen}\"? Its file is removed.")).color(theme::AMBER));
                 ui.horizontal(|ui| {
                     if ui.button("Delete").clicked() {
                         op = Some(Op::Delete);
@@ -606,7 +607,7 @@ impl DrumApp {
             }
         }
         if !custom && !self.controller.editor.notice.is_empty() {
-            ui.label(RichText::new(self.controller.editor.notice.clone()).small().color(render::AMBER));
+            ui.label(RichText::new(self.controller.editor.notice.clone()).small().color(theme::AMBER));
         }
         self.run_op(op);
     }
@@ -723,21 +724,19 @@ impl DrumApp {
             });
             if let Some(name) = self.controller.editor.learning_layer.clone() {
                 ui.label(
-                    RichText::new(format!("Press the button that selects layer \"{name}\" on the device…")).strong().color(render::ACCENT),
+                    RichText::new(format!("Press the button that selects layer \"{name}\" on the device…")).strong().color(theme::ACCENT),
                 );
             }
         }
         let layer = self.editor_layer(&preset);
         if !connected {
-            ui.label(RichText::new("The controller is not connected: connect it to learn controls.").small().color(render::AMBER));
+            ui.label(RichText::new("The controller is not connected: connect it to learn controls.").small().color(theme::AMBER));
         }
         if let Some(d) = self.controller.editor.detecting.as_ref() {
-            ui.label(RichText::new(d.prompt()).strong().color(render::ACCENT));
+            ui.label(RichText::new(d.prompt()).strong().color(theme::ACCENT));
         } else if let Some(action) = self.controller.editor.learning {
             ui.label(
-                RichText::new(format!("Press or turn the control for \"{}\" on the device…", action.title()))
-                    .strong()
-                    .color(render::ACCENT),
+                RichText::new(format!("Press or turn the control for \"{}\" on the device…", action.title())).strong().color(theme::ACCENT),
             );
         } else if !self.controller.editor.notice.is_empty() {
             ui.label(RichText::new(self.controller.editor.notice.clone()).small());

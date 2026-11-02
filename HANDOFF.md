@@ -166,8 +166,8 @@ The hardware tasks (HW-*) have a step-by-step plan in `docs/hardware-test-plan.m
 | **RV-70** [#96](https://github.com/pKasprowicz/roll-model/issues/96) | The Manage window (`editor.rs`) is now the largest file (S2, effort M) | code |
 | **RV-71** [#97](https://github.com/pKasprowicz/roll-model/issues/97) | User data is stored in the settings file (S3, effort S) | code |
 | **RV-72** [#98](https://github.com/pKasprowicz/roll-model/issues/98) | UI conventions are enforced by prose (S3, effort S) | code |
-| **RV-73** [#99](https://github.com/pKasprowicz/roll-model/issues/99) | Colour palette in `render.rs` (S4) | code |
-| **RV-74** [#100](https://github.com/pKasprowicz/roll-model/issues/100) | Leftover scaffolding (S4) | code |
+| **RV-73** [#99](https://github.com/pKasprowicz/roll-model/issues/99) | Colour palette in `render.rs` (S4) — **done 2026-11-02:** `src/theme.rs` holds the six colours; the renderer and every tab take them from there | code |
+| **RV-74** [#100](https://github.com/pKasprowicz/roll-model/issues/100) | Leftover scaffolding (S4) — **done 2026-11-02:** the module doc of `app.rs` names all the tabs; the empty banners and double blank lines were gone with rustfmt | code |
 | **RV-80** [#101](https://github.com/pKasprowicz/roll-model/issues/101) | Timing tests use the wall clock (S2, effort M) — **done 2026-11-02, in 0.10.3**: `playback::Clock` (system clock, and `ManualClock` in the tests), `Run` groups the scheduler's inputs; the 20 playback tests take 0.1 s and do not sleep. The other scheduler (`metronome.rs`) still reads the system clock (RV-30) | code |
 | **RV-81** [#102](https://github.com/pKasprowicz/roll-model/issues/102) | Tests through `DrumApp` (S3) | code |
 | **RV-82** [#103](https://github.com/pKasprowicz/roll-model/issues/103) | Missing tests for the failure paths found here | code |

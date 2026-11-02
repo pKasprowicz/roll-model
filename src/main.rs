@@ -10,6 +10,7 @@ mod playback;
 mod render;
 mod sync;
 mod synth;
+mod theme;
 mod widgets;
 
 use std::path::PathBuf;

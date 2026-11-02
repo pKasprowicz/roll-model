@@ -14,6 +14,7 @@ use crate::metronome::HAS_AUDIO;
 use crate::playback::{self, PlayOptions, Player, Ramp, Subdivision};
 use crate::render;
 use crate::score::Score;
+use crate::theme;
 use crate::units::Quarters;
 use crate::widgets;
 
@@ -264,7 +265,7 @@ impl DrumApp {
         let outline = ui.visuals().widgets.noninteractive.fg_stroke.color.gamma_multiply(0.5);
         for b in 0..beats {
             let centre = pos2(rect.left() + margin + radius + b as f32 * (2.0 * radius + gap), rect.center().y);
-            let colour = if b == 0 { render::RED } else { render::ACCENT };
+            let colour = if b == 0 { theme::RED } else { theme::ACCENT };
             painter.circle_stroke(centre, radius, Stroke::new(1.5_f32, outline));
             if let Some((index, brightness)) = current {
                 if index == b as u64 {

@@ -1,4 +1,4 @@
-//! Application state and UI (Score / Metronome / Results / Settings tabs).
+//! Application state and UI: the Home, Score, Rudiments, Metronome, Results and Settings tabs, and the windows of the controller.
 
 mod audio_output;
 mod controller_help;
@@ -33,8 +33,8 @@ use crate::metronome::Metronome;
 use crate::midi::{self, EventQueue, InputHandle, RawEvent};
 use crate::playback::{Player, Ramp};
 use crate::practice_tempo::PracticeTempo;
-use crate::render::{self};
 use crate::score::Score;
+use crate::theme;
 use crate::units::{Millis, Seconds};
 use crate::widgets;
 use session::signed_secs;
@@ -589,11 +589,11 @@ impl DrumApp {
             }
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 match &self.midi.input {
-                    Some(h) => ui.label(RichText::new(format!("⏺ {}", h.port_name)).color(render::GREEN)),
-                    None => ui.label(RichText::new("⏺ no MIDI input").color(render::RED)),
+                    Some(h) => ui.label(RichText::new(format!("⏺ {}", h.port_name)).color(theme::GREEN)),
+                    None => ui.label(RichText::new("⏺ no MIDI input").color(theme::RED)),
                 };
                 if let Some((text, connected)) = self.controller.label(!self.cfg.controller_preset.is_empty()) {
-                    let indicator = egui::Label::new(RichText::new(text).color(if connected { render::GREEN } else { render::RED }))
+                    let indicator = egui::Label::new(RichText::new(text).color(if connected { theme::GREEN } else { theme::RED }))
                         .sense(egui::Sense::click());
                     let response = ui
                         .add(indicator)
@@ -693,7 +693,7 @@ impl DrumApp {
         egui::TopBottomPanel::bottom("status").show(ctx, |ui| {
             ui.horizontal(|ui| {
                 if let Some(e) = self.view.error.clone() {
-                    ui.label(RichText::new(e).color(render::RED));
+                    ui.label(RichText::new(e).color(theme::RED));
                     if ui.small_button("Dismiss").clicked() {
                         self.view.error = None;
                     }

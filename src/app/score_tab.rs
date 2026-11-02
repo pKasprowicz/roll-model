@@ -5,6 +5,7 @@ use egui::{Color32, RichText};
 use crate::config::limits;
 use crate::controller::Action;
 use crate::render::{self, LayoutOpts, ScoreView};
+use crate::theme;
 use crate::units::Seconds;
 use crate::widgets;
 
@@ -31,7 +32,7 @@ impl DrumApp {
             }
         });
         for w in &warnings {
-            ui.label(RichText::new(format!("⚠ {w}")).small().color(render::AMBER));
+            ui.label(RichText::new(format!("⚠ {w}")).small().color(theme::AMBER));
         }
         // Three plain rows (sliders don't wrap inside `horizontal_wrapped`), drawn larger than the
         // rest of the UI because they are used with the mouse from a drum stool. Slider captions
@@ -73,7 +74,7 @@ impl DrumApp {
                 }
             } else {
                 let gradable = self.source == Source::Score || self.rudiment().gradable();
-                let record = egui::Button::new(RichText::new("⏺ Record (R)").strong().color(render::RED));
+                let record = egui::Button::new(RichText::new("⏺ Record (R)").strong().color(theme::RED));
                 if ui
                     .add_enabled(gradable, record)
                     .on_disabled_hover_text("A closed roll cannot be graded stroke by stroke: use Listen")
@@ -185,9 +186,9 @@ impl DrumApp {
                     let el = signed_secs(self.shown_now(), take.zero);
                     if el < Seconds::ZERO {
                         let beats_left = (-el / take.count_in_beat_sec).ceil() as i64;
-                        ui.label(RichText::new(format!("Count-in… {beats_left}")).size(22.0).strong().color(render::ACCENT));
+                        ui.label(RichText::new(format!("Count-in… {beats_left}")).size(22.0).strong().color(theme::ACCENT));
                     } else {
-                        ui.label(RichText::new("⏺ REC").strong().color(render::RED));
+                        ui.label(RichText::new("⏺ REC").strong().color(theme::RED));
                     }
                 } else {
                     ui.label(RichText::new(format!("Take {}", take.number)).strong());
@@ -214,21 +215,21 @@ impl DrumApp {
                 ui.label(RichText::new("■").color(c));
                 ui.label(RichText::new(t).small());
             };
-            legend(ui, render::GREEN, "perfect");
-            legend(ui, render::LIGHT_GREEN, "good");
-            legend(ui, render::AMBER, "ok");
-            legend(ui, render::ORANGE, "wrong pad");
-            legend(ui, render::RED, "missed / extra");
+            legend(ui, theme::GREEN, "perfect");
+            legend(ui, theme::LIGHT_GREEN, "good");
+            legend(ui, theme::AMBER, "ok");
+            legend(ui, theme::ORANGE, "wrong pad");
+            legend(ui, theme::RED, "missed / extra");
             widgets::hint(ui, "· click a measure to start there, shift+click to set the end · mouse wheel over a slider fine-tunes it");
             if let Some(fit) = self.view.fit_bars {
                 let msg = format!("· {} bars per row do not fit at this width: showing {fit}", self.cfg.bars_per_row);
-                ui.label(RichText::new(msg).small().color(render::AMBER));
+                ui.label(RichText::new(msg).small().color(theme::AMBER));
             }
         });
         // On a line of its own: it grows while the trigger waits for the second hit.
         if let Some((text, armed)) = self.trigger_hint() {
             let (color, text) =
-                if armed { (render::GREEN, format!("{text}: waiting for the second hit")) } else { (ui.visuals().weak_text_color(), text) };
+                if armed { (theme::GREEN, format!("{text}: waiting for the second hit")) } else { (ui.visuals().weak_text_color(), text) };
             ui.label(RichText::new(text.trim_start_matches("· ")).small().color(color));
         }
         ui.separator();

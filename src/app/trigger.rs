@@ -8,7 +8,7 @@ use egui::RichText;
 
 use super::{DrumApp, Tab};
 use crate::drums::Lane;
-use crate::render;
+use crate::theme;
 use crate::trigger::{Sequence, Slot, WINDOW};
 
 impl DrumApp {
@@ -96,7 +96,7 @@ impl DrumApp {
             }
         });
         if let Some((text, armed)) = self.trigger_hint() {
-            let color = if armed { render::GREEN } else { ui.visuals().weak_text_color() };
+            let color = if armed { theme::GREEN } else { ui.visuals().weak_text_color() };
             ui.label(RichText::new(text.trim_start_matches("· ")).small().color(color));
         }
     }

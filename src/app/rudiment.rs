@@ -7,8 +7,8 @@ use egui::RichText;
 
 use super::{DrumApp, Source, Tab, CLEAN_TAKE};
 use crate::practice_tempo::PracticeTempo;
-use crate::render;
 use crate::rudiments::{self, Family, Lead, Rudiment, MAX_REPEATS};
+use crate::theme;
 use crate::widgets;
 
 /// The practice tempo of a rudiment, in BPM. (The rudiment scores are written at 100 BPM, so
@@ -205,7 +205,7 @@ impl DrumApp {
             ui.label(RichText::new(r.sticking()).monospace().strong());
             widgets::hint(ui, "(right lead; flams and drags: the small letter is the grace note)");
             if let Some(best) = self.cfg.rudiment_best.get(&r.number) {
-                ui.label(RichText::new(format!("· best clean tempo {best:.0} BPM")).color(render::GREEN));
+                ui.label(RichText::new(format!("· best clean tempo {best:.0} BPM")).color(theme::GREEN));
             }
             ui.add_enabled_ui(!running, |ui| {
                 if ui.small_button("Starting tempo").on_hover_text("Go back to the tempo this rudiment starts at").clicked() {

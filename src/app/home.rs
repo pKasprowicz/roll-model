@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 
 use egui::RichText;
 
-use crate::render;
+use crate::theme;
 use crate::widgets;
 
 use super::{DrumApp, Tab};
@@ -43,7 +43,7 @@ pub(super) fn recent_row(ui: &mut egui::Ui, path: &str, width: f32) -> (bool, bo
     let (title_color, sub_color) = if exists {
         (ui.visuals().strong_text_color(), ui.visuals().weak_text_color())
     } else {
-        (ui.visuals().weak_text_color(), render::RED)
+        (ui.visuals().weak_text_color(), theme::RED)
     };
     painter.text(rect.left_top() + egui::vec2(14.0, 8.0), egui::Align2::LEFT_TOP, &name, egui::FontId::proportional(17.0), title_color);
     let sub = if exists { folder } else { format!("{folder}  — file not found") };

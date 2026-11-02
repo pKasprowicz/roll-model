@@ -8,6 +8,7 @@ use crate::analysis::Grade;
 use crate::drums::{Lane, NoteHead};
 use crate::notation::{self, Beam, Notation, RestGlyph, RestKind};
 use crate::score::{Hand, Score, ScoreNote};
+use crate::theme::{ACCENT, AMBER, GREEN, LIGHT_GREEN, ORANGE, RED};
 use crate::units::{Millis, Quarters};
 
 const LS: f32 = 8.0; // staff line spacing
@@ -86,13 +87,6 @@ pub struct LayoutOpts {
     /// A bar that ends with a pause is the last of its row.
     pub break_at_pause: bool,
 }
-
-pub const GREEN: Color32 = Color32::from_rgb(0x2e, 0xb8, 0x5c);
-pub const LIGHT_GREEN: Color32 = Color32::from_rgb(0x8b, 0xc3, 0x4a);
-pub const AMBER: Color32 = Color32::from_rgb(0xf2, 0xb1, 0x34);
-pub const ORANGE: Color32 = Color32::from_rgb(0xf2, 0x7a, 0x1d);
-pub const RED: Color32 = Color32::from_rgb(0xe0, 0x3e, 0x3e);
-pub const ACCENT: Color32 = Color32::from_rgb(0x3d, 0x8b, 0xfd);
 
 pub fn grade_color(g: Grade) -> Color32 {
     match g {

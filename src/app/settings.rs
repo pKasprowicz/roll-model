@@ -7,7 +7,7 @@ use crate::config::limits;
 use crate::drums::{format_note_list, parse_note_list, Lane};
 use crate::metronome::HAS_AUDIO;
 use crate::midi;
-use crate::render;
+use crate::theme;
 use crate::widgets;
 
 use super::{DrumApp, KEYBOARD_PADS};
@@ -175,7 +175,7 @@ impl DrumApp {
                         "This latency was set with an earlier audio engine; the click now comes at another time. Calibrate again.",
                     )
                     .small()
-                    .color(render::AMBER),
+                    .color(theme::AMBER),
                 );
                 if ui.small_button("Keep this value").clicked() {
                     self.cfg.latency_engine = crate::audio::ENGINE_GENERATION;
@@ -207,7 +207,7 @@ impl DrumApp {
                     info.late, info.worst_late_ms, info.dropped
                 ))
                 .small()
-                .color(render::AMBER),
+                .color(theme::AMBER),
             );
         }
         widgets::hint(ui, "Bluetooth headphones add 100-200 ms or more and cannot be used for timing: use a wired output, or send the click to the V31 (below).");
@@ -237,7 +237,7 @@ impl DrumApp {
                 ui.label(
                     RichText::new("This device is not connected right now: the system default is used instead.")
                         .small()
-                        .color(render::AMBER),
+                        .color(theme::AMBER),
                 );
             }
         });

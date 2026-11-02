@@ -16,7 +16,6 @@ use std::time::{Duration, Instant};
 use super::{DrumApp, MONITOR_LINES};
 use crate::controller::{self, Action, Mapper};
 use crate::midi::{self, ControllerHandle, MessageQueue};
-use crate::render;
 
 /// How often the list of MIDI ports is looked at to notice a controller being plugged in or pulled out.
 const WATCH_EVERY: Duration = Duration::from_secs(2);
