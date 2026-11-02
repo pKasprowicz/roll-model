@@ -70,6 +70,8 @@ pub struct PlayedNote {
 
 pub struct ScoreView<'a> {
     pub score: &'a Score,
+    /// Which score it is (`DrumApp::score_gen`): what is derived from it is kept while this stays.
+    pub score_gen: u32,
     /// Per `score.notes` index.
     pub grades: &'a [Option<Grade>],
     pub played: &'a [PlayedNote],
@@ -607,19 +609,13 @@ impl Canvas<'_> {
     }
 }
 
-/// What the drawing of the systems needs to know about the score being shown.
-struct Frame<'a> {
-    view: &'a ScoreView<'a>,
-    lay: &'a SystemLayout,
-    cv: Canvas<'a>,
-    /// Top left corner of the first system.
-    origin: Pos2,
-    hover: Option<Pos2>,
+/// What is worked out from a score alone (not from the width, the zoom or what was played): the
+/// notation, the buckets of notes by measure and the staff of each instrument.
+pub struct ScoreDerived {
     /// Staff position and head of each instrument, in the order of `Lane::ALL`: where the played
     /// notes go, the same as the score draws each lane.
     lane_staff: Vec<(i32, NoteHead)>,
     notes_by_measure: Vec<Vec<usize>>,
-    played_by_measure: Vec<Vec<usize>>,
     notation: Notation,
     /// Per note: where its stem ends when a beam holds it, as a y relative to the bottom line of its
     /// staff (so it holds for every row).
@@ -633,6 +629,63 @@ struct Frame<'a> {
     two_voices: bool,
 }
 
+impl ScoreDerived {
+    fn of(score: &Score) -> ScoreDerived {
+        let notation = notation::analyse(score);
+        let stem_tips = stem_tips(score, &notation);
+        let beams_by_measure = indexed_by_measure(score, notation.beams.iter().map(|b| b.measure));
+        let tuplets_by_measure = indexed_by_measure(score, notation.tuplets.iter().map(|t| t.measure));
+        let mut rests_by_measure = vec![Vec::new(); score.measures.len()];
+        for r in &score.rests {
+            if let Some(slot) = rests_by_measure.get_mut(r.measure) {
+                slot.extend(notation::rest_glyphs(r).into_iter().map(|g| (r.stem.is_up(), g)));
+            }
+        }
+        let two_voices = score.notes.iter().any(|n| n.stem_is_up()) && score.notes.iter().any(|n| !n.stem_is_up());
+        ScoreDerived {
+            lane_staff: Lane::ALL.iter().map(|l| score.staff_for_lane(*l)).collect(),
+            notes_by_measure: notes_by_measure(score),
+            notation,
+            stem_tips,
+            beams_by_measure,
+            tuplets_by_measure,
+            rests_by_measure,
+            two_voices,
+        }
+    }
+}
+
+/// The derived data and the layout of the score on screen, worked out again only when the score
+/// (`score_gen`), the width, the zoom or the layout options change, and not on every frame.
+#[derive(Default)]
+pub struct ScoreCache {
+    score_gen: Option<u32>,
+    derived: Option<ScoreDerived>,
+    layout: Option<(LayoutKey, SystemLayout)>,
+}
+
+/// What a layout was worked out for.
+#[derive(Clone, Copy, PartialEq)]
+struct LayoutKey {
+    score_gen: u32,
+    width: u32,
+    zoom: u32,
+    opts: LayoutOpts,
+}
+
+/// What the drawing of the systems needs to know about the score being shown.
+struct Frame<'a> {
+    view: &'a ScoreView<'a>,
+    lay: &'a SystemLayout,
+    cv: Canvas<'a>,
+    /// Top left corner of the first system.
+    origin: Pos2,
+    hover: Option<Pos2>,
+    played_by_measure: Vec<Vec<usize>>,
+    /// What is worked out from the score alone, kept from frame to frame (`ScoreCache`).
+    d: &'a ScoreDerived,
+}
+
 impl Frame<'_> {
     fn x_of(&self, measure: usize, q: f64) -> f32 {
         self.origin.x + self.lay.x_of(self.view.score, measure, q)
@@ -641,7 +694,7 @@ impl Frame<'_> {
     /// Whether a note head of measure `mi` is within a head's reach of the box that starts at `x`
     /// and spans `y0..y1` (the staff ends at `staff_bottom`).
     fn head_near(&self, mi: usize, x: f32, y0: f32, y1: f32, staff_bottom: f32, notes: &[ScoreNote]) -> bool {
-        self.notes_by_measure[mi].iter().any(|&i| {
+        self.d.notes_by_measure[mi].iter().any(|&i| {
             let n = &notes[i];
             let (nx, ny) = (self.x_of(mi, n.q.0) + grace_dx(n), y_of(n.staff_step, staff_bottom));
             (nx - x).abs() < 9.0 && ny + 4.5 > y0 && ny - 4.5 < y1
@@ -728,7 +781,7 @@ fn holds_playhead(view: &ScoreView, system: usize, first: usize, end: usize) -> 
     inside || (system == 0 && q < first.start_q.0)
 }
 
-pub fn show(ui: &mut Ui, view: &ScoreView) -> ViewOutput {
+pub fn show(ui: &mut Ui, view: &ScoreView, cache: &mut ScoreCache) -> ViewOutput {
     let score = view.score;
     let mut out = ViewOutput { clicked_measure: None, fit_bars: None };
     if score.measures.is_empty() {
@@ -736,25 +789,23 @@ pub fn show(ui: &mut Ui, view: &ScoreView) -> ViewOutput {
         return out;
     }
     let width = ui.available_width().max(MIN_WIDTH);
-    let lay = layout(score, width, view.zoom, view.layout);
+    if cache.score_gen != Some(view.score_gen) {
+        cache.derived = Some(ScoreDerived::of(score));
+        cache.layout = None;
+        cache.score_gen = Some(view.score_gen);
+    }
+    let key = LayoutKey { score_gen: view.score_gen, width: width.to_bits(), zoom: view.zoom.to_bits(), opts: view.layout };
+    if cache.layout.as_ref().is_none_or(|(k, _)| *k != key) {
+        cache.layout = Some((key, layout(score, width, view.zoom, view.layout)));
+    }
+    let (Some(derived), Some((_, lay))) = (cache.derived.as_ref(), cache.layout.as_ref()) else { return out };
     out.fit_bars = lay.fit_bars;
     let total_h = lay.systems.len() as f32 * SYS_H + 10.0;
     let (response, painter) = ui.allocate_painter(vec2(width, total_h), Sense::click());
     let weak = ui.visuals().weak_text_color();
-    let notation = notation::analyse(score);
-    let stem_tips = stem_tips(score, &notation);
-    let beams_by_measure = indexed_by_measure(score, notation.beams.iter().map(|b| b.measure));
-    let tuplets_by_measure = indexed_by_measure(score, notation.tuplets.iter().map(|t| t.measure));
-    let mut rests_by_measure = vec![Vec::new(); score.measures.len()];
-    for r in &score.rests {
-        if let Some(slot) = rests_by_measure.get_mut(r.measure) {
-            slot.extend(notation::rest_glyphs(r).into_iter().map(|g| (r.stem.is_up(), g)));
-        }
-    }
-    let two_voices = score.notes.iter().any(|n| n.stem_is_up()) && score.notes.iter().any(|n| !n.stem_is_up());
     let frame = Frame {
         view,
-        lay: &lay,
+        lay,
         cv: Canvas {
             painter: &painter,
             text: ui.visuals().text_color(),
@@ -764,15 +815,8 @@ pub fn show(ui: &mut Ui, view: &ScoreView) -> ViewOutput {
         },
         origin: response.rect.min,
         hover: response.hover_pos(),
-        lane_staff: Lane::ALL.iter().map(|l| score.staff_for_lane(*l)).collect(),
-        notes_by_measure: notes_by_measure(score),
         played_by_measure: played_by_measure(score, view.played),
-        notation,
-        stem_tips,
-        beams_by_measure,
-        tuplets_by_measure,
-        rests_by_measure,
-        two_voices,
+        d: derived,
     };
     let clip = painter.clip_rect();
     let mut hover_text: Option<String> = None;
@@ -839,15 +883,15 @@ fn draw_system(f: &Frame, rows: &Rows, bars: (usize, usize), hover_text: &mut Op
 
     for mi in a..b {
         draw_measure_marks(f, rows, mi);
-        for &ni in &f.notes_by_measure[mi] {
+        for &ni in &f.d.notes_by_measure[mi] {
             draw_score_note(f, rows, mi, ni);
         }
         draw_rests(f, rows, mi);
-        for &bi in &f.beams_by_measure[mi] {
-            draw_beam(f, rows, &f.notation.beams[bi]);
+        for &bi in &f.d.beams_by_measure[mi] {
+            draw_beam(f, rows, &f.d.notation.beams[bi]);
         }
-        for &ti in &f.tuplets_by_measure[mi] {
-            draw_tuplet(f, rows, &f.notation.tuplets[ti]);
+        for &ti in &f.d.tuplets_by_measure[mi] {
+            draw_tuplet(f, rows, &f.d.notation.tuplets[ti]);
         }
         for &pi in &f.played_by_measure[mi] {
             draw_played_note(f, rows, mi, pi, hover_text);
@@ -906,7 +950,7 @@ fn draw_score_note(f: &Frame, rows: &Rows, mi: usize, ni: usize) {
     let n = &view.score.notes[ni];
     let x = f.x_of(mi, n.q.0) + grace_dx(n);
     let col = view.grades.get(ni).copied().flatten().map_or(cv.text, grade_color);
-    let end = StemEnd { tip: f.stem_tips[ni].map(|t| rows.exp_bot + t), flags: f.notation.flags[ni] };
+    let end = StemEnd { tip: f.d.stem_tips[ni].map(|t| rows.exp_bot + t), flags: f.d.notation.flags[ni] };
     cv.written_note(n, x, rows.exp_bot, rows.y0 + 28.0, Ink { note: col, hand: cv.text, hand_dy: 18.0 }, end);
 }
 
@@ -916,8 +960,8 @@ fn draw_score_note(f: &Frame, rows: &Rows, mi: usize, ni: usize) {
 fn draw_rests(f: &Frame, rows: &Rows, mi: usize) {
     let mp = &f.lay.measures[mi];
     let notes = &f.view.score.notes;
-    for (up, g) in &f.rests_by_measure[mi] {
-        let mut step = match (f.two_voices, up) {
+    for (up, g) in &f.d.rests_by_measure[mi] {
+        let mut step = match (f.d.two_voices, up) {
             (false, _) => 4,
             (true, true) => 6,
             (true, false) => 2,
@@ -945,7 +989,7 @@ fn draw_rests(f: &Frame, rows: &Rows, mi: usize) {
 
 /// The beams over a group of stems (the stems are drawn with their notes, up to the beam).
 fn draw_beam(f: &Frame, rows: &Rows, beam: &Beam) {
-    let Some(tip) = beam.onsets.first().and_then(|o| f.stem_tips[o.notes[0]]) else { return };
+    let Some(tip) = beam.onsets.first().and_then(|o| f.d.stem_tips[o.notes[0]]) else { return };
     let xs: Vec<f32> = beam.onsets.iter().map(|o| stem_x(f.x_of(beam.measure, o.q), beam.up, 1.0)).collect();
     f.cv.beam(beam, &xs, rows.exp_bot + tip, f.cv.text);
 }
@@ -953,7 +997,8 @@ fn draw_beam(f: &Frame, rows: &Rows, beam: &Beam) {
 /// The bracket and number over a tuplet, above (or under) the ends of its stems.
 fn draw_tuplet(f: &Frame, rows: &Rows, t: &notation::Tuplet) {
     let notes = &f.view.score.notes;
-    let tips = t.notes.iter().map(|&i| f.stem_tips[i].unwrap_or_else(|| y_of(notes[i].staff_step, 0.0) + if t.up { -STEM } else { STEM }));
+    let tips =
+        t.notes.iter().map(|&i| f.d.stem_tips[i].unwrap_or_else(|| y_of(notes[i].staff_step, 0.0) + if t.up { -STEM } else { STEM }));
     let tip = if t.up { tips.fold(f32::MAX, f32::min) } else { tips.fold(f32::MIN, f32::max) };
     let (x0, x1) = (f.x_of(t.measure, t.first_q), f.x_of(t.measure, t.last_q));
     f.cv.bracket(x0 - 5.0, x1 + 5.0, rows.exp_bot + tip, t.up, t.number);
@@ -970,7 +1015,7 @@ fn draw_played_note(f: &Frame, rows: &Rows, mi: usize, pi: usize, hover_text: &m
         return;
     }
     let lane = Lane::ALL.iter().position(|x| *x == pn.lane).unwrap_or(0);
-    let (step, head) = f.lane_staff[lane];
+    let (step, head) = f.d.lane_staff[lane];
     let y = y_of(step, rows.play_bot);
     let col = status_color(pn.status, ACCENT);
     cv.ledgers(x, step, rows.play_bot);
@@ -1258,5 +1303,44 @@ mod tests {
                 assert_eq!(lay.measures.len(), score.measures.len());
             }
         }
+    }
+
+    /// One headless frame of the score view with `cache`.
+    fn show_once(score: &Score, gen: u32, zoom: f32, cache: &mut ScoreCache) {
+        let ctx = egui::Context::default();
+        let input = egui::RawInput { screen_rect: Some(Rect::from_min_size(pos2(0.0, 0.0), vec2(900.0, 600.0))), ..Default::default() };
+        let _ = ctx.run(input, |ctx| {
+            egui::CentralPanel::default().show(ctx, |ui| {
+                let view = ScoreView {
+                    score,
+                    score_gen: gen,
+                    grades: &[],
+                    played: &[],
+                    playhead_q: None,
+                    range: (0, 0),
+                    zoom,
+                    follow: false,
+                    layout: LayoutOpts::default(),
+                };
+                show(ui, &view, cache);
+            });
+        });
+    }
+
+    #[test]
+    fn what_comes_from_the_score_is_worked_out_again_only_when_the_score_or_the_layout_changes() {
+        let score = score_of(&[4.0, 4.0, 4.0]);
+        let mut cache = ScoreCache::default();
+        show_once(&score, 1, 1.0, &mut cache);
+        let derived = cache.derived.as_ref().unwrap() as *const ScoreDerived;
+        let first_key = cache.layout.as_ref().unwrap().0;
+        show_once(&score, 1, 1.0, &mut cache);
+        assert_eq!(cache.derived.as_ref().unwrap() as *const ScoreDerived, derived, "the same score: kept");
+        assert!(cache.layout.as_ref().unwrap().0 == first_key, "the same layout: kept");
+        show_once(&score, 1, 2.0, &mut cache);
+        assert!(cache.layout.as_ref().unwrap().0 != first_key, "another zoom: laid out again");
+        assert_eq!(cache.score_gen, Some(1));
+        show_once(&score, 2, 2.0, &mut cache);
+        assert_eq!(cache.score_gen, Some(2), "another score: everything again");
     }
 }

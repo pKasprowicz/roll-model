@@ -245,6 +245,7 @@ impl DrumApp {
         };
         let view = ScoreView {
             score,
+            score_gen: self.score_gen,
             grades: &grades,
             played: &played,
             playhead_q: playhead,
@@ -257,7 +258,8 @@ impl DrumApp {
                 break_at_pause: self.cfg.break_at_pause,
             },
         };
-        let out = egui::ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| render::show(ui, &view)).inner;
+        let out =
+            egui::ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| render::show(ui, &view, &mut self.score_cache)).inner;
         self.view.fit_bars = out.fit_bars;
         if let (Some((mi, shift)), false) = (out.clicked_measure, running) {
             if shift {

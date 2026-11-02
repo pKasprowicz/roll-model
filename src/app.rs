@@ -127,9 +127,15 @@ struct Take {
     expected: Vec<Expected>,
     hits: Vec<Hit>,
     report: Report,
+    /// How many hits there were, and how far into the take it was, when `report` was worked out.
+    graded_at: Option<(usize, Seconds)>,
     running: bool,
     count_in_beat_sec: Seconds,
 }
+
+/// How often, while a take records, it is graded again when no hit came: grading the whole take is
+/// not something to do on every frame.
+const GRADING_INTERVAL: Seconds = Seconds(0.05);
 
 /// The score being played back to the user ("Listen"), for the playhead.
 struct Listen {
@@ -247,6 +253,8 @@ pub struct DrumApp {
     paths: Paths,
     /// What the sound threads reported, kept beside the settings.
     log: crate::log::Log,
+    /// What the score view works out from the score alone, kept while `score_gen` stays.
+    score_cache: crate::render::ScoreCache,
     /// The best clean tempo of each rudiment, in a file of its own.
     progress: crate::progress::Progress,
     view: ViewState,
@@ -337,6 +345,7 @@ impl DrumApp {
             saved_cfg: cfg.clone(),
             paths: Paths::none(),
             log: Default::default(),
+            score_cache: Default::default(),
             progress: Default::default(),
             cfg,
             view: ViewState { tab: Tab::Home, settings_page: SettingsPage::MidiInput, status: String::new(), error: None, fit_bars: None },

@@ -13,7 +13,7 @@ use crate::score::Click;
 use crate::score::Score;
 use crate::units::Seconds;
 
-use super::{Calibration, DrumApp, Listen, ListenKey, Plan, Source, Take, TakeSummary, CLEAN_TAKE, RESTART_DELAY};
+use super::{Calibration, DrumApp, Listen, ListenKey, Plan, Source, Take, TakeSummary, CLEAN_TAKE, GRADING_INTERVAL, RESTART_DELAY};
 
 /// Why a take ends: the player stopped it, or its music came to the end.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -157,6 +157,7 @@ impl DrumApp {
             t0: plan.t0,
             end_sec: plan.end_sec,
             report: analyze_with(&expected, &[], &self.cfg.tol, Seconds::NEG_INFINITY, window),
+            graded_at: None,
             label,
             window,
             expected,
@@ -468,7 +469,12 @@ impl DrumApp {
             return;
         }
         let elapsed = signed_secs(Instant::now(), take.zero);
-        take.report = analyze_with(&take.expected, &take.hits, &self.cfg.tol, elapsed, take.window);
+        // A new hit is graded at once; otherwise only now and then, for the notes that fall due.
+        let due = take.graded_at.is_none_or(|(hits, at)| hits != take.hits.len() || elapsed - at >= GRADING_INTERVAL);
+        if due {
+            take.report = analyze_with(&take.expected, &take.hits, &self.cfg.tol, elapsed, take.window);
+            take.graded_at = Some((take.hits.len(), elapsed));
+        }
         if elapsed > take.end_sec + Seconds(1.0) {
             self.stop_take(StopReason::Completed);
         }
