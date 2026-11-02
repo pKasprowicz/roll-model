@@ -238,6 +238,8 @@ pub struct DrumApp {
     paths: Paths,
     /// What the sound threads reported, kept beside the settings.
     log: crate::log::Log,
+    /// The best clean tempo of each rudiment, in a file of its own.
+    progress: crate::progress::Progress,
     view: ViewState,
     /// Whose practice is the one in `practice`; the other's is in `parked`.
     source: Source,
@@ -326,6 +328,7 @@ impl DrumApp {
             saved_cfg: cfg.clone(),
             paths: Paths::none(),
             log: Default::default(),
+            progress: Default::default(),
             cfg,
             view: ViewState { tab: Tab::Home, settings_page: SettingsPage::MidiInput, status: String::new(), error: None, fit_bars: None },
             source: Source::Score,

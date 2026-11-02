@@ -16,6 +16,7 @@ pub mod export;
 pub mod import;
 pub mod notation;
 pub mod practice_tempo;
+pub mod progress;
 pub mod rudiments;
 pub mod score;
 pub mod stats;

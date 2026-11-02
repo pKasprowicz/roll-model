@@ -165,10 +165,13 @@ impl DrumApp {
     pub(super) fn note_clean_rudiment(&mut self, bpm: f64) -> String {
         let number = self.cfg.rudiment;
         let bpm = bpm.round() as f32;
-        let best = self.cfg.rudiment_best.entry(number).or_insert(0.0);
+        let best = self.progress.best_bpm.entry(number).or_insert(0.0);
         let new_best = bpm > *best;
         if new_best {
             *best = bpm;
+            if let Err(e) = self.progress.save(&self.paths) {
+                self.view.error = Some(format!("Your best tempo could not be saved: {e}"));
+            }
         }
         let mut message = format!("Clean take at {bpm:.0} BPM");
         if new_best {
@@ -204,7 +207,7 @@ impl DrumApp {
             widgets::hint(ui, "Sticking");
             ui.label(RichText::new(r.sticking()).monospace().strong());
             widgets::hint(ui, "(right lead; flams and drags: the small letter is the grace note)");
-            if let Some(best) = self.cfg.rudiment_best.get(&r.number) {
+            if let Some(best) = self.progress.best_bpm.get(&r.number) {
                 ui.label(RichText::new(format!("· best clean tempo {best:.0} BPM")).color(theme::GREEN));
             }
             ui.add_enabled_ui(!running, |ui| {
@@ -300,7 +303,7 @@ impl DrumApp {
                 ui.label(RichText::new(family.label()).strong());
                 for r in items {
                     let mut label = format!("{:>2}  {}{}", r.number, r.name, if r.nard { " *" } else { "" });
-                    if let Some(best) = self.cfg.rudiment_best.get(&r.number) {
+                    if let Some(best) = self.progress.best_bpm.get(&r.number) {
                         label.push_str(&format!("   ·  best {best:.0} BPM"));
                     }
                     if ui.selectable_label(r.number == current, label).on_hover_text(r.about).clicked() {
@@ -507,12 +510,12 @@ mod tests {
         app.practice.tempo = PracticeTempo::Bpm(90.0);
         app.view.status.clear();
         let message = app.note_clean_rudiment(90.0);
-        assert_eq!(app.cfg.rudiment_best.get(&16), Some(&90.0));
+        assert_eq!(app.progress.best_bpm.get(&16), Some(&90.0));
         assert!(message.contains("new best"), "{message}");
         assert_eq!(app.practice.tempo.value(), 90.0, "the ladder is off");
         app.cfg.rudiment_ladder = true;
         app.note_clean_rudiment(85.0);
-        assert_eq!(app.cfg.rudiment_best.get(&16), Some(&90.0), "a slower clean take is not a best");
+        assert_eq!(app.progress.best_bpm.get(&16), Some(&90.0), "a slower clean take is not a best");
         assert_eq!(app.practice.tempo.value(), 90.0, "and the ladder does not step down or sideways from a slower tempo");
         app.note_clean_rudiment(90.0);
         assert_eq!(app.practice.tempo.value(), 95.0, "the ladder goes up by 5 BPM");
@@ -576,7 +579,7 @@ mod tests {
         let take = app.practice.take.as_ref().unwrap();
         assert_eq!(take.report.perfect, 32, "four bars of eight strokes");
         assert_eq!(take.report.hands.len(), 2);
-        assert!(app.cfg.rudiment_best.contains_key(&16), "a perfect take is a clean one");
+        assert!(app.progress.best_bpm.contains_key(&16), "a perfect take is a clean one");
         assert_eq!(app.practice.history.len(), 1);
         assert_eq!(app.practice.history[0].range, "Single paradiddle ×4");
     }

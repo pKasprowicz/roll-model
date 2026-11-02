@@ -164,7 +164,7 @@ The hardware tasks (HW-*) have a step-by-step plan in `docs/hardware-test-plan.m
 | **RV-61** [#94](https://github.com/pKasprowicz/roll-model/issues/94) | Blocking work on the UI thread (S3, effort M) | code |
 | **RV-62** [#95](https://github.com/pKasprowicz/roll-model/issues/95) | Allocation and freeing inside the audio callback (S4) | code |
 | **RV-70** [#96](https://github.com/pKasprowicz/roll-model/issues/96) | The Manage window (`editor.rs`) is now the largest file (S2, effort M) | code |
-| **RV-71** [#97](https://github.com/pKasprowicz/roll-model/issues/97) | User data is stored in the settings file (S3, effort S) | code |
+| **RV-71** [#97](https://github.com/pKasprowicz/roll-model/issues/97) | User data is stored in the settings file (S3, effort S) — **done 2026-11-02:** `core/src/progress.rs` (`progress.txt`, written whole or not at all, and only when a best changes); the best tempos of an older settings file are handed over at the first start and no longer written to the settings | code |
 | **RV-72** [#98](https://github.com/pKasprowicz/roll-model/issues/98) | UI conventions are enforced by prose (S3, effort S) | code |
 | **RV-73** [#99](https://github.com/pKasprowicz/roll-model/issues/99) | Colour palette in `render.rs` (S4) — **done 2026-11-02:** `src/theme.rs` holds the six colours; the renderer and every tab take them from there | code |
 | **RV-74** [#100](https://github.com/pKasprowicz/roll-model/issues/100) | Leftover scaffolding (S4) — **done 2026-11-02:** the module doc of `app.rs` names all the tabs; the empty banners and double blank lines were gone with rustfmt | code |

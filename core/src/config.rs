@@ -89,9 +89,11 @@ pub struct Config {
     pub rudiment_nard_only: bool,
     /// Raise the tempo after every clean take.
     pub rudiment_ladder: bool,
-    /// The tempo (BPM) last used with each rudiment, and the fastest clean take of each.
+    /// The tempo (BPM) last used with each rudiment.
     pub rudiment_bpm: BTreeMap<u8, f32>,
-    pub rudiment_best: BTreeMap<u8, f32>,
+    /// The fastest clean take of each rudiment, as older files kept it. Only read now, to hand over to
+    /// `progress::Progress`, which has a file of its own.
+    pub legacy_best: BTreeMap<u8, f32>,
     /// The start trigger: two hits in a row (these instruments, in this order) start a recording.
     pub trigger_enabled: bool,
     pub trigger_first: Lane,
@@ -175,7 +177,7 @@ impl Default for Config {
             rudiment_nard_only: false,
             rudiment_ladder: false,
             rudiment_bpm: BTreeMap::new(),
-            rudiment_best: BTreeMap::new(),
+            legacy_best: BTreeMap::new(),
             trigger_enabled: false,
             trigger_first: Lane::Crash1,
             trigger_second: Lane::Tom1,
@@ -566,6 +568,11 @@ impl Paths {
         self.dir.as_ref().map(|d| d.join("config.txt"))
     }
 
+    /// What the user has achieved (see `progress`).
+    pub fn progress_file(&self) -> Option<PathBuf> {
+        self.dir.as_ref().map(|d| d.join("progress.txt"))
+    }
+
     /// The log of what the sound threads reported.
     pub fn log_file(&self) -> Option<PathBuf> {
         self.dir.as_ref().map(|d| d.join("roll-model.log"))
@@ -727,9 +734,6 @@ impl Config {
         for (n, bpm) in &self.rudiment_bpm {
             kv(&format!("rudiment_bpm.{n}"), bpm.to_string());
         }
-        for (n, bpm) in &self.rudiment_best {
-            kv(&format!("rudiment_best.{n}"), bpm.to_string());
-        }
         for lane in Lane::ALL {
             if self.gain_of(lane) != 1.0 {
                 kv(&format!("gain.{}", lane.name()), self.gain_of(lane).to_string());
@@ -802,7 +806,7 @@ impl Config {
                         }
                     } else if let Some(n) = k.strip_prefix("rudiment_best.").and_then(|n| n.parse::<u8>().ok()) {
                         if let (Some(_), Some(bpm)) = (rudiments::by_number(n), v.parse::<f32>().ok().filter(|x| x.is_finite())) {
-                            c.rudiment_best.insert(n, bpm.clamp(crate::practice_tempo::BPM_RANGE.0, crate::practice_tempo::BPM_RANGE.1));
+                            c.legacy_best.insert(n, bpm.clamp(crate::practice_tempo::BPM_RANGE.0, crate::practice_tempo::BPM_RANGE.1));
                         }
                     }
                 }

@@ -84,7 +84,6 @@ fn roundtrip() {
     c.rudiment_nard_only = true;
     c.rudiment_ladder = true;
     c.rudiment_bpm.insert(24, 72.5);
-    c.rudiment_best.insert(16, 96.0);
     let back = Config::from_text(&c.to_text());
     assert_eq!(back, c);
 }
@@ -111,12 +110,12 @@ fn rudiment_settings_are_clamped_and_default_when_missing() {
     assert_eq!(c.rudiment_repeats, MAX_REPEATS);
     assert_eq!(c.rudiment_bpm.get(&16), Some(&BPM_RANGE.1));
     assert_eq!(c.rudiment_bpm.len(), 1, "unknown rudiments are dropped");
-    assert_eq!(c.rudiment_best.len(), 1);
-    assert_eq!(c.rudiment_best.get(&21), Some(&88.0));
+    assert_eq!(c.legacy_best.len(), 1);
+    assert_eq!(c.legacy_best.get(&21), Some(&88.0));
     assert!(!c.rudiment_ladder);
     let old = Config::from_text("latency_ms = 5\n");
     assert_eq!((old.rudiment, old.rudiment_repeats), (1, DEFAULT_REPEATS));
-    assert!(old.rudiment_bpm.is_empty() && old.rudiment_best.is_empty());
+    assert!(old.rudiment_bpm.is_empty() && old.legacy_best.is_empty());
     assert!(!Config::default().to_text().contains("rudiment_bpm."), "nothing is written for a rudiment never practised");
 }
 

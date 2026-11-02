@@ -219,6 +219,13 @@ impl DrumApp {
         Some(match step {
             Step::Settings => {
                 let (cfg, notice) = Config::load_with_notice(&self.paths);
+                self.progress = crate::progress::Progress::load(&self.paths, &cfg.legacy_best);
+                // The settings no longer hold the best tempos: a first run with the new file hands them over now.
+                if !self.progress.best_bpm.is_empty() && self.paths.progress_file().is_some_and(|f| !f.exists()) {
+                    if let Err(e) = self.progress.save(&self.paths) {
+                        self.view.error = Some(format!("Your best tempos could not be moved to their own file: {e}"));
+                    }
+                }
                 self.saved_cfg = cfg.clone();
                 self.cfg = cfg;
                 if let Some(text) = notice {
