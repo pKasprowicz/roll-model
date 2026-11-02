@@ -566,6 +566,11 @@ impl Paths {
         self.dir.as_ref().map(|d| d.join("config.txt"))
     }
 
+    /// The log of what the sound threads reported.
+    pub fn log_file(&self) -> Option<PathBuf> {
+        self.dir.as_ref().map(|d| d.join("roll-model.log"))
+    }
+
     /// Folder with WAV files that replace built-in sounds.
     pub fn sounds_dir(&self) -> Option<PathBuf> {
         self.dir.as_ref().map(|d| d.join("sounds"))

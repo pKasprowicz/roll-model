@@ -236,6 +236,8 @@ pub struct DrumApp {
     saved_cfg: Config,
     /// Where the settings, sounds and controller presets are kept.
     paths: Paths,
+    /// What the sound threads reported, kept beside the settings.
+    log: crate::log::Log,
     view: ViewState,
     /// Whose practice is the one in `practice`; the other's is in `parked`.
     source: Source,
@@ -313,6 +315,7 @@ impl DrumApp {
         // Everything slow is a step of the splash (`startup.rs`), so that the first frame is not late.
         let mut app = DrumApp::with_config(Config::default());
         app.paths = Paths::system();
+        app.log = crate::log::Log::at(app.paths.log_file());
         app.startup = Some(startup::Startup::new(initial_file, startup::scan_sound_outputs()));
         app
     }
@@ -322,6 +325,7 @@ impl DrumApp {
         DrumApp {
             saved_cfg: cfg.clone(),
             paths: Paths::none(),
+            log: Default::default(),
             cfg,
             view: ViewState { tab: Tab::Home, settings_page: SettingsPage::MidiInput, status: String::new(), error: None, fit_bars: None },
             source: Source::Score,
@@ -900,6 +904,24 @@ mod tests {
         app.view.tab = Tab::Rudiments;
         app.sync_source();
         assert!(app.note_clean_rudiment(90.0).starts_with("Clean take at 90 BPM"));
+    }
+
+    #[test]
+    fn every_sound_problem_goes_to_the_log_and_the_first_is_shown_with_the_count_of_the_rest() {
+        let dir = std::env::temp_dir().join(format!("roll-model-sound-errors-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let mut app = DrumApp::with_config(Config::default());
+        app.log = crate::log::Log::at(Some(dir.join("roll-model.log")));
+        app.report_sound_errors(vec![]);
+        assert!(app.view.error.is_none(), "nothing to say");
+        app.report_sound_errors(vec!["one".into()]);
+        assert_eq!(app.view.error.as_deref(), Some("one"));
+        app.report_sound_errors(vec!["first".into(), "second".into(), "third".into()]);
+        assert_eq!(app.view.error.as_deref(), Some("first (and 2 more problems, see the log)"));
+        let log = std::fs::read_to_string(dir.join("roll-model.log")).unwrap();
+        assert_eq!(log.lines().count(), 4);
+        assert!(log.contains(" second") && log.contains(" third"), "{log}");
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

@@ -277,25 +277,35 @@ impl DrumApp {
             self.begin_listen(false);
         }
         let Some(player) = self.playback.player.as_ref() else { return };
-        if let Some(e) = player.take_errors().into_iter().next() {
-            self.view.error = Some(e);
-        }
-        if player.is_finished() {
+        let errors = player.take_errors();
+        let finished = player.is_finished();
+        self.report_sound_errors(errors);
+        if finished {
             self.playback.listen = None;
             self.playback.player = None;
         }
     }
 
-    /// Shows the first problem the metronome thread of a take or a calibration ran into.
+    /// Shows the problems the sound threads ran into: all of them go to the log, and the first one
+    /// is on the screen, with how many more there are.
+    pub(super) fn report_sound_errors(&mut self, errors: Vec<String>) {
+        for e in &errors {
+            self.log.line(e);
+        }
+        let mut errors = errors.into_iter();
+        if let Some(first) = errors.next() {
+            let more = errors.count();
+            self.view.error = Some(if more == 0 { first } else { format!("{first} (and {more} more problems, see the log)") });
+        }
+    }
+
+    /// Shows the problems the engine and the metronome thread of a take or a calibration ran into.
     pub(super) fn show_sound_errors(&mut self) {
-        if let Some(e) = self.audio.take_errors().into_iter().next() {
-            self.view.error = Some(e);
-        }
+        let mut errors = self.audio.take_errors();
         if let Some(m) = self.metronome.as_ref() {
-            if let Some(e) = m.take_errors().into_iter().next() {
-                self.view.error = Some(e);
-            }
+            errors.extend(m.take_errors());
         }
+        self.report_sound_errors(errors);
     }
 
     /// "bar 3 · beat 2", or the count-in, for the label next to the Listen button.
@@ -357,10 +367,10 @@ impl DrumApp {
 
     pub(super) fn update_audition(&mut self) {
         let Some(p) = self.playback.audition.as_ref() else { return };
-        if let Some(e) = p.take_errors().into_iter().next() {
-            self.view.error = Some(e);
-        }
-        if p.is_finished() {
+        let errors = p.take_errors();
+        let finished = p.is_finished();
+        self.report_sound_errors(errors);
+        if finished {
             self.playback.audition = None;
         }
     }

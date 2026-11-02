@@ -4,6 +4,7 @@
 mod app;
 mod audio;
 mod control;
+mod log;
 mod metronome;
 mod midi;
 mod playback;

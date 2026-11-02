@@ -117,10 +117,10 @@ impl DrumApp {
             self.start_metro();
         }
         if let Some(p) = self.metro_run.player.as_ref() {
-            if let Some(e) = p.take_errors().into_iter().next() {
-                self.view.error = Some(e);
-            }
-            if p.is_finished() {
+            let errors = p.take_errors();
+            let finished = p.is_finished();
+            self.report_sound_errors(errors);
+            if finished {
                 self.metro_run.player = None;
                 self.metro_run.run = None;
             }
