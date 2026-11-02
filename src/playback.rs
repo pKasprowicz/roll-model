@@ -293,13 +293,13 @@ fn pass_cues(cues: &[Cue], pass: usize) -> impl Iterator<Item = &Cue> {
 
 /// Waits until `wake`, sending what the sink has to send of its own on the way. `false` if `stop`
 /// was set first.
-fn wait_for(wake: Instant, stop: &AtomicBool, sink: &mut dyn Sink) -> bool {
+fn wait_for(wake: Instant, stop: &AtomicBool, sink: &mut dyn Sink, clock: &dyn Clock) -> bool {
     loop {
         let next = sink.next_due().map_or(wake, |due| due.min(wake));
-        if !wait_until(next, stop) {
+        if !clock.wait_until(next, stop) {
             return false;
         }
-        sink.flush(Instant::now());
+        sink.flush(clock.now());
         if next >= wake {
             return true;
         }
@@ -309,18 +309,47 @@ fn wait_for(wake: Instant, stop: &AtomicBool, sink: &mut dyn Sink) -> bool {
 /// Plays `cues` relative to `zero`, pass after pass while `control.looping()`
 /// stays on (a pass is `pass_len` seconds long). Sets `control.music_done()`
 /// when the last pass has reached its end, then lets the tail ring out.
-// The scheduler is one of the two this program has (RV-30 merges them); its inputs are not grouped yet.
-#[allow(clippy::too_many_arguments)]
-fn run_with(
+/// What one run of the scheduler plays and how it is controlled.
+#[derive(Clone, Copy)]
+struct Run<'a> {
     zero: Instant,
-    cues: &[Cue],
+    cues: &'a [Cue],
     pass_len: f64,
-    opts: &PlayOptions,
-    control: &Control,
-    stop: &AtomicBool,
-    sink: &mut dyn Sink,
+    opts: &'a PlayOptions,
+    control: &'a Control,
+    stop: &'a AtomicBool,
+    /// How long the last sounds ring out after the music.
     tail: Duration,
-) {
+}
+
+/// Time as the scheduler sees it. The real clock reads the system clock and sleeps; a test brings
+/// one that jumps, so the timing of the loop is checked without waiting for it.
+pub trait Clock {
+    fn now(&self) -> Instant;
+    /// Waits until `t`; `false` if `stop` was set first.
+    fn wait_until(&self, t: Instant, stop: &AtomicBool) -> bool;
+    fn sleep(&self, duration: Duration);
+}
+
+/// The system clock.
+struct SystemClock;
+
+impl Clock for SystemClock {
+    fn now(&self) -> Instant {
+        Instant::now()
+    }
+
+    fn wait_until(&self, t: Instant, stop: &AtomicBool) -> bool {
+        wait_until(t, stop)
+    }
+
+    fn sleep(&self, duration: Duration) {
+        std::thread::sleep(duration);
+    }
+}
+
+fn run_with(run: &Run, sink: &mut dyn Sink, clock: &dyn Clock) {
+    let Run { zero, cues, pass_len, opts, control, stop, tail } = *run;
     let pass_len = pass_len.max(0.001);
     let mut pass = 0usize;
     'passes: loop {
@@ -331,10 +360,10 @@ fn run_with(
             let t = if cue.t < 0.0 { cue.t } else { cue.t * squeeze };
             let Some(target) = at(zero, t + offset) else { continue };
             let wake = target.checked_sub(sink.lookahead()).unwrap_or(target);
-            if !wait_for(wake, stop, sink) {
+            if !wait_for(wake, stop, sink, clock) {
                 break 'passes;
             }
-            if Instant::now().saturating_duration_since(target) > MAX_LATE {
+            if clock.now().saturating_duration_since(target) > MAX_LATE {
                 continue;
             }
             dispatch(cue, target, opts, control, sink);
@@ -344,11 +373,11 @@ fn run_with(
             // like any other, so when the music goes on the wait ends one look-ahead early. (Looping
             // switched off in that last moment still lets one more pass begin.)
             let hand_over = end.checked_sub(sink.lookahead()).unwrap_or(end);
-            if !wait_for(hand_over, stop, sink) {
+            if !wait_for(hand_over, stop, sink, clock) {
                 break;
             }
             if !control.looping() {
-                wait_for(end, stop, sink);
+                wait_for(end, stop, sink, clock);
                 break;
             }
         } else if !control.looping() {
@@ -359,10 +388,10 @@ fn run_with(
     control.set_music_done(true);
 
     // Let the last notes ring out before the stream is dropped.
-    let end = Instant::now() + tail;
-    while Instant::now() < end && !stop.load(Ordering::Relaxed) {
-        sink.flush(Instant::now());
-        std::thread::sleep(Duration::from_millis(20));
+    let end = clock.now() + tail;
+    while clock.now() < end && !stop.load(Ordering::Relaxed) {
+        sink.flush(clock.now());
+        clock.sleep(Duration::from_millis(20));
     }
 }
 
@@ -576,7 +605,7 @@ fn run(zero: Instant, cues: Vec<Cue>, pass_len: f64, opts: PlayOptions, control:
         click_delay,
         drum_delay,
     };
-    run_with(zero, &cues, pass_len, &opts, &control, &stop, &mut sink, TAIL);
+    run_with(&Run { zero, cues: &cues, pass_len, opts: &opts, control: &control, stop: &stop, tail: TAIL }, &mut sink, &SystemClock);
 }
 
 #[cfg(test)]

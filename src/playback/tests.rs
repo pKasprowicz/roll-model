@@ -1,3 +1,5 @@
+use std::cell::{Cell, RefCell};
+
 use super::*;
 use crate::analysis::expected_notes;
 use crate::import::{import_bytes, ImportOptions};
@@ -185,11 +187,69 @@ fn only_the_first_pass_has_the_count_in() {
     assert_eq!(pass_cues(&cues, 7).count(), 2);
 }
 
+/// A clock that jumps: waiting moves it to the time waited for, and what a test wants to happen
+/// "meanwhile" (looping switched off, a stop) runs when the clock passes its time. The scheduler
+/// then runs through seconds of music in microseconds, the same every time, in a debug build too.
+/// What a test wants to happen at a moment of the clock.
+type Later<'a> = (Instant, Box<dyn FnOnce() + 'a>);
+
+struct ManualClock<'a> {
+    start: Instant,
+    now: Cell<Instant>,
+    later: RefCell<Vec<Later<'a>>>,
+}
+
+impl<'a> ManualClock<'a> {
+    fn new() -> ManualClock<'a> {
+        let start = Instant::now();
+        ManualClock { start, now: Cell::new(start), later: RefCell::new(Vec::new()) }
+    }
+
+    /// Runs `action` when the clock reaches `after` past its start.
+    fn at(&self, after: Duration, action: impl FnOnce() + 'a) {
+        self.later.borrow_mut().push((self.start + after, Box::new(action)));
+    }
+
+    /// Moves to `t`, running what falls due on the way in order of time. `false` if `stop` was
+    /// set by one of those, at which point the clock stays.
+    fn advance_to(&self, t: Instant, stop: Option<&AtomicBool>) -> bool {
+        loop {
+            let due = {
+                let mut later = self.later.borrow_mut();
+                let next = later.iter().enumerate().filter(|(_, (at, _))| *at <= t).min_by_key(|(_, (at, _))| *at).map(|(i, _)| i);
+                next.map(|i| later.remove(i))
+            };
+            let Some((at, action)) = due else { break };
+            self.now.set(self.now.get().max(at));
+            action();
+            if stop.is_some_and(|s| s.load(Ordering::Relaxed)) {
+                return false;
+            }
+        }
+        self.now.set(self.now.get().max(t));
+        true
+    }
+}
+
+impl Clock for ManualClock<'_> {
+    fn now(&self) -> Instant {
+        self.now.get()
+    }
+
+    fn wait_until(&self, t: Instant, stop: &AtomicBool) -> bool {
+        !stop.load(Ordering::Relaxed) && self.advance_to(t, Some(stop))
+    }
+
+    fn sleep(&self, duration: Duration) {
+        self.advance_to(self.now.get() + duration, None);
+    }
+}
+
 /// Runs the whole player loop on this thread, a little in the future, with a fake output.
-fn run_fake(cues: &[Cue], pass_len: f64, control: &Control, stop: &AtomicBool) -> Vec<Ev> {
+fn run_fake(clock: &ManualClock, cues: &[Cue], pass_len: f64, control: &Control, stop: &AtomicBool) -> Vec<Ev> {
     let mut sink = Fake::default();
-    let zero = Instant::now() + Duration::from_millis(60);
-    run_with(zero, cues, pass_len, &opts(), control, stop, &mut sink, Duration::ZERO);
+    let zero = clock.now() + Duration::from_millis(60);
+    run_with(&Run { zero, cues, pass_len, opts: &opts(), control, stop, tail: Duration::ZERO }, &mut sink, clock);
     sink.events
 }
 
@@ -197,7 +257,7 @@ fn run_fake(cues: &[Cue], pass_len: f64, control: &Control, stop: &AtomicBool) -
 fn one_pass_plays_everything_once_and_reports_done() {
     let c = Control::new();
     let cues = [click(-0.02), drum(Lane::Kick, 0.0), click(0.02)];
-    let ev = run_fake(&cues, 0.05, &c, &AtomicBool::new(false));
+    let ev = run_fake(&ManualClock::new(), &cues, 0.05, &c, &AtomicBool::new(false));
     assert_eq!(ev.len(), 2 + 2 + 2, "count-in click, kick on two outputs, click");
     assert!(c.music_done());
 }
@@ -207,15 +267,9 @@ fn looping_repeats_until_switched_off_and_finishes_the_pass() {
     let c = Control::new();
     c.set_looping(true);
     let cues = [click(-0.02), drum(Lane::Kick, 0.0), click(0.02)];
-    let off = {
-        let c = c.clone();
-        std::thread::spawn(move || {
-            std::thread::sleep(Duration::from_millis(260));
-            c.set_looping(false);
-        })
-    };
-    let ev = run_fake(&cues, 0.05, &c, &AtomicBool::new(false));
-    off.join().unwrap();
+    let clock = ManualClock::new();
+    clock.at(Duration::from_millis(255), || c.set_looping(false));
+    let ev = run_fake(&clock, &cues, 0.05, &c, &AtomicBool::new(false));
     let count_ins = ev.iter().filter(|e| matches!(e, Ev::MidiClick(_))).count();
     let kicks = ev.iter().filter(|e| matches!(e, Ev::MidiDrum(36, _))).count();
     assert!(kicks >= 3, "several passes: {kicks}");
@@ -228,18 +282,11 @@ fn looping_repeats_until_switched_off_and_finishes_the_pass() {
 fn stopping_ends_the_loop_at_once() {
     let c = Control::new();
     c.set_looping(true);
-    let stop = Arc::new(AtomicBool::new(false));
-    let setter = {
-        let stop = stop.clone();
-        std::thread::spawn(move || {
-            std::thread::sleep(Duration::from_millis(150));
-            stop.store(true, Ordering::Relaxed);
-        })
-    };
-    let started = Instant::now();
-    let ev = run_fake(&[drum(Lane::Kick, 0.0)], 0.05, &c, &stop);
-    setter.join().unwrap();
-    assert!(started.elapsed() < Duration::from_millis(1000), "returned promptly after the stop");
+    let stop = AtomicBool::new(false);
+    let clock = ManualClock::new();
+    clock.at(Duration::from_millis(150), || stop.store(true, Ordering::Relaxed));
+    let ev = run_fake(&clock, &[drum(Lane::Kick, 0.0)], 0.05, &c, &stop);
+    assert_eq!(clock.now(), clock.start + Duration::from_millis(150), "the loop ended at the moment of the stop");
     assert!(!ev.is_empty());
 }
 
@@ -247,10 +294,15 @@ fn stopping_ends_the_loop_at_once() {
 fn cues_that_are_far_too_late_are_dropped() {
     let c = Control::new();
     let mut sink = Fake::default();
+    let clock = ManualClock::new();
     // Zero is a second in the past, so the early cues are long overdue.
-    let zero = Instant::now() - Duration::from_millis(1000);
+    let zero = clock.now() - Duration::from_millis(1000);
     let cues = [drum(Lane::Kick, 0.0), drum(Lane::Kick, 0.5), drum(Lane::Snare, 1.05)];
-    run_with(zero, &cues, 1.1, &opts(), &c, &AtomicBool::new(false), &mut sink, Duration::ZERO);
+    run_with(
+        &Run { zero, cues: &cues, pass_len: 1.1, opts: &opts(), control: &c, stop: &AtomicBool::new(false), tail: Duration::ZERO },
+        &mut sink,
+        &clock,
+    );
     assert!(sink.events.iter().all(|e| !matches!(e, Ev::MidiDrum(36, _))), "the overdue kicks are skipped");
     assert!(sink.events.iter().any(|e| matches!(e, Ev::MidiDrum(38, _))), "the snare, due in 50 ms, plays");
 }
@@ -346,14 +398,14 @@ fn a_ramp_makes_every_few_passes_faster_up_to_a_limit() {
     assert_eq!(Ramp::default().base_seconds(4.0, 9.0), 9.0);
 }
 
-struct Stamps(Vec<Instant>);
+struct Stamps<'a>(Vec<Instant>, &'a dyn Clock);
 
-impl Sink for Stamps {
+impl Sink for Stamps<'_> {
     fn audio_click(&mut self, _: ClickLevel, _: f32, _: Instant) {}
     fn midi_click(&mut self, _: ClickLevel, _: Instant) {}
     fn audio_drum(&mut self, _: Lane, _: f32, _: Instant) {}
     fn midi_drum(&mut self, _: u8, _: u8, _: Instant) {
-        self.0.push(Instant::now());
+        self.0.push(self.1.now());
     }
 }
 
@@ -361,20 +413,26 @@ impl Sink for Stamps {
 fn the_player_squeezes_the_later_passes_of_a_ramp() {
     let c = Control::new();
     c.set_looping(true);
-    let off = {
-        let c = c.clone();
-        std::thread::spawn(move || {
-            std::thread::sleep(Duration::from_millis(330));
-            c.set_looping(false);
-        })
-    };
+    let clock = ManualClock::new();
+    clock.at(Duration::from_millis(330), || c.set_looping(false));
     let mut o = opts();
     // Passes of 100 ms, 50 ms, then 33 ms (the limit of three times).
     o.ramp = Ramp { every: 1, step: 1.0 };
-    let mut sink = Stamps(Vec::new());
-    let zero = Instant::now() + Duration::from_millis(40);
-    run_with(zero, &[drum(Lane::Kick, 0.0)], 0.10, &o, &c, &AtomicBool::new(false), &mut sink, Duration::ZERO);
-    off.join().unwrap();
+    let mut sink = Stamps(Vec::new(), &clock);
+    let zero = clock.now() + Duration::from_millis(40);
+    run_with(
+        &Run {
+            zero,
+            cues: &[drum(Lane::Kick, 0.0)],
+            pass_len: 0.10,
+            opts: &o,
+            control: &c,
+            stop: &AtomicBool::new(false),
+            tail: Duration::ZERO,
+        },
+        &mut sink,
+        &clock,
+    );
     let gaps: Vec<f64> = sink.0.windows(2).map(|w| (w[1] - w[0]).as_secs_f64()).collect();
     assert!(gaps.len() >= 4, "{gaps:?}");
     assert!(gaps[1] < gaps[0] * 0.75, "the second pass is shorter than the first: {gaps:?}");
@@ -383,7 +441,8 @@ fn the_player_squeezes_the_later_passes_of_a_ramp() {
 }
 
 /// A sink that wants its cues early, like the audio engine, and holds a note back like the MIDI queue.
-struct Early {
+struct Early<'a> {
+    clock: &'a dyn Clock,
     lookahead: Duration,
     /// (the time a sound was meant for, the moment the sink was told).
     told: Vec<(Instant, Instant)>,
@@ -393,9 +452,9 @@ struct Early {
     stop_after: Option<(Arc<Control>, usize)>,
 }
 
-impl Sink for Early {
+impl Sink for Early<'_> {
     fn audio_click(&mut self, _: ClickLevel, _: f32, when: Instant) {
-        self.told.push((when, Instant::now()));
+        self.told.push((when, self.clock.now()));
         self.due = Some(when + Duration::from_millis(20));
         if let Some((control, n)) = &self.stop_after {
             if self.told.len() >= *n {
@@ -422,9 +481,29 @@ impl Sink for Early {
 
 #[test]
 fn a_sink_that_wants_its_cues_early_gets_them_ahead_of_their_time() {
-    let mut sink = Early { lookahead: Duration::from_millis(30), told: Vec::new(), due: None, flushed_at: Vec::new(), stop_after: None };
-    let zero = Instant::now() + Duration::from_millis(100);
-    run_with(zero, &[click(0.0), click(0.2)], 0.3, &opts(), &Control::new(), &AtomicBool::new(false), &mut sink, Duration::ZERO);
+    let clock = ManualClock::new();
+    let mut sink = Early {
+        clock: &clock,
+        lookahead: Duration::from_millis(30),
+        told: Vec::new(),
+        due: None,
+        flushed_at: Vec::new(),
+        stop_after: None,
+    };
+    let zero = clock.now() + Duration::from_millis(100);
+    run_with(
+        &Run {
+            zero,
+            cues: &[click(0.0), click(0.2)],
+            pass_len: 0.3,
+            opts: &opts(),
+            control: &Control::new(),
+            stop: &AtomicBool::new(false),
+            tail: Duration::ZERO,
+        },
+        &mut sink,
+        &clock,
+    );
     assert_eq!(sink.told.len(), 2);
     for (when, told_at) in &sink.told {
         let ahead = when.saturating_duration_since(*told_at);
@@ -436,9 +515,29 @@ fn a_sink_that_wants_its_cues_early_gets_them_ahead_of_their_time() {
 
 #[test]
 fn what_a_sink_holds_back_is_sent_at_its_time_while_the_player_waits_for_the_next_cue() {
-    let mut sink = Early { lookahead: Duration::from_millis(30), told: Vec::new(), due: None, flushed_at: Vec::new(), stop_after: None };
-    let zero = Instant::now() + Duration::from_millis(100);
-    run_with(zero, &[click(0.0), click(0.3)], 0.4, &opts(), &Control::new(), &AtomicBool::new(false), &mut sink, Duration::ZERO);
+    let clock = ManualClock::new();
+    let mut sink = Early {
+        clock: &clock,
+        lookahead: Duration::from_millis(30),
+        told: Vec::new(),
+        due: None,
+        flushed_at: Vec::new(),
+        stop_after: None,
+    };
+    let zero = clock.now() + Duration::from_millis(100);
+    run_with(
+        &Run {
+            zero,
+            cues: &[click(0.0), click(0.3)],
+            pass_len: 0.4,
+            opts: &opts(),
+            control: &Control::new(),
+            stop: &AtomicBool::new(false),
+            tail: Duration::ZERO,
+        },
+        &mut sink,
+        &clock,
+    );
     assert_eq!(sink.flushed_at.len(), 2);
     for (due, sent) in &sink.flushed_at {
         let late = sent.saturating_duration_since(*due);
@@ -452,15 +551,29 @@ fn the_first_cue_of_a_looped_pass_is_handed_over_ahead_of_its_time_too() {
     // because the player waited for the end of the pass before it began the next one.
     let control = Control::new();
     control.set_looping(true);
+    let clock = ManualClock::new();
     let mut sink = Early {
+        clock: &clock,
         lookahead: Duration::from_millis(30),
         told: Vec::new(),
         due: None,
         flushed_at: Vec::new(),
         stop_after: Some((control.clone(), 6)),
     };
-    let zero = Instant::now() + Duration::from_millis(100);
-    run_with(zero, &[click(0.0), click(0.1)], 0.2, &opts(), &control, &AtomicBool::new(false), &mut sink, Duration::ZERO);
+    let zero = clock.now() + Duration::from_millis(100);
+    run_with(
+        &Run {
+            zero,
+            cues: &[click(0.0), click(0.1)],
+            pass_len: 0.2,
+            opts: &opts(),
+            control: &control,
+            stop: &AtomicBool::new(false),
+            tail: Duration::ZERO,
+        },
+        &mut sink,
+        &clock,
+    );
     assert!(sink.told.len() >= 6, "{} cues", sink.told.len());
     for (i, (when, told_at)) in sink.told.iter().enumerate() {
         let ahead = when.saturating_duration_since(*told_at);

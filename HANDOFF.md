@@ -168,7 +168,7 @@ The hardware tasks (HW-*) have a step-by-step plan in `docs/hardware-test-plan.m
 | **RV-72** [#98](https://github.com/pKasprowicz/roll-model/issues/98) | UI conventions are enforced by prose (S3, effort S) | code |
 | **RV-73** [#99](https://github.com/pKasprowicz/roll-model/issues/99) | Colour palette in `render.rs` (S4) | code |
 | **RV-74** [#100](https://github.com/pKasprowicz/roll-model/issues/100) | Leftover scaffolding (S4) | code |
-| **RV-80** [#101](https://github.com/pKasprowicz/roll-model/issues/101) | Timing tests use the wall clock (S2, effort M) | code |
+| **RV-80** [#101](https://github.com/pKasprowicz/roll-model/issues/101) | Timing tests use the wall clock (S2, effort M) — **done 2026-11-02**: `playback::Clock` (system clock, and `ManualClock` in the tests), `Run` groups the scheduler's inputs; the 20 playback tests take 0.1 s and do not sleep. The other scheduler (`metronome.rs`) still reads the system clock (RV-30) | code |
 | **RV-81** [#102](https://github.com/pKasprowicz/roll-model/issues/102) | Tests through `DrumApp` (S3) | code |
 | **RV-82** [#103](https://github.com/pKasprowicz/roll-model/issues/103) | Missing tests for the failure paths found here | code |
 | **RV-85** [#104](https://github.com/pKasprowicz/roll-model/issues/104) | No formatter, no lint gate (S3, effort S) — **done 2026-11-02**: rustfmt (`rustfmt.toml`), clippy clean, both checked by CI on Linux; the guide and manual builders still read source text, so the rudiment table is `#[rustfmt::skip]` | code |

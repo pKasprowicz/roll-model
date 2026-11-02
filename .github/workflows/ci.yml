@@ -50,7 +50,8 @@ jobs:
       - name: Clippy
         if: runner.os == 'Linux'
         run: cargo clippy --all-targets --locked -- -D warnings
-      # Release mode, like release.yml: the timing tests are unreliable in a debug build.
+      # Release mode, like release.yml. (The scheduler's timing tests use a manual clock and no longer
+      # depend on the speed of the build.)
       - name: Test
         run: cargo test --release --locked
       - name: Check without the sound card
