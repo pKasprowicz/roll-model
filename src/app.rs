@@ -30,6 +30,7 @@ use crate::import::load_score;
 use crate::metronome::Metronome;
 use crate::midi::{self, EventQueue, InputHandle, RawEvent};
 use crate::playback::{Player, Ramp};
+use crate::practice_tempo::PracticeTempo;
 use crate::render::{self};
 use crate::score::Score;
 use crate::widgets;
@@ -70,8 +71,8 @@ struct Practice {
     midi_options: crate::import::MidiOptions,
     range_from: usize,
     range_to: usize,
-    /// The practice tempo: per cent of the written one for a score, BPM for a rudiment (RV-11).
-    tempo_pct: f32,
+    /// The practice tempo, with its unit: per cent of the written one for a score, BPM for a rudiment.
+    tempo: PracticeTempo,
     take: Option<Take>,
     takes_started: usize,
     history: Vec<TakeSummary>,
@@ -86,7 +87,7 @@ impl Practice {
             midi_options: crate::import::MidiOptions::default(),
             range_from: 0,
             range_to: 0,
-            tempo_pct: 100.0,
+            tempo: PracticeTempo::default(),
             take: None,
             takes_started: 0,
             history: Vec::new(),
@@ -139,7 +140,7 @@ struct Listen {
     /// What it was started with; a change of range or tempo (or of the score) restarts it.
     from: usize,
     to: usize,
-    tempo_pct: i32,
+    tempo_key: i32,
     gen: u32,
 }
 

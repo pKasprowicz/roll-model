@@ -83,9 +83,10 @@ impl DrumApp {
         }
         let from = self.practice.range_from.min(score.measures.len() - 1);
         let to = self.practice.range_to.clamp(from, score.measures.len() - 1);
-        let scale = self.practice.tempo_pct as f64 / 100.0;
         let m0 = &score.measures[from];
-        let bpm = score.tempo.bpm_at(m0.start_q) * scale;
+        let written = score.tempo.bpm_at(m0.start_q);
+        let scale = self.practice.tempo.scale(written);
+        let bpm = written * scale;
         let beat_sec = 60.0 / bpm * m0.beat_q();
         let count_in_beats = if count_in { self.cfg.count_in_bars * m0.beats } else { 0 };
         let lead = 0.5;
@@ -152,13 +153,26 @@ impl DrumApp {
         }
     }
 
+    /// The tempo of the practice as a factor of the written tempo at the start of the selected bars.
+    pub(super) fn practice_scale(&self) -> f64 {
+        let written = self
+            .practice
+            .score
+            .as_ref()
+            .filter(|s| !s.measures.is_empty())
+            .map_or(100.0, |s| s.tempo.bpm_at(s.measures[self.practice.range_from.min(s.measures.len() - 1)].start_q));
+        self.practice.tempo.scale(written)
+    }
+
     /// The tempo ramp of Listen: `ramp_percent` points of the written tempo every `ramp_passes` passes.
     pub(super) fn listen_ramp(&self) -> Ramp {
         let c = &self.cfg;
-        if c.ramp_percent == 0 || self.practice.tempo_pct <= 0.0 {
+        // The tempo as per cent of the written one, whatever unit it is set in.
+        let percent = self.practice_scale() * 100.0;
+        if c.ramp_percent == 0 || percent <= 0.0 {
             return Ramp::default();
         }
-        Ramp { every: c.ramp_passes, step: c.ramp_percent as f64 / self.practice.tempo_pct as f64 }
+        Ramp { every: c.ramp_passes, step: c.ramp_percent as f64 / percent }
     }
 
     /// The message to show when no output could possibly make a sound.
@@ -212,7 +226,7 @@ impl DrumApp {
             ramp,
             from: plan.from,
             to: plan.to,
-            tempo_pct: self.practice.tempo_pct.round() as i32,
+            tempo_key: self.practice.tempo.value().round() as i32,
             gen: self.score_gen,
         });
     }
@@ -232,7 +246,7 @@ impl DrumApp {
             return None;
         }
         let from = self.practice.range_from.min(n - 1);
-        Some((from, self.practice.range_to.clamp(from, n - 1), self.practice.tempo_pct.round() as i32, self.score_gen))
+        Some((from, self.practice.range_to.clamp(from, n - 1), self.practice.tempo.value().round() as i32, self.score_gen))
     }
 
     pub(super) fn update_listen(&mut self) {
@@ -242,7 +256,7 @@ impl DrumApp {
         // Changing the range or the tempo while listening restarts it, without the count-in, once the
         // change has settled (a slider being dragged changes it on every frame).
         let wanted = match (self.playback.listen.as_ref(), self.listen_signature()) {
-            (Some(l), Some(sig)) if (l.from, l.to, l.tempo_pct, l.gen) != sig => Some(sig),
+            (Some(l), Some(sig)) if (l.from, l.to, l.tempo_key, l.gen) != sig => Some(sig),
             _ => None,
         };
         match (wanted, self.playback.pending) {
@@ -291,7 +305,7 @@ impl DrumApp {
         let beat = (((q - m.start_q) / m.beat_q()).floor() as u32 + 1).min(m.beats);
         let mut text = format!("bar {} · beat {}", m.number, beat);
         if l.ramp.every > 0 {
-            text.push_str(&format!(" · {:.0} %", l.tempo_pct as f64 * l.ramp.factor(pass)));
+            text.push_str(&format!(" · {:.0} %", l.tempo_scale * 100.0 * l.ramp.factor(pass)));
         }
         Some(text)
     }

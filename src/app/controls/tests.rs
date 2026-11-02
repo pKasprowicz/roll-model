@@ -7,7 +7,7 @@ use crate::controller::{Action, Command};
 use crate::drums::Lane;
 use crate::rudiments::{Lead, MAX_REPEATS};
 
-use super::super::{rudiment, DrumApp, Source, Tab};
+use super::super::{DrumApp, Source, Tab};
 use super::apply::{register_tap, shifted_range, worst_measure, TAPS_KEPT};
 use super::page::copy_preset;
 use super::*;
@@ -98,15 +98,15 @@ fn the_worst_measure_is_where_most_goes_wrong() {
 fn the_tempo_encoder_and_fader_change_the_practice_tempo() {
     let mut app = app_with_score();
     app.apply_command(Command::Turn(Action::Tempo, 5));
-    assert_eq!(app.practice.tempo_pct, 105.0);
+    assert_eq!(app.practice.tempo.value(), 105.0);
     app.apply_command(Command::Turn(Action::Tempo, -500));
-    assert_eq!(app.practice.tempo_pct, 25.0, "clamped");
+    assert_eq!(app.practice.tempo.value(), 25.0, "clamped");
     app.apply_command(Command::Set(Action::Tempo, 1.0));
-    assert_eq!(app.practice.tempo_pct, 150.0);
+    assert_eq!(app.practice.tempo.value(), 150.0);
     app.apply_command(Command::Press(Action::TempoReset));
-    assert_eq!(app.practice.tempo_pct, 100.0);
+    assert_eq!(app.practice.tempo.value(), 100.0);
     app.apply_command(Command::Press(Action::TempoDown));
-    assert_eq!(app.practice.tempo_pct, 95.0);
+    assert_eq!(app.practice.tempo.value(), 95.0);
     assert_eq!(app.controller_state().tempo, (95.0 - 25.0) / 125.0);
 }
 
@@ -116,7 +116,7 @@ fn on_the_metronome_tab_the_tempo_controls_set_its_bpm() {
     app.view.tab = Tab::Metronome;
     app.apply_command(Command::Turn(Action::Tempo, 10));
     assert_eq!(app.cfg.metro_bpm, 110.0);
-    assert_eq!(app.practice.tempo_pct, 100.0, "the practice tempo is left alone");
+    assert_eq!(app.practice.tempo.value(), 100.0, "the practice tempo is left alone");
     app.apply_command(Command::Set(Action::Tempo, 0.0));
     assert_eq!(app.cfg.metro_bpm, 20.0);
     // Without a score the metronome is the only tempo there is.
@@ -261,15 +261,15 @@ fn with_a_rudiment_the_range_controls_choose_repetitions_lead_and_rudiment() {
     assert_eq!(app.cfg.rudiment_repeats, MAX_REPEATS);
 
     // The tempo is in BPM, within its own range, and resets to the rudiment's starting tempo.
-    assert_eq!(app.practice.tempo_pct, 60.0);
+    assert_eq!(app.practice.tempo.value(), 60.0);
     app.apply_command(Command::Turn(Action::Tempo, 5));
-    assert_eq!(app.practice.tempo_pct, 65.0);
+    assert_eq!(app.practice.tempo.value(), 65.0);
     app.apply_command(Command::Set(Action::Tempo, 1.0));
-    assert_eq!(app.practice.tempo_pct, rudiment::BPM_RANGE.1);
+    assert_eq!(app.practice.tempo.value(), crate::practice_tempo::BPM_RANGE.1);
     app.apply_command(Command::Set(Action::Tempo, 0.0));
-    assert_eq!(app.practice.tempo_pct, rudiment::BPM_RANGE.0);
+    assert_eq!(app.practice.tempo.value(), crate::practice_tempo::BPM_RANGE.0);
     app.apply_command(Command::Press(Action::TempoReset));
-    assert_eq!(app.practice.tempo_pct, 60.0);
+    assert_eq!(app.practice.tempo.value(), 60.0);
     assert!((app.controller_state().tempo - (60.0 - 30.0) / (240.0 - 30.0)).abs() < 1e-6);
 
     // Back on the Score tab the same controls are about the measures again.

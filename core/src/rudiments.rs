@@ -272,7 +272,7 @@ impl Rudiment {
     }
 
     /// The rudiment as a score: `repeats` bars, one per repetition of the cell, written at
-    /// `BASE_BPM`, so the practice tempo in percent is the tempo in BPM.
+    /// `BASE_BPM`; it is practised at a tempo in BPM (`PracticeTempo::Bpm`), and the factor to play it at is worked out from the tempo the score is written at.
     pub fn build(&self, repeats: usize, lead: Lead) -> Score {
         let cell = self.cell();
         let repeats = repeats.clamp(1, MAX_REPEATS);

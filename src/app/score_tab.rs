@@ -49,8 +49,11 @@ impl DrumApp {
             });
             ui.horizontal(|ui| {
                 ui.add_enabled_ui(!running, |ui| {
-                    widgets::slider(ui, "tempo", &mut self.practice.tempo_pct, 25.0..=150.0, "%", 1.0);
-                    ui.label(format!("= {:.0} BPM", base_bpm * self.practice.tempo_pct as f64 / 100.0));
+                    let (lo, hi) = self.practice.tempo.range();
+                    let mut value = self.practice.tempo.value();
+                    widgets::slider(ui, "tempo", &mut value, lo..=hi, self.practice.tempo.unit(), 1.0);
+                    self.practice.tempo = self.practice.tempo.with_value(value);
+                    ui.label(format!("= {:.0} BPM", self.practice.tempo.bpm(base_bpm)));
                 });
                 self.playback_switches(ui, running);
             });

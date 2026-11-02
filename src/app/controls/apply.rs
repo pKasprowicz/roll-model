@@ -1,9 +1,10 @@
 //! What a controller command does in the application: the state the lights show, and every action.
 
-use super::super::{rudiment, DrumApp, Source, Tab};
+use super::super::{DrumApp, Source, Tab};
 use crate::analysis::Report;
 use crate::config::{Config, MAX_LANE_GAIN};
 use crate::controller::{self, Action, Command, State, GROUPS};
+use crate::practice_tempo::PracticeTempo;
 use crate::rudiments::{Lead, MAX_REPEATS};
 use crate::score::Score;
 use std::path::Path;
@@ -13,7 +14,6 @@ use std::time::{Duration, Instant};
 pub(super) const TAP_GAP: Duration = Duration::from_secs(2);
 /// Taps that count towards the tempo.
 pub(super) const TAPS_KEPT: usize = 6;
-pub(super) const TEMPO_RANGE: (f32, f32) = (25.0, 150.0);
 pub(super) const METRO_RANGE: (f32, f32) = (20.0, 300.0);
 
 /// Adds a tap and returns the tempo (beats per minute) they give, once there are two.
@@ -77,14 +77,6 @@ impl DrumApp {
         self.view.tab == Tab::Metronome || self.practice.score.is_none()
     }
 
-    /// The range of the practice tempo: percent of the written tempo, or BPM for a rudiment.
-    pub(super) fn tempo_range(&self) -> (f32, f32) {
-        match self.source {
-            Source::Rudiments => rudiment::BPM_RANGE,
-            Source::Score => TEMPO_RANGE,
-        }
-    }
-
     /// What a control means for the practice at hand. With a rudiment, the controls that choose
     /// the measures choose its repetitions and lead instead, the range buttons step through the
     /// rudiments, and the encoder that browses recent scores browses rudiments.
@@ -106,11 +98,10 @@ impl DrumApp {
         let c = &self.cfg;
         let measures = self.practice.score.as_ref().map_or(0, |s| s.measures.len());
         let along = |i: usize| if measures > 1 { i as f32 / (measures - 1) as f32 } else { 0.0 };
-        let range = self.tempo_range();
         let tempo = if self.tempo_is_metronome() {
             (c.metro_bpm - METRO_RANGE.0) / (METRO_RANGE.1 - METRO_RANGE.0)
         } else {
-            (self.practice.tempo_pct - range.0) / (range.1 - range.0)
+            self.practice.tempo.position()
         };
         let mut s = State {
             record: self.practice.take.as_ref().is_some_and(|t| t.running),
@@ -210,7 +201,7 @@ impl DrumApp {
                 } else if self.source == Source::Rudiments {
                     self.reset_rudiment_tempo();
                 } else {
-                    self.practice.tempo_pct = 100.0;
+                    self.practice.tempo = PracticeTempo::Percent(100.0);
                 }
                 self.view.status = "Tempo reset.".into();
             }
@@ -245,12 +236,8 @@ impl DrumApp {
                     self.cfg.metro_bpm = (self.cfg.metro_bpm.round() + steps as f32).clamp(METRO_RANGE.0, METRO_RANGE.1);
                     self.view.status = format!("Metronome {:.0} BPM", self.cfg.metro_bpm);
                 } else {
-                    let range = self.tempo_range();
-                    self.practice.tempo_pct = (self.practice.tempo_pct.round() + steps as f32).clamp(range.0, range.1);
-                    self.view.status = match self.source {
-                        Source::Rudiments => format!("Tempo {:.0} BPM", self.practice.tempo_pct),
-                        Source::Score => format!("Tempo {:.0} %", self.practice.tempo_pct),
-                    };
+                    self.practice.tempo = self.practice.tempo.stepped(steps);
+                    self.view.status = format!("Tempo {}", self.practice.tempo.text());
                 }
             }
             Action::RangeFrom if measures > 0 && self.unlocked() => {
@@ -293,8 +280,7 @@ impl DrumApp {
                 if self.tempo_is_metronome() {
                     self.cfg.metro_bpm = (METRO_RANGE.0 + x * (METRO_RANGE.1 - METRO_RANGE.0)).round();
                 } else {
-                    let range = self.tempo_range();
-                    self.practice.tempo_pct = (range.0 + x * (range.1 - range.0)).round();
+                    self.practice.tempo = self.practice.tempo.at_position(x);
                 }
             }
             Action::RangeFrom if measures > 0 && self.unlocked() => self.practice.range_from = bar(x).min(self.practice.range_to),
@@ -346,11 +332,11 @@ impl DrumApp {
             self.view.status = format!("Metronome {:.0} BPM (tapped)", self.cfg.metro_bpm);
         } else if let Some(score) = self.practice.score.as_ref() {
             let written = score.tempo.bpm_at(score.measures[self.practice.range_from.min(score.measures.len() - 1)].start_q);
-            let range = self.tempo_range();
-            self.practice.tempo_pct = (bpm / written * 100.0).clamp(f64::from(range.0), f64::from(range.1)).round() as f32;
+            self.practice.tempo = self.practice.tempo.from_bpm(bpm, written);
+            let text = self.practice.tempo.text();
             self.view.status = match self.source {
-                Source::Rudiments => format!("Tempo {:.0} BPM (tapped)", self.practice.tempo_pct),
-                Source::Score => format!("Tempo {:.0} % = {bpm:.0} BPM (tapped)", self.practice.tempo_pct),
+                Source::Rudiments => format!("Tempo {text} (tapped)"),
+                Source::Score => format!("Tempo {text} = {bpm:.0} BPM (tapped)"),
             };
         }
     }

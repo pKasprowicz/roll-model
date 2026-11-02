@@ -6,13 +6,13 @@
 use egui::RichText;
 
 use super::{DrumApp, Source, Tab};
+use crate::practice_tempo::PracticeTempo;
 use crate::render;
 use crate::rudiments::{self, Family, Lead, Rudiment, MAX_REPEATS};
 use crate::widgets;
 
 /// The practice tempo of a rudiment, in BPM. (The rudiment scores are written at 100 BPM, so
 /// the practice tempo in percent is the BPM.)
-pub(super) const BPM_RANGE: (f32, f32) = (30.0, 240.0);
 /// How much the tempo goes up after a clean take when the ladder is on.
 const LADDER_STEP: f32 = 5.0;
 
@@ -72,7 +72,7 @@ impl DrumApp {
         self.score_gen += 1;
         self.rud.built = Some(params);
         if another {
-            self.practice.tempo_pct = self.cfg.rudiment_bpm.get(&r.number).copied().unwrap_or(r.default_bpm() as f32);
+            self.practice.tempo = PracticeTempo::Bpm(self.cfg.rudiment_bpm.get(&r.number).copied().unwrap_or(r.default_bpm() as f32));
             self.view.status = format!("Rudiment {}: {} — {}", r.number, r.name, r.sticking());
         }
     }
@@ -82,7 +82,7 @@ impl DrumApp {
     fn remember_tempo(&mut self) {
         let (Source::Rudiments, Some((number, ..))) = (self.source, self.rud.built) else { return };
         let Some(r) = rudiments::by_number(number) else { return };
-        let bpm = self.practice.tempo_pct.round();
+        let bpm = self.practice.tempo.value().round();
         match self.cfg.rudiment_bpm.get(&number) {
             Some(stored) if *stored == bpm => {}
             None if bpm == r.default_bpm() as f32 => {}
@@ -137,8 +137,8 @@ impl DrumApp {
     }
 
     pub(super) fn reset_rudiment_tempo(&mut self) {
-        self.practice.tempo_pct = self.rudiment().default_bpm() as f32;
-        self.view.status = format!("Tempo {:.0} BPM", self.practice.tempo_pct);
+        self.practice.tempo = PracticeTempo::Bpm(self.rudiment().default_bpm() as f32);
+        self.view.status = format!("Tempo {}", self.practice.tempo.text());
     }
 
     /// Called when a take of the rudiment was clean: remembers the tempo if it is the best so
@@ -155,9 +155,9 @@ impl DrumApp {
         if new_best {
             message.push_str(": a new best for this rudiment");
         }
-        if self.cfg.rudiment_ladder && self.practice.tempo_pct.round() <= bpm {
-            self.practice.tempo_pct = (bpm + LADDER_STEP).min(BPM_RANGE.1);
-            message.push_str(&format!(" · up to {:.0} BPM", self.practice.tempo_pct));
+        if self.cfg.rudiment_ladder && self.practice.tempo.value().round() <= bpm {
+            self.practice.tempo = self.practice.tempo.with_value(bpm + LADDER_STEP);
+            message.push_str(&format!(" · up to {}", self.practice.tempo.text()));
         }
         self.view.status = format!("{} · {message}", self.view.status);
     }
@@ -200,7 +200,10 @@ impl DrumApp {
             self.transport_row(ui, running, n_measures);
             ui.horizontal(|ui| {
                 ui.add_enabled_ui(!running, |ui| {
-                    widgets::slider(ui, "tempo", &mut self.practice.tempo_pct, BPM_RANGE.0..=BPM_RANGE.1, " BPM", 1.0);
+                    let (lo, hi) = self.practice.tempo.range();
+                    let mut bpm = self.practice.tempo.value();
+                    widgets::slider(ui, "tempo", &mut bpm, lo..=hi, " BPM", 1.0);
+                    self.practice.tempo = self.practice.tempo.with_value(bpm);
                 });
                 self.playback_switches(ui, running);
             });
@@ -286,6 +289,7 @@ mod tests {
     use super::*;
     use crate::app::TakeSummary;
     use crate::config::Config;
+    use crate::practice_tempo::BPM_RANGE;
 
     fn app() -> DrumApp {
         DrumApp::with_config(Config::default())
@@ -313,7 +317,7 @@ mod tests {
         assert_eq!(score.title, "Single paradiddle");
         assert_eq!(score.measures.len(), app.cfg.rudiment_repeats);
         assert_eq!((app.practice.range_from, app.practice.range_to), (0, app.cfg.rudiment_repeats - 1), "the whole thing is practised");
-        assert_eq!(app.practice.tempo_pct, 90.0, "the tempo is in BPM, starting where the rudiment suggests");
+        assert_eq!(app.practice.tempo.value(), 90.0, "the tempo is in BPM, starting where the rudiment suggests");
         let plan = app.plan_run(false).unwrap();
         assert!((plan.bpm - 90.0).abs() < 1e-9, "the practice tempo in percent is the BPM: {}", plan.bpm);
         assert!(app.cfg.rudiment_bpm.is_empty(), "a tempo that was not changed is not stored");
@@ -367,7 +371,7 @@ mod tests {
     fn each_tab_keeps_its_own_score_tempo_and_takes() {
         let mut app = app();
         app.open_file(&sample());
-        app.practice.tempo_pct = 80.0;
+        app.practice.tempo = PracticeTempo::Bpm(80.0);
         app.practice.range_from = 1;
         assert!(app.view.tab == Tab::Score && app.source == Source::Score);
 
@@ -392,7 +396,7 @@ mod tests {
         app.sync_source();
         assert!(app.source == Source::Score);
         assert_eq!(app.practice.score.as_ref().unwrap().title, "Basic Rock Beat", "the file is back with its own settings");
-        assert_eq!((app.practice.tempo_pct, app.practice.range_from), (80.0, 1));
+        assert_eq!((app.practice.tempo.value(), app.practice.range_from), (80.0, 1));
         assert!(app.practice.history.is_empty(), "the rudiment's history stays with the rudiment");
         assert_eq!(app.parked.history.len(), 1);
 
@@ -431,15 +435,15 @@ mod tests {
     fn the_tempo_is_remembered_per_rudiment() {
         let mut app = on_rudiments();
         app.select_rudiment(16);
-        app.practice.tempo_pct = 104.0;
+        app.practice.tempo = PracticeTempo::Bpm(104.0);
         app.sync_source();
         assert_eq!(app.cfg.rudiment_bpm.get(&16), Some(&104.0));
         app.select_rudiment(24);
         app.sync_source();
-        assert_eq!(app.practice.tempo_pct, 90.0, "the other rudiment starts at its own tempo");
+        assert_eq!(app.practice.tempo.value(), 90.0, "the other rudiment starts at its own tempo");
         assert!(!app.cfg.rudiment_bpm.contains_key(&24));
         app.select_rudiment(16);
-        assert_eq!(app.practice.tempo_pct, 104.0, "and the first comes back at the tempo it was left at");
+        assert_eq!(app.practice.tempo.value(), 104.0, "and the first comes back at the tempo it was left at");
         // Back at the starting tempo, the stored one is replaced, not kept.
         app.reset_rudiment_tempo();
         app.sync_source();
@@ -450,21 +454,21 @@ mod tests {
     fn a_clean_take_sets_the_best_tempo_and_the_ladder_climbs() {
         let mut app = on_rudiments();
         app.select_rudiment(16);
-        app.practice.tempo_pct = 90.0;
+        app.practice.tempo = PracticeTempo::Bpm(90.0);
         app.view.status.clear();
         app.note_clean_rudiment(90.0);
         assert_eq!(app.cfg.rudiment_best.get(&16), Some(&90.0));
         assert!(app.view.status.contains("new best"), "{}", app.view.status);
-        assert_eq!(app.practice.tempo_pct, 90.0, "the ladder is off");
+        assert_eq!(app.practice.tempo.value(), 90.0, "the ladder is off");
         app.cfg.rudiment_ladder = true;
         app.note_clean_rudiment(85.0);
         assert_eq!(app.cfg.rudiment_best.get(&16), Some(&90.0), "a slower clean take is not a best");
-        assert_eq!(app.practice.tempo_pct, 90.0, "and the ladder does not step down or sideways from a slower tempo");
+        assert_eq!(app.practice.tempo.value(), 90.0, "and the ladder does not step down or sideways from a slower tempo");
         app.note_clean_rudiment(90.0);
-        assert_eq!(app.practice.tempo_pct, 95.0, "the ladder goes up by 5 BPM");
-        app.practice.tempo_pct = 238.0;
+        assert_eq!(app.practice.tempo.value(), 95.0, "the ladder goes up by 5 BPM");
+        app.practice.tempo = PracticeTempo::Bpm(238.0);
         app.note_clean_rudiment(238.0);
-        assert_eq!(app.practice.tempo_pct, BPM_RANGE.1);
+        assert_eq!(app.practice.tempo.value(), BPM_RANGE.1);
     }
 
     #[test]
@@ -476,6 +480,25 @@ mod tests {
         assert!(app.view.status.contains("cannot be graded"), "{}", app.view.status);
         app.select_rudiment(16);
         assert!(app.rudiment().gradable());
+    }
+
+    #[test]
+    fn a_rudiments_tempo_is_in_bpm_whatever_tempo_its_score_is_written_at() {
+        let mut app = DrumApp::with_config(Config::default());
+        app.view.tab = Tab::Rudiments;
+        app.sync_source();
+        app.practice.tempo = PracticeTempo::Bpm(90.0);
+        let plan = app.plan_run(false).unwrap();
+        assert!((plan.scale - 90.0 / rudiments::BASE_BPM).abs() < 1e-9, "{}", plan.scale);
+        // Written at 120 instead, the same 90 BPM is a factor of 0.75: nothing depends on the base being 100.
+        app.practice.score.as_mut().unwrap().tempo = crate::score::TempoMap::constant(120.0);
+        let plan = app.plan_run(false).unwrap();
+        assert!((plan.scale - 0.75).abs() < 1e-9, "{}", plan.scale);
+        assert!((app.practice_scale() - 0.75).abs() < 1e-9);
+        // A score is a percentage of what is written, whatever that is.
+        app.view.tab = Tab::Score;
+        app.sync_source();
+        assert_eq!(app.practice.tempo, PracticeTempo::Percent(100.0));
     }
 
     #[test]

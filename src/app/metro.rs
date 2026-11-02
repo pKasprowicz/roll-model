@@ -213,8 +213,8 @@ impl DrumApp {
             None => (self.practice.range_from.min(last), self.practice.range_to.clamp(self.practice.range_from.min(last), last)),
         };
         let (start_q, len_q) = (score.measures[a].start_q, score.measures[b].end_q() - score.measures[a].start_q);
-        // A rudiment is written at a fixed tempo; its practice tempo in percent is its BPM.
-        let tempo_factor = if self.source == Source::Rudiments { f64::from(self.practice.tempo_pct) / 100.0 } else { 1.0 };
+        // A rudiment is practised at a tempo in BPM; the free metronome plays at that tempo.
+        let tempo_factor = if self.source == Source::Rudiments { self.practice.tempo.scale(score.tempo.bpm_at(start_q)) } else { 1.0 };
         let (score_bpm, bar_q) = (score.tempo.bpm_at(start_q) * tempo_factor, score.measures[a].len_q);
         let description = match click_bar {
             Some(_) => "no score loaded: the click pattern".to_string(),
