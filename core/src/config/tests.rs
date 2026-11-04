@@ -329,3 +329,12 @@ fn the_number_of_passes_steps_from_one_to_unlimited_and_is_stored_by_name() {
     assert_eq!(Config::from_text("passes = many\n").passes, Passes::ONCE);
     assert_eq!(Config::from_text("passes = 500\n").passes, Passes::Count(Passes::MAX));
 }
+
+#[test]
+fn keeping_the_screen_awake_is_on_by_default_and_a_file_without_it_keeps_it_on() {
+    assert!(Config::default().keep_awake);
+    assert!(Config::from_text("latency_ms = 5\n").keep_awake, "an old file has no line for it");
+    let off = Config { keep_awake: false, ..Config::default() };
+    assert!(off.to_text().contains("keep_awake = false"));
+    assert!(!Config::from_text(&off.to_text()).keep_awake);
+}

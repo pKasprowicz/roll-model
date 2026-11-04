@@ -335,6 +335,21 @@ impl DrumApp {
         }
 
         ui.add_space(10.0);
+        ui.heading("Screen");
+        ui.add_enabled(
+            crate::wake::Wake::available(),
+            egui::Checkbox::new(&mut self.cfg.keep_awake, "Keep the screen awake while Roll Model is open"),
+        );
+        widgets::hint(
+            ui,
+            if crate::wake::Wake::available() {
+                "Playing the drums touches neither the keyboard nor the mouse, so the system may take the quiet for leaving and lock the screen. This keeps it from doing that, and lets go when the program closes."
+            } else {
+                "Works on Windows only for now: other systems are not tried yet."
+            },
+        );
+
+        ui.add_space(10.0);
         ui.heading("Recent scores");
         ui.horizontal(|ui| {
             ui.label(format!("{} remembered", self.cfg.recent_files.len()));

@@ -38,6 +38,8 @@ pub struct Config {
     pub ramp_passes: usize,
     /// How many times Listen goes through the selected measures before it stops.
     pub passes: Passes,
+    /// Keep the screen awake (and the computer from sleeping) while the program is open.
+    pub keep_awake: bool,
     pub click_audio: bool,
     pub click_volume: f32,
     pub click_midi: bool,
@@ -152,6 +154,7 @@ impl Default for Config {
             ramp_percent: 0,
             ramp_passes: 2,
             passes: Passes::ONCE,
+            keep_awake: true,
             click_audio: true,
             click_volume: 0.5,
             click_midi: false,
@@ -610,6 +613,7 @@ const KEYS: &[Key] = &[
     key!("ramp_percent", c.ramp_percent, within(limits::RAMP_PERCENT)),
     key!("ramp_passes", c.ramp_passes, within(limits::RAMP_PASSES)),
     key!("passes", c.passes, PassesName),
+    key!("keep_awake", c.keep_awake, Flag),
     key!("click_audio", c.click_audio, Flag),
     key!("click_volume", c.click_volume, within(limits::CLICK_VOLUME)),
     key!("click_midi", c.click_midi, Flag),

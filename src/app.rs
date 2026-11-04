@@ -184,6 +184,8 @@ pub struct DrumApp {
 
     /// The free metronome tab.
     metro_run: MetroState,
+    /// Keeps the screen awake while the program is open (`keep_awake`).
+    wake: crate::wake::Wake,
 
     /// The Mackie Control surface (X-Touch).
     controller: controls::Controller,
@@ -259,6 +261,7 @@ impl DrumApp {
             audio_default: None,
             audio: audio_output::AudioOutput::default(),
             metro_run: MetroState::new(),
+            wake: crate::wake::Wake::new(),
             controller: controls::Controller::new(),
             controller_help: None,
             startup: None,
@@ -507,6 +510,7 @@ impl eframe::App for DrumApp {
     fn on_exit(&mut self, _gl: Option<&eframe::glow::Context>) {
         self.flush_draft();
         self.save_settings_now();
+        self.wake.sync(false);
     }
 
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
@@ -522,6 +526,7 @@ impl eframe::App for DrumApp {
                 startup::Flow::Go => {}
             }
         }
+        self.wake.sync(self.cfg.keep_awake);
         // Files dropped onto the window
         let dropped: Vec<PathBuf> = ctx.input(|i| i.raw.dropped_files.iter().filter_map(|f| f.path.clone()).collect());
         if let Some(p) = dropped.first() {

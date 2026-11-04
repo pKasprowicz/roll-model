@@ -12,6 +12,7 @@ mod render;
 mod sync;
 mod synth;
 mod theme;
+mod wake;
 mod widgets;
 
 use std::path::PathBuf;
