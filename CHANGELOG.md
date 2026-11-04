@@ -6,6 +6,9 @@ All notable changes are recorded here. The format follows [Keep a Changelog](htt
 
 ## [Unreleased]
 
+### Changed
+- The MIDI clock of 0.10.5 is checked on a real device and works (Listen and the Metronome tab); it is no longer marked as untried in the manual.
+
 ### Removed
 - **The rolling notes under the beat lights on the Metronome tab**, with *Show the notes* and *Match score tempo and bar*: they added nothing to a click track. The `metro_preview` line of an older settings file is ignored.
 
