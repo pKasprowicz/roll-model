@@ -5,6 +5,7 @@
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering::Relaxed};
 use std::sync::{Arc, Mutex};
 
+use crate::config::Passes;
 use crate::drums::Lane;
 
 fn load(a: &AtomicU32) -> f32 {
@@ -18,7 +19,8 @@ fn store(a: &AtomicU32, v: f32) {
 pub struct SoundSwitches {
     notes: AtomicBool,
     click: AtomicBool,
-    looping: AtomicBool,
+    /// The number of passes; 0 is unlimited.
+    passes: AtomicU32,
     music_done: AtomicBool,
     volume: AtomicU32,
     click_volume: AtomicU32,
@@ -31,7 +33,7 @@ impl SoundSwitches {
         Arc::new(SoundSwitches {
             notes: AtomicBool::new(true),
             click: AtomicBool::new(true),
-            looping: AtomicBool::new(false),
+            passes: AtomicU32::new(1),
             music_done: AtomicBool::new(false),
             volume: AtomicU32::new(0.7_f32.to_bits()),
             click_volume: AtomicU32::new(0.5_f32.to_bits()),
@@ -55,13 +57,22 @@ impl SoundSwitches {
         self.click.store(on, Relaxed);
     }
 
-    /// Start another pass when the music ends. Read at every pass boundary,
-    /// so switching it off lets the current pass finish.
-    pub fn looping(&self) -> bool {
-        self.looping.load(Relaxed)
+    /// How many passes the music goes through. Read at every pass boundary, so lowering it lets the
+    /// current pass finish.
+    pub fn passes(&self) -> Passes {
+        match self.passes.load(Relaxed) {
+            0 => Passes::Unlimited,
+            n => Passes::new(n),
+        }
     }
-    pub fn set_looping(&self, on: bool) {
-        self.looping.store(on, Relaxed);
+    pub fn set_passes(&self, passes: Passes) {
+        self.passes.store(
+            match passes {
+                Passes::Count(n) => n.max(1),
+                Passes::Unlimited => 0,
+            },
+            Relaxed,
+        );
     }
 
     /// Set by the playback thread when the last pass has reached its end.
@@ -148,7 +159,7 @@ mod tests {
     #[test]
     fn defaults_and_round_trips() {
         let c = SoundSwitches::new();
-        assert!(c.notes() && c.click() && !c.looping() && !c.music_done());
+        assert!(c.notes() && c.click() && c.passes() == Passes::ONCE && !c.music_done());
         for lane in Lane::ALL {
             assert_eq!(c.lane_gain(lane), 1.0);
         }

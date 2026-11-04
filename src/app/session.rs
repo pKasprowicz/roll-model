@@ -5,6 +5,7 @@ use std::rc::Rc;
 use std::time::{Duration, Instant};
 
 use crate::analysis::{expected_notes, Window};
+use crate::config::Passes;
 use crate::drums::Lane;
 use crate::metronome::{ClickOptions, Metronome, HAS_AUDIO};
 use crate::playback::{self, ClockOptions, PlayOptions, Player};
@@ -107,16 +108,16 @@ impl DrumApp {
         let c = self.playback.control();
         c.set_notes(self.playback.notes());
         c.set_click(self.cfg.metronome_during_take);
-        c.set_looping(self.playback.looping());
+        c.set_passes(self.cfg.passes);
         c.set_volume(self.cfg.playback_volume);
         c.set_click_volume(self.cfg.click_volume);
         for lane in Lane::ALL {
             c.set_lane_gain(lane, self.cfg.effective_gain(self.playback.solo(), lane));
         }
-        // The free metronome always clicks and loops.
+        // The free metronome always clicks and goes on until stopped.
         let m = self.metro_run.control();
         m.set_click(true);
-        m.set_looping(true);
+        m.set_passes(Passes::Unlimited);
         m.set_click_volume(self.cfg.click_volume);
         // An instrument played from the mixer sounds at its own gain even when muted there.
         let a = self.playback.audition_control();

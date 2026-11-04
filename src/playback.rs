@@ -6,7 +6,7 @@
 //! MIDI connection, so the click and the drums can share one MIDI port.
 //!
 //! Settings that can change while playing (click on/off, notes on/off,
-//! volumes, per-instrument gain, looping) live in a shared [`SoundSwitches`]. What
+//! volumes, per-instrument gain, the number of passes) live in a shared [`SoundSwitches`]. What
 //! gets played for a cue is decided by [`dispatch`], which talks to a [`Sink`];
 //! the real sink drives the devices, the tests use a fake one.
 
@@ -64,7 +64,7 @@ pub struct PlayOptions {
     pub midi_delay: Duration,
     /// MIDI note that sounds each lane on the module.
     pub drum_notes: BTreeMap<Lane, u8>,
-    /// Raises the tempo as the passes go by (only with looping on).
+    /// Raises the tempo as the passes go by (only with more than one pass).
     pub ramp: Ramp,
     /// Send the clock the cues carry to the MIDI output; `None` when it is not wanted.
     pub clock: Option<ClockOptions>,
@@ -156,7 +156,7 @@ fn wait_for(wake: Instant, stop: &AtomicBool, sink: &mut dyn Sink, clock: &dyn C
     }
 }
 
-/// Plays `cues` relative to `zero`, pass after pass while `control.looping()`
+/// Plays `cues` relative to `zero`, pass after pass while `control.passes()` has more
 /// stays on (a pass is `pass_len` seconds long). Sets `control.music_done()`
 /// when the last pass has reached its end, then lets the tail ring out.
 /// What one run of the scheduler plays and how it is controlled.
@@ -226,11 +226,11 @@ fn run_with(run: &Run, sink: &mut dyn Sink, clock: &dyn Clock) {
             if !wait_for(hand_over, stop, sink, clock) {
                 break;
             }
-            if !control.looping() {
+            if !control.passes().more_after(pass) {
                 wait_for(end, stop, sink, clock);
                 break;
             }
-        } else if !control.looping() {
+        } else if !control.passes().more_after(pass) {
             break;
         }
         pass += 1;
@@ -254,7 +254,7 @@ pub struct Player {
 
 impl Player {
     /// Starts a thread that plays `cues` relative to `zero`; one pass is
-    /// `pass_len` seconds long and repeats while `control.looping()` is on.
+    /// `pass_len` seconds long and repeats as `control.passes()` says.
     pub fn start(zero: Instant, cues: Vec<Cue>, pass_len: f64, opts: PlayOptions, control: Arc<SoundSwitches>) -> Player {
         control.set_music_done(false);
         let stop = Arc::new(AtomicBool::new(false));

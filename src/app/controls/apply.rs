@@ -1,7 +1,7 @@
 //! What a controller command does in the application: the state the lights show, and every action.
 
 use super::super::{DrumApp, Source, Tab};
-use crate::config::{limits, Config, MAX_LANE_GAIN};
+use crate::config::{limits, Config, Passes, MAX_LANE_GAIN};
 use crate::controller::{self, Action, Command, State, GROUPS};
 use crate::practice::{nudged_volume, register_tap, shifted_range, worst_measure, Direction};
 use crate::practice_tempo::PracticeTempo;
@@ -66,7 +66,7 @@ impl DrumApp {
             record: self.take_running(),
             listen: self.playback.is_listening(),
             click: c.metronome_during_take,
-            looping: self.playback.looping(),
+            looping: self.cfg.passes.is_repeating(),
             notes: self.playback.notes(),
             metronome: self.metro_run.is_running(),
             tempo: tempo.clamp(0.0, 1.0),
@@ -147,7 +147,9 @@ impl DrumApp {
                 self.stop_all_sound();
             }
             Action::Click => self.cfg.metronome_during_take = !self.cfg.metronome_during_take,
-            Action::Loop if !running => self.playback.toggle_looping(),
+            Action::Loop if !running => {
+                self.cfg.passes = if self.cfg.passes.is_repeating() { Passes::ONCE } else { Passes::Unlimited };
+            }
             Action::Notes if !running => self.playback.toggle_notes(),
             Action::Metronome if !running => {
                 if self.metro_run.is_running() {
@@ -404,7 +406,7 @@ impl DrumApp {
             Some(Some(m)) => {
                 self.practice.range_from = m;
                 self.practice.range_to = m;
-                self.playback.set_looping(true);
+                self.cfg.passes = Passes::Unlimited;
                 self.status_range();
                 self.start_listen();
             }

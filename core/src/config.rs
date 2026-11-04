@@ -36,6 +36,8 @@ pub struct Config {
     /// 0 = off) every `ramp_passes` passes.
     pub ramp_percent: u32,
     pub ramp_passes: usize,
+    /// How many times Listen goes through the selected measures before it stops.
+    pub passes: Passes,
     pub click_audio: bool,
     pub click_volume: f32,
     pub click_midi: bool,
@@ -149,6 +151,7 @@ impl Default for Config {
             break_at_pause: true,
             ramp_percent: 0,
             ramp_passes: 2,
+            passes: Passes::ONCE,
             click_audio: true,
             click_volume: 0.5,
             click_midi: false,
@@ -412,6 +415,87 @@ impl Subdivision {
     }
 }
 
+/// How many times a run goes through the selected measures before it stops by itself.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Passes {
+    /// This many (1 to `Passes::MAX`).
+    Count(u32),
+    /// Until it is stopped.
+    Unlimited,
+}
+
+impl Passes {
+    /// A single pass: what "loop off" was.
+    pub const ONCE: Passes = Passes::Count(1);
+    /// The most a count can be; one more step is `Unlimited`.
+    pub const MAX: u32 = 99;
+
+    /// `n` passes, kept in 1 to `MAX`.
+    pub fn new(n: u32) -> Passes {
+        Passes::Count(n.clamp(1, Passes::MAX))
+    }
+
+    /// Whether another pass follows the one with this index (the first is 0).
+    pub fn more_after(self, pass: usize) -> bool {
+        match self {
+            Passes::Count(n) => pass + 1 < n as usize,
+            Passes::Unlimited => true,
+        }
+    }
+
+    /// Whether the run goes over the measures more than once, which is what "loop" was.
+    pub fn is_repeating(self) -> bool {
+        self != Passes::ONCE
+    }
+
+    /// `by` steps up (or down): 1, 2, ... `MAX`, then `Unlimited`; it stops at both ends.
+    pub fn stepped(self, by: i32) -> Passes {
+        let position = match self {
+            Passes::Count(n) => n.clamp(1, Passes::MAX) as i64,
+            Passes::Unlimited => i64::from(Passes::MAX) + 1,
+        };
+        let moved = (position + i64::from(by)).clamp(1, i64::from(Passes::MAX) + 1);
+        if moved > i64::from(Passes::MAX) {
+            Passes::Unlimited
+        } else {
+            Passes::Count(moved as u32)
+        }
+    }
+
+    /// Its name on the screen.
+    pub fn label(self) -> String {
+        match self {
+            Passes::Count(n) => n.to_string(),
+            Passes::Unlimited => "unlimited".to_string(),
+        }
+    }
+
+    /// Its text in the settings file: the number, or `unlimited`.
+    pub fn name(self) -> String {
+        self.label()
+    }
+
+    pub fn from_name(text: &str) -> Option<Passes> {
+        let text = text.trim();
+        if text.eq_ignore_ascii_case("unlimited") {
+            return Some(Passes::Unlimited);
+        }
+        text.parse::<u32>().ok().map(Passes::new)
+    }
+}
+
+/// A number of passes by name.
+struct PassesName;
+
+impl Setting<Passes> for PassesName {
+    fn read(&self, slot: &mut Passes, text: &str) {
+        *slot = Passes::from_name(text).unwrap_or(*slot);
+    }
+    fn write(&self, value: &Passes) -> String {
+        value.name()
+    }
+}
+
 /// Where the MIDI clock's Start goes out.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ClockStart {
@@ -525,6 +609,7 @@ const KEYS: &[Key] = &[
     key!("break_at_pause", c.break_at_pause, Flag),
     key!("ramp_percent", c.ramp_percent, within(limits::RAMP_PERCENT)),
     key!("ramp_passes", c.ramp_passes, within(limits::RAMP_PASSES)),
+    key!("passes", c.passes, PassesName),
     key!("click_audio", c.click_audio, Flag),
     key!("click_volume", c.click_volume, within(limits::CLICK_VOLUME)),
     key!("click_midi", c.click_midi, Flag),

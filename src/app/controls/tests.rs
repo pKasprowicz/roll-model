@@ -145,10 +145,10 @@ fn switches_and_tabs() {
     let click = app.cfg.metronome_during_take;
     app.apply_command(Command::Press(Action::Click));
     assert_eq!(app.cfg.metronome_during_take, !click);
-    assert!(app.playback.notes() && !app.playback.looping());
+    assert!(app.playback.notes() && !app.cfg.passes.is_repeating());
     app.apply_command(Command::Press(Action::Loop));
     app.apply_command(Command::Press(Action::Notes));
-    assert!(!app.playback.notes() && app.playback.looping());
+    assert!(!app.playback.notes() && app.cfg.passes.is_repeating());
     let s = app.controller_state();
     assert!(s.looping && !s.notes && !s.record && !s.listen && !s.metronome);
 
@@ -269,10 +269,10 @@ fn the_keys_and_the_controller_buttons_follow_the_same_rules() {
     press_key(&mut app, egui::Key::R);
     assert!(app.take_running());
     // The modes cannot be changed while the take records, by key or by button.
-    let looping = app.playback.looping();
+    let passes = app.cfg.passes;
     press_key(&mut app, egui::Key::M);
     app.apply_command(Command::Press(Action::Loop));
-    assert!(!app.metro_run.is_running() && app.playback.looping() == looping);
+    assert!(!app.metro_run.is_running() && app.cfg.passes == passes);
     assert!(app.take_running());
     press_key(&mut app, egui::Key::R);
     assert!(!app.take_running(), "R stops the recording like the Record button");
@@ -331,7 +331,7 @@ fn loop_worst_bar_and_discard_need_a_take() {
     let mut app = app_with_score();
     app.apply_command(Command::Press(Action::LoopWorstBar));
     assert_eq!(app.view.status, "Record a take first.");
-    assert!(!app.playback.looping());
+    assert!(!app.cfg.passes.is_repeating());
     app.apply_command(Command::Press(Action::DiscardTake));
     let mut closed = DrumApp::with_config(Config::default());
     closed.apply_command(Command::Press(Action::Record));

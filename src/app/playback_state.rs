@@ -56,7 +56,6 @@ pub(super) struct Playback {
     player: Option<Player>,
     /// Live switches of Listen (the click switch is `cfg.metronome_during_take`).
     notes: bool,
-    looping: bool,
     /// Range and tempo changed while listening, and since when: restarts once it settles.
     restart: Debounce<ListenKey>,
     /// Shared with the sound threads of Listen and of takes.
@@ -74,7 +73,6 @@ impl Playback {
             listen: None,
             player: None,
             notes: true,
-            looping: false,
             restart: Debounce::default(),
             control: SoundSwitches::new(),
             solo: BTreeSet::new(),
@@ -95,20 +93,8 @@ impl Playback {
         self.notes
     }
 
-    pub(super) fn looping(&self) -> bool {
-        self.looping
-    }
-
     pub(super) fn toggle_notes(&mut self) {
         self.notes = !self.notes;
-    }
-
-    pub(super) fn toggle_looping(&mut self) {
-        self.looping = !self.looping;
-    }
-
-    pub(super) fn set_looping(&mut self, on: bool) {
-        self.looping = on;
     }
 
     /// The switches the sound threads of Listen and of takes read.
@@ -275,10 +261,9 @@ mod tests {
     #[test]
     fn the_switches_and_the_solo_set_are_kept_here() {
         let mut p = Playback::new();
-        assert!(p.notes() && !p.looping());
+        assert!(p.notes());
         p.toggle_notes();
-        p.toggle_looping();
-        assert!(!p.notes() && p.looping());
+        assert!(!p.notes());
         p.set_soloed(Lane::Ride, true);
         assert!(p.is_soloed(Lane::Ride) && !p.is_soloed(Lane::Kick));
         p.clear_solo();

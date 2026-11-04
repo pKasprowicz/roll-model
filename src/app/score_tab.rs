@@ -157,7 +157,7 @@ impl DrumApp {
             {
                 self.press(Action::Notes);
             }
-            let mut looping = self.playback.looping();
+            let mut looping = self.cfg.passes.is_repeating();
             if ui
                 .checkbox(&mut looping, "loop")
                 .on_hover_text("Repeat the selected measures in Listen until it is stopped. Switching it off lets the current round finish.")

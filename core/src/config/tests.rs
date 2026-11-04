@@ -301,3 +301,31 @@ fn the_setting_of_the_removed_metronome_preview_is_ignored_in_an_old_file() {
     let c = Config::from_text("metro_preview = true\nmetro_bpm = 90\n");
     assert_eq!(c.metro_bpm, 90.0, "the rest of the file is read");
 }
+
+#[test]
+fn the_number_of_passes_steps_from_one_to_unlimited_and_is_stored_by_name() {
+    assert_eq!(Config::default().passes, Passes::ONCE);
+    assert!(!Passes::ONCE.is_repeating() && Passes::Count(2).is_repeating() && Passes::Unlimited.is_repeating());
+    // The pass after the one with this index.
+    assert!(!Passes::ONCE.more_after(0));
+    assert!(Passes::Count(3).more_after(0) && Passes::Count(3).more_after(1) && !Passes::Count(3).more_after(2));
+    assert!(Passes::Unlimited.more_after(1_000_000));
+    // Steps stop at both ends, and one past the most is unlimited.
+    assert_eq!(Passes::ONCE.stepped(-1), Passes::ONCE);
+    assert_eq!(Passes::ONCE.stepped(1), Passes::Count(2));
+    assert_eq!(Passes::Count(Passes::MAX).stepped(1), Passes::Unlimited);
+    assert_eq!(Passes::Unlimited.stepped(1), Passes::Unlimited);
+    assert_eq!(Passes::Unlimited.stepped(-1), Passes::Count(Passes::MAX));
+    assert_eq!(Passes::ONCE.stepped(500), Passes::Unlimited);
+    // A count outside the range is kept in it.
+    assert_eq!(Passes::new(0), Passes::ONCE);
+    assert_eq!(Passes::new(1000), Passes::Count(Passes::MAX));
+    // In the file: the number or the word; nonsense keeps the default.
+    for (passes, text) in [(Passes::Count(4), "passes = 4"), (Passes::Unlimited, "passes = unlimited")] {
+        let c = Config { passes, ..Config::default() };
+        assert!(c.to_text().contains(text), "{}", c.to_text());
+        assert_eq!(Config::from_text(&c.to_text()).passes, passes);
+    }
+    assert_eq!(Config::from_text("passes = many\n").passes, Passes::ONCE);
+    assert_eq!(Config::from_text("passes = 500\n").passes, Passes::Count(Passes::MAX));
+}

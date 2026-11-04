@@ -3,6 +3,7 @@ use std::cell::{Cell, RefCell};
 use super::*;
 use crate::analysis::expected_notes;
 use crate::analysis::Expected;
+use crate::config::Passes;
 use crate::config::Subdivision;
 use crate::import::{import_bytes, ImportOptions};
 use crate::score::Dynamic;
@@ -236,10 +237,10 @@ fn one_pass_plays_everything_once_and_reports_done() {
 #[test]
 fn looping_repeats_until_switched_off_and_finishes_the_pass() {
     let c = SoundSwitches::new();
-    c.set_looping(true);
+    c.set_passes(Passes::Unlimited);
     let cues = [click(-0.02), drum(Lane::Kick, 0.0), click(0.02)];
     let clock = ManualClock::new();
-    clock.at(Duration::from_millis(255), || c.set_looping(false));
+    clock.at(Duration::from_millis(255), || c.set_passes(Passes::ONCE));
     let ev = run_fake(&clock, &cues, 0.05, &c, &AtomicBool::new(false));
     let count_ins = ev.iter().filter(|e| matches!(e, Ev::MidiClick(_))).count();
     let kicks = ev.iter().filter(|e| matches!(e, Ev::MidiDrum(36, _))).count();
@@ -250,9 +251,34 @@ fn looping_repeats_until_switched_off_and_finishes_the_pass() {
 }
 
 #[test]
+fn a_number_of_passes_plays_exactly_that_many_and_the_count_in_once() {
+    for n in [1u32, 2, 3, 5] {
+        let c = SoundSwitches::new();
+        c.set_passes(Passes::Count(n));
+        let cues = [click(-0.02), drum(Lane::Kick, 0.0), click(0.02)];
+        let ev = run_fake(&ManualClock::new(), &cues, 0.05, &c, &AtomicBool::new(false));
+        let kicks = ev.iter().filter(|e| matches!(e, Ev::MidiDrum(36, _))).count();
+        assert_eq!(kicks, n as usize, "{n} passes");
+        assert_eq!(ev.iter().filter(|e| matches!(e, Ev::MidiClick(_))).count(), n as usize + 1, "a click for each pass and the count-in");
+        assert!(c.music_done() && ev.last() == Some(&Ev::MusicEnded));
+    }
+}
+
+#[test]
+fn the_number_of_passes_can_be_lowered_while_it_plays_and_the_pass_then_running_is_the_last() {
+    let c = SoundSwitches::new();
+    c.set_passes(Passes::Count(50));
+    let clock = ManualClock::new();
+    clock.at(Duration::from_millis(255), || c.set_passes(Passes::Count(2)));
+    let ev = run_fake(&clock, &[drum(Lane::Kick, 0.0)], 0.05, &c, &AtomicBool::new(false));
+    let kicks = ev.iter().filter(|e| matches!(e, Ev::MidiDrum(36, _))).count();
+    assert!(kicks < 50, "it stopped well before the count was reached: {kicks}");
+}
+
+#[test]
 fn stopping_ends_the_loop_at_once() {
     let c = SoundSwitches::new();
-    c.set_looping(true);
+    c.set_passes(Passes::Unlimited);
     let stop = AtomicBool::new(false);
     let clock = ManualClock::new();
     clock.at(Duration::from_millis(150), || stop.store(true, Ordering::Relaxed));
@@ -384,9 +410,9 @@ impl Sink for Stamps<'_> {
 #[test]
 fn the_player_squeezes_the_later_passes_of_a_ramp() {
     let c = SoundSwitches::new();
-    c.set_looping(true);
+    c.set_passes(Passes::Unlimited);
     let clock = ManualClock::new();
-    clock.at(Duration::from_millis(330), || c.set_looping(false));
+    clock.at(Duration::from_millis(330), || c.set_passes(Passes::ONCE));
     let mut o = opts();
     // Passes of 100 ms, 50 ms, then 33 ms (the limit of three times).
     o.ramp = Ramp { every: 1, step: 1.0 };
@@ -420,7 +446,7 @@ struct Early<'a> {
     told: Vec<(Instant, Instant)>,
     due: Option<Instant>,
     flushed_at: Vec<(Instant, Instant)>,
-    /// Switches looping off once this many cues were handed over.
+    /// Goes back to a single pass once this many cues were handed over.
     stop_after: Option<(Arc<SoundSwitches>, usize)>,
 }
 
@@ -430,7 +456,7 @@ impl Sink for Early<'_> {
         self.due = Some(when + Duration::from_millis(20));
         if let Some((control, n)) = &self.stop_after {
             if self.told.len() >= *n {
-                control.set_looping(false);
+                control.set_passes(Passes::ONCE);
             }
         }
     }
@@ -523,7 +549,7 @@ fn the_first_cue_of_a_looped_pass_is_handed_over_ahead_of_its_time_too() {
     // The bar of the metronome loops; its first click used to be handed over exactly at its time,
     // because the player waited for the end of the pass before it began the next one.
     let control = SoundSwitches::new();
-    control.set_looping(true);
+    control.set_passes(Passes::Unlimited);
     let clock = ManualClock::new();
     let mut sink = Early {
         clock: &clock,
@@ -605,10 +631,10 @@ fn a_run_sends_start_then_the_ticks_and_ends_with_the_end_of_the_music() {
 #[test]
 fn a_looping_metronome_sends_start_once_and_goes_on_ticking() {
     let c = SoundSwitches::new();
-    c.set_looping(true);
+    c.set_passes(Passes::Unlimited);
     let bar = with_clock(metronome_cues(600.0, 1, Subdivision::None).0, metronome_clock(600.0, 1));
     let clock = ManualClock::new();
-    clock.at(Duration::from_millis(460), || c.set_looping(false));
+    clock.at(Duration::from_millis(460), || c.set_passes(Passes::ONCE));
     let ev = run_fake(&clock, &bar, 0.1, &c, &AtomicBool::new(false));
     let messages = clock_events(&ev);
     assert_eq!(messages.iter().filter(|m| **m == ClockMsg::Start).count(), 1, "later passes do not start it again");
@@ -618,7 +644,7 @@ fn a_looping_metronome_sends_start_once_and_goes_on_ticking() {
 #[test]
 fn stopping_a_run_tells_the_sink_so_the_clock_can_be_stopped() {
     let c = SoundSwitches::new();
-    c.set_looping(true);
+    c.set_passes(Passes::Unlimited);
     let stop = AtomicBool::new(false);
     let clock = ManualClock::new();
     clock.at(Duration::from_millis(150), || stop.store(true, Ordering::Relaxed));
