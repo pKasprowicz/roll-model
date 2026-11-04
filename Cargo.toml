@@ -32,13 +32,13 @@ hound = "3"
 rtrb = "0.4"
 cpal = { version = "0.17", optional = true }
 
-# Keeps the screen awake (`src/wake.rs`); already in the build through eframe, with one more feature.
+# Keeps the screen awake (`src/wake.rs`); the crate holds the `unsafe` call to the system.
 [target.'cfg(windows)'.dependencies]
-windows-sys = { version = "0.61", features = ["Win32_System_Power"] }
+keepawake = { version = "0.6", default-features = false }
 
-# `unsafe` is confined to `src/wake.rs`, which allows it for its one call.
+# The crate has no `unsafe` code of its own.
 [lints.rust]
-unsafe_code = "deny"
+unsafe_code = "forbid"
 
 [[example]]
 name = "audio_probe"

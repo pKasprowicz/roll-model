@@ -438,6 +438,15 @@ impl Passes {
         Passes::Count(n.clamp(1, Passes::MAX))
     }
 
+    /// What a new session starts with: a count is kept, `Unlimited` is not (it was the loop switch,
+    /// which always started off, and a program that plays on for ever at the first Listen surprises).
+    pub fn at_start(self) -> Passes {
+        match self {
+            Passes::Unlimited => Passes::ONCE,
+            counted => counted,
+        }
+    }
+
     /// Whether another pass follows the one with this index (the first is 0).
     pub fn more_after(self, pass: usize) -> bool {
         match self {

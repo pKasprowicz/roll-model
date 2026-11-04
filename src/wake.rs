@@ -3,8 +3,8 @@
 //! quiet for leaving. Windows asks for it with `SetThreadExecutionState`; other systems do nothing
 //! yet (Linux and macOS follow when they can be tried).
 //!
-//! This is the only module with `unsafe` code: one call that takes flags and no pointers. The
-//! crate denies `unsafe_code` everywhere else (`Cargo.toml`).
+//! The call to the system is made by the `keepawake` crate, so this crate has no `unsafe` code
+//! (`Cargo.toml` forbids it).
 
 /// What the system is asked to do.
 pub trait Backend {
@@ -24,7 +24,7 @@ pub struct Wake {
 impl Wake {
     /// With the system's own way of doing it.
     pub fn new() -> Wake {
-        Wake::with(Box::new(system::Native))
+        Wake::with(Box::<system::Native>::default())
     }
 
     pub fn with(backend: Box<dyn Backend>) -> Wake {
@@ -61,25 +61,20 @@ impl Drop for Wake {
 
 #[cfg(windows)]
 mod system {
-    use windows_sys::Win32::System::Power::{SetThreadExecutionState, ES_CONTINUOUS, ES_DISPLAY_REQUIRED, ES_SYSTEM_REQUIRED};
-
-    /// The state belongs to the thread that sets it, which is the window's thread: `Wake` is used
-    /// from there only.
-    pub struct Native;
-
-    #[allow(unsafe_code)]
-    fn set(flags: u32) -> bool {
-        // SAFETY: the function takes flags only and reads and writes no memory of ours.
-        unsafe { SetThreadExecutionState(flags) != 0 }
+    /// Holds a request to the system for as long as it lives.
+    #[derive(Default)]
+    pub struct Native {
+        request: Option<keepawake::KeepAwake>,
     }
 
     impl super::Backend for Native {
         fn hold(&mut self) -> bool {
-            set(ES_CONTINUOUS | ES_DISPLAY_REQUIRED | ES_SYSTEM_REQUIRED)
+            self.request = keepawake::Builder::default().display(true).idle(true).reason("Practising").app_name("Roll Model").create().ok();
+            self.request.is_some()
         }
 
         fn release(&mut self) {
-            set(ES_CONTINUOUS);
+            self.request = None;
         }
     }
 }
@@ -87,6 +82,7 @@ mod system {
 #[cfg(not(windows))]
 mod system {
     /// Nothing is done on this system yet.
+    #[derive(Default)]
     pub struct Native;
 
     impl super::Backend for Native {

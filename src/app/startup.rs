@@ -225,6 +225,8 @@ impl DrumApp {
                         self.view.error = Some(format!("Your best tempos could not be moved to their own file: {e}"));
                     }
                 }
+                let mut cfg = cfg;
+                cfg.passes = cfg.passes.at_start();
                 self.saved_cfg = cfg.clone();
                 self.cfg = cfg;
                 if let Some(text) = notice {
@@ -432,6 +434,23 @@ mod tests {
         let with_file = Startup::new(Some(sample()), rx);
         assert_eq!(with_file.steps.last(), Some(&Step::Score));
         assert_eq!(with_file.steps.len(), plain.steps.len() + 1);
+    }
+
+    #[test]
+    fn a_new_session_does_not_start_with_unlimited_passes_but_keeps_a_count() {
+        use crate::config::{Passes, Paths};
+        for (saved, started) in [(Passes::Unlimited, Passes::ONCE), (Passes::Count(4), Passes::Count(4))] {
+            let dir = roll_model_core::testing::TempDir::new("start-passes");
+            let paths = Paths::in_dir(dir.path().to_path_buf());
+            Config { passes: saved, ..Config::default() }.save(&paths).unwrap();
+            let (_tx, rx) = mpsc::channel();
+            let mut app = DrumApp::with_config(Config::default());
+            app.paths = paths;
+            let mut st = Startup::new(None, rx);
+            assert!(app.run_step(Step::Settings, &mut st).is_some());
+            assert_eq!(app.cfg.passes, started, "saved as {saved:?}");
+            assert_eq!(app.cfg, app.saved_cfg, "the change is not a reason to write the file");
+        }
     }
 
     #[test]

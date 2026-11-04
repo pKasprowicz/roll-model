@@ -317,6 +317,9 @@ fn the_number_of_passes_steps_from_one_to_unlimited_and_is_stored_by_name() {
     assert_eq!(Passes::Unlimited.stepped(1), Passes::Unlimited);
     assert_eq!(Passes::Unlimited.stepped(-1), Passes::Count(Passes::MAX));
     assert_eq!(Passes::ONCE.stepped(500), Passes::Unlimited);
+    // A new session keeps a count and drops unlimited.
+    assert_eq!(Passes::Count(4).at_start(), Passes::Count(4));
+    assert_eq!(Passes::Unlimited.at_start(), Passes::ONCE);
     // A count outside the range is kept in it.
     assert_eq!(Passes::new(0), Passes::ONCE);
     assert_eq!(Passes::new(1000), Passes::Count(Passes::MAX));
