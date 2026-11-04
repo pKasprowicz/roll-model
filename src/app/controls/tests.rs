@@ -384,3 +384,37 @@ fn a_run_has_a_count_in_only_when_asked_for() {
     assert_eq!(app.plan_run(false).unwrap().count_in_beats, 0, "this is what Listen asks for when its count-in is off");
     assert!(app.cfg.listen_count_in, "Listen has one by default");
 }
+
+#[test]
+fn the_passes_are_stepped_and_set_by_the_controller_and_follow_the_recording_lock() {
+    use crate::config::Passes;
+    let mut app = app_with_score();
+    assert_eq!(app.cfg.passes, Passes::ONCE);
+    app.apply_command(Command::Turn(Action::Passes, 2));
+    assert_eq!(app.cfg.passes, Passes::Count(3));
+    assert_eq!(app.view.status, "3 passes");
+    app.apply_command(Command::Turn(Action::Passes, -10));
+    assert_eq!(app.cfg.passes, Passes::ONCE, "it stops at one");
+    app.apply_command(Command::Set(Action::Passes, 1.0));
+    assert_eq!(app.cfg.passes, Passes::Unlimited, "the top of a fader is unlimited");
+    assert_eq!(app.view.status, "unlimited passes");
+    assert_eq!(app.controller_state().level(Action::Passes), Some(1.0));
+    app.apply_command(Command::Set(Action::Passes, 0.0));
+    assert_eq!(app.cfg.passes, Passes::ONCE);
+    assert_eq!(app.controller_state().level(Action::Passes), Some(0.0));
+    app.apply_command(Command::Turn(Action::Passes, 1));
+    assert_eq!(app.controller_state().level(Action::Passes), Some(1.0 / Passes::MAX as f32));
+    // The loop button goes between one pass and unlimited (from more than one, it goes back to one).
+    app.cfg.passes = Passes::ONCE;
+    app.apply_command(Command::Press(Action::Loop));
+    assert_eq!(app.cfg.passes, Passes::Unlimited);
+    app.apply_command(Command::Press(Action::Loop));
+    assert_eq!(app.cfg.passes, Passes::ONCE);
+    // A recording locks the count like the other settings of the run.
+    app.cfg.click_midi = false;
+    press_key(&mut app, egui::Key::R);
+    assert!(app.take_running());
+    app.apply_command(Command::Turn(Action::Passes, 3));
+    app.apply_command(Command::Set(Action::Passes, 1.0));
+    assert_eq!(app.cfg.passes, Passes::ONCE);
+}

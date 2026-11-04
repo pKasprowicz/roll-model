@@ -5,6 +5,8 @@ use std::ops::RangeInclusive;
 use egui::emath::Numeric;
 use egui::{vec2, Color32, Response, RichText, Ui, Vec2};
 
+use crate::config::Passes;
+
 /// Whether a text field (also a slider's value box) is being typed in. Not the same as
 /// `ctx.wants_keyboard_input()`, which is also true while a button or slider has the focus (after
 /// Tab or a click): the shortcuts must still work then.
@@ -20,6 +22,35 @@ pub fn hint(ui: &mut Ui, text: impl Into<String>) -> Response {
 /// A line of small text in `color`: a warning (`theme::AMBER`) or a state under a control.
 pub fn note(ui: &mut Ui, text: impl Into<String>, color: Color32) -> Response {
     ui.label(RichText::new(text).small().color(color))
+}
+
+/// The number of passes, to drag or type, with `unlimited` one step above the largest count.
+pub fn passes(ui: &mut Ui, passes: &mut Passes) -> Response {
+    let top = Passes::MAX + 1;
+    let mut n = match *passes {
+        Passes::Count(n) => n,
+        Passes::Unlimited => top,
+    };
+    let response = ui
+        .add(
+            egui::DragValue::new(&mut n)
+                .range(1..=top)
+                .speed(0.1)
+                .custom_formatter(move |v, _| if v as u32 >= top { "unlimited".to_string() } else { format!("{}", v as u32) })
+                .custom_parser(move |text| {
+                    let text = text.trim();
+                    if text.eq_ignore_ascii_case("unlimited") || text.eq_ignore_ascii_case("inf") {
+                        Some(f64::from(top))
+                    } else {
+                        text.parse::<f64>().ok()
+                    }
+                }),
+        )
+        .on_hover_text("How many times Listen and a recording go through the selected measures, then stop. Drag, or type a number; the top is unlimited.");
+    if response.changed() {
+        *passes = if n >= top { Passes::Unlimited } else { Passes::new(n) };
+    }
+    response
 }
 
 /// A slider with its `caption` in front of it:

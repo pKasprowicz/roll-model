@@ -48,6 +48,8 @@ pub(super) struct Polled {
     pub(super) restart: bool,
     /// Problems the sound thread reported.
     pub(super) errors: Vec<String>,
+    /// The music came to its end (the last pass was played), as against being stopped.
+    pub(super) finished: bool,
 }
 
 pub(super) struct Playback {
@@ -150,7 +152,8 @@ impl Playback {
     /// One look at Listen, every frame. `signature` is what Listen would play now: when it differs
     /// from what runs, and has for `delay`, `restart` says so.
     pub(super) fn poll(&mut self, signature: Option<ListenKey>, now: Instant, delay: Duration) -> Polled {
-        if self.listen.is_some() && self.control.music_done() {
+        let finished = self.listen.is_some() && self.control.music_done();
+        if finished {
             self.listen = None; // the music is over; the last notes may still ring
         }
         // A change of the range or the tempo restarts it, without the count-in, once it has settled
@@ -160,15 +163,15 @@ impl Playback {
             _ => None,
         };
         if self.restart.poll(wanted, now, delay) {
-            return Polled { restart: true, errors: Vec::new() };
+            return Polled { restart: true, errors: Vec::new(), finished };
         }
-        let Some(player) = self.player.as_ref() else { return Polled::default() };
+        let Some(player) = self.player.as_ref() else { return Polled { finished, ..Polled::default() } };
         let errors = player.take_errors();
         if player.is_finished() {
             self.listen = None;
             self.player = None;
         }
-        Polled { restart: false, errors }
+        Polled { restart: false, errors, finished }
     }
 
     /// An instrument is played from the mixer; the one before it is cut off.
@@ -254,7 +257,7 @@ mod tests {
         p.listen = Some(listen(key(1)));
         assert!(p.is_listening());
         p.control.set_music_done(true);
-        p.poll(None, Instant::now(), DELAY);
+        assert!(p.poll(None, Instant::now(), DELAY).finished, "it says the music came to its end");
         assert!(!p.is_listening());
     }
 

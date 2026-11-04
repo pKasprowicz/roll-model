@@ -208,7 +208,7 @@ cargo build --release --no-default-features          # without the sound card (d
   <text x="22" y="68" opacity=".8">Heading, title of the score or rudiment</text>
   <rect x="22" y="78" width="716" height="64" rx="6" fill="currentColor" opacity=".08"/>
   <text x="32" y="98">Record &middot; Listen &middot; position &middot; zoom &middot; follow &middot; Layout</text>
-  <text x="32" y="118">Range / repeats &middot; tempo &middot; click &middot; notes &middot; loop &middot; count-in</text>
+  <text x="32" y="118">Range / repeats &middot; tempo &middot; click &middot; notes &middot; passes &middot; count-in</text>
   <text x="32" y="136" opacity=".7">Colour legend and hints</text>
   <rect x="22" y="152" width="716" height="130" rx="6" fill="none" stroke="currentColor" opacity=".35"/>
   <line x1="40" y1="180" x2="730" y2="180" stroke="currentColor" opacity=".6"/><line x1="40" y1="190" x2="730" y2="190" stroke="currentColor" opacity=".6"/><line x1="40" y1="200" x2="730" y2="200" stroke="currentColor" opacity=".6"/>
@@ -257,8 +257,8 @@ cargo build --release --no-default-features          # without the sound card (d
 <tr><td><em>tempo</em></td><td>25&ndash;150 % of the written tempo, with the resulting BPM next to it. The score's own tempo changes are respected.</td></tr>
 <tr><td><em>click (K)</em></td><td>Switches the metronome on or off at any moment, also while playing or recording. The count-in always sounds.</td></tr>
 <tr><td><em>notes</em></td><td>Plays the notes of the score in Listen. Switch them off to use Listen as a click track of the selected bars.</td></tr>
-<tr><td><em>loop</em></td><td>Repeats the selected bars in Listen until you stop it. Unticking it lets the current round finish.</td></tr>
-<tr><td><em>ramp +</em></td><td>A tempo ramp for Listen with <em>loop</em> on: the tempo rises by this many per cent of the written tempo every <em>every</em> passes (2 passes at 80 %, then 85 %, and so on), up to three times the starting tempo. The label next to the Listen button shows the tempo in force. Set at the next start of Listen; <em>off</em> by default.</td></tr>
+<tr><td><em>passes</em></td><td>How many times Listen goes through the selected bars (or the rudiment): 1 to 99, or <em>unlimited</em> at the top, then it stops by itself. Drag the number or type it. Lowering it while Listen plays lets the current round finish. Remembered between sessions.</td></tr>
+<tr><td><em>ramp +</em></td><td>A tempo ramp for Listen with more than one pass: the tempo rises by this many per cent of the written tempo every <em>every</em> passes (2 passes at 80 %, then 85 %, and so on), up to three times the starting tempo. The label next to the Listen button shows the tempo in force. Set at the next start of Listen; <em>off</em> by default.</td></tr>
 <tr><td><em>count-in bars</em></td><td>0&ndash;2 bars of clicks before the music (and before recording).</td></tr>
 <tr><td><em>in Listen</em></td><td>Whether Listen starts with the count-in too. Switch it off to hear the music at once; a recording always has the count-in.</td></tr>
 </tbody></table>
@@ -554,7 +554,7 @@ ring  = tempo -&gt; cc 20 scale=127      # a plain value 0 to 127 instead of Mac
 <thead><tr><th>Kind</th><th>Names</th></tr></thead>
 <tbody>
 <tr><td>Buttons</td><td><code>record listen stop click loop notes metronome next_tab loop_worst_bar range_back range_forward tap_tempo tempo_down tempo_up discard_take tempo_reset open_score prev_rudiment next_rudiment shift</code>, and <code>mute N</code>, <code>solo N</code>, <code>audition N</code> for mixer strips 1&ndash;8</td></tr>
-<tr><td>Values (encoder with <code>rel</code>, or a fader)</td><td><code>tempo range_from range_to click_volume music_volume count_in bars_per_row repeats lead</code>, and <code>gain N</code></td></tr>
+<tr><td>Values (encoder with <code>rel</code>, or a fader)</td><td><code>tempo range_from range_to click_volume music_volume count_in bars_per_row repeats lead passes</code>, and <code>gain N</code></td></tr>
 <tr><td>Only turned (need <code>rel</code>)</td><td><code>score</code> (recent scores), <code>rudiment</code> (the rudiments)</td></tr>
 <tr><td>Lights</td><td><code>record listen stop click loop notes metronome shift</code>, <code>mute N</code>, <code>solo N</code></td></tr>
 <tr><td>Rings</td><td>any of the values, including <code>repeats</code> and <code>lead</code></td></tr>

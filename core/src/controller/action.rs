@@ -120,6 +120,8 @@ pub enum Action {
     /// Rudiments: how often the rudiment repeats, and which hand starts it.
     Repeats,
     Lead,
+    /// How many times Listen and a recording go through the measures.
+    Passes,
     /// Browses the recent scores; only turned.
     BrowseScores,
     /// Browses the rudiments; only turned.
@@ -384,6 +386,14 @@ pub(super) const ACTIONS: &[Info] = &[
         light: false,
     },
     Info {
+        action: Action::Passes,
+        name: "passes",
+        title: "Passes",
+        help: "How many times Listen and a recording go through the selected measures: one, two, and so on up to unlimited.",
+        class: Class::Level,
+        light: false,
+    },
+    Info {
         action: Action::BrowseScores,
         name: "score",
         title: "Recent scores",
@@ -514,6 +524,8 @@ pub struct State {
     pub bars_per_row: f32,
     pub repeats: f32,
     pub lead: f32,
+    /// 0 is one pass and 1 is unlimited.
+    pub passes: f32,
     pub gain: [f32; GROUPS],
 }
 
@@ -544,6 +556,7 @@ impl State {
             Action::BarsPerRow => self.bars_per_row,
             Action::Repeats => self.repeats,
             Action::Lead => self.lead,
+            Action::Passes => self.passes,
             Action::Gain(i) => self.gain[i as usize % GROUPS],
             _ => return None,
         })

@@ -157,19 +157,13 @@ impl DrumApp {
             {
                 self.press(Action::Notes);
             }
-            let mut looping = self.cfg.passes.is_repeating();
-            if ui
-                .checkbox(&mut looping, "loop")
-                .on_hover_text("Repeat the selected measures in Listen until it is stopped. Switching it off lets the current round finish.")
-                .changed()
-            {
-                self.press(Action::Loop);
-            }
+            ui.label("passes");
+            widgets::passes(ui, &mut self.cfg.passes);
             widgets::Slider::new("count-in bars", &mut self.cfg.count_in_bars, limits::COUNT_IN_BARS.range()).show(ui);
             ui.checkbox(&mut self.cfg.listen_count_in, "in Listen")
                 .on_hover_text("Start Listen with the count-in too. A recording always has one; switch this off to hear the music at once.");
             widgets::Slider::new("ramp +", &mut self.cfg.ramp_percent, limits::RAMP_PERCENT.range()).suffix(" %").zero_text("off").show(ui)
-                .on_hover_text("With loop on, Listen gets faster by this many per cent of the written tempo every few passes (up to three times the starting tempo). Takes effect at the next start.");
+                .on_hover_text("With more than one pass, Listen gets faster by this many per cent of the written tempo every few passes (up to three times the starting tempo). Takes effect at the next start.");
             if self.cfg.ramp_percent > 0 {
                 widgets::Slider::new("every", &mut self.cfg.ramp_passes, limits::RAMP_PASSES.range()).suffix(" passes").show(ui);
             }

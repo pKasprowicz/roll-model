@@ -7,6 +7,10 @@ All notable changes are recorded here. The format follows [Keep a Changelog](htt
 ## [Unreleased]
 
 ### Changed
+- **The *loop* switch is now *passes*** (FEAT-8, FEAT-10): a number from 1 to 99, or *unlimited*, of times Listen goes through the selected measures (or the rudiment) before it stops by itself, and says so on the status line. 1 is what loop off was and unlimited is what loop on was. It is saved with the settings, so it is remembered; it works the same on the Score and Rudiments tabs. The *loop* key and button go between 1 and unlimited.
+- A new controller value, `passes`, steps the number with an encoder or sets it with a fader (bind it with *Learn*). A recording locks it like the other settings of the run. Recording N passes is not there yet.
+
+### Changed
 - The MIDI clock of 0.10.5 is checked on a real device and works (Listen and the Metronome tab); it is no longer marked as untried in the manual.
 
 ### Removed

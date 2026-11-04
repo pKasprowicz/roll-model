@@ -30,8 +30,23 @@ fn locked_by_recording(action: Action) -> bool {
             | Action::BrowseScores
             | Action::Repeats
             | Action::Lead
+            | Action::Passes
             | Action::BrowseRudiments
     )
+}
+
+/// Where a number of passes is on a fader or a ring: one pass at the bottom, unlimited at the top.
+fn passes_position(passes: Passes) -> f32 {
+    match passes {
+        Passes::Count(n) => (n.clamp(1, Passes::MAX) - 1) as f32 / Passes::MAX as f32,
+        Passes::Unlimited => 1.0,
+    }
+}
+
+/// The number of passes a fader position stands for.
+fn passes_at(x: f32) -> Passes {
+    let steps = (x.clamp(0.0, 1.0) * Passes::MAX as f32).round() as i32;
+    Passes::ONCE.stepped(steps)
 }
 
 impl DrumApp {
@@ -78,6 +93,7 @@ impl DrumApp {
             bars_per_row: limits::BARS_PER_ROW.unit(c.bars_per_row),
             repeats: (c.rudiment_repeats - 1) as f32 / (MAX_REPEATS - 1) as f32,
             lead: Lead::ALL.iter().position(|l| *l == self.rudiment_lead()).unwrap_or(0) as f32 / (Lead::ALL.len() - 1) as f32,
+            passes: passes_position(c.passes),
             ..Default::default()
         };
         if self.source == Source::Rudiments {
@@ -207,6 +223,7 @@ impl DrumApp {
             | Action::Gain(_)
             | Action::Repeats
             | Action::Lead
+            | Action::Passes
             | Action::BrowseScores
             | Action::BrowseRudiments => {}
         }
@@ -254,6 +271,10 @@ impl DrumApp {
             Action::Lead => {
                 self.step_lead(one);
                 self.view.status = format!("{} hand leads", self.rudiment_lead().label());
+            }
+            Action::Passes => {
+                self.cfg.passes = self.cfg.passes.stepped(steps);
+                self.view.status = format!("{} passes", self.cfg.passes.label());
             }
             Action::BrowseRudiments => self.step_rudiment(one),
             // A range with no measures has nothing to move.
@@ -313,6 +334,10 @@ impl DrumApp {
             Action::Lead => {
                 self.rud.lead = Some(Lead::ALL[(x * (Lead::ALL.len() - 1) as f32).round() as usize]);
                 self.ensure_rudiment();
+            }
+            Action::Passes => {
+                self.cfg.passes = passes_at(x);
+                self.view.status = format!("{} passes", self.cfg.passes.label());
             }
             Action::Gain(i) => self.set_group_gain(i as usize, x * MAX_LANE_GAIN),
             // A range with no measures has nothing to set.

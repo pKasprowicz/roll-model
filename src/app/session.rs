@@ -309,6 +309,12 @@ impl DrumApp {
             self.begin_listen(CountIn::Without);
             return;
         }
+        if polled.finished {
+            self.view.status = match self.cfg.passes {
+                Passes::Count(n) if n > 1 => format!("Listen finished: {n} passes"),
+                _ => "Listen finished".to_string(),
+            };
+        }
         self.report_sound_errors(polled.errors);
     }
 
