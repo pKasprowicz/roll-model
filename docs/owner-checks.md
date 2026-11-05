@@ -2,35 +2,131 @@
 
 Everything that is still waiting for a person with a drum module, a controller, ears, a mouse, a
 second computer or a decision. Made on **2026-11-05** from `HANDOFF.md`, the open issues and the
-state of `develop` (`e8b4b24`, after release 0.10.5). Nothing in this list can be done by the
-program's tests or by the AI session; each item says what you need, what to do, what counts as a
-pass, and what to report.
+state of `develop` (after release 0.10.5). Nothing in this list can be done by the program's tests
+or by the AI session. Every check says **what you need, how to set up, exactly what to do, what you
+should see, what to write down if you see something else, and what to report**.
 
-**How to use it**
+- [0. Read this first](#0-read-this-first): builds, backups, where things are, how to report
+- [At a glance](#at-a-glance)
+- [A. The current develop build](#a-the-current-develop-build)
+- [B. The Roland V31 and your ears](#b-the-roland-v31-and-your-ears)
+- [C. Controllers](#c-controllers)
+- [D. A real mouse](#d-a-real-mouse)
+- [E. Reading and decisions](#e-reading-and-decisions)
+- [F. Other machines](#f-other-machines)
+- [G. What waits for these checks](#g-what-waits-for-these-checks)
 
-- Do what you have the means for; the groups are independent. The order within each group is the
-  suggested one.
-- **Report in the issue** (a comment is enough: "pass", or what you saw). The AI session then
-  updates `HANDOFF.md`, the manual and the code. A failed check is not a problem: it is the
-  result that was wanted.
-- Checks marked **develop build** need a build of the current `develop` (`cargo build --release`,
-  then `target\release\roll-model.exe`); the released 0.10.5 does not have them yet.
-- The hardware sessions (group C) have their own step-by-step plan with a results sheet:
-  [`hardware-test-plan.md`](hardware-test-plan.md). This list does not repeat it; it says which
-  session answers which question.
-- Backup first: copy `%APPDATA%\RollModel` somewhere before the first session.
+---
+
+## 0. Read this first
+
+### 0.1 The two builds you will need
+
+Some checks need the **released 0.10.5**, some the **current develop build**, some compare the two.
+Both print `Version 0.10.5` on the start-up splash (develop has not been given a new number yet), so
+keep them apart by **folder**, not by the version text.
+
+1. Make a folder `C:\RollModelChecks` with two sub-folders, `released` and `develop`.
+2. **Released:** on <https://github.com/pKasprowicz/roll-model/releases> download
+   `roll-model-v0.10.5-windows-x86_64.zip`, unzip it into `C:\RollModelChecks\released`. It contains
+   `roll-model.exe`, the manual and an `examples` folder (with `basic_rock_beat.musicxml`).
+3. **Develop:** in the repository folder (`D:\projects\DrumTutor`), in PowerShell:
+
+   ```powershell
+   git checkout develop
+   git pull
+   cargo build --release
+   Copy-Item target\release\roll-model.exe C:\RollModelChecks\develop\
+   Copy-Item examples C:\RollModelChecks\develop\ -Recurse -Force
+   ```
+
+   The build takes a few minutes the first time. A release build matters: a debug build is slower
+   and would make every timing check meaningless.
+4. Run `C:\RollModelChecks\released\roll-model.exe` or `C:\RollModelChecks\develop\roll-model.exe`
+   (double-click). **Only one copy at a time**: on Windows a MIDI port can be opened by one program
+   only, so a second copy says "could not open".
+5. Both builds read the same settings (`%APPDATA%\RollModel`). That is fine: the older build ignores
+   settings it does not know.
+
+### 0.2 Before the first session: back up and close other programs
+
+- **Back up:** copy the whole settings folder. In the Explorer address bar paste
+  `%APPDATA%\RollModel` to look at it; to copy it:
+
+  ```powershell
+  Copy-Item $env:APPDATA\RollModel C:\RollModelChecks\settings-backup -Recurse
+  ```
+
+  To go back to it after a session (close the program first):
+
+  ```powershell
+  Remove-Item $env:APPDATA\RollModel -Recurse -Force
+  Copy-Item C:\RollModelChecks\settings-backup $env:APPDATA\RollModel -Recurse
+  ```
+
+- **Close** every other program that uses MIDI or the sound output in an exclusive way: a DAW, a
+  MIDI monitor, the controller's vendor software, a browser tab with WebMIDI.
+- **Do not "fix" settings to make a check pass.** If something does not work, write down what you
+  saw first (0.5), then change things.
+
+### 0.3 Where things are in the program
+
+- **Tabs** (top row): *Home*, *Score*, *Rudiments*, *Metronome*, *Results*, *Settings*.
+- **Settings** has pages along its top: *MIDI input*, *Controller*, *Timing*, *Sound*, *General*.
+- **Keys:** `R` record, `L` listen (press again to stop), `M` metronome, `K` click on/off,
+  `Esc` stop everything. There is no key for loop or passes.
+- **Opening a score:** *Home* → **📂 Open score…**, or drop a file onto the window. The sample score
+  is `examples\basic_rock_beat.musicxml` (in the repository and in the release zip).
+- **The three rows at the top of the Score and Rudiments tabs.** Row 1, the transport: **⏺ Record
+  (R)**, **⏵ Listen (L)**, the position text, a zoom slider, *follow*, the **Layout** menu. Row 2:
+  *Measures* (from, to; on the Rudiments tab: the rudiment, *repeats* and *lead*). Row 3: *tempo*,
+  then *click (K)*, *notes*, **passes**, *count-in bars*, *in Listen*, *ramp +* (and *every* when
+  ramp is on). Part of row 3 is dimmed while a take records.
+- **The MIDI input monitor** is on *Settings → MIDI input*, "Monitor (latest first)": one line per
+  hit, `ch 10 | note 38 (D2) | vel 96 | pedal 64 | Snare`; the last column is the instrument the
+  note is mapped to (or *unmapped*).
+- **The controller monitor** is on *Settings → Controller*.
+- **Version:** the start-up splash.
+
+### 0.4 What you can read when something goes wrong
+
+- `%APPDATA%\RollModel\roll-model.log`: problems the sound and MIDI threads reported. Attach it to
+  a failed check.
+- `%APPDATA%\RollModel\config.txt`: the settings, readable text.
+- A **screenshot** (Win + Shift + S) of the page, the monitor or the status line is worth a
+  paragraph of description.
+
+### 0.5 How to report a check
+
+Comment on the check's issue (or just paste this to the AI session). A fail is as useful as a
+pass.
+
+```
+Check:      (for example A1, passes)
+Build:      released 0.10.5 | develop (date of your build)
+Machine:    Windows 11 / which computer, which sound output, which devices
+Result:     PASS | FAIL | PARTIAL
+Steps:      which numbers passed, which did not
+What I saw: (one or two sentences, and numbers: milliseconds, BPM, note numbers)
+Attached:   screenshot / roll-model.log / nothing
+```
+
+If a check has numbers to write down (calibration results, the BPM where extra hits begin),
+they go in "What I saw".
+
+---
 
 ## At a glance
 
 | # | Check | Issue | Needs | Time | Unblocks |
 |---|---|---|---|---|---|
-| A1 | Passes instead of loop | #111, #113 | develop build | 15 min | closing the Listen part; then recording N passes |
+| A1 | Passes instead of loop | #111, #113 | develop build | 15 min | closing the Listen part; recording N passes |
 | A2 | Metronome tab without the rolling notes | – | develop build | 3 min | the next release |
 | A3 | The screen stays awake | #115 | develop build, Windows | 10 min | closing PLAT-1 |
 | A4 | The diary site | – | a browser | 10 min | telling people about it |
+| B0 | Calibration through the new scheduler | #88 | V31, audio output | 15 min | RV-30 step 2 (takes) |
 | B1 | MIDI input and ports on the real V31 | #108 | V31 | 20 min | closing HW-12 and RV-32 |
-| B0 | Calibration through the new scheduler (RV-30, step 1) | #88 | V31, audio output | 15 min | RV-30 step 2 (takes) |
-| B2 | Start-up timing | #16 | V31 and a controller | 10 min | CD-13 / RV-61 (MIDI off the UI thread) |
+| B2 | Start-up timing | #16 | V31 and a controller | 10 min | CD-13 / RV-61 |
 | B3 | Rudiments on the V31 | #15 | V31, headphones | 45 min | rudiment tuning, RUD-1 |
 | B4 | Listen to the kit | #27 | headphones | 20 min | tuning the cymbals |
 | B5 | WAV override and the hi-hat choke | #30 | headphones | 15 min | closing SND-3 |
@@ -49,286 +145,426 @@ pass, and what to report.
 
 ---
 
-## A. The current `develop` build
+## A. The current develop build
 
-### A1. Passes instead of loop (develop build; #111, #113)
+Use `C:\RollModelChecks\develop\roll-model.exe` (0.1). None of A1 to A3 needs a device, except where
+A1 step 8 says so.
 
-The *loop* checkbox is a *passes* box (1 to 99, or *unlimited* at the top) on the Score and
-Rudiments tabs.
+### A1. Passes instead of loop (#111, #113)
 
-1. Score tab, open a score. The box next to *notes* shows **1**. Press Listen: it plays once,
-   stops, and the status line says **Listen finished**.
-2. Set the box to **3** (drag or type). Listen plays the range exactly three times, the count-in
-   (if on) only once, and the status line says **Listen finished: 3 passes**.
-3. Set it to 3, start Listen, and lower it to 1 during the second pass: the pass that is running
-   finishes, then it stops.
-4. Type `unlimited` (or drag to the top): Listen goes on until Stop. Close the program and start
-   it again: **unlimited is back to 1; a count such as 3 stays 3.**
-5. Rudiments tab: the same box, the same value. With *ramp +* on and 4 passes, the tempo rises
-   every few passes as before.
-6. The *loop* key (check the key in the Score tab's tooltip) and the controller's loop button go
-   between 1 and unlimited. *Loop worst bar* after a take still loops.
-7. With a controller connected: Settings → Controller → Manage, press **Learn** on the action
-   **Passes** and turn an encoder: it steps the number (Shift: five at a time). A fader sets it:
-   bottom is 1, top is unlimited.
-8. Start a recording with passes set to 3. **Expected (known gap):** the take is one pass; the
-   count does not apply to recording yet. While recording, the box is locked.
+**What changed.** The *loop* checkbox is gone. In its place is a number box labelled **passes** on
+the Score and Rudiments tabs: how many times Listen goes through the selected measures (or the
+rudiment) before it stops by itself. 1 is what loop-off was; the top of the box is *unlimited*,
+which is what loop-on was.
 
-**Pass:** 1 to 4 behave as written. **Report:** anything that stops too early or late, a pass
-count that is wrong by one, anything that feels wrong in the box (dragging is too fast or too
-slow?).
+**Setup.** Start the program. *Home* → **📂 Open score…** → the sample score
+`basic_rock_beat.musicxml`. In the third row of the Score tab (next to the tempo) find **passes**; it
+shows **1**.
+(The box is a number you can **drag sideways** or **double-click and type**.)
 
-### A2. The Metronome tab (develop build)
+**Steps**
 
-The rolling notes under the beat lights were removed.
+1. Press **⏵ Listen**. Expect: the count-in (if *in Listen* is ticked), the music once, it stops by
+   itself, and the status line says **Listen finished**.
+2. Double-click the passes box, type `3`, Enter. Press Listen. Expect: the range plays **exactly
+   three times**; the count-in only before the first; the status line says **Listen finished: 3
+   passes**. Count them by ear (or watch the playhead jump back twice).
+3. With 3 passes, press Listen, and **during the second pass** change the box to `1`. Expect: the
+   pass that is running plays to its end, then it stops.
+4. Drag the box up to the top, or type `unlimited`. Expect the box to show the word *unlimited*;
+   Listen goes on until you press **Stop listening (L)**.
+5. **Restart behaviour.** With *unlimited* set, close the program and start it again: the box is back
+   to **1**. Then set it to `3`, close, start: it is still **3**.
+6. **Rudiments tab:** the box is there and shows the same value. Set *ramp +* to e.g. 10 % with
+   *every* 1 pass and passes to 4: Listen gets faster on each pass, 4 passes, then stops.
+7. **Controller (skip without one).** Settings → Controller → **Manage**; in the table find the
+   row **Passes** under "Values (knobs, encoders, faders)"; click **Learn** on that row and turn an
+   encoder (or move a fader): it is bound. Back on the Score tab, turning the encoder steps the box
+   one at a time; with Shift held, five at a time. A fader: bottom is 1, top is *unlimited*.
+   The controller's **loop** button toggles the box between 1 and *unlimited* (if you bound one).
+8. **Recording (known gap).** Set passes to 3, press **⏺ Record (R)** (V31 needed to hit pads, but you
+   can also just let it run): the take is **one pass**; the box cannot be changed while it records.
+   This is expected: recording N passes is not built yet.
 
-1. Metronome tab, press Start: the beat lights, tempo, beats per bar, subdivision, volume and
-   ramp are all there and work.
-2. Nothing is drawn under the lights, and nothing looks like it is missing (a gap, a leftover
-   label). Make the window narrow and short: still usable.
-3. Switch to another tab and back while it runs: the lights go on.
+**Expected:** 1 to 6 as written. **If different:** note which step, what the box showed, and
+whether it played one pass too many or too few (a count that is off by one is the likely bug).
+Also tell me if dragging the box is too fast or too slow to use.
 
-**Pass:** the tab looks finished. **Report:** a screenshot if it looks odd.
+### A2. The Metronome tab without the rolling notes
 
-### A3. The screen stays awake (develop build, Windows; #115)
+**What changed.** The strip of rolling notes under the beat lights was removed (with its *Show the
+notes* tick box and the *Match score tempo and bar* button).
 
-You need to wait out a real screen timeout, so make it short for the test.
+**Steps**
 
-1. Windows Settings → System → Power: set *Turn my screen off after* and *Put my device to sleep
-   after* to **1 minute** (note the old values).
-2. Roll Model: Settings → General → Screen: **Keep the screen awake** ticked (it is by default).
-3. Do not touch the keyboard or mouse for 3 minutes (the program can just sit on the Home tab).
-   **Pass:** the screen stays on.
-4. Optional, objective: an administrator PowerShell, `powercfg /requests`. While the program is
-   open you should see an entry under DISPLAY (and SYSTEM) from `roll-model.exe`.
-5. Untick the switch. **Pass:** within about a minute the screen turns off as it normally does
-   (and `powercfg /requests` no longer lists the program).
-6. Tick it again, close the program: **pass** if the screen turns off after the timeout again.
-7. Put the Windows power settings back.
+1. Open the **Metronome** tab. Expect: the heading, the tempo / beats per bar / subdivision / volume /
+   ramp controls, the **row of beat circles**, and nothing below them.
+2. Press **⏵ Start (M)**: the circles light in turn, the first in red; change the tempo while it
+   runs: it follows after a moment. Press **⏹ Stop (M)**.
+3. Make the window narrow and short (drag its corner): everything still reachable.
+4. Switch to another tab and back while it runs: the lights keep going.
 
-**Report:** which step failed, and the Windows version. A screen that locks although the switch
-is on is the interesting failure.
+**Expected:** the tab looks finished, not like something was cut out of it. **If different:**
+screenshot, and say what looks missing or leftover.
 
-### A4. The diary site (a browser; no build)
+### A3. The screen stays awake (#115)
 
-<https://pkasprowicz.github.io/roll-model/diary/>
+**Needs:** the develop build, **Windows**, about ten minutes (you wait out a screen timeout).
 
-1. The list has four entries; each opens; the links inside them work (issues, the manual, the
-   roadmap).
-2. `/diary/roadmap/`: Now, Next and Later each list what you expect (labels `roadmap:now`,
-   `roadmap:next`, `roadmap:later` on the issues; change them with `gh issue edit` or on
-   GitHub). Is anything in the wrong column?
-3. `/diary/feed.xml` in a feed reader (or the browser): four entries with their summaries.
-4. A phone, or a narrow window: readable, no sideways scroll.
-5. Reading as a drummer who has never seen the project: is any sentence unclear, or does any
-   claim go further than what is true?
+**Setup.** Windows **Settings → System → Power & battery → Screen, sleep & hibernate timeouts**. Write
+down the current values. Set *Turn off my screen after* and *Put my device to sleep after* to
+**1 minute** (both the "on battery" and "plugged in" rows, for whichever you are on).
 
-**Known:** the start page does not link to the diary until the next release.
-**Report:** wording you want changed.
+**Steps**
+
+1. Start the develop build. *Settings → General → Screen*: **Keep the screen awake while Roll Model is
+   open** is ticked (it is by default).
+2. Do not touch the keyboard or mouse for **3 minutes**. Expect: the screen **stays on**.
+3. Optional proof: an **administrator PowerShell**, `powercfg /requests`. Expect an entry under
+   `DISPLAY:` (and `SYSTEM:`) that mentions `roll-model.exe` (the exact wording differs by Windows
+   version).
+4. Untick the box. Do not touch anything for 2 minutes. Expect: **the screen turns off** as usual.
+   `powercfg /requests` no longer lists the program.
+5. Tick it again, then **close the program**. Do not touch anything for 2 minutes. Expect: the screen
+   turns off (the program let go on exit).
+6. **Put the Windows power settings back** to the values you wrote down.
+
+**If different:** which step, the Windows version, and whether the machine is a laptop on battery. A
+screen that locks although the box is ticked (step 2) is the failure that matters. Note that a
+**lock screen set by company policy** can ignore this request.
+
+### A4. The diary site
+
+<https://pkasprowicz.github.io/roll-model/diary/>. In a browser; no build.
+
+1. The list shows **four entries**, the newest first; each opens; the links in them work (issues, the
+   manual, the roadmap).
+2. `/diary/roadmap/`: three lists, **Now**, **Next**, **Later**. Do they hold what you expect? Move an
+   issue by changing its label on GitHub (`roadmap:now`, `roadmap:next`, `roadmap:later`); the page
+   follows within a day (or after the next entry is pushed).
+3. `/diary/feed.xml`: open it in a feed reader (or just the browser): four entries with summaries.
+4. A phone or a narrow browser window: the text is readable, nothing scrolls sideways.
+5. Read it as a drummer who has never seen the project. Is any sentence unclear, or does any claim go
+   further than what is true?
+
+**Known:** the site's start page does not link to the diary until the next release. **Report:**
+wording to change.
 
 ---
 
-## B. The Roland V31 (and ears)
+## B. The Roland V31 and your ears
 
-### B0. Calibration through the new scheduler (develop build; #88, RV-30 step 1)
+For every B check: V31 on USB, no other MIDI program running, and a **release build**. B0 needs the
+develop build and the released one.
 
-The calibration's 16 clicks now come from the `Player` (the scheduler of Listen) and no longer
-from the old metronome thread. RV-30 is **paused on this check**: takes move next, and the plan
-is one hardware check after each step.
+### B0. Calibration through the new scheduler (#88, RV-30 step 1)
 
-1. With the V31 on USB and the computer's audio output as usual, run **Settings → Timing →
-   Calibrate** on the **released 0.10.5** and note the result in milliseconds; play along with
-   the 16 clicks as you always do (any pad, on the click).
-2. The same on the **develop build**.
-3. Optional: both again with the click as a MIDI note back into the V31 (Settings → Sound,
-   *Send the click to the MIDI output*), with the computer's audio click off.
-4. Start the calibration and press Listen or the Metronome while it runs: the clicks stop and the
-   calibration is cancelled (it used to fail a moment later).
+**Why.** The calibration's 16 clicks now come from the `Player` (the scheduler of Listen) instead of
+the old metronome thread. RV-30 is **paused on this check**: takes move next, and the plan is one
+hardware check after each step.
 
-**Pass:** the two results agree to within a few milliseconds (your loopback measurement was about
-45 ms), the clicks are on time and none is missing, and nothing sounds twice. **Report:** both
-numbers, and anything audible that was not there before (a late or doubled click, a gap).
+**Needs:** the V31 on USB, the computer's sound output as you normally use it (the one you
+calibrated with before; wired, not Bluetooth), both builds (0.1), a quiet room.
 
-### B1. MIDI input and ports on the real V31 (#108; HW-12)
+**Setup.** One build at a time. *Settings → MIDI input*: **Input port** → choose the V31; hit a pad
+and see a line appear in the monitor. *Settings → Sound*: *Click through the computer's sound output*
+ticked; *Send the click to the MIDI output* **unticked** for steps 1 to 3.
 
-Commit `39f3f25` changed how every MIDI port is opened and how the drum module's messages are
-read; the unit tests use byte sequences, not a port. Your MIDI-clock check already exercised
-opening an **output**; this covers the **input** and the controller. No extra program is needed:
-the app's monitor shows what arrives.
+**Steps**
 
-1. Close other programs that use MIDI. Settings → MIDI input: choose the V31 and connect. Hit a
-   snare pad: the monitor shows the hit with the instrument, the **note, the velocity and
-   channel 10**. Hit a few other pads and the hi-hat.
-2. The hi-hat: with the pedal up, hit the hat (open), then press the pedal down and hit it
-   (closed): the two hits are told apart (open and closed hi-hat). Move the pedal alone: it
-   does not appear as a hit.
-3. A name that is only part of the port's name: close the program, edit
-   `%APPDATA%\RollModel\config.txt`, set `midi_in_port = V31` (just the part), start the program:
-   it connects by itself.
-4. A name that does not exist: set `midi_in_port = NOPE`: the program says it was not found and
-   does not crash.
-5. Controller: connect the X-Touch Mini (Settings → Controller): its messages arrive in the
-   monitor, and pressing **record** lights the record LED on the Mini (lights go through the
-   output port).
-6. The click as a MIDI note: Settings → Sound: tick *Send the click to the MIDI output*, note 76,
-   channel 10, choose the V31 as output, start the Metronome tab: the V31 sounds the click (an
-   unmapped note 76 is a wood block on the V31).
+1. **Released 0.10.5.** *Settings → Timing → Latency compensation*, click **Calibrate…**. The status
+   line says it is calibrating. Listen to the 16 clicks (100 BPM, a click every 0.6 s) and hit **any
+   pad** exactly with each click (the first few are to get into the rhythm). When it is done the
+   status line says **Latency calibrated: NN ms (K hits)**. Write **NN**. Do it **three times** and
+   write all three.
+2. **Develop build.** The same, three times, write the three numbers.
+3. Compare: the two sets should agree to within **a few milliseconds** (your loopback measurement was
+   about 45 ms; hand-played calibrations vary by a few ms from run to run, which is why there are
+   three of each).
+4. **While it plays:** the clicks must be even, none missing, none doubled, none audibly late.
+5. **Cancel test (develop only).** Start **Calibrate…** and, while the clicks play, press **⏵ Listen (L)**:
+   the calibration clicks stop and Listen starts; nothing is calibrated afterwards (no "failed" text
+   a few seconds later, as there used to be).
+6. **Optional, the MIDI click path.** *Settings → Sound*: untick the computer's click, tick *Send the
+   click to the MIDI output*, note 76, channel 10, choose the V31 as the MIDI output. Calibrate three
+   times on each build; the V31 sounds a click on each beat.
 
-**Pass:** every step does what it says. **Report:** the step number and what the monitor showed.
+**Pass:** steps 1 to 3 agree within a few ms; step 4 clean; step 5 as described. **If different:**
+both sets of numbers, which build is slower and by how much, and anything audible (a late or
+doubled click, a missing one, a hiccup at the start). Attach `roll-model.log`.
 
-### B2. Start-up timing (#16; HW-11)
+### B1. MIDI input and ports on the real V31 (#108, HW-12)
 
-[Session 1 of the test plan](hardware-test-plan.md#session-1-start-up-timing-hw-11). With the V31
-and a controller plugged in, note the step times that the splash shows (release build).
-**Why it matters:** if listing and opening the MIDI ports takes noticeable time, the work is
-moved off the window's thread (CD-13, RV-61); if it does not, that work is dropped.
+**Why.** Commit `39f3f25` changed how every MIDI port is opened and how the drum module's messages are
+read; the unit tests use byte sequences, not a port. Your MIDI-clock check already exercised opening an
+**output**. This covers the **input**, the hi-hat pedal and the controller.
 
-### B3. Rudiments on the V31 (#15; HW-10)
+**Needs:** the V31 on USB; for step 5 an X-Touch Mini; the develop build.
 
-[Session 7](hardware-test-plan.md#session-7-rudiments-on-the-v31-hw-10), three parts:
+**Steps**
 
-- **A. Double triggers:** the first tempo at which *extra* hits appear on #1 single stroke
-  roll, #16 single paradiddle and #33 double drag tap; and the V31 retrigger setting you needed.
-- **B. By ear:** flams (#20 to #24) and drags (#31 to #33, #36, #37) in Listen: grace note too
-  early, right, or too late; which roll endings (7 to 15) sound wrong against the chart.
-- **C. Controller on the rudiments** while the V31 also sends hits (also HW-9).
+1. *Settings → MIDI input*. **Input port** → choose the V31. Hit a **snare** pad. Expect a monitor line
+   such as `ch 10 | note 38 (D2) | vel 90 | Snare`: the **channel is 10**, the note and the velocity
+   are what you hit. Hit the kick, a tom, a crash.
+2. **Hi-hat.** With the pedal **up**, hit the hi-hat: the last column says **open** hi-hat. Press the
+   pedal **down** and hit: **closed** hi-hat. The monitor's `pedal N` column shows the pedal
+   position that came with the hit. Move the pedal without hitting: **no line appears** (the pedal is
+   not a hit). The slider "Hi-hat pedal (CC#4) value when closed" on the same page is the setting
+   that decides open or closed.
+3. **A part of the name.** Close the program. Open `%APPDATA%\RollModel\config.txt` in Notepad, set
+   `midi_in_port = V31` (only the part of the port name; keep the rest of the file), save, start the
+   program. Expect: it connects to the V31 by itself (the Input port box shows the full name).
+4. **A name that is not there.** Set `midi_in_port = NOPE`, start: the program says the port was not
+   found (on the start-up splash, or on *Settings → MIDI input*), does not crash, and you can still choose a port by
+   hand. Put the right value back (or restore your backup).
+5. **Controller lights.** Connect the X-Touch Mini (*Settings → Controller*, preset *Behringer X-Touch
+   Mini*): pressing a button shows a line in the controller monitor; press **record** on the Mini: its
+   record LED lights (lights go out through the output port).
+6. **The click as a MIDI note.** *Settings → Sound*: tick *Send the click to the MIDI output*, note 76,
+   channel 10, choose the V31 as the MIDI output; *Metronome* tab → Start: the V31 sounds a click on
+   each beat (note 76 is a wood block on the V31).
 
-### B4. Listen to the kit (#27; SND-1)
+**Pass:** every step as written. **If different:** the step number and what the monitor showed
+(a photo of the monitor is fine).
 
-Headphones, Listen with the built-in sounds, a score with the whole kit (the sample score, then
-a busy rudiment or two).
+### B2. Start-up timing (#16, HW-11)
 
-1. Play each instrument from the mixer (Settings → Sound, the play buttons).
-2. Cymbals: crash 1 and 2, china, splash, ride, ride bell: do they sound like cymbals, decay
-   believably, and sit well against each other? Is any too bright, too dull, too long?
-3. The hi-hats (known to be very bright): closed, open, pedal.
-4. Toms, kick, snare, cross-stick: loudness against each other (use the instrument volumes if
-   needed, they are saved).
+Needs the V31 and **any controller** plugged in, a **release build**, and about ten minutes. The full
+steps are in [Session 1](hardware-test-plan.md#session-1-start-up-timing-hw-11). In short:
 
-**Report:** for each instrument that is wrong, "too bright / too dull / too long / too short / too
-loud / too quiet" in a line. The cymbal parameters in `synth.rs` are then tuned from it.
+1. Start the program with both devices plugged in; the **splash** lists each start-up step with its
+   time.
+2. Write down every time. Do it **three times** (a cold start, then two restarts).
+3. If you have it, once more with **no** devices plugged in, for comparison.
 
-### B5. WAV override and the hi-hat choke (#30; SND-3)
+**Why it matters:** if listing and opening the MIDI ports takes noticeable time on the window's
+thread, that work is moved to a thread (CD-13, RV-61); if it does not, that work is dropped.
+**Report:** the table of times (steps against runs) and whether the splash visibly froze.
 
-1. **WAV override:** put a short WAV named `Kick.wav` (any kick sample, mono or stereo, 16 or 24
-   bit) in the `sounds` folder next to the settings file (Settings → Sound shows the path).
-   Restart the program, play the kick from the mixer: it is your file, levelled like the built-in
-   one. Put a damaged file named `Snare.wav` there too: the snare stays the built-in sound and the
-   program says why. Remove the files afterwards.
-2. **Hi-hat choke:** Listen to a score with an open hi-hat followed by a closed one (or play an open
-   hat and press the pedal on the V31): the open hat is **cut off** at once when the hat closes.
+### B3. Rudiments on the V31 (#15, HW-10)
 
-**Report:** whether the override sounds right, and whether the choke is clean or clicks.
+Needs the V31, headphones, a quiet room, 45 minutes. The full steps (with where to click) are in
+[Session 7](hardware-test-plan.md#session-7-rudiments-on-the-v31-hw-10). It has three parts:
+
+- **A. Double triggers.** *Rudiments* tab, choose rudiment **#1 Single stroke roll**, tempo 60 BPM,
+  **Record** a take, play cleanly for 8 bars, look at *Results*: the number in the **Extra** column
+  should be 0. Raise the tempo to 120, 160, 200 and repeat; write down **the first tempo at which
+  extra hits appear**. Repeat for **#16 Single paradiddle** and **#33 Double drag tap**. If extras
+  appear at tempos that are not too fast for you, try one step higher *retrigger* or sensitivity on
+  the V31 pad (a V31 setting, not the program's) and write down the setting and the result.
+- **B. By ear (Listen).** #1 even spacing; flams **#20 to #24**: the grace note comes before the main
+  note, quieter, about 35 ms: write *too early / right / too late*; drags **#31 to #33, #36, #37**
+  (two grace notes); the closing notes of **rolls 7 to 15** against the PAS chart (see E1).
+- **C. The controller on the rudiments** while the V31 also sends hits (also HW-9).
+
+**Report:** the first extra-hit tempo for each rudiment, the V31 setting you needed, flam and drag
+timing verdicts, and the rolls that end wrongly.
+
+### B4. Listen to the kit (#27, SND-1)
+
+**Needs:** headphones, the built-in sounds (no WAV override), the sample score.
+
+1. *Settings → Sound*, the **Instruments** table: each row has a **⏵** button. Press it for **every
+   instrument** in turn: Kick, Snare, Cross-stick, Hi-hat closed / open / pedal, Tom 1 to 4, Crash 1
+   and 2, Ride, Ride bell, China, Splash, Cowbell.
+2. For each, write one word per question: **character** (does it sound like that instrument?),
+   **brightness** (too bright / right / too dull), **length** (too long / right / too short),
+   **level** against the others (too loud / right / too quiet).
+3. Then **Listen** to the sample score and to a rudiment or two with *notes* on: is anything out of
+   balance in use? Use the instrument **Volume** sliders to fix the balance if you like (they are
+   saved), and tell me the values you ended on.
+4. The hi-hats are known to be **very bright**; say how bad.
+
+**Report:** the per-instrument words (a short list is perfect). The cymbal parameters are tuned from
+it.
+
+### B5. WAV override and the hi-hat choke (#30, SND-3)
+
+**Needs:** headphones, one short drum WAV of yours (mono or stereo, 16 or 24 bit), any text file
+renamed to `Snare.wav`.
+
+1. *Settings → Sound* shows the path of the **sounds folder** (next to the settings file). Put your
+   WAV there named exactly `Kick.wav`. Put the fake `Snare.wav` (junk text) there too.
+2. Restart the program. *Settings → Sound* → ⏵ on **Kick**: you hear **your sample**, at a level like
+   the built-in sounds. ⏵ on **Snare**: you hear the **built-in** snare, and the program reports that
+   the file could not be read (status line or `roll-model.log`).
+3. **Hi-hat choke.** Listen to a score with an **open hi-hat followed by a closed one** (or hit the
+   open hat on the V31 and press the pedal down): the open hat is **cut off** at the moment the hat
+   closes, cleanly (no click or burst).
+4. Remove both files from the sounds folder.
+
+**Report:** whether the override sounds right and is levelled, whether the damaged file is reported,
+whether the choke is clean or clicks.
 
 ---
 
 ## C. Controllers
 
-All in [`hardware-test-plan.md`](hardware-test-plan.md); each session says what to press and what
-you should see, and has a line in the results sheet (Appendix A).
+All steps are in [`hardware-test-plan.md`](hardware-test-plan.md): every session says what to press and
+what you should see, and has a row in the **results sheet** (Appendix A). Do not start a session
+without reading "Before you start" in that document once: it says how to put each controller in the
+right mode.
 
-| Session | Issues | What it answers |
-|---|---|---|
-| [2. X-Touch Mini](hardware-test-plan.md#session-2-x-touch-mini-hw-1-hw-2-hw-4-hw-9) | #1, #2, #4, #17 | do the numbers in the preset match the device; does the Mini switch layers by itself; does the drawn picture look like the device; the Rudiments tab with the controller |
-| [3. Manage window and Learn](hardware-test-plan.md#session-3-the-manage-window-and-learn-hw-7) | #7 | creating, copying, renaming, deleting presets; Learn a button and an endless encoder; Detect, layers, lights; the channel option. (Since the plan was written: the Learn logic was rebuilt, so this session is also the check of that change.) |
-| [4. Unplugging and plugging in](hardware-test-plan.md#session-4-unplugging-and-plugging-in-hw-8) | #13 | the program notices a controller pulled out or plugged in |
-| [5. X-Touch Compact](hardware-test-plan.md#session-5-x-touch-compact-hw-3-hw-5-hw-4) | #3, #5, #4 | the Compact preset, what its side encoders and LAYER buttons send, its picture |
-| [6. Generic controllers](hardware-test-plan.md#session-6-generic-midi-controllers-hw-6) | #6 | the four generic presets (Launch Control XL, nanoKONTROL2, MPK Mini, BeatStep), 15 minutes each |
+**To start a session:** (1) copy Appendix A of the plan into a text file; (2) put the controller in
+its mode (the two X-Touch devices in **MC / Mackie Control** mode, chosen while plugging in the USB
+cable; the Korg nanoKONTROL2 in **CC mode**; the Novation on a **factory template**); (3) start the
+**release** build; (4) *Settings → Controller*, choose the preset and keep the **monitor** in view
+("Monitor (latest first)"): every message the controller sends appears there; (5) fill in the sheet
+as you go, and send it back.
 
-If you can do only one thing from this group, do **Session 2**: the Mini is the default
-controller. New since the plan was written: the **Passes** action (A1, step 7) and the
-**keep awake** setting do not need a controller session, but a controller with an encoder is
-useful for A1.
+| Session | Issues | What it answers | Time |
+|---|---|---|---|
+| [2. X-Touch Mini](hardware-test-plan.md#session-2-x-touch-mini-hw-1-hw-2-hw-4-hw-9) | #1, #2, #4, #17 | do the numbers in the preset match the device; does the Mini switch layers by itself; does the drawn picture look like the device; the Rudiments tab with the controller | 45 min |
+| [3. Manage window and Learn](hardware-test-plan.md#session-3-the-manage-window-and-learn-hw-7) | #7 | creating, copying, renaming, deleting presets; Learn a button and an endless encoder; Detect, layers, lights; the channel option. The Learn logic was rebuilt since the plan was written, so this is also the check of that change | 30 min |
+| [4. Unplugging and plugging in](hardware-test-plan.md#session-4-unplugging-and-plugging-in-hw-8) | #13 | the program notices a controller pulled out or plugged in | 10 min |
+| [5. X-Touch Compact](hardware-test-plan.md#session-5-x-touch-compact-hw-3-hw-5-hw-4) | #3, #5, #4 | the Compact preset, what its side encoders and LAYER buttons send, its picture | 45 min |
+| [6. Generic controllers](hardware-test-plan.md#session-6-generic-midi-controllers-hw-6) | #6 | the four generic presets (Launch Control XL, nanoKONTROL2, MPK Mini, BeatStep) | 15 min each |
+
+**Suggested order:** 2, 4, 3, 5, 6. If you can do only one, do **Session 2**: the Mini is the default
+controller, and its preset is the one most people will run.
+
+**A number that is wrong.** When a control sends a number different from the one the preset expects,
+write the **monitor's line** (a photo is fine). Do not edit the preset: the AI session corrects the
+preset from your sheet.
+
+**New since the plan was written** (use a develop build for these): the **Passes** action (A1,
+step 7) and the keep-awake setting. In Session 3 the table of actions has a row **Passes**; check that
+it can be learned like the others.
 
 ---
 
 ## D. A real mouse
 
-### D1. Mouse and wheel (#29; UI-1)
+### D1. Mouse and wheel (#29, UI-1)
 
-Only keyboard and headless tests have exercised these.
+Only keyboard and headless tests have exercised these. Use a real mouse with a wheel (a touchpad
+scroll is not the same thing).
 
-1. Score tab → **Layout** popup: open it, change bars per row, the alignment, the break-at-pause
-   option; close it by clicking outside.
-2. Settings → Sound, the mixer: the **mute**, **solo** and **play** buttons of several
-   instruments, while Listen plays.
-3. The **wheel on every slider** (tempo, volume, count-in, ramp, zoom...): hover and scroll, one
-   step per notch; the page must not scroll at the same time. Also over the new *passes* box.
-4. Tabs, the splash, the Home tab's recent scores: clicking works everywhere, nothing needs a
-   second click.
+1. **Layout popup.** Score tab with the sample score → **Layout** (in the transport row). Change *bars
+   per row* (drag, and the wheel over it), *start a row at bar*, *new row after a pause*. Click
+   outside the popup: it closes. Open it again: your values are kept.
+2. **Mixer buttons.** *Settings → Sound → Instruments*. While **Listen** plays the sample score, click
+   **Mute** on the kick (it goes silent), un-mute it; click **Solo** on the snare (only the snare plays),
+   un-solo; click **⏵** on several instruments (each sounds on its own).
+3. **The wheel on every slider.** Hover a slider and scroll one notch: it changes by **one step**, and
+   **the page does not scroll** at the same time. Try tempo, volume, count-in, ramp, zoom, and the
+   **passes** box (develop build).
+4. **Clicking around.** Tabs, the Home tab's recent scores and the × to remove one, the Settings page
+   tabs: each responds to **one click**.
 
-**Report:** anything that needs two clicks, jumps, or scrolls the page under the wheel.
+**Report:** anything that needs two clicks, jumps, scrolls the page under the wheel, or is too small to
+hit.
 
 ---
 
 ## E. Reading and decisions
 
-### E1. The flagged rudiment rows (#14; RUD-1)
+### E1. The flagged rudiment rows (#14, RUD-1)
 
-The chart: <https://www.coloradomesa.edu/marching-band/documents/rudiments.pdf> (PAS, 1984).
+**What.** `docs/rudiments.md` lists the 40 PAS rudiments. The rows marked **⚑** were read from a small
+engraving and the **note values** may be wrong (the sticking was read carefully and is tested).
 
-1. Open `docs/rudiments.md` and find the rows marked **⚑**: the closing note values of rolls
-   7 to 15, drag paradiddles #1 and #2, and the flam drag.
-2. Put the chart next to them. Only the **note values** are in doubt (the sticking was read
-   carefully and is tested).
-3. For each row: "right" or the corrected value.
+**Which rows:** rudiments **#7 to #15** (the closing notes of the rolls, rows 43 to 51 of the file),
+**#30 Flam drag**, **#36 Drag paradiddle #1**, **#37 Drag paradiddle #2**.
 
-**Report:** the list of corrections in the issue; the rudiments are then fixed and
-`docs/manual/rudiments.json` regenerated.
+**Steps**
 
-### E2. The bar numbering (#31; UI-2)
+1. Open the PAS chart: <https://www.coloradomesa.edu/marching-band/documents/rudiments.pdf> (PAS, 1984).
+2. Open `docs/rudiments.md` next to it (in the repository, or on GitHub).
+3. For each flagged row, find the rudiment in the chart and compare **only the note values** (what each
+   note's length is: eighth, sixteenth, and so on, and the closing note of a roll). The text in the
+   last-but-one column is what the catalogue says.
+4. Write for each: **right**, or **the correct values** in the chart's own words ("eighth, then four
+   sixteenths").
 
-The score shows each bar's *printed* number (repeated after unrolling repeats); the Measures
-sliders and *start a row at bar* use the *position*. Decide:
+**Report:** a list in the issue. The rudiments are then corrected and the manual's table
+(`docs/manual/rudiments.json`) is regenerated.
 
-- **(a)** show both numbers on the bars, **(b)** make the sliders use the printed numbers, or
-- **(c)** leave it and explain it in the manual.
+### E2. The bar numbering (#31, UI-2)
 
-### E3. The name (#36; NAME-1)
+**The problem.** Bars drawn in the score show their **printed number** (repeated after unrolling
+repeats). The Measures sliders and *start a row at bar* count by **position**. Open a score with
+repeats to see it: bar numbers in the picture and the slider values differ after the repeat.
 
-Before the program is shipped widely. Known: THE ROLL MODEL is a registered US trademark (Tune Up
-Fitness Worldwide), a different field with possible overlap in education (class 41); nothing was
-checked in the EU or elsewhere.
+**Decide one:**
+- **(a)** show **both** numbers on the bars;
+- **(b)** make the sliders use the **printed** numbers;
+- **(c)** leave it, and explain it in the manual.
 
-1. US: the USPTO trademark search for "Roll Model", classes 9 (software), 28, 41.
-2. EU/UK: TMview or EUIPO's search, UK IPO.
-3. A web search for "Roll Model" with drum, rudiment, metronome, music; GitHub and app-store
-   search.
-4. Domain names you would want.
-5. Decide: **keep the name**, or **rename** (this touches the repository, the crates, the
-   documents and the diary: say so before it is done).
+### E3. The name (#36, NAME-1)
 
-### E4. The local folder (#37; NAME-2)
+**Known.** THE ROLL MODEL is a registered US trademark (Tune Up Fitness Worldwide, Inc.; Jill Miller's
+book and method), a different field; class 41 (education) may overlap. Nothing was checked in the EU or
+elsewhere.
 
-Rename `D:\projects\DrumTutor` to match the program, yes or no. (Renaming a folder an open
-session is working in is best done between sessions; paths in old transcripts stop working.)
+**Steps**
 
-### E5. Your own exports (#56; IMP-5)
+1. **US:** <https://tmsearch.uspto.gov/> search "roll model", look at live entries in classes **9**
+   (software), **28** and **41**; note the owner and the goods.
+2. **EU:** <https://www.tmdn.org/tmview/> search "roll model" and also "rollmodel". **UK:**
+   <https://www.gov.uk/search-for-trademark>.
+3. **Web:** "Roll Model" with *drum*, *rudiments*, *metronome*, *practice app*; GitHub and app-store
+   search; note any product in music or education.
+4. **Domains and handles** you would want (`rollmodel.app` and the like).
+5. **Decide:** *keep the name*, or *rename*. A rename touches the repository, the crates, the manual,
+   the developer guide and the diary; say so and it becomes its own task.
 
-Drum scores exported from the programs you have, to see how the importer copes:
+**Report:** the findings (links) and the decision. This is not legal advice; if the overlap matters to
+you, ask a trademark lawyer.
 
-1. Export a drum part as MusicXML (`.musicxml` or `.mxl`) from **MuseScore 4, Guitar Pro 8,
-   Sibelius, Dorico** (whichever you have).
-2. Open each in the program. Check by eye: every instrument on the right line, repeats and
-   endings, the tempo and the time signature, grace notes, nothing missing or doubled.
-3. Do not commit scores that are copyrighted songs.
+### E4. The local folder (#37, NAME-2)
 
-**Report:** per program: opens, and what is wrong. The manual's list of tested programs follows.
-If the export route fails for your files, IMP-7 (a direct reader) wakes up; otherwise it stays
-parked.
+Yes or no: rename `D:\projects\DrumTutor` to match the program. Best done between sessions, with no
+editor or AI session open in the folder; old transcripts will no longer find their paths.
+
+### E5. Your own exports (#56, IMP-5)
+
+**Steps (for each program you have)**
+
+1. Export a drum part as **MusicXML** (`.musicxml` or `.mxl`):
+   **MuseScore 4:** File → Export → *MusicXML* (choose the drum part only);
+   **Guitar Pro 8:** File → Export → *MusicXML*;
+   **Sibelius:** File → Export → *MusicXML*;
+   **Dorico:** File → Export → *MusicXML*.
+2. In Roll Model: *Home* → **📂 Open score…** and choose the file.
+3. Check by eye, bar by bar, against the original: every **instrument on the right line**, the
+   **repeats and endings**, the **tempo** and the **time signature**, **grace notes (flams, drags)**,
+   nothing **missing or doubled**.
+4. Do not commit scores that are copyrighted songs; keep them out of the repository.
+
+**Report:** per program: *opens* or the error message, and what is wrong (bar number and what). The
+manual's list of tested programs follows. If the export route fails for your files, IMP-7 (a direct
+reader) wakes up; otherwise it stays parked.
 
 ---
 
 ## F. Other machines
 
-### F1. Linux and macOS (#51; AUD-14)
+### F1. Linux and macOS (#51, AUD-14)
 
-On each machine: build (`cargo build --release`, Linux needs `libasound2-dev pkg-config`), check
-that the program starts and plays Listen and the metronome; run `examples/audio_latency.rs` with
-a loopback cable (the instructions are in the example's header and in
-[`audio-latency-study.md`](audio-latency-study.md)); then try a fixed buffer size and measure
-again. **Report what the host accepts** before any code is written. The screen keep-awake is
-Windows only until these machines are tried.
+On each machine:
+
+1. **Build.** Linux: `sudo apt install libasound2-dev pkg-config` (or your system's equivalent), then
+   `cargo build --release`. macOS: `cargo build --release`.
+2. **Run** `target/release/roll-model`: it starts and shows the splash. Open the sample score; press
+   **Listen**: you hear it; press **M** (metronome): you hear the click; *Settings → Sound* shows which
+   output is open and its rate.
+3. **Latency** (needs the output wired back to an input: a cable from an interface's output to its
+   input, or a device with a loopback). List the devices, then measure:
+
+   ```bash
+   cargo run --release --example audio_latency -- list
+   cargo run --release --example audio_latency -- run "<part of the output name>" "<part of the input name>" 40
+   ```
+
+   Turn the loopback level so the clicks are clear but the peak the tool prints does not clip.
+   Write down the result in milliseconds.
+4. **A fixed buffer size.** The engine accepts any block size; whether the system gives a smaller buffer
+   than Windows' 22 ms floor is the question. Note what the audio host reports (ALSA / PipeWire /
+   CoreAudio) and whether `BufferSize::Fixed` is honoured; do not change code, just report.
+
+**Report:** per machine: builds yes/no, plays yes/no, the latency number, what the host accepts. The
+screen keep-awake is Windows-only until these machines are tried.
 
 ---
 
@@ -337,7 +573,7 @@ Windows only until these machines are tried.
 | Waiting work | Waits for |
 |---|---|
 | CD-13 / RV-61: MIDI listing and opening off the window's thread | B2 (the start-up times) |
-| RV-30 / CD-5: one scheduler instead of two (also needed for recording N passes, FEAT-7 and the clock in takes) | B0 for step 1 (calibration); then a real take on a release build for step 2: the AI session will say which interface to bridge (V31 and the audio output) and wait for you |
+| RV-30 / CD-5: one scheduler instead of two (also needed for recording N passes, FEAT-7 and the clock in takes) | **B0** for step 1 (calibration); then a real take on a release build for step 2: the AI session will say which interface to bridge (the V31 and the audio output) and wait for you |
 | RV-62: allocation in the audio callback | the same hardware session |
 | Closing the Listen part of FEAT-8 / FEAT-10 | A1 |
 | Closing PLAT-1 | A3 |
@@ -346,6 +582,6 @@ Windows only until these machines are tried.
 
 ## Already checked (nothing to do)
 
-The MIDI clock in Listen and on the Metronome tab (HW-13, 2026-11-04); the audio engine on
-unplugging, a changed default output and a looping Listen with a ramp (AUD-8); the AUD-9, AUD-10
-and AUD-13 latency questions (no-go, negative, same result).
+The MIDI clock in Listen and on the Metronome tab (HW-13, 2026-11-04); the audio engine on unplugging, a
+changed default output and a looping Listen with a ramp (AUD-8); the AUD-9, AUD-10 and AUD-13 latency
+questions (no-go, negative, same result).
