@@ -29,6 +29,7 @@ pass, and what to report.
 | A3 | The screen stays awake | #115 | develop build, Windows | 10 min | closing PLAT-1 |
 | A4 | The diary site | – | a browser | 10 min | telling people about it |
 | B1 | MIDI input and ports on the real V31 | #108 | V31 | 20 min | closing HW-12 and RV-32 |
+| B0 | Calibration through the new scheduler (RV-30, step 1) | #88 | V31, audio output | 15 min | RV-30 step 2 (takes) |
 | B2 | Start-up timing | #16 | V31 and a controller | 10 min | CD-13 / RV-61 (MIDI off the UI thread) |
 | B3 | Rudiments on the V31 | #15 | V31, headphones | 45 min | rudiment tuning, RUD-1 |
 | B4 | Listen to the kit | #27 | headphones | 20 min | tuning the cymbals |
@@ -128,6 +129,25 @@ is on is the interesting failure.
 ---
 
 ## B. The Roland V31 (and ears)
+
+### B0. Calibration through the new scheduler (develop build; #88, RV-30 step 1)
+
+The calibration's 16 clicks now come from the `Player` (the scheduler of Listen) and no longer
+from the old metronome thread. RV-30 is **paused on this check**: takes move next, and the plan
+is one hardware check after each step.
+
+1. With the V31 on USB and the computer's audio output as usual, run **Settings → Timing →
+   Calibrate** on the **released 0.10.5** and note the result in milliseconds; play along with
+   the 16 clicks as you always do (any pad, on the click).
+2. The same on the **develop build**.
+3. Optional: both again with the click as a MIDI note back into the V31 (Settings → Sound,
+   *Send the click to the MIDI output*), with the computer's audio click off.
+4. Start the calibration and press Listen or the Metronome while it runs: the clicks stop and the
+   calibration is cancelled (it used to fail a moment later).
+
+**Pass:** the two results agree to within a few milliseconds (your loopback measurement was about
+45 ms), the clicks are on time and none is missing, and nothing sounds twice. **Report:** both
+numbers, and anything audible that was not there before (a late or doubled click, a gap).
 
 ### B1. MIDI input and ports on the real V31 (#108; HW-12)
 
@@ -317,7 +337,7 @@ Windows only until these machines are tried.
 | Waiting work | Waits for |
 |---|---|
 | CD-13 / RV-61: MIDI listing and opening off the window's thread | B2 (the start-up times) |
-| RV-30 / CD-5: one scheduler instead of two (also needed for recording N passes, FEAT-7 and the clock in takes) | a hardware session: the AI session will say which interface to bridge (V31 and the audio output) and wait for you; then a real take on a release build |
+| RV-30 / CD-5: one scheduler instead of two (also needed for recording N passes, FEAT-7 and the clock in takes) | B0 for step 1 (calibration); then a real take on a release build for step 2: the AI session will say which interface to bridge (V31 and the audio output) and wait for you |
 | RV-62: allocation in the audio callback | the same hardware session |
 | Closing the Listen part of FEAT-8 / FEAT-10 | A1 |
 | Closing PLAT-1 | A3 |
