@@ -1,17 +1,19 @@
 //! The lifecycles of a take, Listen, an audition and the latency calibration: starting them, following them
 //! every frame, and stopping them.
 
+use std::collections::BTreeMap;
 use std::rc::Rc;
 use std::time::{Duration, Instant};
 
 use crate::analysis::{expected_notes, Window};
 use crate::config::Passes;
+use crate::control::SoundSwitches;
 use crate::drums::Lane;
 use crate::metronome::{ClickOptions, Metronome, HAS_AUDIO};
-use crate::playback::{self, ClockOptions, PlayOptions, Player};
-use crate::practice::Ramp;
+use crate::playback::{self, ClockOptions, Cue, PlayOptions, Player, Sound};
+use crate::practice::{ClickLevel, Ramp};
+use crate::score::Clicks;
 use crate::score::Score;
-use crate::score::{Click, Clicks};
 use crate::units::{Quarters, Seconds};
 
 use super::take::{signed_secs, Plan, Shown, StopReason, Take};
@@ -92,6 +94,27 @@ impl DrumApp {
         }
     }
 
+    /// A run of clicks only (a calibration; later the take's), through the click outputs of the settings.
+    pub(super) fn click_run_options(&self) -> PlayOptions {
+        let c = &self.cfg;
+        PlayOptions {
+            audio: false,
+            engine: self.audio.handle(),
+            sounds_dir: None,
+            click_audio: c.click_audio && HAS_AUDIO,
+            midi_port: c.click_midi.then(|| c.midi_out_port.clone()),
+            midi_drums: false,
+            drum_channel: c.playback_channel,
+            click_midi: c.click_midi,
+            click_note: c.click_note,
+            click_channel: c.click_channel,
+            midi_delay: self.output_delay(),
+            drum_notes: BTreeMap::new(),
+            ramp: Ramp::default(),
+            clock: None,
+        }
+    }
+
     /// How long the sound takes through the computer's output: the latency compensation, when it is meant
     /// for this engine (see `Config::display_delay`), and only while the output is open. The screen and the
     /// MIDI notes that sound together with the audio are shifted by it.
@@ -154,6 +177,7 @@ impl DrumApp {
 
     /// Stops everything that makes sound by itself: a take, Listen and the metronome.
     pub(super) fn stop_all_sound(&mut self) {
+        self.calibration = None;
         self.stop_take(StopReason::Aborted);
         self.stop_listen();
         self.stop_metro();
@@ -337,6 +361,9 @@ impl DrumApp {
         if let Some(m) = self.metronome.as_ref() {
             errors.extend(m.take_errors());
         }
+        if let Some(c) = self.calibration.as_ref() {
+            errors.extend(c.clicks.take_errors());
+        }
         self.report_sound_errors(errors);
     }
 
@@ -475,12 +502,14 @@ impl DrumApp {
         let beat = 0.6; // 100 BPM
         let zero = Instant::now() + Duration::from_secs_f64(1.0);
         let beats: Vec<f64> = (0..16).map(|i| i as f64 * beat).collect();
-        let clicks = beats.iter().map(|t| Click { t: Seconds(*t), accent: false }).collect();
-        // No control: the calibration clicks must sound whatever the click switch says.
+        let cues: Vec<Cue> = beats.iter().map(|t| Cue { t: *t, sound: Sound::Click { level: ClickLevel::from_accent(false) } }).collect();
+        // Its own switches: the calibration clicks must sound whatever the click switch says.
         // The calibration measures the whole delay, so its MIDI click is not moved.
-        let opts = ClickOptions { midi_delay: Duration::ZERO, ..self.click_options() };
-        self.metronome = Some(Metronome::start(zero, clicks, opts, None));
-        self.calibration = Some(Calibration { zero, beats, hits: Vec::new() });
+        let control = SoundSwitches::new();
+        control.set_click_volume(self.cfg.click_volume);
+        let opts = PlayOptions { midi_delay: Duration::ZERO, ..self.click_run_options() };
+        let clicks = Player::start(zero, cues, beats.last().map_or(0.0, |last| last + beat), opts, control);
+        self.calibration = Some(Calibration { zero, beats, hits: Vec::new(), clicks });
         self.view.status = "Calibrating: hit any pad together with the 16 clicks…".into();
     }
 
@@ -496,7 +525,6 @@ impl DrumApp {
             .filter_map(|b| cal.hits.iter().map(|h| h - b).filter(|d| d.abs() < 0.25).min_by(|x, y| x.abs().total_cmp(&y.abs())))
             .collect();
         self.calibration = None;
-        self.metronome = None;
         if offsets.len() < 6 {
             self.view.status = "Calibration failed: not enough hits near the clicks. Is the metronome audible?".into();
             return;
@@ -562,5 +590,46 @@ mod tests {
         assert_eq!(opts.midi_port.as_deref(), Some("V31"), "the output is opened for the clock alone");
         assert!(nothing_audible(&opts, Heard::Playback).is_none() && nothing_audible(&opts, Heard::Click).is_none());
         assert!(nothing_audible(&opts, Heard::Instruments).is_some(), "an instrument is not made heard by a clock");
+    }
+
+    fn silent_app() -> DrumApp {
+        DrumApp::with_config(Config { click_audio: false, click_midi: false, ..Config::default() })
+    }
+
+    #[test]
+    fn a_calibration_plays_sixteen_clicks_on_its_own_and_ends_with_the_median_offset() {
+        let mut app = silent_app();
+        app.start_calibration();
+        let cal = app.calibration.as_mut().expect("it began");
+        assert_eq!(cal.beats.len(), 16);
+        // It is long over, and every hit came 45 ms after its click (and a stray one far from any).
+        cal.zero = Instant::now() - Duration::from_secs(30);
+        cal.hits = cal.beats.iter().map(|b| b + 0.045).chain([0.31]).collect();
+        app.update_calibration();
+        assert!(app.calibration.is_none(), "it is over, and its clicks stopped with it");
+        assert_eq!(app.cfg.latency_ms, 45.0);
+        assert!(app.view.status.contains("45 ms"), "{}", app.view.status);
+    }
+
+    #[test]
+    fn a_calibration_without_enough_hits_fails_and_says_so() {
+        let mut app = silent_app();
+        app.start_calibration();
+        let cal = app.calibration.as_mut().unwrap();
+        cal.zero = Instant::now() - Duration::from_secs(30);
+        cal.hits = vec![cal.beats[5] + 0.01];
+        let before = app.cfg.latency_ms;
+        app.update_calibration();
+        assert!(app.view.status.starts_with("Calibration failed"), "{}", app.view.status);
+        assert_eq!(app.cfg.latency_ms, before);
+    }
+
+    #[test]
+    fn anything_that_starts_sound_ends_a_calibration() {
+        let mut app = silent_app();
+        app.start_calibration();
+        assert!(app.calibration.is_some());
+        app.stop_all_sound();
+        assert!(app.calibration.is_none());
     }
 }

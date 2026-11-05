@@ -125,6 +125,8 @@ struct Calibration {
     zero: Instant,
     beats: Vec<f64>,
     hits: Vec<f64>,
+    /// Plays the clicks; it stops when the calibration is dropped.
+    clicks: crate::playback::Player,
 }
 
 /// What the window shows and says: the tab and Settings page, the status line, the last error.
