@@ -5,6 +5,7 @@
 | `developer/`, `manual/` | The templates of the developer guide and the user manual (built by `tools/build_devguide.py` and `tools/build_manual.py`); `manual/rudiments.json` is generated from the rudiment catalogue. | yes |
 | `rudiments.md` | The catalogue of the 40 PAS rudiments as read off the chart, and its source. | yes |
 | `hardware-test-plan.md` | Step-by-step plan, with a results sheet, for the tasks that need the owner's drum module, controller and sound card. | yes |
+| `owner-checks.md` | Everything still waiting for the owner (devices, ears, a mouse, other machines, decisions), with steps, pass criteria and what each unblocks; made 2026-11-05. | yes |
 | `code-review-2026-11-01.md` | The review of 0.10.1 and its 47 findings (RV-*); the issues #60 to #106 track them. | yes, until they are done |
 | `history/` | Frozen copies of notes that were once the status of the project. | no, kept for the decisions in them |
 | `audio-engine-plan.md`, `audio-latency-study.md` | The plan of the audio engine (released as 0.8.0) and a study of what is left of its delay. | the decisions are, the plan is done |
