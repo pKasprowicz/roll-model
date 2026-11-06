@@ -124,7 +124,7 @@ they go in "What I saw".
 | A2 | Metronome tab without the rolling notes | – | develop build | 3 min | the next release |
 | A3 | The screen stays awake | #115 | develop build, Windows | 10 min | closing PLAT-1 |
 | A4 | The diary site | – | a browser | 10 min | telling people about it |
-| B0 | Calibration through the new scheduler | #88 | V31, audio output | 15 min | RV-30 step 2 (takes) |
+| B0b | Takes through the new scheduler | #88 | V31, audio output | 30 min | RV-30 done; FEAT-7 and recording N passes |
 | B1 | MIDI input and ports on the real V31 | #108 | V31 | 20 min | closing HW-12 and RV-32 |
 | B2 | Start-up timing | #16 | V31 and a controller | 10 min | CD-13 / RV-61 |
 | B3 | Rudiments on the V31 | #15 | V31, headphones | 45 min | rudiment tuning, RUD-1 |
@@ -254,44 +254,55 @@ wording to change.
 
 ## B. The Roland V31 and your ears
 
-For every B check: V31 on USB, no other MIDI program running, and a **release build**. B0 needs the
+For every B check: V31 on USB, no other MIDI program running, and a **release build**. B0b needs the
 develop build and the released one.
 
-### B0. Calibration through the new scheduler (#88, RV-30 step 1)
+### B0. Calibration through the new scheduler (#88, RV-30 step 1): **done 2026-11-06**
 
-**Why.** The calibration's 16 clicks now come from the `Player` (the scheduler of Listen) instead of
-the old metronome thread. RV-30 is **paused on this check**: takes move next, and the plan is one
-hardware check after each step.
+Verified by the owner: the calibration through the `Player` gives the same result as on 0.10.5 and
+sounds right. Nothing to do. RV-30 step 2 (takes) has a check of its own: **B0b**, below.
 
-**Needs:** the V31 on USB, the computer's sound output as you normally use it (the one you
-calibrated with before; wired, not Bluetooth), both builds (0.1), a quiet room.
+### B0b. Takes through the new scheduler (#88, RV-30 step 2)
 
-**Setup.** One build at a time. *Settings → MIDI input*: **Input port** → choose the V31; hit a pad
-and see a line appear in the monitor. *Settings → Sound*: *Click through the computer's sound output*
-ticked; *Send the click to the MIDI output* **unticked** for steps 1 to 3.
+**Why.** A take's count-in and clicks now come from the `Player`, and the old metronome thread is gone.
+The take's *grading* depends on this timing, so it has to be checked with real hits.
+
+**Needs:** the V31 on USB and the computer's sound output as you normally use it (wired), both builds
+(see 0.1), the sample score, a quiet room. Calibrate on **both** builds first (as in the old B0) if you
+have not lately: the latency compensation is part of the result.
+
+**Setup.** One build at a time. *Settings → MIDI input*: the V31 connected; *Settings → Sound*:
+*Click through the computer's sound output* ticked, *Send the click to the MIDI output* unticked, for
+steps 1 to 4. *Home* → open `basic_rock_beat.musicxml`; set *count-in bars* to 2 and *click (K)* ticked
+on the Score tab.
 
 **Steps**
 
-1. **Released 0.10.5.** *Settings → Timing → Latency compensation*, click **Calibrate…**. The status
-   line says it is calibrating. Listen to the 16 clicks (100 BPM, a click every 0.6 s) and hit **any
-   pad** exactly with each click (the first few are to get into the rhythm). When it is done the
-   status line says **Latency calibrated: NN ms (K hits)**. Write **NN**. Do it **three times** and
-   write all three.
-2. **Develop build.** The same, three times, write the three numbers.
-3. Compare: the two sets should agree to within **a few milliseconds** (your loopback measurement was
-   about 45 ms; hand-played calibrations vary by a few ms from run to run, which is why there are
-   three of each).
-4. **While it plays:** the clicks must be even, none missing, none doubled, none audibly late.
-5. **Cancel test (develop only).** Start **Calibrate…** and, while the clicks play, press **⏵ Listen (L)**:
-   the calibration clicks stop and Listen starts; nothing is calibrated afterwards (no "failed" text
-   a few seconds later, as there used to be).
-6. **Optional, the MIDI click path.** *Settings → Sound*: untick the computer's click, tick *Send the
-   click to the MIDI output*, note 76, channel 10, choose the V31 as the MIDI output. Calibrate three
-   times on each build; the V31 sounds a click on each beat.
+1. **Released 0.10.5.** Press **⏺ Record (R)**. You hear a two-bar count-in and then the click as the
+   music starts; play the score's snare and kick along with the click as well as you can for the whole
+   range. When the take ends (or press Esc after the last bar), open **Results**. Write down the
+   **Accuracy**, the **Timing** (mean offset in ms, and its spread) and the **Extra / Missed** numbers.
+   Do it **three times**.
+2. **Develop build.** The same three takes, with the same care. Write the same numbers.
+3. **Compare.** The *mean offset* of the two builds should agree within a few ms (take-to-take variation
+   of your playing is bigger than any difference between builds); accuracy similar. A **constant shift**
+   of the develop build (every take 10 ms earlier or later) is the failure to look for.
+4. **By ear.** During the take the clicks are even, none missing, none doubled, none late; the count-in
+   is the right length (two bars).
+5. **Switches while recording (develop).** During a take press **K**: the click stops (the count-in
+   already passed) and comes back with the next press. Change *Settings → Sound* click volume while a
+   take records (open Settings in the same window): the volume follows.
+6. **Stopping (develop).** Start a take and press **Esc** during the count-in, and again in the middle:
+   it stops at once, nothing sounds afterwards, and the next take starts normally.
+7. **The click as a MIDI note (optional).** *Settings → Sound*: untick the computer's click, tick *Send the
+   click to the MIDI output*, note 76, channel 10, the V31 as MIDI output. Record three takes on each
+   build and compare as in 3. With **both** click paths ticked, the V31's click and the computer's are
+   heard together (the output delay moves the MIDI click): note whether they are together or one is
+   early.
 
-**Pass:** steps 1 to 3 agree within a few ms; step 4 clean; step 5 as described. **If different:**
-both sets of numbers, which build is slower and by how much, and anything audible (a late or
-doubled click, a missing one, a hiccup at the start). Attach `roll-model.log`.
+**Pass:** 3 to 6 as written (7 if you do it). **If different:** both builds' numbers for each take
+(accuracy, mean offset, spread, extra, missed), which build is shifted and by how much, and anything
+audible. Attach `roll-model.log`.
 
 ### B1. MIDI input and ports on the real V31 (#108, HW-12)
 
@@ -573,7 +584,7 @@ screen keep-awake is Windows-only until these machines are tried.
 | Waiting work | Waits for |
 |---|---|
 | CD-13 / RV-61: MIDI listing and opening off the window's thread | B2 (the start-up times) |
-| RV-30 / CD-5: one scheduler instead of two (also needed for recording N passes, FEAT-7 and the clock in takes) | **B0** for step 1 (calibration); then a real take on a release build for step 2: the AI session will say which interface to bridge (the V31 and the audio output) and wait for you |
+| RV-30 / CD-5: one scheduler instead of two (also needed for recording N passes, FEAT-7 and the clock in takes) | **B0b** (takes; step 1, the calibration, is verified) |
 | RV-62: allocation in the audio callback | the same hardware session |
 | Closing the Listen part of FEAT-8 / FEAT-10 | A1 |
 | Closing PLAT-1 | A3 |

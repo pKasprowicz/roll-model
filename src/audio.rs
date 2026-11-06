@@ -35,3 +35,6 @@ pub use handle::{EngineHandle, PlayError};
 /// probably wrong (`Config::latency_is_stale`): raise it when a change moves the click in time.
 /// 1 was rodio; 2 is this engine.
 pub const ENGINE_GENERATION: u32 = 2;
+
+/// Whether this build can play sound through the sound card.
+pub const HAS_AUDIO: bool = cfg!(feature = "audio");

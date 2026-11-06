@@ -13,8 +13,8 @@ use std::time::{Duration, Instant};
 use egui::{RichText, ViewportBuilder, ViewportClass, ViewportId};
 
 use super::DrumApp;
+use crate::audio::HAS_AUDIO;
 use crate::config::Config;
-use crate::metronome::HAS_AUDIO;
 use crate::theme;
 use crate::widgets;
 

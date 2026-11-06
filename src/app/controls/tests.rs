@@ -418,3 +418,27 @@ fn the_passes_are_stepped_and_set_by_the_controller_and_follow_the_recording_loc
     app.apply_command(Command::Set(Action::Passes, 1.0));
     assert_eq!(app.cfg.passes, Passes::ONCE);
 }
+
+#[test]
+fn a_take_has_its_clicks_on_a_player_of_its_own_that_goes_once_whatever_the_passes_are() {
+    use crate::config::Passes;
+    let mut app = app_with_score();
+    app.cfg.click_audio = false;
+    app.cfg.click_midi = false;
+    app.cfg.passes = Passes::Count(3);
+    app.cfg.metronome_during_take = true;
+    press_key(&mut app, egui::Key::R);
+    assert!(app.take_running());
+    assert!(app.take_clicks.is_some(), "the count-in and clicks are being played");
+    let control = app.playback.take_control();
+    assert_eq!(control.passes(), Passes::ONCE, "the take is one pass: the passes of Listen are not its own");
+    assert!(control.click());
+    // The click switch follows the setting, while the take records.
+    press_key(&mut app, egui::Key::K);
+    assert!(!app.cfg.metronome_during_take);
+    app.sync_control();
+    assert!(!app.playback.take_control().click());
+    press_key(&mut app, egui::Key::Escape);
+    assert!(!app.take_running());
+    assert!(app.take_clicks.is_none(), "the clicks stop with the take");
+}

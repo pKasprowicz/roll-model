@@ -6,14 +6,14 @@ use std::rc::Rc;
 use std::time::{Duration, Instant};
 
 use crate::analysis::{expected_notes, Window};
+use crate::audio::HAS_AUDIO;
 use crate::config::Passes;
 use crate::control::SoundSwitches;
 use crate::drums::Lane;
-use crate::metronome::{ClickOptions, Metronome, HAS_AUDIO};
-use crate::playback::{self, ClockOptions, Cue, PlayOptions, Player, Sound};
-use crate::practice::{ClickLevel, Ramp};
-use crate::score::Clicks;
+use crate::playback::{self, ClockOptions, PlayOptions, Player};
+use crate::practice::Ramp;
 use crate::score::Score;
+use crate::score::{Click, Clicks};
 use crate::units::{Quarters, Seconds};
 
 use super::take::{signed_secs, Plan, Shown, StopReason, Take};
@@ -82,18 +82,6 @@ pub(super) fn nothing_audible(opts: &PlayOptions, what: Heard) -> Option<String>
 }
 
 impl DrumApp {
-    pub(super) fn click_options(&self) -> ClickOptions {
-        ClickOptions {
-            audio: self.cfg.click_audio && HAS_AUDIO,
-            engine: self.audio.handle(),
-            volume: self.cfg.click_volume,
-            midi_port: self.cfg.click_midi.then(|| self.cfg.midi_out_port.clone()),
-            midi_note: self.cfg.click_note,
-            midi_channel: self.cfg.click_channel,
-            midi_delay: self.output_delay(),
-        }
-    }
-
     /// A run of clicks only (a calibration; later the take's), through the click outputs of the settings.
     pub(super) fn click_run_options(&self) -> PlayOptions {
         let c = &self.cfg;
@@ -137,6 +125,11 @@ impl DrumApp {
         for lane in Lane::ALL {
             c.set_lane_gain(lane, self.cfg.effective_gain(self.playback.solo(), lane));
         }
+        // The clicks of a take follow the click switch and volume, and are one pass whatever `passes` says.
+        let t = self.playback.take_control();
+        t.set_click(self.cfg.metronome_during_take);
+        t.set_click_volume(self.cfg.click_volume);
+        t.set_passes(Passes::ONCE);
         // The free metronome always clicks and goes on until stopped.
         let m = self.metro_run.control();
         m.set_click(true);
@@ -203,7 +196,9 @@ impl DrumApp {
             plan.bpm
         );
         let take = Take::start(self.practice.takes_started + 1, label, window, &plan, expected, &self.cfg.tol);
-        self.metronome = Some(Metronome::start(plan.zero, plan.clicks, self.click_options(), Some(self.playback.control().clone())));
+        let clicks = playback::click_cues(&plan.clicks);
+        self.take_clicks =
+            Some(Player::start(plan.zero, clicks, plan.end_sec.0, self.click_run_options(), self.playback.take_control().clone()));
         self.practice.takes_started += 1;
         self.practice.take = Some(take);
     }
@@ -355,10 +350,10 @@ impl DrumApp {
         }
     }
 
-    /// Shows the problems the engine and the metronome thread of a take or a calibration ran into.
+    /// Shows the problems the engine and the click thread of a take or a calibration ran into.
     pub(super) fn show_sound_errors(&mut self) {
         let mut errors = self.audio.take_errors();
-        if let Some(m) = self.metronome.as_ref() {
+        if let Some(m) = self.take_clicks.as_ref() {
             errors.extend(m.take_errors());
         }
         if let Some(c) = self.calibration.as_ref() {
@@ -444,7 +439,7 @@ impl DrumApp {
     /// Stops the metronome and the take that records, grades the take and puts it in the history;
     /// says nothing, and returns what came of it.
     pub(super) fn finish_take(&mut self, reason: StopReason) -> TakeOutcome {
-        if let Some(mut m) = self.metronome.take() {
+        if let Some(mut m) = self.take_clicks.take() {
             m.stop();
         }
         let Some(take) = self.practice.take.as_mut() else { return TakeOutcome::NoTake };
@@ -502,14 +497,15 @@ impl DrumApp {
         let beat = 0.6; // 100 BPM
         let zero = Instant::now() + Duration::from_secs_f64(1.0);
         let beats: Vec<f64> = (0..16).map(|i| i as f64 * beat).collect();
-        let cues: Vec<Cue> = beats.iter().map(|t| Cue { t: *t, sound: Sound::Click { level: ClickLevel::from_accent(false) } }).collect();
+        let click_track: Vec<Click> = beats.iter().map(|t| Click { t: Seconds(*t), accent: false }).collect();
+        let cues = playback::click_cues(&click_track);
         // Its own switches: the calibration clicks must sound whatever the click switch says.
         // The calibration measures the whole delay, so its MIDI click is not moved.
         let control = SoundSwitches::new();
         control.set_click_volume(self.cfg.click_volume);
         let opts = PlayOptions { midi_delay: Duration::ZERO, ..self.click_run_options() };
-        let clicks = Player::start(zero, cues, beats.last().map_or(0.0, |last| last + beat), opts, control);
-        self.calibration = Some(Calibration { zero, beats, hits: Vec::new(), clicks });
+        let player = Player::start(zero, cues, beats.last().map_or(0.0, |last| last + beat), opts, control);
+        self.calibration = Some(Calibration { zero, beats, hits: Vec::new(), clicks: player });
         self.view.status = "Calibrating: hit any pad together with the 16 clicks…".into();
     }
 

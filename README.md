@@ -231,7 +231,6 @@ What counts as the public interface: the settings file keys, the CSV export colu
 | `src/midi.rs` | MIDI input capture and output (midir), and the control surface's port |
 | `core/src/controller/` | Control surfaces: messages, presets, which control does what, lights (no MIDI port, no GUI) |
 | `presets/` | The built-in controller presets (text files) |
-| `src/metronome.rs` | Count-in/metronome thread (audio and/or MIDI click) |
 | `src/playback.rs` | "Listen" and the free metronome: plays notes and clicks on one thread (sound card and/or MIDI) |
 | `src/control.rs` | Settings shared with the sound threads so they can change while playing (click, notes, loop, volumes) |
 | `src/synth.rs` | The built-in software drum kit (one synthesised sample per instrument) and the WAV override loader |

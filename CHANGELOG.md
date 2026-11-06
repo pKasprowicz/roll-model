@@ -10,6 +10,7 @@ All notable changes are recorded here. The format follows [Keep a Changelog](htt
 - **The screen stays awake while Roll Model is open** (PLAT-1): playing the drums touches neither the keyboard nor the mouse, so some systems locked the screen or put the display to sleep. On Windows the program now asks the system not to, and lets go when it closes. It is on by default; **Settings → General → Screen** turns it off. Other systems are not tried yet; the switch says so.
 
 ### Changed
+- The count-in and clicks of a recording, and the calibration clicks, are played by the same scheduler as Listen (RV-30), so that the click timing is fixed in one place. Nothing is meant to change: the recording's grading depends on this timing, so it is worth noticing if a take's offsets shift.
 - **The *loop* switch is now *passes*** (FEAT-8, FEAT-10): a number from 1 to 99, or *unlimited*, of times Listen goes through the selected measures (or the rudiment) before it stops by itself, and says so on the status line. 1 is what loop off was and unlimited is what loop on was. A count is saved with the settings and remembered, but *unlimited* is not: the program always starts with it off, like the loop switch did; it works the same on the Score and Rudiments tabs. The *loop* key and button go between 1 and unlimited.
 - A new controller value, `passes`, steps the number with an encoder or sets it with a fader (bind it with *Learn*). A recording locks it like the other settings of the run. Recording N passes is not there yet.
 

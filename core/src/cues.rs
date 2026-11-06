@@ -29,6 +29,11 @@ pub struct Cue {
     pub sound: Sound,
 }
 
+/// The cues of a click track (a take's count-in and beat clicks): a click at each of its times.
+pub fn click_cues(clicks: &[Click]) -> Vec<Cue> {
+    clicks.iter().map(|c| Cue { t: c.t.0, sound: Sound::Click { level: ClickLevel::from_accent(c.accent) } }).collect()
+}
+
 /// MIDI velocity for a score note.
 pub fn velocity_for(e: &Expected) -> u8 {
     if e.dynamic == Dynamic::Ghost {

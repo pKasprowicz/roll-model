@@ -3,9 +3,9 @@
 
 use egui::RichText;
 
+use crate::audio::HAS_AUDIO;
 use crate::config::{limits, ClockStart};
 use crate::drums::{format_note_list, parse_note_list, Lane};
-use crate::metronome::HAS_AUDIO;
 use crate::midi;
 use crate::theme;
 use crate::widgets;

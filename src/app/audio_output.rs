@@ -3,8 +3,8 @@
 //! device in the settings changes or the stream has failed.
 
 use super::DrumApp;
+use crate::audio::HAS_AUDIO;
 use crate::audio::{default_output_device, Engine, EngineHandle};
-use crate::metronome::HAS_AUDIO;
 
 #[derive(Default)]
 pub(super) struct AudioOutput {

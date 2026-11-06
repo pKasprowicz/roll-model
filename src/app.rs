@@ -29,7 +29,6 @@ use crate::config::{Config, Paths, RowLayout};
 use crate::controller::Action;
 use crate::drums::Lane;
 use crate::import::load_score;
-use crate::metronome::Metronome;
 use crate::midi::{self, RawEvent};
 use crate::practice_tempo::PracticeTempo;
 use crate::score::Score;
@@ -174,7 +173,8 @@ pub struct DrumApp {
 
     midi: MidiState,
 
-    metronome: Option<Metronome>,
+    /// Plays the count-in and the clicks of a take.
+    take_clicks: Option<crate::playback::Player>,
     calibration: Option<Calibration>,
 
     playback: Playback,
@@ -256,7 +256,7 @@ impl DrumApp {
             background_bytes: 1 << 20,
             follow: true,
             midi: MidiState::new(),
-            metronome: None,
+            take_clicks: None,
             calibration: None,
             playback: Playback::new(),
             audio_devices: Vec::new(),

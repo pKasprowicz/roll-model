@@ -1,6 +1,6 @@
 //! Playing a score back ("Listen"), and the free metronome, so the drummer can
 //! hear what to play. One thread schedules the notes and the metronome clicks
-//! with the same sub-millisecond timing as `metronome.rs`, and sends them to
+//! with sub-millisecond timing (`timing.rs`), and sends them to
 //! the sound card (software drum kit from `synth.rs`) and/or to a MIDI output
 //! (the module's own sounds). A single thread owns the audio stream and the
 //! MIDI connection, so the click and the drums can share one MIDI port.
@@ -25,12 +25,14 @@ use crate::audio::resample::resample;
 use crate::audio::EngineHandle;
 use crate::control::{ErrorLog, SoundSwitches};
 use crate::drums::Lane;
-use crate::metronome::{at, wait_until, AUDIO_LOOKAHEAD};
 use crate::practice::{ClickLevel, Ramp};
 use crate::synth::{velocity_gain, Kit, SAMPLE_RATE};
 
+mod timing;
+use timing::{at, wait_until, AUDIO_LOOKAHEAD};
+
 pub use crate::clock::{clock_cues, metronome_clock, with_clock, ClockMsg, ClockOptions};
-pub use crate::cues::{cues, metronome_cues, Cue, Sound};
+pub use crate::cues::{click_cues, cues, metronome_cues, Cue, Sound};
 
 /// A cue whose turn comes later than this (the thread stalled, or the sound
 /// device took long to open) is dropped instead of being played as a burst.

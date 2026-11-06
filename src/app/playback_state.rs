@@ -67,6 +67,8 @@ pub(super) struct Playback {
     /// One instrument played from the mixer; it has its own control so it never disturbs Listen.
     audition: Option<Player>,
     audition_control: Arc<SoundSwitches>,
+    /// The clicks of a take: the click switch and volume follow the settings, one pass whatever `passes` says.
+    take_control: Arc<SoundSwitches>,
 }
 
 impl Playback {
@@ -80,6 +82,7 @@ impl Playback {
             solo: BTreeSet::new(),
             audition: None,
             audition_control: SoundSwitches::new(),
+            take_control: SoundSwitches::new(),
         }
     }
 
@@ -105,6 +108,11 @@ impl Playback {
     }
 
     /// The switches of the instrument played from the mixer.
+    /// The switches the clicks of a take read.
+    pub(super) fn take_control(&self) -> &Arc<SoundSwitches> {
+        &self.take_control
+    }
+
     pub(super) fn audition_control(&self) -> &Arc<SoundSwitches> {
         &self.audition_control
     }
