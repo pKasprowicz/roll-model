@@ -338,10 +338,10 @@ read; the unit tests use byte sequences, not a port. Your MIDI-clock check alrea
 
 ### B2. Start-up timing (#16, HW-11): **done 2026-11-06, positive**
 
-Checked by the owner with the devices plugged in: nothing to fix. The times themselves were not
-written down; if CD-13 / RV-61 (MIDI listing and opening off the window's thread) is to be decided on
-numbers, run [Session 1](hardware-test-plan.md#session-1-start-up-timing-hw-11) once more and
-record them.
+Checked by the owner with every device plugged in and with none: **the start-up times are
+negligible and show no difference**, so the MIDI listing and opening stay on the window's thread
+(CD-13 and the device parts of RV-61 are closed as not needed). The times themselves were not
+written down.
 
 ### B3. Rudiments on the V31 (#15, HW-10)
 
@@ -562,7 +562,7 @@ screen keep-awake is Windows-only until these machines are tried.
 
 | Waiting work | Waits for |
 |---|---|
-| CD-13 / RV-61: MIDI listing and opening off the window's thread | B2 is done and positive: a decision, not a check (is the work still wanted?) |
+| CD-13 / RV-61: MIDI listing and opening off the window's thread | nothing: decided 2026-11-06, not needed (B2) |
 | RV-30 / CD-5: one scheduler instead of two (also needed for recording N passes, FEAT-7 and the clock in takes) | **B0b** (takes; step 1, the calibration, is verified) |
 | RV-62: allocation in the audio callback | the same hardware session |
 | Closing the Listen part of FEAT-8 / FEAT-10 | A1 |
