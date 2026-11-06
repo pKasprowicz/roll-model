@@ -22,7 +22,7 @@ The hardware tasks (HW-*) have a step-by-step plan in `docs/hardware-test-plan.m
 | **HW-8** [#13](https://github.com/pKasprowicz/roll-model/issues/13) | Try unplugging and plugging in the controller | device |
 | **HW-9** [#17](https://github.com/pKasprowicz/roll-model/issues/17) | Try the controller on the Rudiments tab | device |
 | **HW-10** [#15](https://github.com/pKasprowicz/roll-model/issues/15) | Try the rudiments with the V31 | device, ears |
-| **HW-11** [#16](https://github.com/pKasprowicz/roll-model/issues/16) | Time the start-up with the devices attached | device |
+| **HW-11** [#16](https://github.com/pKasprowicz/roll-model/issues/16) | Time the start-up with the devices attached — **done 2026-11-06:** checked by the owner, positive (no numbers were written down) | device |
 | **HW-12** [#108](https://github.com/pKasprowicz/roll-model/issues/108) | Check the MIDI port opening and the drum-module parsing on the real devices (RV-32, commit 39f3f25) | device |
 | **HW-13** [#109](https://github.com/pKasprowicz/roll-model/issues/109) | Try the MIDI clock (FEAT-6) with the V31 — **done 2026-11-04:** the owner checked the whole feature on a device and it works | device |
 | **CTL-1** | Create and delete layers in the Manage window | code |
@@ -41,7 +41,7 @@ The hardware tasks (HW-*) have a step-by-step plan in `docs/hardware-test-plan.m
 | **RUD-6** [#22](https://github.com/pKasprowicz/roll-model/issues/22) | User-defined rudiment files | code |
 | **RUD-7** [#23](https://github.com/pKasprowicz/roll-model/issues/23) | Practice sets and routines — **merged into FEAT-9 (#112) 2026-11-02** | code |
 | **RUD-8** [#24](https://github.com/pKasprowicz/roll-model/issues/24) | A progress history on disk | code |
-| **SND-1** [#27](https://github.com/pKasprowicz/roll-model/issues/27) | Listen to the cymbals and the rest of the kit | ears |
+| **SND-1** [#27](https://github.com/pKasprowicz/roll-model/issues/27) | Listen to the cymbals and the rest of the kit — **done 2026-11-06:** listened to by the owner, positive; no tuning needed | ears |
 | **SND-2** [#28](https://github.com/pKasprowicz/roll-model/issues/28) | Ask whether volume plus WAV files is enough or several kits are wanted: **decided 2026-10-31: enough as it is; no extra kits** | decision |
 | **SND-3** [#30](https://github.com/pKasprowicz/roll-model/issues/30) | Listen to the WAV override and the hi-hat choke | ears |
 | **UI-1** [#29](https://github.com/pKasprowicz/roll-model/issues/29) | Try with a real mouse and wheel | device |
@@ -165,7 +165,7 @@ A harsh review of the whole tree, [`docs/code-review-2026-11-01.md`](docs/code-r
 
 ### Still open
 
-- [ ] **SND-1** ([#27](https://github.com/pKasprowicz/roll-model/issues/27)) **Listen to the new cymbals and the rest of the kit.** Nobody has heard them; only their spectra are tested (centroid, share below 2 kHz, lone low partials). Tune `Cymbal` parameters in `synth.rs` by ear, then adjust the guard bands if needed. The hi-hats are untouched and still very bright (spectral centroid about 13 kHz).
+- [x] **SND-1** ([#27](https://github.com/pKasprowicz/roll-model/issues/27)) **Listen to the new cymbals and the rest of the kit.** Nobody has heard them; only their spectra are tested (centroid, share below 2 kHz, lone low partials). Tune `Cymbal` parameters in `synth.rs` by ear, then adjust the guard bands if needed. The hi-hats are untouched and still very bright (spectral centroid about 13 kHz). **Done 2026-11-06: the owner listened to the kit and the cymbals; positive, nothing to tune.**
 - [x] **SND-2** ([#28](https://github.com/pKasprowicz/roll-model/issues/28)) **Decided 2026-10-31: per-instrument volume plus WAV files is enough; no extra kits.** (The question was: whether per-instrument volume plus WAV files is enough, or whether several synthesised kits (brighter, darker, …) are wanted.)
 - [ ] **UI-1** ([#29](https://github.com/pKasprowicz/roll-model/issues/29)) Try with a real mouse and wheel: the Layout popup, the mixer's mute/solo/play buttons, the wheel on sliders. Verified only through the keyboard, config keys, and headless egui tests.
 - [ ] **SND-3** ([#30](https://github.com/pKasprowicz/roll-model/issues/30)) The WAV override and the hi-hat choke have unit tests but were never heard.

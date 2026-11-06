@@ -126,9 +126,7 @@ they go in "What I saw".
 | A4 | The diary site | – | a browser | 10 min | telling people about it |
 | B0b | Takes through the new scheduler | #88 | V31, audio output | 30 min | RV-30 done; FEAT-7 and recording N passes |
 | B1 | MIDI input and ports on the real V31 | #108 | V31 | 20 min | closing HW-12 and RV-32 |
-| B2 | Start-up timing | #16 | V31 and a controller | 10 min | CD-13 / RV-61 |
 | B3 | Rudiments on the V31 | #15 | V31, headphones | 45 min | rudiment tuning, RUD-1 |
-| B4 | Listen to the kit | #27 | headphones | 20 min | tuning the cymbals |
 | B5 | WAV override and the hi-hat choke | #30 | headphones | 15 min | closing SND-3 |
 | C1 | X-Touch Mini | #1, #2, #4, #17 | Mini in MC mode | 45 min | the default preset |
 | C2 | Manage window and Learn | #7 | Mini (and a generic one) | 30 min | RV-70 |
@@ -338,19 +336,12 @@ read; the unit tests use byte sequences, not a port. Your MIDI-clock check alrea
 **Pass:** every step as written. **If different:** the step number and what the monitor showed
 (a photo of the monitor is fine).
 
-### B2. Start-up timing (#16, HW-11)
+### B2. Start-up timing (#16, HW-11): **done 2026-11-06, positive**
 
-Needs the V31 and **any controller** plugged in, a **release build**, and about ten minutes. The full
-steps are in [Session 1](hardware-test-plan.md#session-1-start-up-timing-hw-11). In short:
-
-1. Start the program with both devices plugged in; the **splash** lists each start-up step with its
-   time.
-2. Write down every time. Do it **three times** (a cold start, then two restarts).
-3. If you have it, once more with **no** devices plugged in, for comparison.
-
-**Why it matters:** if listing and opening the MIDI ports takes noticeable time on the window's
-thread, that work is moved to a thread (CD-13, RV-61); if it does not, that work is dropped.
-**Report:** the table of times (steps against runs) and whether the splash visibly froze.
+Checked by the owner with the devices plugged in: nothing to fix. The times themselves were not
+written down; if CD-13 / RV-61 (MIDI listing and opening off the window's thread) is to be decided on
+numbers, run [Session 1](hardware-test-plan.md#session-1-start-up-timing-hw-11) once more and
+record them.
 
 ### B3. Rudiments on the V31 (#15, HW-10)
 
@@ -371,23 +362,11 @@ Needs the V31, headphones, a quiet room, 45 minutes. The full steps (with where 
 **Report:** the first extra-hit tempo for each rudiment, the V31 setting you needed, flam and drag
 timing verdicts, and the rolls that end wrongly.
 
-### B4. Listen to the kit (#27, SND-1)
+### B4. Listen to the kit (#27, SND-1): **done 2026-11-06, positive**
 
-**Needs:** headphones, the built-in sounds (no WAV override), the sample score.
-
-1. *Settings → Sound*, the **Instruments** table: each row has a **⏵** button. Press it for **every
-   instrument** in turn: Kick, Snare, Cross-stick, Hi-hat closed / open / pedal, Tom 1 to 4, Crash 1
-   and 2, Ride, Ride bell, China, Splash, Cowbell.
-2. For each, write one word per question: **character** (does it sound like that instrument?),
-   **brightness** (too bright / right / too dull), **length** (too long / right / too short),
-   **level** against the others (too loud / right / too quiet).
-3. Then **Listen** to the sample score and to a rudiment or two with *notes* on: is anything out of
-   balance in use? Use the instrument **Volume** sliders to fix the balance if you like (they are
-   saved), and tell me the values you ended on.
-4. The hi-hats are known to be **very bright**; say how bad.
-
-**Report:** the per-instrument words (a short list is perfect). The cymbal parameters are tuned from
-it.
+Listened to by the owner: the kit and the cymbals are good as they are, so the `Cymbal` parameters in
+`synth.rs` stay. (The hi-hats were known to be very bright; if they still bother you, say so and
+they become a task of their own.)
 
 ### B5. WAV override and the hi-hat choke (#30, SND-3)
 
@@ -583,7 +562,7 @@ screen keep-awake is Windows-only until these machines are tried.
 
 | Waiting work | Waits for |
 |---|---|
-| CD-13 / RV-61: MIDI listing and opening off the window's thread | B2 (the start-up times) |
+| CD-13 / RV-61: MIDI listing and opening off the window's thread | B2 is done and positive: a decision, not a check (is the work still wanted?) |
 | RV-30 / CD-5: one scheduler instead of two (also needed for recording N passes, FEAT-7 and the clock in takes) | **B0b** (takes; step 1, the calibration, is verified) |
 | RV-62: allocation in the audio callback | the same hardware session |
 | Closing the Listen part of FEAT-8 / FEAT-10 | A1 |
@@ -593,6 +572,6 @@ screen keep-awake is Windows-only until these machines are tried.
 
 ## Already checked (nothing to do)
 
-The MIDI clock in Listen and on the Metronome tab (HW-13, 2026-11-04); the audio engine on unplugging, a
+The MIDI clock in Listen and on the Metronome tab (HW-13, 2026-11-04); the start-up timing (HW-11) and the sound of the kit (SND-1), both positive (2026-11-06); the calibration through the new scheduler (B0, 2026-11-06); the audio engine on unplugging, a
 changed default output and a looping Listen with a ramp (AUD-8); the AUD-9, AUD-10 and AUD-13 latency
 questions (no-go, negative, same result).
